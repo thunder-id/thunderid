@@ -23,7 +23,6 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
 	"github.com/asgardeo/thunder/internal/flow/common"
 	"github.com/asgardeo/thunder/internal/system/config"
 	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
@@ -74,13 +73,9 @@ func TestPublishFlowStartedEvent(t *testing.T) {
 
 	t.Run("with_authenticated_user", func(t *testing.T) {
 		ctx := &EngineContext{
-			ExecutionID: "flow-001",
-			FlowType:    common.FlowTypeAuthentication,
-			AppID:       "app-001",
-			AuthenticatedUser: authncm.AuthenticatedUser{
-				IsAuthenticated: true,
-				UserID:          "user-123",
-			},
+			ExecutionID:      "flow-001",
+			FlowType:         common.FlowTypeAuthentication,
+			AppID:            "app-001",
 			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
 		}
 
@@ -116,13 +111,9 @@ func TestPublishFlowCompletedEvent(t *testing.T) {
 	defer config.ResetServerRuntime()
 
 	ctx := &EngineContext{
-		ExecutionID: "flow-003",
-		FlowType:    common.FlowTypeAuthentication,
-		AppID:       "app-003",
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			IsAuthenticated: true,
-			UserID:          "user-456",
-		},
+		ExecutionID:      "flow-003",
+		FlowType:         common.FlowTypeAuthentication,
+		AppID:            "app-003",
 		ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
 	}
 
@@ -256,42 +247,62 @@ func TestPublishNodeExecutionCompletedEvent(t *testing.T) {
 	defer mockObs.Shutdown()
 	defer config.ResetServerRuntime()
 
-	t.Run("node_completed_successfully", func(t *testing.T) {
-		node := coremock.NewNodeInterfaceMock(t)
-		node.On("GetID").Return("node-003")
-		node.On("GetType").Return(common.NodeTypePrompt)
+	for _, tc := range []struct {
+		name       string
+		flowStatus common.FlowStatus
+		nodeStatus common.NodeStatus
+		nodeID     string
+		flowID     string
+		appID      string
+	}{
+		{
+			name:       "node_completed_successfully",
+			flowStatus: common.FlowStatusComplete,
+			nodeStatus: common.NodeStatusComplete,
+			nodeID:     "node-003",
+			flowID:     "flow-008",
+			appID:      "app-008",
+		},
+		{
+			name:       "node_incomplete_status",
+			flowStatus: common.FlowStatusIncomplete,
+			nodeStatus: common.NodeStatusIncomplete,
+			nodeID:     "node-005",
+			flowID:     "flow-010",
+			appID:      "app-010",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			node := coremock.NewNodeInterfaceMock(t)
+			node.On("GetID").Return(tc.nodeID)
+			node.On("GetType").Return(common.NodeTypePrompt)
 
-		ctx := &EngineContext{
-			ExecutionID: "flow-008",
-			FlowType:    common.FlowTypeAuthentication,
-			AppID:       "app-008",
-			AuthenticatedUser: authncm.AuthenticatedUser{
-				IsAuthenticated: true,
-				UserID:          "user-789",
-			},
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
-		}
+			ctx := &EngineContext{
+				ExecutionID:      tc.flowID,
+				FlowType:         common.FlowTypeAuthentication,
+				AppID:            tc.appID,
+				ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
+			}
 
-		ctx.ExecutionHistory[node.GetID()] = &common.NodeExecutionRecord{
-			NodeID:     node.GetID(),
-			NodeType:   string(node.GetType()),
-			Step:       1,
-			Status:     common.FlowStatusComplete,
-			Executions: []common.ExecutionAttempt{{Attempt: 1, Status: common.FlowStatusComplete}},
-			StartTime:  1000,
-		}
+			ctx.ExecutionHistory[node.GetID()] = &common.NodeExecutionRecord{
+				NodeID:     node.GetID(),
+				NodeType:   string(node.GetType()),
+				Step:       1,
+				Status:     tc.flowStatus,
+				Executions: []common.ExecutionAttempt{{Attempt: 1, Status: tc.flowStatus}},
+				StartTime:  1000,
+			}
 
-		nodeResp := &common.NodeResponse{Status: common.NodeStatusComplete}
-		executionStartTime := int64(1000)
-		executionEndTime := int64(1100)
+			nodeResp := &common.NodeResponse{Status: tc.nodeStatus}
+			executionStartTime := int64(1000)
+			executionEndTime := int64(1100)
 
-		// Call the actual function to get code coverage
-		publishNodeExecutionCompletedEvent(ctx, node, nodeResp, nil, executionStartTime, executionEndTime, mockObs)
+			publishNodeExecutionCompletedEvent(ctx, node, nodeResp, nil, executionStartTime, executionEndTime, mockObs)
 
-		// Verify mock was called
-		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
-	})
+			mockObs.AssertCalled(t, "IsEnabled")
+			mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+		})
+	}
 
 	t.Run("node_failed_with_error", func(t *testing.T) {
 		node := coremock.NewNodeInterfaceMock(t)
@@ -325,39 +336,6 @@ func TestPublishNodeExecutionCompletedEvent(t *testing.T) {
 
 		// Call the actual function to get code coverage
 		publishNodeExecutionCompletedEvent(ctx, node, nil, svcErr, executionStartTime, executionEndTime, mockObs)
-
-		// Verify mock was called
-		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
-	})
-
-	t.Run("node_incomplete_status", func(t *testing.T) {
-		node := coremock.NewNodeInterfaceMock(t)
-		node.On("GetID").Return("node-005")
-		node.On("GetType").Return(common.NodeTypePrompt)
-
-		ctx := &EngineContext{
-			ExecutionID:      "flow-010",
-			FlowType:         common.FlowTypeAuthentication,
-			AppID:            "app-010",
-			ExecutionHistory: make(map[string]*common.NodeExecutionRecord),
-		}
-
-		ctx.ExecutionHistory[node.GetID()] = &common.NodeExecutionRecord{
-			NodeID:     node.GetID(),
-			NodeType:   string(node.GetType()),
-			Step:       1,
-			Status:     common.FlowStatusIncomplete,
-			Executions: []common.ExecutionAttempt{{Attempt: 1, Status: common.FlowStatusIncomplete}},
-			StartTime:  1000,
-		}
-
-		nodeResp := &common.NodeResponse{Status: common.NodeStatusIncomplete}
-		executionStartTime := int64(1000)
-		executionEndTime := int64(1075)
-
-		// Call the actual function to get code coverage
-		publishNodeExecutionCompletedEvent(ctx, node, nodeResp, nil, executionStartTime, executionEndTime, mockObs)
 
 		// Verify mock was called
 		mockObs.AssertCalled(t, "IsEnabled")

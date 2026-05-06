@@ -24,7 +24,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/asgardeo/thunder/internal/authn/assert"
-	"github.com/asgardeo/thunder/internal/authn/common"
 	"github.com/asgardeo/thunder/internal/authn/github"
 	"github.com/asgardeo/thunder/internal/authn/google"
 	"github.com/asgardeo/thunder/internal/authn/oauth"
@@ -53,39 +52,6 @@ func Initialize(
 	googleSvc google.GoogleOIDCAuthnServiceInterface,
 	githubSvc github.GithubOAuthAuthnServiceInterface,
 ) AuthenticationServiceInterface {
-	common.RegisterAuthenticator(common.AuthenticatorMeta{
-		Name:    common.AuthenticatorCredentials,
-		Factors: []common.AuthenticationFactor{common.FactorKnowledge},
-	})
-	common.RegisterAuthenticator(common.AuthenticatorMeta{
-		Name:    common.AuthenticatorSMSOTP,
-		Factors: []common.AuthenticationFactor{common.FactorPossession},
-	})
-	common.RegisterAuthenticator(common.AuthenticatorMeta{
-		Name:    common.AuthenticatorPasskey,
-		Factors: []common.AuthenticationFactor{common.FactorPossession, common.FactorInherence},
-	})
-	common.RegisterAuthenticator(common.AuthenticatorMeta{
-		Name:          common.AuthenticatorOAuth,
-		Factors:       []common.AuthenticationFactor{common.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeOAuth,
-	})
-	common.RegisterAuthenticator(common.AuthenticatorMeta{
-		Name:          common.AuthenticatorOIDC,
-		Factors:       []common.AuthenticationFactor{common.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeOIDC,
-	})
-	common.RegisterAuthenticator(common.AuthenticatorMeta{
-		Name:          common.AuthenticatorGithub,
-		Factors:       []common.AuthenticationFactor{common.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeGitHub,
-	})
-	common.RegisterAuthenticator(common.AuthenticatorMeta{
-		Name:          common.AuthenticatorGoogle,
-		Factors:       []common.AuthenticationFactor{common.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeGoogle,
-	})
-
 	authnService := newAuthenticationService(
 		idpSvc,
 		jwtSvc,

@@ -58,16 +58,15 @@ func newDefaultAuthnProvider(entitySvc entity.EntityServiceInterface,
 
 // Authenticate authenticates the user using the internal entity service.
 func (p *defaultAuthnProvider) Authenticate(
-	ctx context.Context,
-	identifiers, credentials map[string]interface{},
+	ctx context.Context, authType string, authnData any,
 	metadata *authnprovidercm.AuthnMetadata,
 ) (*authnprovidercm.AuthnResult, *serviceerror.ServiceError) {
-	if credentials == nil {
+	if authnData == nil {
 		return nil, newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,
 			"Credentials are required", "Credentials are required for authentication")
 	}
 
-	authOutcome, svcErr := p.resolveCredentials(ctx, identifiers, credentials)
+	authOutcome, svcErr := p.resolveCredentials(ctx, authType, authnData)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -92,18 +91,6 @@ func (p *defaultAuthnProvider) Authenticate(
 		}
 	}
 
-	attributesResponse := &authnprovidercm.AttributesResponse{
-		Attributes:    make(map[string]*authnprovidercm.AttributeResponse),
-		Verifications: make(map[string]*authnprovidercm.VerificationResponse),
-	}
-	for k := range attributes {
-		attributesResponse.Attributes[k] = &authnprovidercm.AttributeResponse{
-			AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
-				IsVerified: false,
-			},
-		}
-	}
-
 	return &authnprovidercm.AuthnResult{
 		EntityID:                  authOutcome.entityID,
 		EntityCategory:            string(entityResult.Category),
@@ -112,11 +99,12 @@ func (p *defaultAuthnProvider) Authenticate(
 		UserID:                    authOutcome.entityID,
 		Token:                     authOutcome.entityID,
 		UserType:                  entityResult.Type,
-		IsAttributeValuesIncluded: false,
-		AttributesResponse:        attributesResponse,
+		IsAttributeValuesIncluded: true,
+		AttributesResponse:        buildAttributesResponse(attributes),
 		IsExistingUser:            true,
 		ExternalSub:               authOutcome.externalSub,
 		ExternalClaims:            authOutcome.externalClaims,
+		AuthType:                  authOutcome.credentialType,
 	}, nil
 }
 
@@ -125,62 +113,62 @@ type credentialOutcome struct {
 	externalSub    string
 	externalClaims map[string]interface{}
 	earlyReturn    *authnprovidercm.AuthnResult
+	credentialType string
 }
 
 func (p *defaultAuthnProvider) resolveCredentials(
-	ctx context.Context,
-	identifiers, credentials map[string]interface{},
+	ctx context.Context, authType string, authnData any,
 ) (*credentialOutcome, *serviceerror.ServiceError) {
-	if passkeyCredential, ok := credentials["passkey"]; ok {
-		return p.authenticateWithPasskey(ctx, passkeyCredential)
+	if authType == authnprovidercm.AuthnDataTypePasskey {
+		return p.authenticateWithPasskey(ctx, authnData)
 	}
-	if otpCredential, ok := credentials["otp"]; ok {
-		return p.authenticateWithOTP(ctx, otpCredential)
+	if authType == authnprovidercm.AuthnDataTypeOTP {
+		return p.authenticateWithOTP(ctx, authnData)
 	}
-	if fedCred, ok := credentials["federated"]; ok {
-		return p.authenticateWithFederated(ctx, fedCred)
+	if authType == authnprovidercm.AuthnDataTypeFederated {
+		return p.authenticateWithFederated(ctx, authnData)
 	}
-	if userID, ok := identifiers["userID"]; ok && userID != "" {
-		return p.authenticateByUserID(ctx, userID, credentials)
+	if authType == authnprovidercm.AuthnDataTypeCredentials {
+		return p.authenticateWithCredentials(ctx, authnData)
 	}
-	return p.authenticateByIdentifiers(ctx, identifiers, credentials)
+	return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
+		"Unsupported authentication type", "The provided authentication type is not supported")
 }
 
 func (p *defaultAuthnProvider) authenticateWithPasskey(
-	ctx context.Context, raw interface{},
+	ctx context.Context, authnData any,
 ) (*credentialOutcome, *serviceerror.ServiceError) {
-	cred, ok := raw.(*passkey.PasskeyAuthenticationFinishRequest)
-	if !ok || cred == nil {
+	passkeyAuthnData, ok := authnData.(*authnprovidercm.PasskeyAuthnData)
+	if !ok {
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
 			"Invalid passkey payload", "The provided passkey credential is invalid")
+	}
+	cred := &passkey.PasskeyAuthenticationFinishRequest{
+		CredentialID:      passkeyAuthnData.CredentialID,
+		CredentialType:    passkeyAuthnData.CredentialType,
+		ClientDataJSON:    passkeyAuthnData.ClientDataJSON,
+		AuthenticatorData: passkeyAuthnData.AuthenticatorData,
+		Signature:         passkeyAuthnData.Signature,
+		UserHandle:        passkeyAuthnData.UserHandle,
+		SessionToken:      passkeyAuthnData.SessionToken,
 	}
 	authResponse, authErr := p.passkeyService.FinishAuthentication(ctx, cred)
 	if authErr != nil {
 		return nil, newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,
 			authErr.Error.DefaultValue, authErr.ErrorDescription.DefaultValue)
 	}
-	return &credentialOutcome{entityID: authResponse.ID}, nil
+	return &credentialOutcome{entityID: authResponse.ID, credentialType: authnprovidercm.AuthenticatorPasskey}, nil
 }
 
 func (p *defaultAuthnProvider) authenticateWithOTP(
-	ctx context.Context, raw interface{},
+	ctx context.Context, authnData any,
 ) (*credentialOutcome, *serviceerror.ServiceError) {
-	otpCredential, ok := raw.(map[string]interface{})
+	otpAuthnData, ok := authnData.(*authnprovidercm.OTPAuthnData)
 	if !ok {
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
 			"Invalid OTP payload", "The provided OTP credential is invalid")
 	}
-	sessionToken, ok := otpCredential["sessionToken"].(string)
-	if !ok || sessionToken == "" {
-		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
-			"Invalid OTP payload", "sessionToken is required")
-	}
-	otpValue, ok := otpCredential["otp"].(string)
-	if !ok || otpValue == "" {
-		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
-			"Invalid OTP payload", "otp is required")
-	}
-	authResponse, authErr := p.otpService.Authenticate(ctx, sessionToken, otpValue)
+	authResult, authErr := p.otpService.Authenticate(ctx, otpAuthnData.SessionToken, otpAuthnData.OTP)
 	if authErr != nil {
 		if authErr.Type == serviceerror.ClientErrorType {
 			if authErr.Code == otp.ErrorIncorrectOTP.Code {
@@ -194,31 +182,34 @@ func (p *defaultAuthnProvider) authenticateWithOTP(
 			log.String("error", authErr.Error.DefaultValue),
 			log.String("errorDescription", authErr.ErrorDescription.DefaultValue))
 	}
-	return &credentialOutcome{entityID: authResponse.ID}, nil
+	if authResult.InternalEntity == nil {
+		return &credentialOutcome{
+			credentialType: authnprovidercm.AuthenticatorSMSOTP,
+			earlyReturn: &authnprovidercm.AuthnResult{
+				IsExistingUser:            false,
+				IsAttributeValuesIncluded: true,
+				AttributesResponse:        buildAttributesResponse(authResult.VerifiedIdentifiers),
+			},
+		}, nil
+	}
+	return &credentialOutcome{entityID: authResult.InternalEntity.ID,
+		credentialType: authnprovidercm.AuthenticatorSMSOTP}, nil
 }
 
 func (p *defaultAuthnProvider) authenticateWithFederated(
-	ctx context.Context, raw interface{},
+	ctx context.Context, authnData any,
 ) (*credentialOutcome, *serviceerror.ServiceError) {
-	cred, ok := raw.(*authncommon.FederatedAuthCredential)
-	if !ok || cred == nil {
+	fedAuthnData, ok := authnData.(*authnprovidercm.FederatedAuthnData)
+	if !ok {
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
 			"Invalid federated credential payload", "The provided federated credential is invalid")
 	}
-	if cred.IDPID == "" {
-		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
-			"Missing IDP ID", "The federated credential must include a non-empty IDP ID")
-	}
-	if cred.Code == "" {
-		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
-			"Missing authorization code", "The federated credential must include a non-empty authorization code")
-	}
-	svc, ok := p.federatedAuths[cred.IDPType]
+	svc, ok := p.federatedAuths[fedAuthnData.IDPType]
 	if !ok {
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
 			"Unsupported IDP type", "The provided IDP type is not supported for federated authentication")
 	}
-	authResult, authErr := svc.Authenticate(ctx, cred.IDPID, cred.Code)
+	authResult, authErr := svc.Authenticate(ctx, fedAuthnData.IDPID, fedAuthnData.OAuthCredential.Code)
 	if authErr != nil {
 		if authErr.Type == serviceerror.ClientErrorType {
 			return nil, newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,
@@ -230,19 +221,38 @@ func (p *defaultAuthnProvider) authenticateWithFederated(
 	}
 	if authResult.InternalEntity == nil {
 		return &credentialOutcome{
+			credentialType: getFederatedAuthenticatorName(fedAuthnData.IDPType),
 			earlyReturn: &authnprovidercm.AuthnResult{
-				ExternalSub:     authResult.Sub,
-				ExternalClaims:  authResult.Claims,
-				IsExistingUser:  false,
-				IsAmbiguousUser: authResult.IsAmbiguousUser,
+				ExternalSub:               authResult.Sub,
+				ExternalClaims:            authResult.Claims,
+				IsExistingUser:            false,
+				IsAmbiguousUser:           authResult.IsAmbiguousUser,
+				IsAttributeValuesIncluded: true,
+				AttributesResponse:        buildAttributesResponse(authResult.Claims),
 			},
 		}, nil
 	}
 	return &credentialOutcome{
+		credentialType: getFederatedAuthenticatorName(fedAuthnData.IDPType),
 		entityID:       authResult.InternalEntity.ID,
 		externalSub:    authResult.Sub,
 		externalClaims: authResult.Claims,
 	}, nil
+}
+
+func (p *defaultAuthnProvider) authenticateWithCredentials(
+	ctx context.Context, authnData any,
+) (*credentialOutcome, *serviceerror.ServiceError) {
+	credsAuthnData, ok := authnData.(*authnprovidercm.CredentialsAuthnData)
+	if !ok {
+		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
+			"Invalid credential payload", "The provided credential is invalid")
+	}
+
+	if userID, ok := credsAuthnData.Identifiers["userID"]; ok && userID != "" {
+		return p.authenticateByUserID(ctx, userID, credsAuthnData.Credentials)
+	}
+	return p.authenticateByIdentifiers(ctx, credsAuthnData)
 }
 
 func (p *defaultAuthnProvider) authenticateByUserID(
@@ -257,17 +267,19 @@ func (p *defaultAuthnProvider) authenticateByUserID(
 	if authErr != nil {
 		return nil, p.handleEntityAuthError(authErr, "Basic authentication by ID failed with server error")
 	}
-	return &credentialOutcome{entityID: authResult.EntityID}, nil
+	return &credentialOutcome{entityID: authResult.EntityID, credentialType: authnprovidercm.AuthenticatorCredentials},
+		nil
 }
 
 func (p *defaultAuthnProvider) authenticateByIdentifiers(
-	ctx context.Context, identifiers, credentials map[string]interface{},
+	ctx context.Context, authnData *authnprovidercm.CredentialsAuthnData,
 ) (*credentialOutcome, *serviceerror.ServiceError) {
-	authResult, authErr := p.entitySvc.AuthenticateEntity(ctx, identifiers, credentials)
+	authResult, authErr := p.entitySvc.AuthenticateEntity(ctx, authnData.Identifiers, authnData.Credentials)
 	if authErr != nil {
 		return nil, p.handleEntityAuthError(authErr, "Basic authentication failed with server error")
 	}
-	return &credentialOutcome{entityID: authResult.EntityID}, nil
+	return &credentialOutcome{entityID: authResult.EntityID, credentialType: authnprovidercm.AuthenticatorCredentials},
+		nil
 }
 
 func (p *defaultAuthnProvider) handleEntityAuthError(err error, serverMsg string) *serviceerror.ServiceError {
@@ -349,6 +361,70 @@ func (p *defaultAuthnProvider) GetAttributes(
 	}, nil
 }
 
+// GetAuthenticatorMetadata returns the metadata of the specified authenticator.
+func (p *defaultAuthnProvider) GetAuthenticatorMetadata(authenticatorName string) *authnprovidercm.AuthenticatorMeta {
+	if authenticatorName == authnprovidercm.AuthenticatorCredentials {
+		return &authnprovidercm.AuthenticatorMeta{
+			Name:    authnprovidercm.AuthenticatorCredentials,
+			Factors: []authnprovidercm.AuthenticationFactor{authnprovidercm.FactorKnowledge},
+		}
+	}
+	if authenticatorName == authnprovidercm.AuthenticatorPasskey {
+		return &authnprovidercm.AuthenticatorMeta{
+			Name: authnprovidercm.AuthenticatorPasskey,
+			Factors: []authnprovidercm.AuthenticationFactor{authnprovidercm.FactorPossession,
+				authnprovidercm.FactorInherence},
+		}
+	}
+	if authenticatorName == authnprovidercm.AuthenticatorSMSOTP {
+		return &authnprovidercm.AuthenticatorMeta{
+			Name:    authnprovidercm.AuthenticatorSMSOTP,
+			Factors: []authnprovidercm.AuthenticationFactor{authnprovidercm.FactorPossession},
+		}
+	}
+	if authenticatorName == authnprovidercm.AuthenticatorOAuth {
+		return &authnprovidercm.AuthenticatorMeta{
+			Name:    authnprovidercm.AuthenticatorOAuth,
+			Factors: []authnprovidercm.AuthenticationFactor{authnprovidercm.FactorKnowledge},
+		}
+	}
+	if authenticatorName == authnprovidercm.AuthenticatorOIDC {
+		return &authnprovidercm.AuthenticatorMeta{
+			Name:    authnprovidercm.AuthenticatorOIDC,
+			Factors: []authnprovidercm.AuthenticationFactor{authnprovidercm.FactorKnowledge},
+		}
+	}
+	if authenticatorName == authnprovidercm.AuthenticatorGithub {
+		return &authnprovidercm.AuthenticatorMeta{
+			Name:    authnprovidercm.AuthenticatorGithub,
+			Factors: []authnprovidercm.AuthenticationFactor{authnprovidercm.FactorKnowledge},
+		}
+	}
+	if authenticatorName == authnprovidercm.AuthenticatorGoogle {
+		return &authnprovidercm.AuthenticatorMeta{
+			Name:    authnprovidercm.AuthenticatorGoogle,
+			Factors: []authnprovidercm.AuthenticationFactor{authnprovidercm.FactorKnowledge},
+		}
+	}
+	return nil
+}
+
+func buildAttributesResponse(attrs map[string]interface{}) *authnprovidercm.AttributesResponse {
+	resp := &authnprovidercm.AttributesResponse{
+		Attributes:    make(map[string]*authnprovidercm.AttributeResponse),
+		Verifications: make(map[string]*authnprovidercm.VerificationResponse),
+	}
+	for k, v := range attrs {
+		resp.Attributes[k] = &authnprovidercm.AttributeResponse{
+			Value: v,
+			AssuranceMetadataResponse: &authnprovidercm.AssuranceMetadataResponse{
+				IsVerified: false,
+			},
+		}
+	}
+	return resp
+}
+
 func newClientError(code, msg, desc string) *serviceerror.ServiceError {
 	return &serviceerror.ServiceError{
 		Type: serviceerror.ClientErrorType,
@@ -368,4 +444,19 @@ func (p *defaultAuthnProvider) logAndReturnServerError(msg string, fields ...log
 	p.logger.Error(msg, fields...)
 	err := serviceerror.InternalServerError
 	return &err
+}
+
+func getFederatedAuthenticatorName(idpType idp.IDPType) string {
+	switch idpType {
+	case idp.IDPTypeGoogle:
+		return authnprovidercm.AuthenticatorGoogle
+	case idp.IDPTypeGitHub:
+		return authnprovidercm.AuthenticatorGithub
+	case idp.IDPTypeOIDC:
+		return authnprovidercm.AuthenticatorOIDC
+	case idp.IDPTypeOAuth:
+		return authnprovidercm.AuthenticatorOIDC
+	default:
+		return ""
+	}
 }

@@ -21,33 +21,11 @@ package common
 
 import (
 	"context"
-	"time"
 
-	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/idp"
 	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 )
-
-// AuthenticatedUser represents the user information of an authenticated user.
-type AuthenticatedUser struct {
-	IsAuthenticated     bool
-	UserID              string
-	OUID                string
-	UserType            string
-	Attributes          map[string]interface{}
-	AvailableAttributes *authnprovidercm.AttributesResponse
-	Token               string
-}
-
-// AuthenticationContext represents the context of an authentication session.
-type AuthenticationContext struct {
-	context.Context
-	SessionDataKey     string
-	RequestQueryParams map[string]string
-	AuthenticatedUser  AuthenticatedUser
-	AuthTime           time.Time
-}
 
 // AuthenticationResponse represents the response after successful authentication.
 type AuthenticationResponse struct {
@@ -55,26 +33,6 @@ type AuthenticationResponse struct {
 	Type      string
 	OUID      string
 	Assertion string
-}
-
-// AuthenticatorMeta represents an authenticator's metadata including authentication factors.
-type AuthenticatorMeta struct {
-	// Name is the unique identifier for the authenticator (used in individual authentication APIs)
-	Name string
-	// Factors represents the authentication factors this authenticator validates
-	Factors []AuthenticationFactor
-	// AssociatedIDP is the optional identity provider type this authenticator is associated with.
-	AssociatedIDP idp.IDPType
-}
-
-// AuthenticatorReference represents an engaged authenticator in the authentication flow.
-type AuthenticatorReference struct {
-	// Authenticator is the name of the authenticator
-	Authenticator string `json:"authenticator"`
-	// Step is the step number in the flow where this authenticator was engaged
-	Step int `json:"step"`
-	// Timestamp is the authenticator engaged time (Unix epoch time in seconds)
-	Timestamp int64 `json:"timestamp"`
 }
 
 // FederatedAuthCredential carries the credential data for federated authentication.

@@ -57,8 +57,15 @@ func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Success() {
 
 		var req AuthenticateRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
-		suite.Equal("user", req.Identifiers["username"])
-		suite.Equal("pass", req.Credentials["password"])
+		suite.Equal(authnprovidercm.AuthnDataTypeCredentials, req.AuthType)
+		authnDataMap, ok := req.AuthnData.(map[string]interface{})
+		suite.True(ok)
+		identifiers, ok := authnDataMap["Identifiers"].(map[string]interface{})
+		suite.True(ok)
+		suite.Equal("user", identifiers["username"])
+		credentials, ok := authnDataMap["Credentials"].(map[string]interface{})
+		suite.True(ok)
+		suite.Equal("pass", credentials["password"])
 
 		resp := authnprovidercm.AuthnResult{
 			UserID:   "user123",
@@ -72,10 +79,13 @@ func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Success() {
 	defer ts.Close()
 
 	provider := newRestAuthnProvider(ts.URL, "apikey123", suite.setupMockClient())
-	identifiers := map[string]interface{}{"username": "user"}
-	credentials := map[string]interface{}{"password": "pass"}
+	authnData := &authnprovidercm.CredentialsAuthnData{
+		Identifiers: map[string]interface{}{"username": "user"},
+		Credentials: map[string]interface{}{"password": "pass"},
+	}
 
-	result, err := provider.Authenticate(context.Background(), identifiers, credentials, nil)
+	result, err := provider.Authenticate(context.Background(), authnprovidercm.AuthnDataTypeCredentials,
+		authnData, nil)
 
 	suite.Nil(err)
 	suite.Equal("user123", result.UserID)
@@ -93,7 +103,7 @@ func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Failure() {
 	defer ts.Close()
 
 	provider := newRestAuthnProvider(ts.URL, "", suite.setupMockClient())
-	result, err := provider.Authenticate(context.Background(), nil, nil, nil)
+	result, err := provider.Authenticate(context.Background(), authnprovidercm.AuthnDataTypeCredentials, nil, nil)
 
 	suite.Nil(result)
 	suite.NotNil(err)
@@ -156,6 +166,48 @@ func (suite *RestAuthnProviderTestSuite) TestGetAttributes_InvalidToken() {
 	suite.Equal(authnprovidercm.ErrorCodeInvalidToken, err.Code)
 }
 
+func (suite *RestAuthnProviderTestSuite) TestGetAuthenticatorMetadata_Success() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		suite.Equal("/authenticator-metadata", r.URL.Path)
+		suite.Equal(http.MethodPost, r.Method)
+
+		var req map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		suite.Equal(authnprovidercm.AuthenticatorCredentials, req["authenticatorName"])
+
+		resp := authnprovidercm.AuthenticatorMeta{
+			Name:    authnprovidercm.AuthenticatorCredentials,
+			Factors: []authnprovidercm.AuthenticationFactor{authnprovidercm.FactorKnowledge},
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "apikey123", suite.setupMockClient())
+	result := provider.GetAuthenticatorMetadata(authnprovidercm.AuthenticatorCredentials)
+
+	suite.NotNil(result)
+	suite.Equal(authnprovidercm.AuthenticatorCredentials, result.Name)
+	suite.Equal([]authnprovidercm.AuthenticationFactor{authnprovidercm.FactorKnowledge}, result.Factors)
+}
+
+func (suite *RestAuthnProviderTestSuite) TestGetAuthenticatorMetadata_NotFound() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(apiErrorResponse{
+			Code:    authnprovidercm.ErrorCodeInvalidRequest,
+			Message: "Authenticator not found",
+		})
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "", suite.setupMockClient())
+	result := provider.GetAuthenticatorMetadata("UnknownAuthenticator")
+
+	suite.Nil(result)
+}
+
 func (suite *RestAuthnProviderTestSuite) TestSystemError_Decoding() {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Return malformed JSON
@@ -165,7 +217,7 @@ func (suite *RestAuthnProviderTestSuite) TestSystemError_Decoding() {
 	defer ts.Close()
 
 	provider := newRestAuthnProvider(ts.URL, "", suite.setupMockClient())
-	result, err := provider.Authenticate(context.Background(), nil, nil, nil)
+	result, err := provider.Authenticate(context.Background(), authnprovidercm.AuthnDataTypeCredentials, nil, nil)
 
 	suite.Nil(result)
 	suite.NotNil(err)

@@ -41,13 +41,22 @@ const (
 
 var supportedChannels = []notifcommon.ChannelType{notifcommon.ChannelTypeSMS}
 
+// OTPAuthnResult is the result of an OTP authentication attempt.
+// InternalEntity is nil when no local user was found for the verified OTP.
+type OTPAuthnResult struct {
+	InternalEntity *entityprovider.Entity
+	// VerifiedIdentifiers holds the channel identifiers proven by the OTP challenge
+	// (e.g. "mobileNumber"). Populated only when InternalEntity is nil (no local user found).
+	VerifiedIdentifiers map[string]interface{}
+}
+
 // OTPAuthnServiceInterface defines the interface for OTP authentication operations.
 // This is a wrapper over the notification.OTPServiceInterface to perform user authentication.
+// Authenticate returns an error only for actual failures; a missing local user is NOT an error.
 type OTPAuthnServiceInterface interface {
 	SendOTP(ctx context.Context, senderID string, channel notifcommon.ChannelType,
 		recipient string) (string, *serviceerror.ServiceError)
-	VerifyOTP(ctx context.Context, sessionToken, otp string) *serviceerror.ServiceError
-	Authenticate(ctx context.Context, sessionToken, otp string) (*entityprovider.Entity, *serviceerror.ServiceError)
+	Authenticate(ctx context.Context, sessionToken, otp string) (*OTPAuthnResult, *serviceerror.ServiceError)
 }
 
 // otpAuthnService is the default implementation of OTPAuthnServiceInterface.
@@ -90,33 +99,9 @@ func (s *otpAuthnService) SendOTP(ctx context.Context, senderID string, channel 
 	return result.SessionToken, nil
 }
 
-// VerifyOTP verifies the provided OTP against the session token without resolving the user.
-func (s *otpAuthnService) VerifyOTP(ctx context.Context, sessionToken, otp string) *serviceerror.ServiceError {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.Debug("Verifying OTP code")
-
-	if svcErr := s.validateOTPVerifyRequest(sessionToken, otp); svcErr != nil {
-		return svcErr
-	}
-
-	verifyData := notifcommon.VerifyOTPDTO{
-		SessionToken: sessionToken,
-		OTPCode:      otp,
-	}
-	result, svcErr := s.otpService.VerifyOTP(ctx, verifyData)
-	if svcErr != nil {
-		return s.handleOTPServiceError(svcErr, true, logger)
-	}
-
-	if result.Status != notifcommon.OTPVerifyStatusVerified {
-		return &ErrorIncorrectOTP
-	}
-	return nil
-}
-
 // Authenticate verifies the provided OTP against the session token and returns the authenticated user.
 func (s *otpAuthnService) Authenticate(ctx context.Context, sessionToken,
-	otp string) (*entityprovider.Entity, *serviceerror.ServiceError) {
+	otp string) (*OTPAuthnResult, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug("Verifying OTP for authentication")
 
@@ -189,7 +174,7 @@ func (s *otpAuthnService) validateOTPVerifyRequest(sessionToken, otp string) *se
 
 // handleVerifyOTPResponse processes the OTP verification result and resolves the user.
 func (s *otpAuthnService) handleVerifyOTPResponse(result *notifcommon.VerifyOTPResultDTO,
-	logger *log.Logger) (*entityprovider.Entity, *serviceerror.ServiceError) {
+	logger *log.Logger) (*OTPAuthnResult, *serviceerror.ServiceError) {
 	if result.Status != notifcommon.OTPVerifyStatusVerified {
 		return nil, &ErrorIncorrectOTP
 	}
@@ -201,10 +186,16 @@ func (s *otpAuthnService) handleVerifyOTPResponse(result *notifcommon.VerifyOTPR
 
 	user, svcErr := s.resolveUser(result.Recipient, notifcommon.ChannelTypeSMS, logger)
 	if svcErr != nil {
+		if svcErr.Code == common.ErrorUserNotFound.Code {
+			return &OTPAuthnResult{
+				InternalEntity:      nil,
+				VerifiedIdentifiers: map[string]interface{}{userAttributeMobileNumber: result.Recipient},
+			}, nil
+		}
 		return nil, svcErr
 	}
 
-	return user, nil
+	return &OTPAuthnResult{InternalEntity: user}, nil
 }
 
 // resolveUser retrieves a user by their recipient identifier (e.g., mobile number).

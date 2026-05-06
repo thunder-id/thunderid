@@ -18,7 +18,9 @@
 
 package assert
 
+import authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
+
 // Initialize initializes the auth assert generator.
-func Initialize() AuthAssertGeneratorInterface {
-	return newAuthAssertGenerator()
+func Initialize(authnProvider authnprovidermgr.AuthnProviderManagerInterface) AuthAssertGeneratorInterface {
+	return newAuthAssertGenerator(authnProvider)
 }

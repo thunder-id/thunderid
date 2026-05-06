@@ -5,7 +5,6 @@
 package executor
 
 import (
-	common0 "github.com/asgardeo/thunder/internal/authn/common"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/flow/common"
 	"github.com/asgardeo/thunder/internal/flow/core"
@@ -670,31 +669,20 @@ func (_c *oidcAuthExecutorInterfaceMock_ProcessAuthFlowResponse_Call) RunAndRetu
 }
 
 // ResolveContextUser provides a mock function for the type oidcAuthExecutorInterfaceMock
-func (_mock *oidcAuthExecutorInterfaceMock) ResolveContextUser(ctx *core.NodeContext, execResp *common.ExecutorResponse, sub string, internalUser *entityprovider.Entity, isAmbiguous bool) (*common0.AuthenticatedUser, error) {
+func (_mock *oidcAuthExecutorInterfaceMock) ResolveContextUser(ctx *core.NodeContext, execResp *common.ExecutorResponse, sub string, internalUser *entityprovider.Entity, isAmbiguous bool) error {
 	ret := _mock.Called(ctx, execResp, sub, internalUser, isAmbiguous)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ResolveContextUser")
 	}
 
-	var r0 *common0.AuthenticatedUser
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(*core.NodeContext, *common.ExecutorResponse, string, *entityprovider.Entity, bool) (*common0.AuthenticatedUser, error)); ok {
-		return returnFunc(ctx, execResp, sub, internalUser, isAmbiguous)
-	}
-	if returnFunc, ok := ret.Get(0).(func(*core.NodeContext, *common.ExecutorResponse, string, *entityprovider.Entity, bool) *common0.AuthenticatedUser); ok {
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(*core.NodeContext, *common.ExecutorResponse, string, *entityprovider.Entity, bool) error); ok {
 		r0 = returnFunc(ctx, execResp, sub, internalUser, isAmbiguous)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*common0.AuthenticatedUser)
-		}
+		r0 = ret.Error(0)
 	}
-	if returnFunc, ok := ret.Get(1).(func(*core.NodeContext, *common.ExecutorResponse, string, *entityprovider.Entity, bool) error); ok {
-		r1 = returnFunc(ctx, execResp, sub, internalUser, isAmbiguous)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
+	return r0
 }
 
 // oidcAuthExecutorInterfaceMock_ResolveContextUser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveContextUser'
@@ -745,12 +733,12 @@ func (_c *oidcAuthExecutorInterfaceMock_ResolveContextUser_Call) Run(run func(ct
 	return _c
 }
 
-func (_c *oidcAuthExecutorInterfaceMock_ResolveContextUser_Call) Return(authenticatedUser *common0.AuthenticatedUser, err error) *oidcAuthExecutorInterfaceMock_ResolveContextUser_Call {
-	_c.Call.Return(authenticatedUser, err)
+func (_c *oidcAuthExecutorInterfaceMock_ResolveContextUser_Call) Return(err error) *oidcAuthExecutorInterfaceMock_ResolveContextUser_Call {
+	_c.Call.Return(err)
 	return _c
 }
 
-func (_c *oidcAuthExecutorInterfaceMock_ResolveContextUser_Call) RunAndReturn(run func(ctx *core.NodeContext, execResp *common.ExecutorResponse, sub string, internalUser *entityprovider.Entity, isAmbiguous bool) (*common0.AuthenticatedUser, error)) *oidcAuthExecutorInterfaceMock_ResolveContextUser_Call {
+func (_c *oidcAuthExecutorInterfaceMock_ResolveContextUser_Call) RunAndReturn(run func(ctx *core.NodeContext, execResp *common.ExecutorResponse, sub string, internalUser *entityprovider.Entity, isAmbiguous bool) error) *oidcAuthExecutorInterfaceMock_ResolveContextUser_Call {
 	_c.Call.Return(run)
 	return _c
 }

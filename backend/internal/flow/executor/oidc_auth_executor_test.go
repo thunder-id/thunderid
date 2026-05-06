@@ -21,6 +21,7 @@ package executor
 import (
 	i18ncore "github.com/asgardeo/thunder/internal/system/i18n/core"
 
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -104,7 +105,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestExecute_CodeNotProvided_BuildsAuthor
 	suite.mockIDPService.AssertExpectations(suite.T())
 }
 
-func (suite *OIDCAuthExecutorTestSuite) TestExecute_CodeProvided_ValidIDToken_AuthenticatesUser() {
+func (suite *OIDCAuthExecutorTestSuite) TestExecute_CodeProvided_ValidIDToken_AuthenticatesUser() { //nolint:dupl
 	ctx := &core.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    common.FlowTypeAuthentication,
@@ -116,30 +117,23 @@ func (suite *OIDCAuthExecutorTestSuite) TestExecute_CodeProvided_ValidIDToken_Au
 		},
 	}
 
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":true,`+
+		`"runtimeAttributes":{"sub":"user-sub-123"}}],`+
+		`"userHistory":[{"userId":"user-123","userType":"INTERNAL","ouId":"ou-123","isValuesIncluded":true}],`+
+		`"userState":"exists"}`), &mockAuthUser)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "user-sub-123",
-			ExternalClaims: map[string]interface{}{
-				"sub": "user-sub-123", "email": "test@example.com", "name": "Test User",
-				"iss": "https://oidc.provider.com", "aud": "client-id-123",
-				"exp": 1234567890, "iat": 1234567800,
-			},
-			IsExistingUser: true,
-			UserID:         "user-123",
-			OUID:           "ou-123",
-			UserType:       "INTERNAL",
-		}, (*serviceerror.ServiceError)(nil))
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
-	assert.True(suite.T(), resp.AuthenticatedUser.IsAuthenticated)
-	assert.Equal(suite.T(), "user-123", resp.AuthenticatedUser.UserID)
-	assert.Equal(suite.T(), "ou-123", resp.AuthenticatedUser.OUID)
-	assert.Equal(suite.T(), "test@example.com", resp.RuntimeData["email"])
+	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
+	assert.Equal(suite.T(), "user-123", resp.AuthUser.GetUserID())
+	assert.Equal(suite.T(), "ou-123", resp.AuthUser.GetOUID())
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
@@ -160,25 +154,20 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ValidIDToken
 		RuntimeData:    make(map[string]string),
 	}
 
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":true,`+
+		`"runtimeAttributes":{"sub":"user-sub-456"}}],`+
+		`"userHistory":[{"userId":"user-456","userType":"INTERNAL","ouId":"ou-456","isValuesIncluded":true}],`+
+		`"userState":"exists"}`), &mockAuthUser)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "user-sub-456",
-			ExternalClaims: map[string]interface{}{
-				"sub": "user-sub-456", "email": "user@example.com",
-				"iss": "https://provider.com", "aud": "client-id",
-			},
-			IsExistingUser: true,
-			UserID:         "user-456",
-			OUID:           "ou-456",
-			UserType:       "INTERNAL",
-		}, (*serviceerror.ServiceError)(nil))
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.True(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
+	assert.True(suite.T(), execResp.AuthUser.IsAuthenticated())
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
@@ -200,16 +189,14 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_InvalidNonce
 		RuntimeData:    make(map[string]string),
 	}
 
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":false,`+
+		`"runtimeAttributes":{"sub":"user-sub-123","nonce":"different_nonce_456"}}],"userHistory":[],`+
+		`"userState":"not_exists"}`),
+		&mockAuthUser)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "user-sub-123",
-			ExternalClaims: map[string]interface{}{
-				"sub":   "user-sub-123",
-				"nonce": "different_nonce_456",
-			},
-			IsExistingUser: false,
-		}, (*serviceerror.ServiceError)(nil))
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -238,7 +225,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ProviderClie
 
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil), &serviceerror.ServiceError{
+		Return(authnprovidermgr.AuthUser{}, &serviceerror.ServiceError{
 			Type:             serviceerror.ClientErrorType,
 			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Invalid ID token"},
 		})
@@ -251,7 +238,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ProviderClie
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
-func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlow_UserNotFound() {
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlow_UserNotFound() { //nolint:dupl
 	ctx := &core.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    common.FlowTypeRegistration,
@@ -268,21 +255,18 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_Registration
 		RuntimeData:    make(map[string]string),
 	}
 
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":false,`+
+		`"runtimeAttributes":{"sub":"new-user-sub"}}],"userHistory":[],"userState":"not_exists"}`), &mockAuthUser)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "new-user-sub",
-			ExternalClaims: map[string]interface{}{
-				"sub": "new-user-sub", "email": "newuser@example.com", "name": "New User",
-			},
-			IsExistingUser: false,
-		}, (*serviceerror.ServiceError)(nil))
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.False(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
+	assert.False(suite.T(), execResp.AuthUser.IsAuthenticated())
 	assert.Equal(suite.T(), "new-user-sub", execResp.RuntimeData["sub"])
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
@@ -304,12 +288,12 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AuthFlow_Use
 		RuntimeData:    make(map[string]string),
 	}
 
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":false,`+
+		`"runtimeAttributes":{"sub":"unknown-user"}}],"userHistory":[],"userState":"not_exists"}`), &mockAuthUser)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub:    "unknown-user",
-			IsExistingUser: false,
-		}, (*serviceerror.ServiceError)(nil))
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -336,14 +320,14 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_UserAlreadyE
 		RuntimeData:    make(map[string]string),
 	}
 
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":true,`+
+		`"runtimeAttributes":{"sub":"existing-user-sub"}}],`+
+		`"userHistory":[{"userId":"user-789","ouId":"ou-789","isValuesIncluded":true}],"userState":"exists"}`),
+		&mockAuthUser)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub:    "existing-user-sub",
-			IsExistingUser: true,
-			UserID:         "user-789",
-			OUID:           "ou-789",
-		}, (*serviceerror.ServiceError)(nil))
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -370,315 +354,11 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoCodeProvid
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
-	assert.NoError(suite.T(), err)
-	assert.False(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "federated authentication failed")
 }
 
-func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_FiltersNonUserClaimsFromIDToken() {
-	ctx := &core.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    common.FlowTypeAuthentication,
-		UserInputs: map[string]string{
-			"code": "auth_code_123",
-		},
-		NodeProperties: map[string]interface{}{
-			"idpId": "idp-123",
-		},
-	}
-
-	execResp := &common.ExecutorResponse{
-		AdditionalData: make(map[string]string),
-		RuntimeData:    make(map[string]string),
-	}
-
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "user-sub-123",
-			ExternalClaims: map[string]interface{}{
-				"sub": "user-sub-123", "email": "user@example.com", "name": "User Name",
-				"iss": "https://provider.com", "aud": "client-id",
-				"exp": 1234567890, "iat": 1234567800,
-				"at_hash": "hash_value", "nonce": "nonce_value",
-			},
-			IsExistingUser: true,
-			UserID:         "user-123",
-			OUID:           "ou-123",
-			UserType:       "INTERNAL",
-		}, (*serviceerror.ServiceError)(nil))
-
-	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.Contains(suite.T(), execResp.AuthenticatedUser.Attributes, "email")
-	assert.Contains(suite.T(), execResp.AuthenticatedUser.Attributes, "name")
-	assert.NotContains(suite.T(), execResp.AuthenticatedUser.Attributes, "iss")
-	assert.NotContains(suite.T(), execResp.AuthenticatedUser.Attributes, "aud")
-	assert.NotContains(suite.T(), execResp.AuthenticatedUser.Attributes, "exp")
-	assert.NotContains(suite.T(), execResp.AuthenticatedUser.Attributes, "iat")
-	assert.NotContains(suite.T(), execResp.AuthenticatedUser.Attributes, "at_hash")
-	assert.NotContains(suite.T(), execResp.AuthenticatedUser.Attributes, "nonce")
-	assert.NotContains(suite.T(), execResp.AuthenticatedUser.Attributes, "sub")
-	suite.mockAuthnProvider.AssertExpectations(suite.T())
-}
-
-func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailInIDToken() {
-	ctx := &core.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    common.FlowTypeAuthentication,
-		UserInputs: map[string]string{
-			"code": "auth_code_123",
-		},
-		NodeProperties: map[string]interface{}{
-			"idpId": "idp-123",
-		},
-	}
-
-	execResp := &common.ExecutorResponse{
-		AdditionalData: make(map[string]string),
-		RuntimeData:    make(map[string]string),
-	}
-
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "user-sub-789",
-			ExternalClaims: map[string]interface{}{
-				"sub": "user-sub-789", "email": "user@test.com",
-				"iss": "https://provider.com", "aud": "client-id",
-			},
-			IsExistingUser: true,
-			UserID:         "user-789",
-			OUID:           "ou-789",
-			UserType:       "INTERNAL",
-		}, (*serviceerror.ServiceError)(nil))
-
-	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.True(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
-	assert.Equal(suite.T(), "user@test.com", execResp.RuntimeData["email"])
-	assert.Equal(suite.T(), "user@test.com", execResp.AuthenticatedUser.Attributes["email"])
-	suite.mockAuthnProvider.AssertExpectations(suite.T())
-}
-
-func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoEmailInIDToken() {
-	ctx := &core.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    common.FlowTypeAuthentication,
-		UserInputs: map[string]string{
-			"code": "auth_code_123",
-		},
-		NodeProperties: map[string]interface{}{
-			"idpId": "idp-123",
-		},
-	}
-
-	execResp := &common.ExecutorResponse{
-		AdditionalData: make(map[string]string),
-		RuntimeData:    make(map[string]string),
-	}
-
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "user-sub-789",
-			ExternalClaims: map[string]interface{}{
-				"sub": "user-sub-789", "name": "Test User",
-				"iss": "https://provider.com", "aud": "client-id",
-			},
-			IsExistingUser: true,
-			UserID:         "user-789",
-			OUID:           "ou-789",
-			UserType:       "INTERNAL",
-		}, (*serviceerror.ServiceError)(nil))
-
-	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.True(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
-	assert.NotContains(suite.T(), execResp.RuntimeData, "email")
-	assert.NotContains(suite.T(), execResp.AuthenticatedUser.Attributes, "email")
-	suite.mockAuthnProvider.AssertExpectations(suite.T())
-}
-
-func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmptyEmailInIDToken() {
-	ctx := &core.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    common.FlowTypeAuthentication,
-		UserInputs: map[string]string{
-			"code": "auth_code_123",
-		},
-		NodeProperties: map[string]interface{}{
-			"idpId": "idp-123",
-		},
-	}
-
-	execResp := &common.ExecutorResponse{
-		AdditionalData: make(map[string]string),
-		RuntimeData:    make(map[string]string),
-	}
-
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "user-sub-789",
-			ExternalClaims: map[string]interface{}{
-				"sub":   "user-sub-789",
-				"email": "",
-				"iss":   "https://provider.com",
-				"aud":   "client-id",
-			},
-			IsExistingUser: true,
-			UserID:         "user-789",
-			OUID:           "ou-789",
-			UserType:       "INTERNAL",
-		}, (*serviceerror.ServiceError)(nil))
-
-	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.True(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
-	assert.NotContains(suite.T(), execResp.RuntimeData, "email")
-	assert.Equal(suite.T(), "", execResp.AuthenticatedUser.Attributes["email"])
-	suite.mockAuthnProvider.AssertExpectations(suite.T())
-}
-
-func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_RegistrationFlow_WithEmail() {
-	ctx := &core.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    common.FlowTypeRegistration,
-		UserInputs: map[string]string{
-			"code": "auth_code_123",
-		},
-		NodeProperties: map[string]interface{}{
-			"idpId": "idp-123",
-		},
-	}
-
-	execResp := &common.ExecutorResponse{
-		AdditionalData: make(map[string]string),
-		RuntimeData:    make(map[string]string),
-	}
-
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "new-user-sub",
-			ExternalClaims: map[string]interface{}{
-				"sub":   "new-user-sub",
-				"email": "newuser@example.com",
-				"name":  "New User",
-				"iss":   "https://provider.com",
-				"aud":   "client-id",
-			},
-			IsExistingUser: false,
-		}, (*serviceerror.ServiceError)(nil))
-
-	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.False(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
-	assert.Equal(suite.T(), "new-user-sub", execResp.RuntimeData["sub"])
-	assert.Equal(suite.T(), "newuser@example.com", execResp.RuntimeData["email"])
-	assert.Equal(suite.T(), "newuser@example.com", execResp.AuthenticatedUser.Attributes["email"])
-	suite.mockAuthnProvider.AssertExpectations(suite.T())
-}
-
-func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailFromUserInfo() {
-	ctx := &core.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    common.FlowTypeAuthentication,
-		UserInputs: map[string]string{
-			"code": "auth_code_123",
-		},
-		NodeProperties: map[string]interface{}{
-			"idpId": "idp-123",
-		},
-	}
-
-	execResp := &common.ExecutorResponse{
-		AdditionalData: make(map[string]string),
-		RuntimeData:    make(map[string]string),
-	}
-
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "user-sub-789",
-			ExternalClaims: map[string]interface{}{
-				"sub":   "user-sub-789",
-				"name":  "Test User",
-				"email": "fromUserInfo@example.com",
-				"iss":   "https://provider.com",
-				"aud":   "client-id",
-			},
-			IsExistingUser: true,
-			UserID:         "user-789",
-			OUID:           "ou-789",
-			UserType:       "INTERNAL",
-		}, (*serviceerror.ServiceError)(nil))
-
-	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.True(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
-	assert.Equal(suite.T(), "fromUserInfo@example.com", execResp.RuntimeData["email"])
-	assert.Equal(suite.T(), "fromUserInfo@example.com", execResp.AuthenticatedUser.Attributes["email"])
-	suite.mockAuthnProvider.AssertExpectations(suite.T())
-}
-
-func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailInIDToken_NilRuntimeData() {
-	ctx := &core.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    common.FlowTypeAuthentication,
-		UserInputs: map[string]string{
-			"code": "auth_code_123",
-		},
-		NodeProperties: map[string]interface{}{
-			"idpId": "idp-123",
-		},
-	}
-
-	execResp := &common.ExecutorResponse{
-		AdditionalData: make(map[string]string),
-		RuntimeData:    nil, // Explicitly nil
-	}
-
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "user-sub-999",
-			ExternalClaims: map[string]interface{}{
-				"sub":   "user-sub-999",
-				"email": "niltest@example.com",
-				"iss":   "https://provider.com",
-				"aud":   "client-id",
-			},
-			IsExistingUser: true,
-			UserID:         "user-999",
-			OUID:           "ou-999",
-			UserType:       "INTERNAL",
-		}, (*serviceerror.ServiceError)(nil))
-
-	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.True(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
-	assert.NotNil(suite.T(), execResp.RuntimeData, "RuntimeData should be initialized")
-	assert.Equal(suite.T(), "niltest@example.com", execResp.RuntimeData["email"])
-	assert.Equal(suite.T(), "niltest@example.com", execResp.AuthenticatedUser.Attributes["email"])
-	suite.mockAuthnProvider.AssertExpectations(suite.T())
-}
-
-func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWithoutLocalUser() {
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWithoutLocalUser() { //nolint:dupl
 	ctx := &core.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    common.FlowTypeAuthentication,
@@ -699,19 +379,12 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWit
 		RuntimeData:    make(map[string]string),
 	}
 
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":false,`+
+		`"runtimeAttributes":{"sub":"new-user-sub"}}],"userHistory":[],"userState":"not_exists"}`), &mockAuthUser)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "new-user-sub",
-			ExternalClaims: map[string]interface{}{
-				"sub":   "new-user-sub",
-				"email": "newuser@example.com",
-				"name":  "New User",
-				"iss":   "https://provider.com",
-				"aud":   "client-123",
-			},
-			IsExistingUser: false,
-		}, (*serviceerror.ServiceError)(nil))
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 	suite.mockEntityTypeService.On("GetEntityTypeByName", mock.Anything, mock.Anything, "INTERNAL").
 		Return(&entitytype.EntityType{
 			Name:                  "INTERNAL",
@@ -723,10 +396,9 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowAuthWit
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.False(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
+	assert.False(suite.T(), execResp.AuthUser.IsAuthenticated())
 	assert.Equal(suite.T(), dataValueTrue, execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning])
 	assert.Equal(suite.T(), "new-user-sub", execResp.RuntimeData["sub"])
-	assert.NotNil(suite.T(), execResp.AuthenticatedUser.Attributes)
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 	suite.mockEntityTypeService.AssertExpectations(suite.T())
 }
@@ -749,12 +421,12 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventAuthW
 		RuntimeData:    make(map[string]string),
 	}
 
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":false,`+
+		`"runtimeAttributes":{"sub":"new-user-sub"}}],"userHistory":[],"userState":"not_exists"}`), &mockAuthUser)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub:    "new-user-sub",
-			IsExistingUser: false,
-		}, (*serviceerror.ServiceError)(nil))
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -764,7 +436,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventAuthW
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
-func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowRegistrationWithExistingUser() {
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowRegistrationWithExistingUser() { //nolint:dupl
 	ctx := &core.NodeContext{
 		ExecutionID: "flow-123",
 		FlowType:    common.FlowTypeRegistration,
@@ -782,29 +454,21 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AllowRegistr
 		RuntimeData:    make(map[string]string),
 	}
 
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":true,`+
+		`"runtimeAttributes":{"sub":"existing-user-sub"}}],`+
+		`"userHistory":[{"userId":"user-123","userType":"INTERNAL","ouId":"ou-123","isValuesIncluded":true}],`+
+		`"userState":"exists"}`), &mockAuthUser)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub: "existing-user-sub",
-			ExternalClaims: map[string]interface{}{
-				"sub":   "existing-user-sub",
-				"email": "existing@example.com",
-				"name":  "Existing User",
-				"iss":   "https://provider.com",
-				"aud":   "client-123",
-			},
-			IsExistingUser: true,
-			UserID:         "user-123",
-			OUID:           "ou-123",
-			UserType:       "INTERNAL",
-		}, (*serviceerror.ServiceError)(nil))
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.True(suite.T(), execResp.AuthenticatedUser.IsAuthenticated)
-	assert.Equal(suite.T(), "user-123", execResp.AuthenticatedUser.UserID)
+	assert.True(suite.T(), execResp.AuthUser.IsAuthenticated())
+	assert.Equal(suite.T(), "user-123", execResp.AuthUser.GetUserID())
 	assert.Equal(suite.T(), dataValueTrue, execResp.RuntimeData[common.RuntimeKeySkipProvisioning])
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
@@ -828,15 +492,14 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventRegis
 		RuntimeData:    make(map[string]string),
 	}
 
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":true,`+
+		`"runtimeAttributes":{"sub":"existing-user-sub"}}],`+
+		`"userHistory":[{"userId":"user-123","userType":"INTERNAL","ouId":"ou-123","isValuesIncluded":true}],`+
+		`"userState":"exists"}`), &mockAuthUser)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			ExternalSub:    "existing-user-sub",
-			IsExistingUser: true,
-			UserID:         "user-123",
-			OUID:           "ou-123",
-			UserType:       "INTERNAL",
-		}, (*serviceerror.ServiceError)(nil))
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 
 	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
@@ -846,72 +509,38 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_PreventRegis
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
-func (suite *OIDCAuthExecutorTestSuite) TestGetContextUserAttributes_FiltersNonUserClaims() {
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailAppendedToRuntimeData() {
+	ctx := &core.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    common.FlowTypeAuthentication,
+		UserInputs: map[string]string{
+			"code": "auth_code_123",
+		},
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-123",
+		},
+	}
+
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 	}
 
-	claims := map[string]interface{}{
-		"sub":        "user-sub",
-		"email":      "user@example.com",
-		"name":       "Test User",
-		"iss":        "https://provider.com",
-		"aud":        "client-123",
-		"exp":        float64(1234567890),
-		"iat":        float64(1234567000),
-		"at_hash":    "hash-value",
-		"azp":        "azp-value",
-		"nonce":      "nonce-value",
-		"given_name": "Test",
-	}
+	var mockAuthUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"OIDC","isVerified":true,`+
+		`"runtimeAttributes":{"sub":"user-sub-123","email":"user@example.com"}}],`+
+		`"userHistory":[{"userId":"user-123","userType":"INTERNAL","ouId":"ou-123","isValuesIncluded":true}],`+
+		`"userState":"exists"}`), &mockAuthUser)
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(mockAuthUser, (*serviceerror.ServiceError)(nil))
 
-	attributes := suite.executor.(*oidcAuthExecutor).getContextUserAttributes(execResp, claims)
+	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
 
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "user@example.com", attributes["email"])
-	assert.Equal(suite.T(), "Test User", attributes["name"])
-	assert.Equal(suite.T(), "Test", attributes["given_name"])
-	assert.NotContains(suite.T(), attributes, "sub")
-	assert.NotContains(suite.T(), attributes, "iss")
-	assert.NotContains(suite.T(), attributes, "aud")
-	assert.NotContains(suite.T(), attributes, "exp")
-	assert.NotContains(suite.T(), attributes, "iat")
-	assert.NotContains(suite.T(), attributes, "at_hash")
-	assert.NotContains(suite.T(), attributes, "azp")
-	assert.NotContains(suite.T(), attributes, "nonce")
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
 	assert.Equal(suite.T(), "user@example.com", execResp.RuntimeData["email"])
-}
-
-func (suite *OIDCAuthExecutorTestSuite) TestGetContextUserAttributes_EmailAddedToRuntimeData() {
-	execResp := &common.ExecutorResponse{
-		AdditionalData: make(map[string]string),
-		RuntimeData:    make(map[string]string),
-	}
-
-	idTokenClaims := map[string]interface{}{
-		"sub":        "user-sub",
-		"email":      "user@example.com",
-		"name":       "Test User",
-		"iss":        "https://provider.com",
-		"aud":        "client-123",
-		"exp":        float64(1234567890),
-		"iat":        float64(1234567000),
-		"given_name": "Test",
-	}
-
-	attributes := suite.executor.(*oidcAuthExecutor).getContextUserAttributes(execResp, idTokenClaims)
-
-	assert.NotNil(suite.T(), attributes)
-	assert.Equal(suite.T(), "user@example.com", attributes["email"])
-	assert.Equal(suite.T(), "Test User", attributes["name"])
-	assert.Equal(suite.T(), "Test", attributes["given_name"])
-	assert.NotContains(suite.T(), attributes, "sub")
-	assert.NotContains(suite.T(), attributes, "iss")
-	assert.NotContains(suite.T(), attributes, "aud")
-	assert.NotContains(suite.T(), attributes, "exp")
-	assert.NotContains(suite.T(), attributes, "iat")
-	assert.Equal(suite.T(), "user@example.com", execResp.RuntimeData["email"])
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ServerError() { //nolint:dupl
@@ -933,7 +562,7 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_ServerError(
 
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil), &serviceerror.ServiceError{
+		Return(authnprovidermgr.AuthUser{}, &serviceerror.ServiceError{
 			Type:             serviceerror.ServerErrorType,
 			Code:             "OIDC-5000",
 			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Internal OIDC authentication error"},

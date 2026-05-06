@@ -308,7 +308,7 @@ func (h *httpRequestExecutor) enrichOURuntimeData(ctx *core.NodeContext, config 
 		return
 	}
 
-	ouID := ctx.AuthenticatedUser.OUID
+	ouID := ctx.AuthUser.GetOUID()
 	if ouID == "" {
 		ouID = ctx.RuntimeData[ouIDKey]
 	}

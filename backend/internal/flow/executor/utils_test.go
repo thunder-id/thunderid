@@ -24,7 +24,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/flow/common"
 	"github.com/asgardeo/thunder/internal/flow/core"
@@ -37,31 +36,6 @@ type UtilsTestSuite struct {
 
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(UtilsTestSuite))
-}
-
-func (s *UtilsTestSuite) TestGetAuthnServiceName() {
-	tests := []struct {
-		name         string
-		executorName string
-		expectedName string
-	}{
-		{"BasicAuth executor", ExecutorNameBasicAuth, authncm.AuthenticatorCredentials},
-		{"SMS Auth executor", ExecutorNameSMSAuth, authncm.AuthenticatorSMSOTP},
-		{"OAuth executor", ExecutorNameOAuth, authncm.AuthenticatorOAuth},
-		{"OIDC Auth executor", ExecutorNameOIDCAuth, authncm.AuthenticatorOIDC},
-		{"GitHub Auth executor", ExecutorNameGitHubAuth, authncm.AuthenticatorGithub},
-		{"Google Auth executor", ExecutorNameGoogleAuth, authncm.AuthenticatorGoogle},
-		{"Unknown executor returns empty string", "UnknownExecutor", ""},
-		{"Provisioning executor returns empty string", ExecutorNameProvisioning, ""},
-		{"AuthAssert executor returns empty string", ExecutorNameAuthAssert, ""},
-	}
-
-	for _, tt := range tests {
-		s.Run(tt.name, func() {
-			result := getAuthnServiceName(tt.executorName)
-			s.Equal(tt.expectedName, result)
-		})
-	}
 }
 
 // createMockAuthExecutor creates a mock executor for OAuth/OIDC authentication.

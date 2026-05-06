@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	authzsvc "github.com/asgardeo/thunder/internal/authz"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/flow/common"
@@ -42,6 +43,7 @@ type authorizationExecutor struct {
 	core.ExecutorInterface
 	authzService   authzsvc.AuthorizationServiceInterface
 	entityProvider entityprovider.EntityProviderInterface
+	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
 	logger         *log.Logger
 }
 
@@ -52,6 +54,7 @@ func newAuthorizationExecutor(
 	flowFactory core.FlowFactoryInterface,
 	authZService authzsvc.AuthorizationServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *authorizationExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authzLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthorization))
@@ -63,6 +66,7 @@ func newAuthorizationExecutor(
 		ExecutorInterface: base,
 		authzService:      authZService,
 		entityProvider:    entityProvider,
+		authnProvider:     authnProvider,
 		logger:            logger,
 	}
 }
@@ -77,13 +81,13 @@ func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.Executor
 		RuntimeData: make(map[string]string),
 	}
 
-	if !ctx.AuthenticatedUser.IsAuthenticated && ctx.FlowType == common.FlowTypeRegistration {
+	if !ctx.AuthUser.IsAuthenticated() && ctx.FlowType == common.FlowTypeRegistration {
 		logger.Debug("Sending executor complete response for unauthenticated user in registration flow")
 		execResp.Status = common.ExecComplete
 		return execResp, nil
 	}
 
-	if !ctx.AuthenticatedUser.IsAuthenticated {
+	if !ctx.AuthUser.IsAuthenticated() {
 		execResp.Status = common.ExecFailure
 		execResp.FailureReason = failureReasonUserNotAuthenticated
 		return execResp, nil
@@ -101,7 +105,7 @@ func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.Executor
 	logger.Debug("Determined required permissions", log.Int("count", len(requestedPerms)))
 
 	// Extract user ID and group IDs
-	userID := ctx.AuthenticatedUser.UserID
+	userID := ctx.AuthUser.GetUserID()
 	groupIDs, err := a.extractGroupIDs(ctx)
 	if err != nil {
 		return nil, errors.Join(errors.New("Failed to extract group IDs"), err)
@@ -154,22 +158,25 @@ func setAuthorizedPermissions(execResp *common.ExecutorResponse, authorizedPermi
 // If neither provides group information, it fetches them using the user service.
 func (a *authorizationExecutor) extractGroupIDs(ctx *core.NodeContext) ([]string, error) {
 	// Try to get groups from authenticated user attributes
-	if groupsAttr, ok := ctx.AuthenticatedUser.Attributes[userAttributeGroups]; ok {
-		// Handle different group attribute formats
-		switch v := groupsAttr.(type) {
-		case []string:
-			return v, nil
-		case []interface{}:
-			groups := make([]string, 0, len(v))
-			for _, item := range v {
-				if str, ok := item.(string); ok {
-					groups = append(groups, str)
+	if ctx.AuthUser.IsAuthenticated() {
+		_, attrsResp, svcErr := a.authnProvider.GetUserAttributes(ctx.Context, nil, nil, ctx.AuthUser)
+		if svcErr == nil && attrsResp != nil && attrsResp.Attributes != nil {
+			if groupsAttrResp, ok := attrsResp.Attributes[userAttributeGroups]; ok && groupsAttrResp != nil {
+				switch v := groupsAttrResp.Value.(type) {
+				case []string:
+					return v, nil
+				case []interface{}:
+					groups := make([]string, 0, len(v))
+					for _, item := range v {
+						if str, ok := item.(string); ok {
+							groups = append(groups, str)
+						}
+					}
+					return groups, nil
+				case string:
+					return []string{v}, nil
 				}
 			}
-			return groups, nil
-		case string:
-			// Single group as string
-			return []string{v}, nil
 		}
 	}
 
@@ -182,11 +189,11 @@ func (a *authorizationExecutor) extractGroupIDs(ctx *core.NodeContext) ([]string
 	}
 
 	// If no groups found in context, fetch transitive groups from entity provider
-	if a.entityProvider != nil && ctx.AuthenticatedUser.UserID != "" {
+	if a.entityProvider != nil && ctx.AuthUser.GetUserID() != "" {
 		a.logger.Debug("Groups not found in context, fetching transitive groups from entity provider",
-			log.MaskedString(log.LoggerKeyUserID, ctx.AuthenticatedUser.UserID))
+			log.MaskedString(log.LoggerKeyUserID, ctx.AuthUser.GetUserID()))
 
-		groups, err := a.entityProvider.GetTransitiveEntityGroups(ctx.AuthenticatedUser.UserID)
+		groups, err := a.entityProvider.GetTransitiveEntityGroups(ctx.AuthUser.GetUserID())
 		if err != nil {
 			return nil, err
 		}

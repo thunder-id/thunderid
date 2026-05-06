@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"strings"
 
+	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
 	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/cert"
 	"github.com/asgardeo/thunder/internal/inboundclient"
@@ -154,9 +155,11 @@ func authenticate(
 		}
 	case constants.TokenEndpointAuthMethodClientSecretBasic,
 		constants.TokenEndpointAuthMethodClientSecretPost:
-		_, _, authnErr := authnProvider.AuthenticateUser(ctx,
-			map[string]interface{}{"clientId": clientID},
-			map[string]interface{}{"clientSecret": clientSecret},
+		authnData := &authnprovidercm.CredentialsAuthnData{
+			Identifiers: map[string]interface{}{"clientId": clientID},
+			Credentials: map[string]interface{}{"clientSecret": clientSecret},
+		}
+		_, authnErr := authnProvider.AuthenticateUser(ctx, authnprovidercm.AuthnDataTypeCredentials, authnData,
 			nil, nil, authnprovidermgr.AuthUser{})
 		if authnErr != nil {
 			logger.Debug("Client secret authentication failed",

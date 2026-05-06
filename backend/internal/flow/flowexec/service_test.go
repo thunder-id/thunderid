@@ -26,7 +26,6 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	appmodel "github.com/asgardeo/thunder/internal/application/model"
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
 	"github.com/asgardeo/thunder/internal/flow/common"
 	"github.com/asgardeo/thunder/internal/flow/core"
 	flowmgt "github.com/asgardeo/thunder/internal/flow/mgt"
@@ -523,12 +522,9 @@ func TestExecute_ContextDecryptionSuccess(t *testing.T) {
 
 	// Build a properly encrypted FlowContextDB
 	engineCtx := EngineContext{
-		ExecutionID: "existing-execution-id",
-		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			Attributes: map[string]interface{}{},
-		},
+		ExecutionID:      "existing-execution-id",
+		AppID:            "test-app-id",
+		FlowType:         common.FlowTypeAuthentication,
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
 		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
@@ -586,12 +582,9 @@ func TestExecute_ExistingFlowWithoutChallengeToken(t *testing.T) {
 	testGraph := flowFactory.CreateGraph("test-graph-id", common.FlowTypeAuthentication)
 
 	engineCtx := EngineContext{
-		ExecutionID: "existing-execution-id",
-		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			Attributes: map[string]interface{}{},
-		},
+		ExecutionID:      "existing-execution-id",
+		AppID:            "test-app-id",
+		FlowType:         common.FlowTypeAuthentication,
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
 		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
@@ -675,12 +668,9 @@ func TestExecute_ExistingFlowWithDifferentChallengeTokens(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engineCtx := EngineContext{
-				ExecutionID: "existing-execution-id",
-				AppID:       "test-app-id",
-				FlowType:    common.FlowTypeAuthentication,
-				AuthenticatedUser: authncm.AuthenticatedUser{
-					Attributes: map[string]interface{}{},
-				},
+				ExecutionID:      "existing-execution-id",
+				AppID:            "test-app-id",
+				FlowType:         common.FlowTypeAuthentication,
 				UserInputs:       map[string]string{},
 				RuntimeData:      map[string]string{},
 				ExecutionHistory: map[string]*common.NodeExecutionRecord{},
@@ -740,12 +730,9 @@ func TestExecute_EngineError_InvalidChallengeToken_PreservesContext(t *testing.T
 	testGraph := flowFactory.CreateGraph("test-graph-id", common.FlowTypeAuthentication)
 
 	engineCtx := EngineContext{
-		ExecutionID: "existing-execution-id",
-		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			Attributes: map[string]interface{}{},
-		},
+		ExecutionID:      "existing-execution-id",
+		AppID:            "test-app-id",
+		FlowType:         common.FlowTypeAuthentication,
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
 		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
@@ -799,12 +786,9 @@ func TestExecute_EngineError_NonChallengeToken_RemovesContext(t *testing.T) {
 	testGraph := flowFactory.CreateGraph("test-graph-id", common.FlowTypeAuthentication)
 
 	engineCtx := EngineContext{
-		ExecutionID: "existing-execution-id",
-		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			Attributes: map[string]interface{}{},
-		},
+		ExecutionID:      "existing-execution-id",
+		AppID:            "test-app-id",
+		FlowType:         common.FlowTypeAuthentication,
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
 		ExecutionHistory: map[string]*common.NodeExecutionRecord{},

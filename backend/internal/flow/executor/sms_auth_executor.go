@@ -24,8 +24,8 @@ import (
 	"fmt"
 	"strconv"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
 	"github.com/asgardeo/thunder/internal/authn/otp"
+	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
 	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/flow/common"
@@ -148,7 +148,7 @@ func (s *smsOTPAuthExecutor) executeVerify(ctx *core.NodeContext,
 
 	logger.Debug("SMS OTP verify completed",
 		log.String("status", string(execResp.Status)),
-		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
+		log.Bool("isAuthenticated", execResp.AuthUser.IsAuthenticated()))
 
 	return execResp, nil
 }
@@ -166,7 +166,7 @@ func (s *smsOTPAuthExecutor) InitiateOTP(ctx *core.NodeContext,
 	}
 
 	var userID *string
-	if ctx.AuthenticatedUser.IsAuthenticated {
+	if ctx.AuthUser.IsAuthenticated() {
 		userIDVal := s.GetUserIDFromContext(ctx)
 		if userIDVal == "" {
 			return errors.New("user ID is empty in the context")
@@ -234,7 +234,7 @@ func (s *smsOTPAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug("Processing authentication flow response for SMS OTP")
 
-	authenticatedUser, err := s.getAuthenticatedUser(ctx, execResp)
+	err := s.authenticateUser(ctx, execResp)
 	if err != nil {
 		logger.Error("Failed to get authenticated user details", log.Error(err))
 		return fmt.Errorf("failed to get authenticated user details: %w", err)
@@ -243,7 +243,6 @@ func (s *smsOTPAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return nil
 	}
 
-	execResp.AuthenticatedUser = *authenticatedUser
 	execResp.Status = common.ExecComplete
 
 	return nil
@@ -311,10 +310,16 @@ func (s *smsOTPAuthExecutor) getUserMobileFromContext(ctx *core.NodeContext, pho
 		mobileNumber = ctx.UserInputs[phoneAttr]
 	}
 
-	if mobileNumber == "" && ctx.AuthenticatedUser.Attributes != nil {
-		if mobile, ok := ctx.AuthenticatedUser.Attributes[phoneAttr]; ok {
-			if mobileStr, valid := mobile.(string); valid && mobileStr != "" {
-				mobileNumber = mobileStr
+	if mobileNumber == "" && ctx.AuthUser.IsAuthenticated() {
+		_, attrs, err := s.authnProvider.GetUserAttributes(ctx.Context, nil, nil, ctx.AuthUser)
+		if err != nil {
+			return "", fmt.Errorf("failed to get user attributes: %s", err.ErrorDescription.DefaultValue)
+		}
+		if attrs != nil {
+			if mobileAttribute, ok := attrs.Attributes[phoneAttr]; ok && mobileAttribute != nil {
+				if mobileStr, valid := mobileAttribute.Value.(string); valid && mobileStr != "" {
+					mobileNumber = mobileStr
+				}
 			}
 		}
 	}
@@ -573,18 +578,14 @@ func (s *smsOTPAuthExecutor) getOTPMaxAttempts() int {
 	return 3
 }
 
-// getAuthenticatedUser returns the authenticated user details for the given user ID.
-func (s *smsOTPAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*authncm.AuthenticatedUser, error) {
+// authenticateUser returns the authenticated user details for the given user ID.
+func (s *smsOTPAuthExecutor) authenticateUser(ctx *core.NodeContext,
+	execResp *common.ExecutorResponse) error {
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	phoneAttr := ctx.RuntimeData[common.RuntimeKeySMSOTPPhoneAttr]
-	if phoneAttr == "" {
-		phoneAttr = s.resolvePhoneInput(ctx, mobileNumberInput).Identifier
-	}
 	mobileNumber := ctx.RuntimeData[common.RuntimeKeySMSOTPMobileNumber]
 	if mobileNumber == "" {
-		return nil, errors.New("mobile number not found in context")
+		return errors.New("mobile number not found in context")
 	}
 
 	userID := ctx.RuntimeData[userAttributeUserID]
@@ -597,106 +598,46 @@ func (s *smsOTPAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 		execResp.Status = common.ExecUserInputRequired
 		execResp.Inputs = s.GetRequiredInputs(ctx)
 		execResp.FailureReason = failureReasonInvalidOTP
-		return nil, nil
+		return nil
 	}
 
 	sessionToken := ctx.RuntimeData["otpSessionToken"]
 	if sessionToken == "" {
 		logger.Error("No session token found for OTP validation", log.MaskedString(log.LoggerKeyUserID, userID))
-		return nil, fmt.Errorf("no session token found for OTP validation")
+		return fmt.Errorf("no session token found for OTP validation")
 	}
 
-	// Handle registration flows.
-	if ctx.FlowType == common.FlowTypeRegistration {
-		// For registration flows, we don't have a user in the system yet.
-		// So we just validate the OTP and return an authenticated user with the mobile number as an attribute.
-		svcErr := s.otpService.VerifyOTP(ctx.Context, sessionToken, providedOTP)
-		if svcErr != nil {
-			if svcErr.Code == otp.ErrorIncorrectOTP.Code {
-				logger.Debug("OTP verification failed", log.MaskedString(log.LoggerKeyUserID, userID))
-				execResp.Status = common.ExecUserInputRequired
-				execResp.Inputs = s.GetRequiredInputs(ctx)
-				execResp.FailureReason = failureReasonInvalidOTP
-				return nil, nil
-			}
-			logger.Error("Failed to verify OTP",
-				log.MaskedString(log.LoggerKeyUserID, userID), log.Any("serviceError", svcErr))
-			return nil, fmt.Errorf("failed to verify OTP: %s", svcErr.ErrorDescription.DefaultValue)
-		}
-
-		execResp.Status = common.ExecComplete
-		execResp.FailureReason = ""
-		return &authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-			Attributes: map[string]interface{}{
-				phoneAttr: mobileNumber,
-			},
-		}, nil
+	authnData := &authnprovidercm.OTPAuthnData{
+		SessionToken: sessionToken,
+		OTP:          providedOTP,
 	}
-
-	creds := map[string]interface{}{
-		"otp": map[string]interface{}{
-			"sessionToken": sessionToken,
-			"otp":          providedOTP,
-		},
-	}
-	newAuthUser, authnResult, svcErr := s.authnProvider.AuthenticateUser(
-		ctx.Context, nil, creds, nil, nil, ctx.AuthUser)
+	authUser, svcErr := s.authnProvider.AuthenticateUser(
+		ctx.Context, authnprovidercm.AuthnDataTypeOTP, authnData, nil, nil, ctx.AuthUser)
 	if svcErr != nil {
 		if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code {
 			logger.Debug("OTP verification failed", log.MaskedString(log.LoggerKeyUserID, userID))
 			execResp.Status = common.ExecUserInputRequired
 			execResp.Inputs = s.GetRequiredInputs(ctx)
 			execResp.FailureReason = failureReasonInvalidOTP
-			return nil, nil
+			return nil
 		}
 		logger.Error("Failed to verify OTP",
 			log.MaskedString(log.LoggerKeyUserID, userID), log.Any("serviceError", svcErr))
-		return nil, fmt.Errorf("failed to verify OTP: %s", svcErr.ErrorDescription.DefaultValue)
+		return fmt.Errorf("failed to verify OTP: %s", svcErr.ErrorDescription.DefaultValue)
 	}
-	execResp.AuthUser = newAuthUser
 
+	// Handle registration flows.
+	if ctx.FlowType == common.FlowTypeRegistration {
+		if authUser.IsLocalUserExists() {
+			execResp.Status = common.ExecFailure
+			execResp.FailureReason = "User already exists with the provided mobile number."
+			return nil
+		}
+	}
+
+	execResp.AuthUser = authUser
 	execResp.RuntimeData["otpSessionToken"] = ""
+
 	logger.Debug("OTP validated successfully", log.MaskedString(log.LoggerKeyUserID, userID))
-
-	// Check if user is already authenticated
-	if ctx.AuthenticatedUser.IsAuthenticated && ctx.AuthenticatedUser.UserID != "" {
-		if ctx.AuthenticatedUser.Attributes == nil {
-			ctx.AuthenticatedUser.Attributes = make(map[string]interface{})
-		}
-		ctx.AuthenticatedUser.Attributes[phoneAttr] = mobileNumber
-		return &ctx.AuthenticatedUser, nil
-	}
-
-	// User not available in context, try to retrieve the user and get the attributes
-	userID = authnResult.UserID
-
-	logger.Debug("Fetching user details from user store", log.MaskedString(log.LoggerKeyUserID, userID))
-
-	attrs := map[string]interface{}{}
-	user, err := s.entityProvider.GetEntity(userID)
-	if err != nil {
-		if err.Code != entityprovider.ErrorCodeNotImplemented {
-			logger.Error("Failed to get user attributes", log.Error(err))
-			return nil, errors.New("failed to get user attributes")
-		}
-		logger.Debug("User provider is not implemented. User attributes will be empty.")
-	}
-
-	if err == nil && user != nil {
-		if err := json.Unmarshal(user.Attributes, &attrs); err != nil {
-			logger.Error("Failed to unmarshal user attributes", log.Error(err))
-			return nil, errors.New("failed to unmarshal user attributes")
-		}
-	}
-
-	authenticatedUser := &authncm.AuthenticatedUser{
-		IsAuthenticated: true,
-		UserID:          user.ID,
-		OUID:            user.OUID,
-		UserType:        user.Type,
-		Attributes:      attrs,
-	}
-
-	return authenticatedUser, nil
+	return nil
 }

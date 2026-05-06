@@ -21,6 +21,7 @@ package oidc
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	authncm "github.com/asgardeo/thunder/internal/authn/common"
@@ -35,6 +36,9 @@ const (
 	loggerComponentName = "OIDCAuthnService"
 )
 
+// idTokenNonUserAttributes contains the list of non-user attributes that are expected in the ID token.
+var idTokenNonUserAttributes = []string{"aud", "exp", "iat", "iss", "at_hash", "azp", "nonce", "sub"}
+
 // OIDCAuthnCoreServiceInterface defines the core contract for OIDC based authenticator services.
 type OIDCAuthnCoreServiceInterface interface {
 	authnoauth.OAuthAuthnCoreServiceInterface
@@ -47,6 +51,7 @@ type OIDCAuthnServiceInterface interface {
 	OIDCAuthnCoreServiceInterface
 	ValidateTokenResponse(ctx context.Context, idpID string, tokenResp *authnoauth.TokenResponse,
 		validateIDToken bool) *serviceerror.ServiceError
+	FilterUserClaims(claims map[string]interface{}) map[string]interface{}
 }
 
 // oidcAuthnService is the default implementation of OIDCAuthnServiceInterface.
@@ -244,7 +249,7 @@ func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string)
 
 	result := &authncm.FederatedAuthResult{
 		Sub:    sub,
-		Claims: claims,
+		Claims: s.FilterUserClaims(claims),
 	}
 	user, svcErr := s.GetInternalUser(sub)
 	if svcErr != nil {
@@ -259,4 +264,14 @@ func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string)
 	}
 	result.InternalEntity = user
 	return result, nil
+}
+
+func (s *oidcAuthnService) FilterUserClaims(claims map[string]interface{}) map[string]interface{} {
+	filteredClaims := make(map[string]interface{})
+	for attr, val := range claims {
+		if !slices.Contains(idTokenNonUserAttributes, attr) {
+			filteredClaims[attr] = val
+		}
+	}
+	return filteredClaims
 }

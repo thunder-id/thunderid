@@ -42,9 +42,9 @@ type restAuthnProvider struct {
 
 // AuthenticateRequest is the request body for the authentication endpoint.
 type AuthenticateRequest struct {
-	Identifiers map[string]interface{}         `json:"identifiers"`
-	Credentials map[string]interface{}         `json:"credentials"`
-	Metadata    *authnprovidercm.AuthnMetadata `json:"metadata"`
+	AuthType  string                         `json:"authType"`
+	AuthnData any                            `json:"authnData"`
+	Metadata  *authnprovidercm.AuthnMetadata `json:"metadata"`
 }
 
 // GetAttributesRequest is the request body for the attributes endpoint.
@@ -71,12 +71,13 @@ func newRestAuthnProvider(baseURL, apiKey string, httpClient systemhttp.HTTPClie
 }
 
 // Authenticate authenticates a user.
-func (p *restAuthnProvider) Authenticate(ctx context.Context, identifiers, credentials map[string]interface{},
+func (p *restAuthnProvider) Authenticate(ctx context.Context, authType string,
+	authnData any,
 	metadata *authnprovidercm.AuthnMetadata) (*authnprovidercm.AuthnResult, *serviceerror.ServiceError) {
 	reqBody := AuthenticateRequest{
-		Identifiers: identifiers,
-		Credentials: credentials,
-		Metadata:    metadata,
+		AuthType:  authType,
+		AuthnData: authnData,
+		Metadata:  metadata,
 	}
 	return postAndDecode[authnprovidercm.AuthnResult](p, ctx, p.baseURL+"/authenticate", reqBody)
 }
@@ -165,6 +166,17 @@ func (p *restAuthnProvider) decodeError(body io.Reader, statusCode int) *service
 			DefaultValue: apiErr.Description,
 		},
 	}
+}
+
+// GetAuthenticatorMetadata retrieves the metadata of the specified authenticator from the external provider.
+func (p *restAuthnProvider) GetAuthenticatorMetadata(authenticatorName string) *authnprovidercm.AuthenticatorMeta {
+	reqBody := map[string]string{"authenticatorName": authenticatorName}
+	result, err := postAndDecode[authnprovidercm.AuthenticatorMeta](p, context.Background(),
+		p.baseURL+"/authenticator-metadata", reqBody)
+	if err != nil {
+		return nil
+	}
+	return result
 }
 
 func (p *restAuthnProvider) doRequest(ctx context.Context, url string, body io.Reader) (*http.Response, error) {

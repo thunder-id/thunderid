@@ -61,8 +61,7 @@ func (suite *ClientAuthMiddlewareTestSuite) SetupTest() {
 	// Individual tests can override with Once() for specific behavior.
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{UserID: testClientID},
-			(*serviceerror.ServiceError)(nil)).Maybe()
+		Return(authnprovidermgr.AuthUser{}, (*serviceerror.ServiceError)(nil)).Maybe()
 }
 
 func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_Success_ClientSecretPost() {
@@ -223,13 +222,12 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_InvalidClie
 	failAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
 	failAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil),
-			&serviceerror.ServiceError{
-				Type:             serviceerror.ClientErrorType,
-				Code:             authnprovidermgr.ErrorAuthenticationFailed.Code,
-				Error:            core.I18nMessage{Key: "error.test.auth_failed", DefaultValue: "auth failed"},
-				ErrorDescription: core.I18nMessage{Key: "error.test.wrong_secret", DefaultValue: "wrong secret"},
-			}).Maybe()
+		Return(authnprovidermgr.AuthUser{}, &serviceerror.ServiceError{
+			Type:             serviceerror.ClientErrorType,
+			Code:             authnprovidermgr.ErrorAuthenticationFailed.Code,
+			Error:            core.I18nMessage{Key: "error.test.auth_failed", DefaultValue: "auth failed"},
+			ErrorDescription: core.I18nMessage{Key: "error.test.wrong_secret", DefaultValue: "wrong secret"},
+		}).Maybe()
 
 	// Create middleware with failing authn provider
 	middleware := ClientAuthMiddleware(
@@ -375,13 +373,12 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_BasicAuth_I
 	failAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
 	failAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil),
-			&serviceerror.ServiceError{
-				Type:             serviceerror.ClientErrorType,
-				Code:             authnprovidermgr.ErrorAuthenticationFailed.Code,
-				Error:            core.I18nMessage{Key: "error.test.auth_failed", DefaultValue: "auth failed"},
-				ErrorDescription: core.I18nMessage{Key: "error.test.wrong_secret", DefaultValue: "wrong secret"},
-			}).Maybe()
+		Return(authnprovidermgr.AuthUser{}, &serviceerror.ServiceError{
+			Type:             serviceerror.ClientErrorType,
+			Code:             authnprovidermgr.ErrorAuthenticationFailed.Code,
+			Error:            core.I18nMessage{Key: "error.test.auth_failed", DefaultValue: "auth failed"},
+			ErrorDescription: core.I18nMessage{Key: "error.test.wrong_secret", DefaultValue: "wrong secret"},
+		}).Maybe()
 
 	middleware := ClientAuthMiddleware(
 		suite.mockInboundClient, failAuthnProvider, suite.mockJwtService, "https://localhost:9443/oauth2/token")

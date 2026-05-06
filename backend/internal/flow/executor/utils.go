@@ -23,24 +23,9 @@ import (
 	"errors"
 	"fmt"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/flow/common"
 )
-
-// getAuthnServiceName returns the authn service name for an executor.
-// Returns empty string if executor doesn't map to an authn service.
-func getAuthnServiceName(executorName string) string {
-	executorToAuthnServiceMap := map[string]string{
-		ExecutorNameBasicAuth:  authncm.AuthenticatorCredentials,
-		ExecutorNameSMSAuth:    authncm.AuthenticatorSMSOTP,
-		ExecutorNameOAuth:      authncm.AuthenticatorOAuth,
-		ExecutorNameOIDCAuth:   authncm.AuthenticatorOIDC,
-		ExecutorNameGitHubAuth: authncm.AuthenticatorGithub,
-		ExecutorNameGoogleAuth: authncm.AuthenticatorGoogle,
-	}
-	return executorToAuthnServiceMap[executorName]
-}
 
 // GetUserAttribute extracts a specific attribute value from a user entity's JSON attributes.
 func GetUserAttribute(user *entityprovider.Entity, attributeKey string) (string, error) {

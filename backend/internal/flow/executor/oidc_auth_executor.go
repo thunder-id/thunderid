@@ -20,11 +20,10 @@ package executor
 
 import (
 	"errors"
-	"slices"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
 	authnoauth "github.com/asgardeo/thunder/internal/authn/oauth"
 	authnoidc "github.com/asgardeo/thunder/internal/authn/oidc"
+	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
 	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/entitytype"
@@ -33,15 +32,11 @@ import (
 	"github.com/asgardeo/thunder/internal/idp"
 	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	"github.com/asgardeo/thunder/internal/system/log"
-	systemutils "github.com/asgardeo/thunder/internal/system/utils"
 )
 
 const (
 	oidcAuthLoggerComponentName = "OIDCAuthExecutor"
 )
-
-// idTokenNonUserAttributes contains the list of non-user attributes that are expected in the ID token.
-var idTokenNonUserAttributes = []string{"aud", "exp", "iat", "iss", "at_hash", "azp", "nonce", "sub"}
 
 // oidcAuthExecutorInterface defines the interface for OIDC authentication executors.
 type oidcAuthExecutorInterface interface {
@@ -118,7 +113,7 @@ func (o *oidcAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRespo
 
 	logger.Debug("OIDC authentication executor execution completed",
 		log.String("status", string(execResp.Status)),
-		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
+		log.Bool("isAuthenticated", execResp.AuthUser.IsAuthenticated()))
 
 	return execResp, nil
 }
@@ -131,10 +126,8 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 
 	code, ok := ctx.UserInputs[userInputCode]
 	if !ok || code == "" {
-		execResp.AuthenticatedUser = authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-		}
-		return nil
+		logger.Error("Federated authentication failed. Authorization code not found in user inputs")
+		return errors.New("federated authentication failed")
 	}
 
 	idpID, err := o.GetIdpID(ctx)
@@ -142,15 +135,15 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return err
 	}
 
-	credentials := map[string]interface{}{
-		"federated": &authncm.FederatedAuthCredential{
-			IDPID:   idpID,
-			IDPType: o.idpType,
-			Code:    code,
+	authnData := &authnprovidercm.FederatedAuthnData{
+		IDPID:   idpID,
+		IDPType: o.idpType,
+		OAuthCredential: authnprovidercm.OAuthCredential{
+			Code: code,
 		},
 	}
-	newAuthUser, basicResult, svcErr := o.authnProvider.AuthenticateUser(
-		ctx.Context, nil, credentials, nil, nil, ctx.AuthUser)
+	authUser, svcErr := o.authnProvider.AuthenticateUser(
+		ctx.Context, authnprovidercm.AuthnDataTypeFederated, authnData, nil, nil, ctx.AuthUser)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
 			execResp.Status = common.ExecFailure
@@ -163,24 +156,34 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return errors.New("OIDC authentication failed")
 	}
 
-	if basicResult == nil {
+	if !authUser.IsSet() {
 		logger.Error("authnProvider.AuthenticateUser returned nil result")
 		return errors.New("OIDC authentication failed")
 	}
 
+	execResp.AuthUser = authUser
+
+	// Append email to runtime data if present in claims
+	if email, ok := authUser.GetRuntimeAttribute(userAttributeEmail).(string); ok && email != "" {
+		if execResp.RuntimeData == nil {
+			execResp.RuntimeData = make(map[string]string)
+		}
+		execResp.RuntimeData[userAttributeEmail] = email
+	}
+
 	// Validate nonce if configured
 	if nonce, ok := ctx.UserInputs[userInputNonce]; ok && nonce != "" {
-		claimNonce := basicResult.ExternalClaims[userInputNonce]
-		if claimNonce != nonce {
+		claimNonce, ok := authUser.GetRuntimeAttribute(userInputNonce).(string)
+		if !ok || claimNonce != nonce {
 			execResp.Status = common.ExecFailure
 			execResp.FailureReason = "Nonce mismatch in ID token claims."
 			return nil
 		}
 	}
 
-	sub := basicResult.ExternalSub
+	sub := authUser.GetLastFederatedSub()
 
-	if basicResult.IsAmbiguousUser {
+	if authUser.IsLocalUserAmbiguous() {
 		if execResp.RuntimeData == nil {
 			execResp.RuntimeData = make(map[string]string)
 		}
@@ -188,54 +191,21 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	}
 
 	var internalUser *entityprovider.Entity
-	if basicResult.IsExistingUser {
+	if authUser.IsLocalUserExists() {
 		internalUser = &entityprovider.Entity{
-			ID:   basicResult.UserID,
-			OUID: basicResult.OUID,
-			Type: basicResult.UserType,
+			ID:   authUser.GetUserID(),
+			OUID: authUser.GetOUID(),
+			Type: authUser.GetUserType(),
 		}
 	}
 
-	contextUser, err := o.ResolveContextUser(ctx, execResp, sub, internalUser, basicResult.IsAmbiguousUser)
+	err = o.ResolveContextUser(ctx, execResp, sub, internalUser, authUser.IsLocalUserAmbiguous())
 	if err != nil {
 		return err
 	}
 	if execResp.Status == common.ExecFailure {
 		return nil
 	}
-	if contextUser == nil {
-		logger.Error("Failed to resolve context user after OIDC authentication")
-		return errors.New("unexpected error occurred while resolving user")
-	}
-
-	contextUser.Attributes = o.getContextUserAttributes(execResp, basicResult.ExternalClaims)
-	execResp.AuthenticatedUser = *contextUser
-	execResp.AuthUser = newAuthUser
 
 	return nil
-}
-
-// getContextUserAttributes extracts user-facing attributes from the external claims map.
-// TODO: Need to convert attributes as per the IDP to local attribute mapping when the support is implemented.
-func (o *oidcAuthExecutor) getContextUserAttributes(execResp *common.ExecutorResponse,
-	claims map[string]interface{}) map[string]interface{} {
-	userClaims := make(map[string]interface{})
-
-	for attr, val := range claims {
-		if !slices.Contains(idTokenNonUserAttributes, attr) {
-			userClaims[attr] = systemutils.ConvertInterfaceValueToString(val)
-		}
-	}
-
-	// Append email to runtime data if available.
-	if email, ok := userClaims[userAttributeEmail]; ok {
-		if emailStr, ok := email.(string); ok && emailStr != "" {
-			if execResp.RuntimeData == nil {
-				execResp.RuntimeData = make(map[string]string)
-			}
-			execResp.RuntimeData[userAttributeEmail] = emailStr
-		}
-	}
-
-	return userClaims
 }

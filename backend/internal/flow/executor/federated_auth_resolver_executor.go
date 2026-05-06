@@ -23,7 +23,7 @@ import (
 	"errors"
 	"fmt"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
+	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/flow/common"
 	"github.com/asgardeo/thunder/internal/flow/core"
@@ -40,17 +40,18 @@ const (
 // It reads stored candidate users from RuntimeData (set by the IdentifyingExecutor during
 // disambiguation) and authenticates the user matching the selected organization handle.
 //
-// This executor is registered as ExecutorTypeAuthentication so the flow engine allows it
-// to set AuthenticatedUser. It should only be used after a federated auth step (e.g., Google,
+// This should only be used after a federated auth step (e.g., Google,
 // GitHub) has already verified the user's identity.
 type federatedAuthResolverExecutor struct {
 	core.ExecutorInterface
-	logger *log.Logger
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface
+	logger        *log.Logger
 }
 
 // newFederatedAuthResolverExecutor creates a new instance of FederatedAuthResolverExecutor.
 func newFederatedAuthResolverExecutor(
 	flowFactory core.FlowFactoryInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *federatedAuthResolverExecutor {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, federatedAuthResolverLoggerComponentName),
@@ -61,6 +62,7 @@ func newFederatedAuthResolverExecutor(
 
 	return &federatedAuthResolverExecutor{
 		ExecutorInterface: base,
+		authnProvider:     authnProvider,
 		logger:            logger,
 	}
 }
@@ -159,12 +161,17 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *core.NodeContext) (*common.
 
 	execResp.Status = common.ExecComplete
 	execResp.RuntimeData[userAttributeSub] = sub
-	execResp.AuthenticatedUser = authncm.AuthenticatedUser{
-		IsAuthenticated: true,
-		UserID:          resolvedUser.ID,
-		OUID:            resolvedUser.OUID,
-		UserType:        resolvedUser.Type,
+
+	authUser, svcErr := f.authnProvider.AuthenticateResolvedUser(ctx.Context, resolvedUser, ctx.AuthUser)
+	if svcErr != nil {
+		logger.Error("Failed to authenticate resolved user",
+			log.String("errorCode", svcErr.Code), log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+		execResp.Status = common.ExecFailure
+		execResp.FailureReason = "Failed to authenticate user"
+		return execResp, nil
 	}
+
+	execResp.AuthUser = authUser
 
 	logger.Debug("Federated auth resolver completed successfully",
 		log.MaskedString("userID", resolvedUser.ID))

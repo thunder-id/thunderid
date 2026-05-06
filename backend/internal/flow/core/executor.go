@@ -129,7 +129,7 @@ func (e *executor) ValidatePrerequisites(ctx *NodeContext, execResp *common.Exec
 		}
 
 		if prerequisite.Identifier == userAttributeUserID {
-			userID := ctx.AuthenticatedUser.UserID
+			userID := ctx.AuthUser.GetUserID()
 			if userID != "" {
 				continue
 			}
@@ -162,7 +162,7 @@ func (e *executor) ValidatePrerequisites(ctx *NodeContext, execResp *common.Exec
 
 // GetUserIDFromContext retrieves the user ID from the context.
 func (e *executor) GetUserIDFromContext(ctx *NodeContext) string {
-	userID := ctx.AuthenticatedUser.UserID
+	userID := ctx.AuthUser.GetUserID()
 	if userID == "" {
 		userID = ctx.RuntimeData[userAttributeUserID]
 	}

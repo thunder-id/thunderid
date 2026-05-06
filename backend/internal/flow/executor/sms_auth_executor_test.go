@@ -26,7 +26,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
 	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/flow/common"
@@ -198,12 +197,15 @@ func (suite *SMSAuthExecutorTestSuite) TestValidatePrerequisites_AuthenticationF
 }
 
 // TestGetAuthenticatedUser_MFA_AddsMobileNumberToAttributes verifies that when user is already authenticated
+// (MFA scenario), OTP verification succeeds and the AuthUser is updated with the result.
 func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_MFA_AddsMobileNumberToAttributes() {
+	var populatedUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[],"userHistory":[{"userId":"user-123","userType":"INTERNAL",`+
+		`"ouId":"ou-123","isValuesIncluded":true}],"userState":"exists"}`), &populatedUser)
+
 	suite.mockAuthnProvider.On("AuthenticateUser",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID: "user-123", UserType: "INTERNAL", OUID: "ou-123",
-		}, nil)
+		Return(populatedUser, nil)
 
 	ctx := &core.NodeContext{
 		ExecutionID: "flow-123",
@@ -215,87 +217,22 @@ func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_MFA_AddsMobileNu
 			common.RuntimeKeySMSOTPMobileNumber: "+1234567890",
 			"otpSessionToken":                   "test-session-token",
 		},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			IsAuthenticated: true,
-			UserID:          "user-123",
-			OUID:            "ou-123",
-			UserType:        "INTERNAL",
-			Attributes: map[string]interface{}{
-				"email": "test@example.com",
-			},
-		},
 	}
 
 	execResp := &common.ExecutorResponse{
 		RuntimeData: make(map[string]string),
 	}
 
-	result, err := suite.executor.getAuthenticatedUser(ctx, execResp)
+	err := suite.executor.authenticateUser(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), result)
-	assert.True(suite.T(), result.IsAuthenticated)
-	assert.Equal(suite.T(), "user-123", result.UserID)
-	// Verify mobile number was added to attributes
-	assert.Equal(suite.T(), "+1234567890", result.Attributes[common.AttributeMobileNumber])
-	assert.Equal(suite.T(), "test@example.com", result.Attributes["email"]) // Existing attributes preserved
-}
-
-// TestGetAuthenticatedUser_FetchFromStore_PreservesExistingMobileNumber verifies that when fetching user
-// from store, if mobile number already exists in stored attributes, it is preserved.
-func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_FetchFromStore_PreservesExistingMobileNumber() {
-	attrs := map[string]interface{}{
-		"email":                      "test@example.com",
-		common.AttributeMobileNumber: "+9876543210", // Mobile already in stored attributes
-	}
-	attrsJSON, _ := json.Marshal(attrs)
-
-	suite.mockAuthnProvider.On("AuthenticateUser",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID: "user-123", UserType: "INTERNAL", OUID: "ou-123",
-		}, nil)
-
-	ctx := &core.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    common.FlowTypeAuthentication,
-		UserInputs: map[string]string{
-			userInputOTP: "123456",
-		},
-		RuntimeData: map[string]string{
-			common.RuntimeKeySMSOTPMobileNumber: "+1234567890",
-			"otpSessionToken":                   "test-session-token",
-		},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-		},
-	}
-
-	execResp := &common.ExecutorResponse{
-		RuntimeData: make(map[string]string),
-	}
-
-	userFromStore := &entityprovider.Entity{
-		ID:         "user-123",
-		OUID:       "ou-123",
-		Type:       "INTERNAL",
-		Attributes: attrsJSON,
-	}
-
-	suite.mockEntityProvider.On("GetEntity", "user-123").Return(userFromStore, nil)
-
-	result, err := suite.executor.getAuthenticatedUser(ctx, execResp)
-
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), result)
-	assert.True(suite.T(), result.IsAuthenticated)
-	// Verify stored mobile number is preserved
-	assert.Equal(suite.T(), "+9876543210", result.Attributes[common.AttributeMobileNumber])
-	suite.mockEntityProvider.AssertExpectations(suite.T())
+	assert.NotEqual(suite.T(), common.ExecFailure, execResp.Status)
+	assert.Equal(suite.T(), "user-123", execResp.AuthUser.GetUserID())
+	assert.Equal(suite.T(), "", execResp.RuntimeData["otpSessionToken"])
 }
 
 // TestGetUserMobileNumber_NotFoundInAttributesOrContext verifies that when mobile number
-// is not found in user attributes or context, the function sets failure status.
+// is not found in user attributes or the context, the function sets failure status.
 func (suite *SMSAuthExecutorTestSuite) TestGetUserMobileNumber_NotFoundInAttributesOrContext() {
 	// User attributes without mobile number
 	attrs := map[string]interface{}{
@@ -414,47 +351,6 @@ func (suite *SMSAuthExecutorTestSuite) TestGetUserMobileNumber_NonStringAttribut
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
-// TestGetAuthenticatedUser_MFA_NilAttributes verifies that when the authenticated user
-// has nil Attributes map, it is initialized before returning.
-func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_MFA_NilAttributes() {
-	suite.mockAuthnProvider.On("AuthenticateUser",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID: "user-123", UserType: "INTERNAL", OUID: "ou-123",
-		}, nil)
-
-	ctx := &core.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    common.FlowTypeAuthentication,
-		UserInputs: map[string]string{
-			userInputOTP: "123456",
-		},
-		RuntimeData: map[string]string{
-			common.RuntimeKeySMSOTPMobileNumber: "+1234567890",
-			"otpSessionToken":                   "test-session-token",
-		},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			IsAuthenticated: true,
-			UserID:          "user-123",
-			OUID:            "ou-123",
-			UserType:        "INTERNAL",
-			Attributes:      nil, // Explicitly nil
-		},
-	}
-
-	execResp := &common.ExecutorResponse{
-		RuntimeData: make(map[string]string),
-	}
-
-	result, err := suite.executor.getAuthenticatedUser(ctx, execResp)
-
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), result)
-	assert.True(suite.T(), result.IsAuthenticated)
-	assert.NotNil(suite.T(), result.Attributes) // Attributes should be initialized
-	assert.Equal(suite.T(), "+1234567890", result.Attributes[common.AttributeMobileNumber])
-}
-
 // TestInitiateOTP_RegistrationFlow_UserAlreadyExists_PromptsForDifferentNumber verifies that when
 // a user with the provided mobile number already exists in a registration flow, the executor
 // returns ExecUserInputRequired with the phone input so the user can provide a different number.
@@ -470,8 +366,7 @@ func (suite *SMSAuthExecutorTestSuite) TestInitiateOTP_RegistrationFlow_UserAlre
 		UserInputs: map[string]string{
 			common.AttributeMobileNumber: "+1234567890",
 		},
-		RuntimeData:       make(map[string]string),
-		AuthenticatedUser: authncm.AuthenticatedUser{IsAuthenticated: false},
+		RuntimeData: make(map[string]string),
 	}
 
 	execResp := &common.ExecutorResponse{
@@ -506,8 +401,7 @@ func (suite *SMSAuthExecutorTestSuite) TestInitiateOTP_RegistrationFlow_Ambiguou
 		UserInputs: map[string]string{
 			common.AttributeMobileNumber: "+1234567890",
 		},
-		RuntimeData:       make(map[string]string),
-		AuthenticatedUser: authncm.AuthenticatedUser{IsAuthenticated: false},
+		RuntimeData: make(map[string]string),
 	}
 
 	execResp := &common.ExecutorResponse{
@@ -543,7 +437,7 @@ func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_EmptyOTP_Returns
 			common.RuntimeKeySMSOTPMobileNumber: "+1234567890",
 			"otpSessionToken":                   "test-session-token",
 		},
-		AuthenticatedUser: authncm.AuthenticatedUser{IsAuthenticated: false},
+		AuthUser: authnprovidermgr.AuthUser{},
 	}
 
 	execResp := &common.ExecutorResponse{
@@ -551,10 +445,9 @@ func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_EmptyOTP_Returns
 		RuntimeData:    make(map[string]string),
 	}
 
-	result, err := suite.executor.getAuthenticatedUser(ctx, execResp)
+	err := suite.executor.authenticateUser(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
-	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, execResp.Status,
 		"Empty OTP should return ExecUserInputRequired so the user can retry")
 	assert.Equal(suite.T(), failureReasonInvalidOTP, execResp.FailureReason)
@@ -564,15 +457,17 @@ func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_EmptyOTP_Returns
 
 // TestGetAuthenticatedUser_FetchFromStore_NilAttrsAfterUnmarshal verifies that when
 // user attributes unmarshal to nil, the result is returned without error.
-func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_FetchFromStore_NilAttrsAfterUnmarshal() {
-	// JSON null unmarshals to nil map
-	attrsJSON := []byte("null")
+// TestGetAuthenticatedUser_AuthenticationFlow_SuccessfulOTPVerification verifies that when OTP is valid
+// and the authn provider returns an authenticated user, authenticateUser succeeds and sets AuthUser.
+func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_AuthenticationFlow_SuccessfulOTPVerification() {
+	var populatedUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[{"authType":"sms-otp","isVerified":true}],"userHistory":`+
+		`[{"userId":"user-123",`+
+		`"userType":"INTERNAL","ouId":"ou-123","isValuesIncluded":true}],"userState":"exists"}`), &populatedUser)
 
 	suite.mockAuthnProvider.On("AuthenticateUser",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID: "user-123", UserType: "INTERNAL", OUID: "ou-123",
-		}, nil)
+		Return(populatedUser, nil)
 
 	ctx := &core.NodeContext{
 		ExecutionID: "flow-123",
@@ -584,29 +479,17 @@ func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_FetchFromStore_N
 			common.RuntimeKeySMSOTPMobileNumber: "+1234567890",
 			"otpSessionToken":                   "test-session-token",
 		},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-		},
+		AuthUser: authnprovidermgr.AuthUser{},
 	}
 
 	execResp := &common.ExecutorResponse{
 		RuntimeData: make(map[string]string),
 	}
 
-	userFromStore := &entityprovider.Entity{
-		ID:         "user-123",
-		OUID:       "ou-123",
-		Type:       "INTERNAL",
-		Attributes: attrsJSON, // null JSON
-	}
-
-	suite.mockEntityProvider.On("GetEntity", "user-123").Return(userFromStore, nil)
-
-	result, err := suite.executor.getAuthenticatedUser(ctx, execResp)
+	err := suite.executor.authenticateUser(ctx, execResp)
 
 	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), result)
-	assert.True(suite.T(), result.IsAuthenticated)
-	assert.Equal(suite.T(), "user-123", result.UserID)
-	suite.mockEntityProvider.AssertExpectations(suite.T())
+	assert.True(suite.T(), execResp.AuthUser.IsAuthenticated())
+	assert.Equal(suite.T(), "user-123", execResp.AuthUser.GetUserID())
+	assert.Equal(suite.T(), "", execResp.RuntimeData["otpSessionToken"])
 }

@@ -91,21 +91,20 @@ func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *serviceerror.Servi
 			log.String("nodeType", string(currentNode.GetType())))
 
 		nodeCtx := &core.NodeContext{
-			Context:           ctx.Context,
-			ExecutionID:       ctx.ExecutionID,
-			FlowType:          ctx.FlowType,
-			AppID:             ctx.AppID,
-			CurrentAction:     ctx.CurrentAction,
-			Verbose:           ctx.Verbose,
-			NodeInputs:        getNodeInputs(ctx.CurrentNode),
-			UserInputs:        ctx.UserInputs,
-			CurrentNodeID:     ctx.CurrentNode.GetID(),
-			RuntimeData:       ctx.RuntimeData,
-			ForwardedData:     ctx.ForwardedData,
-			Application:       ctx.Application,
-			AuthenticatedUser: ctx.AuthenticatedUser,
-			AuthUser:          ctx.AuthUser,
-			ExecutionHistory:  ctx.ExecutionHistory,
+			Context:          ctx.Context,
+			ExecutionID:      ctx.ExecutionID,
+			FlowType:         ctx.FlowType,
+			AppID:            ctx.AppID,
+			CurrentAction:    ctx.CurrentAction,
+			Verbose:          ctx.Verbose,
+			NodeInputs:       getNodeInputs(ctx.CurrentNode),
+			UserInputs:       ctx.UserInputs,
+			CurrentNodeID:    ctx.CurrentNode.GetID(),
+			RuntimeData:      ctx.RuntimeData,
+			ForwardedData:    ctx.ForwardedData,
+			Application:      ctx.Application,
+			AuthUser:         ctx.AuthUser,
+			ExecutionHistory: ctx.ExecutionHistory,
 		}
 		if nodeCtx.NodeInputs == nil {
 			nodeCtx.NodeInputs = make([]common.Input, 0)
@@ -361,42 +360,6 @@ func (fe *flowEngine) updateContextWithNodeResponse(engineCtx *EngineContext, no
 		engineCtx.AdditionalData = sysutils.MergeStringMaps(engineCtx.AdditionalData, nodeResp.AdditionalData)
 	}
 
-	// Handle authenticated user from the node response
-	if fe.shouldUpdateAuthenticatedUser(engineCtx) {
-		prevAuthnUser := engineCtx.AuthenticatedUser
-
-		engineCtx.AuthenticatedUser = nodeResp.AuthenticatedUser
-
-		// If engine context already had authenticated user attributes, merge them with the new ones.
-		// Here if the same attribute exists in both, the one from the node response will take precedence.
-		prevAuthnUserAttrs := prevAuthnUser.Attributes
-		if len(prevAuthnUserAttrs) > 0 {
-			if engineCtx.AuthenticatedUser.Attributes == nil {
-				engineCtx.AuthenticatedUser.Attributes = prevAuthnUserAttrs
-			} else {
-				engineCtx.AuthenticatedUser.Attributes = sysutils.MergeInterfaceMaps(
-					prevAuthnUserAttrs, engineCtx.AuthenticatedUser.Attributes)
-			}
-		}
-
-		// If current node has not set an authenticated user token, retain the previous info
-		if engineCtx.AuthenticatedUser.Token == "" {
-			engineCtx.AuthenticatedUser.Token = prevAuthnUser.Token
-			engineCtx.AuthenticatedUser.AvailableAttributes = prevAuthnUser.AvailableAttributes
-		}
-
-		// Append user ID as a runtime data if not already set
-		if engineCtx.AuthenticatedUser.UserID != "" {
-			userID := engineCtx.RuntimeData["userID"]
-			if userID == "" {
-				if engineCtx.RuntimeData == nil {
-					engineCtx.RuntimeData = make(map[string]string)
-				}
-				engineCtx.RuntimeData["userID"] = engineCtx.AuthenticatedUser.UserID
-			}
-		}
-	}
-
 	// Add assertion to the context
 	if nodeResp.Assertion != "" {
 		engineCtx.Assertion = nodeResp.Assertion
@@ -409,60 +372,9 @@ func (fe *flowEngine) updateContextWithNodeResponse(engineCtx *EngineContext, no
 	}
 
 	// Write back AuthUser from the node response
-	if nodeResp.AuthUser.IsAuthenticated() {
+	if nodeResp.AuthUser.IsSet() {
 		engineCtx.AuthUser = nodeResp.AuthUser
 	}
-}
-
-// shouldUpdateAuthenticatedUser determines if the authenticated user should be updated in the context.
-func (fe *flowEngine) shouldUpdateAuthenticatedUser(engineCtx *EngineContext) bool {
-	currentNode := engineCtx.CurrentNode
-	if currentNode == nil {
-		return false
-	}
-	if currentNode.GetType() != common.NodeTypeTaskExecution {
-		return false
-	}
-
-	executableNode, ok := currentNode.(core.ExecutorBackedNodeInterface)
-	if !ok {
-		return false
-	}
-	executorInst := executableNode.GetExecutor()
-	if executorInst == nil {
-		return false
-	}
-
-	// For authentication flows, only update from authentication executors or conditionally
-	// from provisioning executor
-	if engineCtx.FlowType == common.FlowTypeAuthentication {
-		if executorInst.GetType() == common.ExecutorTypeAuthentication {
-			return true
-		}
-		if engineCtx.RuntimeData != nil &&
-			engineCtx.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] == "true" {
-			return executorInst.GetName() == executor.ExecutorNameProvisioning
-		}
-		return false
-	}
-
-	// For registration flows, only update from provisioning executor or conditionally
-	// from authentication executors
-	if engineCtx.FlowType == common.FlowTypeRegistration {
-		if engineCtx.RuntimeData != nil && engineCtx.RuntimeData[common.RuntimeKeySkipProvisioning] == "true" {
-			return executorInst.GetType() == common.ExecutorTypeAuthentication
-		}
-
-		return executorInst.GetName() == executor.ExecutorNameProvisioning
-	}
-
-	// For user onboarding flows, update from authentication executors or from provisioning executor.
-	if engineCtx.FlowType == common.FlowTypeUserOnboarding {
-		return executorInst.GetType() == common.ExecutorTypeAuthentication ||
-			executorInst.GetName() == executor.ExecutorNameProvisioning
-	}
-
-	return false
 }
 
 // processNodeResponse processes the node response and determines the next action.
@@ -1042,8 +954,8 @@ func publishNodeExecutionCompletedEvent(ctx *EngineContext, node core.NodeInterf
 	}
 
 	// Add user ID if authenticated
-	if ctx.AuthenticatedUser.IsAuthenticated && ctx.AuthenticatedUser.UserID != "" {
-		evt.WithData(event.DataKey.UserID, ctx.AuthenticatedUser.UserID)
+	if ctx.AuthUser.IsAuthenticated() && ctx.AuthUser.GetUserID() != "" {
+		evt.WithData(event.DataKey.UserID, ctx.AuthUser.GetUserID())
 	}
 
 	obsSvc.PublishEvent(evt)
@@ -1066,8 +978,8 @@ func publishFlowStartedEvent(ctx *EngineContext, obsSvc observability.Observabil
 		WithData(event.DataKey.AppID, ctx.AppID)
 
 	// Add user ID if already authenticated
-	if ctx.AuthenticatedUser.IsAuthenticated && ctx.AuthenticatedUser.UserID != "" {
-		evt.WithData(event.DataKey.UserID, ctx.AuthenticatedUser.UserID)
+	if ctx.AuthUser.IsAuthenticated() && ctx.AuthUser.GetUserID() != "" {
+		evt.WithData(event.DataKey.UserID, ctx.AuthUser.GetUserID())
 	}
 
 	obsSvc.PublishEvent(evt)
@@ -1099,8 +1011,8 @@ func publishFlowCompletedEvent(
 		WithData(event.DataKey.DurationMs, fmt.Sprintf("%d", durationMs))
 
 	// Add user ID if authenticated
-	if ctx.AuthenticatedUser.IsAuthenticated && ctx.AuthenticatedUser.UserID != "" {
-		evt.WithData(event.DataKey.UserID, ctx.AuthenticatedUser.UserID)
+	if ctx.AuthUser.IsAuthenticated() && ctx.AuthUser.GetUserID() != "" {
+		evt.WithData(event.DataKey.UserID, ctx.AuthUser.GetUserID())
 	}
 
 	obsSvc.PublishEvent(evt)
@@ -1138,8 +1050,8 @@ func publishFlowFailedEvent(ctx *EngineContext, svcErr *serviceerror.ServiceErro
 	}
 
 	// Add user ID if authenticated
-	if ctx.AuthenticatedUser.IsAuthenticated && ctx.AuthenticatedUser.UserID != "" {
-		evt.WithData(event.DataKey.UserID, ctx.AuthenticatedUser.UserID)
+	if ctx.AuthUser.IsAuthenticated() && ctx.AuthUser.GetUserID() != "" {
+		evt.WithData(event.DataKey.UserID, ctx.AuthUser.GetUserID())
 	}
 
 	obsSvc.PublishEvent(evt)

@@ -43,6 +43,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthnProviderError'
 
+  /authenticator-metadata:
+    post:
+      summary: Get authenticator metadata
+      operationId: getAuthenticatorMetadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthenticatorMetadataRequest'
+      responses:
+        '200':
+          description: Authenticator metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticatorMeta'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+        '404':
+          description: Authenticator not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthnProviderError'
+
   /attributes:
     post:
       summary: Get user attributes
@@ -89,19 +125,92 @@ components:
     AuthenticateRequest:
       type: object
       properties:
-        identifiers:
-          type: object
-          additionalProperties: true
-          description: Map of user identifiers
-        credentials:
-          type: object
-          additionalProperties: true
-          description: Map of user credentials
+        authType:
+          type: string
+          description: The type of authentication being performed
+        authnData:
+          oneOf:
+            - $ref: '#/components/schemas/CredentialsAuthnData'
+            - $ref: '#/components/schemas/PasskeyAuthnData'
+            - $ref: '#/components/schemas/OTPAuthnData'
+            - $ref: '#/components/schemas/FederatedAuthnData'
+          description: Authentication data. The structure depends on the authType.
         metadata:
           $ref: '#/components/schemas/AuthnMetadata'
       required:
-        - identifiers
-        - credentials
+        - authType
+        - authnData
+
+    CredentialsAuthnData:
+      type: object
+      description: Identifiers and credentials for credential-based authentication.
+      properties:
+        Identifiers:
+          type: object
+          additionalProperties: true
+          description: Map of user identifiers
+        Credentials:
+          type: object
+          additionalProperties: true
+          description: Map of user credentials
+      required:
+        - Identifiers
+        - Credentials
+
+    PasskeyAuthnData:
+      type: object
+      description: Data required for passkey-based authentication.
+      properties:
+        CredentialID:
+          type: string
+        CredentialType:
+          type: string
+        ClientDataJSON:
+          type: string
+        AuthenticatorData:
+          type: string
+        Signature:
+          type: string
+        UserHandle:
+          type: string
+        SessionToken:
+          type: string
+      required:
+        - CredentialID
+        - ClientDataJSON
+        - AuthenticatorData
+        - Signature
+        - SessionToken
+
+    OTPAuthnData:
+      type: object
+      description: Data required for OTP-based authentication.
+      properties:
+        SessionToken:
+          type: string
+        OTP:
+          type: string
+      required:
+        - SessionToken
+        - OTP
+
+    FederatedAuthnData:
+      type: object
+      description: Data required for federated (OAuth/OIDC) authentication.
+      properties:
+        IDPID:
+          type: string
+          description: Identity provider ID
+        IDPType:
+          type: string
+          description: Identity provider type
+        Code:
+          type: string
+          description: OAuth authorization code
+      required:
+        - IDPID
+        - IDPType
+        - Code
 
     GetAttributesRequest:
       type: object
@@ -138,56 +247,63 @@ components:
     AuthnResult:
       type: object
       properties:
-        userId:
+        entityId:
           type: string
-        userType:
+        entityCategory:
+          type: string
+        entityType:
           type: string
         ouId:
           type: string
+        userId:
+          type: string
+          deprecated: true
+        userType:
+          type: string
+          deprecated: true
         token:
           type: string
-        availableAttributes:
-          $ref: '#/components/schemas/AvailableAttributes'
+        isAttributeValuesIncluded:
+          type: boolean
+        attributesResponse:
+          $ref: '#/components/schemas/AttributesResponse'
+        externalSub:
+          type: string
+        externalClaims:
+          type: object
+          additionalProperties: true
+        isExistingUser:
+          type: boolean
+        isAmbiguousUser:
+          type: boolean
+        authType:
+          type: string
       required:
-        - userId
-        - userType
+        - entityId
         - ouId
 
     GetAttributesResult:
       type: object
       properties:
-        userId:
+        entityId:
           type: string
-        userType:
+        entityCategory:
+          type: string
+        entityType:
           type: string
         ouId:
           type: string
+        userId:
+          type: string
+          deprecated: true
+        userType:
+          type: string
+          deprecated: true
         attributeResponse:
           $ref: '#/components/schemas/AttributesResponse'
       required:
-        - userId
-        - userType
+        - entityId
         - ouId
-
-    AvailableAttributes:
-      type: object
-      properties:
-        attributes:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/AttributeMetadataResponse'
-          description: Map of attribute names to their metadata
-        verifications:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/VerificationResponse'
-          description: Map of verification IDs to verification details
-
-    AttributeMetadataResponse:
-      type: object
-      properties:
-        assuranceMetadataResponse:
-          $ref: '#/components/schemas/AssuranceMetadataResponse'
 
     AssuranceMetadataResponse:
       type: object
@@ -299,6 +415,45 @@ components:
           description: The attribute value
         assuranceMetadataResponse:
           $ref: '#/components/schemas/AssuranceMetadataResponse'
+
+    AuthenticatorMetadataRequest:
+      type: object
+      properties:
+        authenticatorName:
+          type: string
+          description: The name of the authenticator to retrieve metadata for
+      required:
+        - authenticatorName
+
+    AuthenticationFactor:
+      type: string
+      description: |
+        Authentication factor type:
+        - KNOWLEDGE: Something you know (e.g., password, PIN)
+        - POSSESSION: Something you have (e.g., OTP device, SMS)
+        - INHERENCE: Something you are (e.g., biometrics)
+      enum:
+        - KNOWLEDGE
+        - POSSESSION
+        - INHERENCE
+
+    AuthenticatorMeta:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Unique identifier for the authenticator
+        factors:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthenticationFactor'
+          description: Authentication factors this authenticator validates
+        associatedIDP:
+          type: string
+          description: Optional identity provider type this authenticator is associated with
+      required:
+        - name
+        - factors
 
     ErrorCode:
       type: string

@@ -232,6 +232,7 @@ var defaultMessages = map[string]string{
 	"error.authnotpservice.invalid_session_token_description": "The provided session token is invalid or empty",
 	"error.authnotpservice.unsupported_channel": "Unsupported channel",
 	"error.authnotpservice.unsupported_channel_description": "The provided channel is not supported for OTP authentication",
+	"error.authnprovider.inconsistent_user_identity_description": "authentication failed due to inconsistent user identity information",
 	"error.authnservice.ambiguous_user": "Ambiguous user",
 	"error.authnservice.ambiguous_user_description": "Multiple users match the provided attributes",
 	"error.authnservice.assertion_subject_mismatch": "Assertion subject mismatch",

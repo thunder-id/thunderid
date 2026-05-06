@@ -44,8 +44,8 @@ func ResolvePlaceholder(ctx *NodeContext, value string) string {
 
 		// Special handling for userId - only resolve from runtime data or authenticated user
 		if key == "userId" {
-			if ctx.AuthenticatedUser.UserID != "" {
-				return ctx.AuthenticatedUser.UserID
+			if ctx.AuthUser.GetUserID() != "" {
+				return ctx.AuthUser.GetUserID()
 			}
 			if runtimeValue, ok := ctx.RuntimeData["userId"]; ok && runtimeValue != "" {
 				return runtimeValue
@@ -55,8 +55,8 @@ func ResolvePlaceholder(ctx *NodeContext, value string) string {
 
 		// Special handling for ouId - only resolve from runtime data or authenticated user
 		if key == "ouId" {
-			if ctx.AuthenticatedUser.OUID != "" {
-				return ctx.AuthenticatedUser.OUID
+			if ctx.AuthUser.GetOUID() != "" {
+				return ctx.AuthUser.GetOUID()
 			}
 			if runtimeValue, ok := ctx.RuntimeData["ouId"]; ok && runtimeValue != "" {
 				return runtimeValue

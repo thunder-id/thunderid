@@ -71,8 +71,7 @@ func (suite *ClientAuthTestSuite) SetupTest() {
 	// Tests that need failure override this with a fresh mock.
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{UserID: testClientID},
-			(*serviceerror.ServiceError)(nil)).Maybe()
+		Return(authnprovidermgr.AuthUser{}, (*serviceerror.ServiceError)(nil)).Maybe()
 }
 
 func (suite *ClientAuthTestSuite) TestAuthenticate_Success_ClientSecretPost() {
@@ -374,13 +373,12 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_InvalidClientSecret() {
 	failAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
 	failAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil),
-			&serviceerror.ServiceError{
-				Type:             serviceerror.ClientErrorType,
-				Code:             authnprovidermgr.ErrorAuthenticationFailed.Code,
-				Error:            i18ncore.I18nMessage{DefaultValue: "auth failed"},
-				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "wrong secret"},
-			}).Maybe()
+		Return(authnprovidermgr.AuthUser{}, &serviceerror.ServiceError{
+			Type:             serviceerror.ClientErrorType,
+			Code:             authnprovidermgr.ErrorAuthenticationFailed.Code,
+			Error:            i18ncore.I18nMessage{DefaultValue: "auth failed"},
+			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "wrong secret"},
+		}).Maybe()
 
 	formData := url.Values{}
 	formData.Set("client_id", testClientID)

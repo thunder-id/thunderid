@@ -26,7 +26,7 @@ import (
 	"sort"
 	"strings"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
+	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/entitytype"
 	"github.com/asgardeo/thunder/internal/flow/common"
@@ -40,6 +40,7 @@ import (
 type provisioningExecutor struct {
 	core.ExecutorInterface
 	identifyingExecutorInterface
+	authnProvider     authnprovidermgr.AuthnProviderManagerInterface
 	entityProvider    entityprovider.EntityProviderInterface
 	groupService      group.GroupServiceInterface
 	roleService       role.RoleServiceInterface
@@ -57,6 +58,7 @@ func newProvisioningExecutor(
 	roleService role.RoleServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *provisioningExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameProvisioning),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameProvisioning))
@@ -74,6 +76,7 @@ func newProvisioningExecutor(
 		groupService:                 groupService,
 		roleService:                  roleService,
 		entityTypeService:            entityTypeService,
+		authnProvider:                authnProvider,
 		logger:                       logger,
 	}
 }
@@ -93,6 +96,24 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 		eligible, ok := ctx.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning]
 		if !ok || eligible != dataValueTrue {
 			logger.Debug("User is not eligible for provisioning, skipping execution")
+			execResp.Status = common.ExecComplete
+			return execResp, nil
+		}
+	}
+
+	// If it's a registration flow, check if proceeding with an existing user
+	if ctx.FlowType == common.FlowTypeRegistration {
+		shouldSkip, ok := ctx.RuntimeData[common.RuntimeKeySkipProvisioning]
+		if ok && shouldSkip == dataValueTrue {
+			existingUserID := ctx.AuthUser.GetUserID()
+			if existingUserID == "" {
+				logger.Error("Skip provisioning flag is set but no existing user found in context")
+				execResp.Status = common.ExecFailure
+				execResp.FailureReason = "no existing user found"
+				return execResp, nil
+			}
+			logger.Debug("Proceeding with an existing user in registration flow, skipping execution")
+			execResp.RuntimeData[userAttributeUserID] = existingUserID
 			execResp.Status = common.ExecComplete
 			return execResp, nil
 		}
@@ -169,22 +190,13 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 		return execResp, nil
 	}
 
-	retAttributes := make(map[string]interface{})
-	if len(createdEntity.Attributes) > 0 {
-		if err := json.Unmarshal(createdEntity.Attributes, &retAttributes); err != nil {
-			logger.Error("Failed to unmarshal user attributes", log.Error(err))
-			return nil, err
-		}
+	authUser, svcErr := p.authnProvider.AuthenticateResolvedUser(ctx.Context, createdEntity, ctx.AuthUser)
+	if svcErr != nil {
+		logger.Error("Failed to authenticate provisioned user")
+		return nil, fmt.Errorf("failed to authenticate provisioned user")
 	}
 
-	authenticatedUser := authncm.AuthenticatedUser{
-		IsAuthenticated: true,
-		UserID:          createdEntity.ID,
-		OUID:            createdEntity.OUID,
-		UserType:        createdEntity.Type,
-		Attributes:      retAttributes,
-	}
-	execResp.AuthenticatedUser = authenticatedUser
+	execResp.AuthUser = authUser
 	execResp.Status = common.ExecComplete
 
 	// Set user id in runtime data
@@ -349,7 +361,7 @@ func (p *provisioningExecutor) checkNodeInputs(ctx *core.NodeContext,
 		return nodeInputsSatisfied
 	}
 
-	authnAttrs := ctx.AuthenticatedUser.Attributes
+	authnAttrs := ctx.AuthUser.GetRuntimeAttributes()
 	if len(authnAttrs) == 0 {
 		return false
 	}
@@ -457,13 +469,14 @@ func (p *provisioningExecutor) storePresentedOptionalAttrs(
 
 // isAttrSatisfied returns true if the attribute has a non-empty usable value in any context source.
 func (p *provisioningExecutor) isAttrSatisfied(ctx *core.NodeContext, attr string) bool {
+	authUserAttributes := ctx.AuthUser.GetRuntimeAttributes()
 	if val, ok := ctx.UserInputs[attr]; ok && val != "" {
 		return true
 	}
 	if val, ok := ctx.RuntimeData[attr]; ok && val != "" {
 		return true
 	}
-	if val, ok := ctx.AuthenticatedUser.Attributes[attr]; ok {
+	if val, ok := authUserAttributes[attr]; ok {
 		if strVal, ok := val.(string); ok && strVal != "" {
 			return true
 		}
@@ -489,6 +502,8 @@ func (p *provisioningExecutor) getAttributesForProvisioning(ctx *core.NodeContex
 	}
 	promptOptional := p.isPromptOptionalAttributesEnabled(ctx)
 
+	authUserAttributes := ctx.AuthUser.GetRuntimeAttributes()
+
 	attributesMap := make(map[string]interface{})
 	for _, a := range schemaAttrs {
 		_, inNodeInputs := nodeInputSet[a.Attribute]
@@ -500,7 +515,7 @@ func (p *provisioningExecutor) getAttributesForProvisioning(ctx *core.NodeContex
 			attributesMap[a.Attribute] = value
 		} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 			attributesMap[a.Attribute] = runtimeValue
-		} else if authnValue, exists := ctx.AuthenticatedUser.Attributes[a.Attribute]; exists {
+		} else if authnValue, exists := authUserAttributes[a.Attribute]; exists {
 			if strVal, ok := authnValue.(string); ok && strVal != "" {
 				attributesMap[a.Attribute] = authnValue
 			}

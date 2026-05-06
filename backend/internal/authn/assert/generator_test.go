@@ -19,20 +19,67 @@
 package assert
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
-	"github.com/asgardeo/thunder/internal/idp"
+	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
+	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
+	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	"github.com/asgardeo/thunder/internal/system/log"
 )
 
+// testAuthnProviderManager is a local test double for AuthnProviderManagerInterface.
+// Only GetAuthenticatorFactors is exercised by the generator; all other methods are no-ops.
+type testAuthnProviderManager struct {
+	factorMap map[string][]authnprovidercm.AuthenticationFactor
+}
+
+func (m *testAuthnProviderManager) AuthenticateUser(_ context.Context, _ string, _ any,
+	_ *authnprovidercm.RequestedAttributes, _ *authnprovidercm.AuthnMetadata,
+	authUser authnprovidermgr.AuthUser) (authnprovidermgr.AuthUser, *serviceerror.ServiceError) {
+	return authnprovidermgr.AuthUser{}, nil
+}
+
+func (m *testAuthnProviderManager) AuthenticateResolvedUser(_ context.Context,
+	_ *entityprovider.Entity,
+	authUser authnprovidermgr.AuthUser) (authnprovidermgr.AuthUser, *serviceerror.ServiceError) {
+	return authnprovidermgr.AuthUser{}, nil
+}
+
+func (m *testAuthnProviderManager) AuthenticateForRegistration(_ context.Context, _ string,
+	authUser authnprovidermgr.AuthUser) (authnprovidermgr.AuthUser, *serviceerror.ServiceError) {
+	return authnprovidermgr.AuthUser{}, nil
+}
+
+func (m *testAuthnProviderManager) GetUserAvailableAttributes(_ context.Context,
+	_ authnprovidermgr.AuthUser) (*authnprovidercm.AttributesResponse, *serviceerror.ServiceError) {
+	return nil, nil
+}
+
+func (m *testAuthnProviderManager) GetUserAttributes(_ context.Context,
+	_ *authnprovidercm.RequestedAttributes, _ *authnprovidercm.GetAttributesMetadata,
+	authUser authnprovidermgr.AuthUser) (authnprovidermgr.AuthUser, *authnprovidercm.AttributesResponse,
+	*serviceerror.ServiceError) {
+	return authnprovidermgr.AuthUser{}, nil, nil
+}
+
+func (m *testAuthnProviderManager) GetAuthenticatorMetadata(_ string) *authnprovidercm.AuthenticatorMeta {
+	return nil
+}
+
+func (m *testAuthnProviderManager) GetAuthenticatorFactors(
+	authenticatorName string) []authnprovidercm.AuthenticationFactor {
+	return m.factorMap[authenticatorName]
+}
+
 type GeneratorTestSuite struct {
 	suite.Suite
-	generator AuthAssertGeneratorInterface
+	mockProvider *testAuthnProviderManager
+	generator    AuthAssertGeneratorInterface
 }
 
 func TestGeneratorTestSuite(t *testing.T) {
@@ -40,37 +87,17 @@ func TestGeneratorTestSuite(t *testing.T) {
 }
 
 func (suite *GeneratorTestSuite) SetupTest() {
-	suite.generator = newAuthAssertGenerator()
-
-	// Register all authenticators
-	authncm.RegisterAuthenticator(authncm.AuthenticatorMeta{
-		Name:    authncm.AuthenticatorCredentials,
-		Factors: []authncm.AuthenticationFactor{authncm.FactorKnowledge},
-	})
-	authncm.RegisterAuthenticator(authncm.AuthenticatorMeta{
-		Name:    authncm.AuthenticatorSMSOTP,
-		Factors: []authncm.AuthenticationFactor{authncm.FactorPossession},
-	})
-	authncm.RegisterAuthenticator(authncm.AuthenticatorMeta{
-		Name:          authncm.AuthenticatorGoogle,
-		Factors:       []authncm.AuthenticationFactor{authncm.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeGoogle,
-	})
-	authncm.RegisterAuthenticator(authncm.AuthenticatorMeta{
-		Name:          authncm.AuthenticatorGithub,
-		Factors:       []authncm.AuthenticationFactor{authncm.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeGitHub,
-	})
-	authncm.RegisterAuthenticator(authncm.AuthenticatorMeta{
-		Name:          authncm.AuthenticatorOAuth,
-		Factors:       []authncm.AuthenticationFactor{authncm.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeOAuth,
-	})
-	authncm.RegisterAuthenticator(authncm.AuthenticatorMeta{
-		Name:          authncm.AuthenticatorOIDC,
-		Factors:       []authncm.AuthenticationFactor{authncm.FactorKnowledge},
-		AssociatedIDP: idp.IDPTypeOIDC,
-	})
+	suite.mockProvider = &testAuthnProviderManager{
+		factorMap: map[string][]authnprovidercm.AuthenticationFactor{
+			authnprovidercm.AuthenticatorCredentials: {authnprovidercm.FactorKnowledge},
+			authnprovidercm.AuthenticatorSMSOTP:      {authnprovidercm.FactorPossession},
+			authnprovidercm.AuthenticatorGoogle:      {authnprovidercm.FactorKnowledge},
+			authnprovidercm.AuthenticatorGithub:      {authnprovidercm.FactorKnowledge},
+			authnprovidercm.AuthenticatorOAuth:       {authnprovidercm.FactorKnowledge},
+			authnprovidercm.AuthenticatorOIDC:        {authnprovidercm.FactorKnowledge},
+		},
+	}
+	suite.generator = newAuthAssertGenerator(suite.mockProvider)
 }
 
 func (suite *GeneratorTestSuite) TestGenerateAssertionSingleAuthenticator() {
@@ -82,37 +109,37 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionSingleAuthenticator() {
 	}{
 		{
 			name:          "Credentials authenticator",
-			authenticator: authncm.AuthenticatorCredentials,
+			authenticator: authnprovidercm.AuthenticatorCredentials,
 			expectedAAL:   AALLevel1,
 			expectedIAL:   IALLevel1,
 		},
 		{
 			name:          "SMS OTP authenticator",
-			authenticator: authncm.AuthenticatorSMSOTP,
+			authenticator: authnprovidercm.AuthenticatorSMSOTP,
 			expectedAAL:   AALLevel1,
 			expectedIAL:   IALLevel1,
 		},
 		{
 			name:          "Google authenticator",
-			authenticator: authncm.AuthenticatorGoogle,
+			authenticator: authnprovidercm.AuthenticatorGoogle,
 			expectedAAL:   AALLevel1,
 			expectedIAL:   IALLevel1,
 		},
 		{
 			name:          "GitHub authenticator",
-			authenticator: authncm.AuthenticatorGithub,
+			authenticator: authnprovidercm.AuthenticatorGithub,
 			expectedAAL:   AALLevel1,
 			expectedIAL:   IALLevel1,
 		},
 		{
 			name:          "OAuth authenticator",
-			authenticator: authncm.AuthenticatorOAuth,
+			authenticator: authnprovidercm.AuthenticatorOAuth,
 			expectedAAL:   AALLevel1,
 			expectedIAL:   IALLevel1,
 		},
 		{
 			name:          "OIDC authenticator",
-			authenticator: authncm.AuthenticatorOIDC,
+			authenticator: authnprovidercm.AuthenticatorOIDC,
 			expectedAAL:   AALLevel1,
 			expectedIAL:   IALLevel1,
 		},
@@ -120,7 +147,7 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionSingleAuthenticator() {
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			authenticators := []authncm.AuthenticatorReference{
+			authenticators := []authnprovidermgr.AuthenticatorReference{
 				{
 					Authenticator: tc.authenticator,
 					Step:          1,
@@ -151,50 +178,50 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionMultipleAuthenticators() {
 	}{
 		{
 			name:               "Password + SMS OTP (MFA)",
-			authenticators:     []string{authncm.AuthenticatorCredentials, authncm.AuthenticatorSMSOTP},
+			authenticators:     []string{authnprovidercm.AuthenticatorCredentials, authnprovidercm.AuthenticatorSMSOTP},
 			expectedAAL:        AALLevel2,
 			expectedIAL:        IALLevel1,
 			authenticatorCount: 2,
 		},
 		{
 			name:               "Google + SMS OTP (MFA)",
-			authenticators:     []string{authncm.AuthenticatorGoogle, authncm.AuthenticatorSMSOTP},
+			authenticators:     []string{authnprovidercm.AuthenticatorGoogle, authnprovidercm.AuthenticatorSMSOTP},
 			expectedAAL:        AALLevel2,
 			expectedIAL:        IALLevel1,
 			authenticatorCount: 2,
 		},
 		{
 			name:               "GitHub + SMS OTP (MFA)",
-			authenticators:     []string{authncm.AuthenticatorGithub, authncm.AuthenticatorSMSOTP},
+			authenticators:     []string{authnprovidercm.AuthenticatorGithub, authnprovidercm.AuthenticatorSMSOTP},
 			expectedAAL:        AALLevel2,
 			expectedIAL:        IALLevel1,
 			authenticatorCount: 2,
 		},
 		{
 			name:               "OAuth + SMS OTP (MFA)",
-			authenticators:     []string{authncm.AuthenticatorOAuth, authncm.AuthenticatorSMSOTP},
+			authenticators:     []string{authnprovidercm.AuthenticatorOAuth, authnprovidercm.AuthenticatorSMSOTP},
 			expectedAAL:        AALLevel2,
 			expectedIAL:        IALLevel1,
 			authenticatorCount: 2,
 		},
 		{
 			name:               "OIDC + SMS OTP (MFA)",
-			authenticators:     []string{authncm.AuthenticatorOIDC, authncm.AuthenticatorSMSOTP},
+			authenticators:     []string{authnprovidercm.AuthenticatorOIDC, authnprovidercm.AuthenticatorSMSOTP},
 			expectedAAL:        AALLevel2,
 			expectedIAL:        IALLevel1,
 			authenticatorCount: 2,
 		},
 		{
 			name:               "Invalid combination (Google + GitHub)",
-			authenticators:     []string{authncm.AuthenticatorGoogle, authncm.AuthenticatorGithub},
+			authenticators:     []string{authnprovidercm.AuthenticatorGoogle, authnprovidercm.AuthenticatorGithub},
 			expectedAAL:        AALLevel1,
 			expectedIAL:        IALLevel1,
 			authenticatorCount: 2,
 		},
 		{
 			name: "Invalid combination (Password + Google + GitHub)",
-			authenticators: []string{authncm.AuthenticatorCredentials, authncm.AuthenticatorGoogle,
-				authncm.AuthenticatorGithub},
+			authenticators: []string{authnprovidercm.AuthenticatorCredentials, authnprovidercm.AuthenticatorGoogle,
+				authnprovidercm.AuthenticatorGithub},
 			expectedAAL:        AALLevel1,
 			expectedIAL:        IALLevel1,
 			authenticatorCount: 3,
@@ -203,9 +230,9 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionMultipleAuthenticators() {
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			authenticators := make([]authncm.AuthenticatorReference, len(tc.authenticators))
+			authenticators := make([]authnprovidermgr.AuthenticatorReference, len(tc.authenticators))
 			for i, auth := range tc.authenticators {
-				authenticators[i] = authncm.AuthenticatorReference{
+				authenticators[i] = authnprovidermgr.AuthenticatorReference{
 					Authenticator: auth,
 					Step:          i + 1,
 					Timestamp:     time.Now().Unix(),
@@ -225,14 +252,14 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionMultipleAuthenticators() {
 }
 
 func (suite *GeneratorTestSuite) TestGenerateAssertionDuplicateAuthenticators() {
-	authenticators := []authncm.AuthenticatorReference{
+	authenticators := []authnprovidermgr.AuthenticatorReference{
 		{
-			Authenticator: authncm.AuthenticatorCredentials,
+			Authenticator: authnprovidercm.AuthenticatorCredentials,
 			Step:          1,
 			Timestamp:     time.Now().Unix(),
 		},
 		{
-			Authenticator: authncm.AuthenticatorCredentials,
+			Authenticator: authnprovidercm.AuthenticatorCredentials,
 			Step:          2,
 			Timestamp:     time.Now().Unix(),
 		},
@@ -247,7 +274,7 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionDuplicateAuthenticators() 
 }
 
 func (suite *GeneratorTestSuite) TestGenerateAssertionEmptyAuthenticators() {
-	result, err := suite.generator.GenerateAssertion([]authncm.AuthenticatorReference{})
+	result, err := suite.generator.GenerateAssertion([]authnprovidermgr.AuthenticatorReference{})
 
 	suite.Nil(result)
 	suite.NotNil(err)
@@ -263,8 +290,8 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionNilAuthenticators() {
 }
 
 func (suite *GeneratorTestSuite) TestUpdateAssertionWithNilContext() {
-	authenticator := authncm.AuthenticatorReference{
-		Authenticator: authncm.AuthenticatorCredentials,
+	authenticator := authnprovidermgr.AuthenticatorReference{
+		Authenticator: authnprovidercm.AuthenticatorCredentials,
 		Step:          1,
 		Timestamp:     time.Now().Unix(),
 	}
@@ -281,17 +308,17 @@ func (suite *GeneratorTestSuite) TestUpdateAssertionAddingSecondFactor() {
 	existingContext := &AssuranceContext{
 		AAL: AALLevel1,
 		IAL: IALLevel1,
-		Authenticators: []authncm.AuthenticatorReference{
+		Authenticators: []authnprovidermgr.AuthenticatorReference{
 			{
-				Authenticator: authncm.AuthenticatorCredentials,
+				Authenticator: authnprovidercm.AuthenticatorCredentials,
 				Step:          1,
 				Timestamp:     time.Now().Unix(),
 			},
 		},
 	}
 
-	newAuthenticator := authncm.AuthenticatorReference{
-		Authenticator: authncm.AuthenticatorSMSOTP,
+	newAuthenticator := authnprovidermgr.AuthenticatorReference{
+		Authenticator: authnprovidercm.AuthenticatorSMSOTP,
 		Step:          2,
 		Timestamp:     time.Now().Unix(),
 	}
@@ -309,16 +336,16 @@ func (suite *GeneratorTestSuite) TestUpdateAssertionWithInvalidAuthenticator() {
 	existingContext := &AssuranceContext{
 		AAL: AALLevel1,
 		IAL: IALLevel1,
-		Authenticators: []authncm.AuthenticatorReference{
+		Authenticators: []authnprovidermgr.AuthenticatorReference{
 			{
-				Authenticator: authncm.AuthenticatorCredentials,
+				Authenticator: authnprovidercm.AuthenticatorCredentials,
 				Step:          1,
 				Timestamp:     time.Now().Unix(),
 			},
 		},
 	}
 
-	newAuthenticator := authncm.AuthenticatorReference{
+	newAuthenticator := authnprovidermgr.AuthenticatorReference{
 		Authenticator: "",
 		Step:          2,
 		Timestamp:     time.Now().Unix(),
@@ -332,9 +359,9 @@ func (suite *GeneratorTestSuite) TestUpdateAssertionWithInvalidAuthenticator() {
 }
 
 func (suite *GeneratorTestSuite) TestUpdateAssertionMultipleTimes() {
-	context1, err1 := suite.generator.GenerateAssertion([]authncm.AuthenticatorReference{
+	context1, err1 := suite.generator.GenerateAssertion([]authnprovidermgr.AuthenticatorReference{
 		{
-			Authenticator: authncm.AuthenticatorCredentials,
+			Authenticator: authnprovidercm.AuthenticatorCredentials,
 			Step:          1,
 			Timestamp:     time.Now().Unix(),
 		},
@@ -342,8 +369,8 @@ func (suite *GeneratorTestSuite) TestUpdateAssertionMultipleTimes() {
 	suite.Nil(err1)
 	suite.Equal(AALLevel1, context1.Context.AAL)
 
-	context2, err2 := suite.generator.UpdateAssertion(context1.Context, authncm.AuthenticatorReference{
-		Authenticator: authncm.AuthenticatorSMSOTP,
+	context2, err2 := suite.generator.UpdateAssertion(context1.Context, authnprovidermgr.AuthenticatorReference{
+		Authenticator: authnprovidercm.AuthenticatorSMSOTP,
 		Step:          2,
 		Timestamp:     time.Now().Unix(),
 	})
@@ -351,8 +378,8 @@ func (suite *GeneratorTestSuite) TestUpdateAssertionMultipleTimes() {
 	suite.Equal(AALLevel2, context2.Context.AAL)
 	suite.Len(context2.Context.Authenticators, 2)
 
-	context3, err3 := suite.generator.UpdateAssertion(context2.Context, authncm.AuthenticatorReference{
-		Authenticator: authncm.AuthenticatorGoogle,
+	context3, err3 := suite.generator.UpdateAssertion(context2.Context, authnprovidermgr.AuthenticatorReference{
+		Authenticator: authnprovidercm.AuthenticatorGoogle,
 		Step:          3,
 		Timestamp:     time.Now().Unix(),
 	})
@@ -469,9 +496,9 @@ func (suite *GeneratorTestSuite) TestVerifyAssurance() {
 			context := &AssuranceContext{
 				AAL: tc.contextAAL,
 				IAL: tc.contextIAL,
-				Authenticators: []authncm.AuthenticatorReference{
+				Authenticators: []authnprovidermgr.AuthenticatorReference{
 					{
-						Authenticator: authncm.AuthenticatorCredentials,
+						Authenticator: authnprovidercm.AuthenticatorCredentials,
 						Step:          1,
 						Timestamp:     time.Now().Unix(),
 					},
@@ -499,55 +526,57 @@ func (suite *GeneratorTestSuite) TestVerifyAssuranceNilContext() {
 }
 
 func (suite *GeneratorTestSuite) TestExtractUniqueFactors() {
-	generator := &authAssertGenerator{}
+	generator := &authAssertGenerator{authnProvider: suite.mockProvider}
 
 	testCases := []struct {
 		name                    string
-		authenticators          []authncm.AuthenticatorReference
+		authenticators          []authnprovidermgr.AuthenticatorReference
 		expectedUniqueAuthCount int
 		expectedUniqueFactors   int
 		expectedAuthContains    []string
-		expectedFactorsContains []authncm.AuthenticationFactor
+		expectedFactorsContains []authnprovidercm.AuthenticationFactor
 	}{
 		{
 			name: "All unique authenticators with different factors",
-			authenticators: []authncm.AuthenticatorReference{
-				{Authenticator: authncm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
-				{Authenticator: authncm.AuthenticatorSMSOTP, Step: 2, Timestamp: time.Now().Unix()},
-				{Authenticator: authncm.AuthenticatorGoogle, Step: 3, Timestamp: time.Now().Unix()},
+			authenticators: []authnprovidermgr.AuthenticatorReference{
+				{Authenticator: authnprovidercm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
+				{Authenticator: authnprovidercm.AuthenticatorSMSOTP, Step: 2, Timestamp: time.Now().Unix()},
+				{Authenticator: authnprovidercm.AuthenticatorGoogle, Step: 3, Timestamp: time.Now().Unix()},
 			},
 			expectedUniqueAuthCount: 3,
 			expectedUniqueFactors:   2, // KNOWLEDGE and POSSESSION
-			expectedAuthContains: []string{authncm.AuthenticatorCredentials, authncm.AuthenticatorSMSOTP,
-				authncm.AuthenticatorGoogle},
-			expectedFactorsContains: []authncm.AuthenticationFactor{
-				authncm.FactorKnowledge, authncm.FactorPossession,
+			expectedAuthContains: []string{authnprovidercm.AuthenticatorCredentials,
+				authnprovidercm.AuthenticatorSMSOTP,
+				authnprovidercm.AuthenticatorGoogle},
+			expectedFactorsContains: []authnprovidercm.AuthenticationFactor{
+				authnprovidercm.FactorKnowledge, authnprovidercm.FactorPossession,
 			},
 		},
 		{
 			name: "Duplicate authenticators",
-			authenticators: []authncm.AuthenticatorReference{
-				{Authenticator: authncm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
-				{Authenticator: authncm.AuthenticatorCredentials, Step: 2, Timestamp: time.Now().Unix()},
-				{Authenticator: authncm.AuthenticatorSMSOTP, Step: 3, Timestamp: time.Now().Unix()},
+			authenticators: []authnprovidermgr.AuthenticatorReference{
+				{Authenticator: authnprovidercm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
+				{Authenticator: authnprovidercm.AuthenticatorCredentials, Step: 2, Timestamp: time.Now().Unix()},
+				{Authenticator: authnprovidercm.AuthenticatorSMSOTP, Step: 3, Timestamp: time.Now().Unix()},
 			},
 			expectedUniqueAuthCount: 2,
 			expectedUniqueFactors:   2, // KNOWLEDGE and POSSESSION
-			expectedAuthContains:    []string{authncm.AuthenticatorCredentials, authncm.AuthenticatorSMSOTP},
-			expectedFactorsContains: []authncm.AuthenticationFactor{
-				authncm.FactorKnowledge, authncm.FactorPossession,
+			expectedAuthContains: []string{authnprovidercm.AuthenticatorCredentials,
+				authnprovidercm.AuthenticatorSMSOTP},
+			expectedFactorsContains: []authnprovidercm.AuthenticationFactor{
+				authnprovidercm.FactorKnowledge, authnprovidercm.FactorPossession,
 			},
 		},
 		{
 			name: "All same authenticator",
-			authenticators: []authncm.AuthenticatorReference{
-				{Authenticator: authncm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
-				{Authenticator: authncm.AuthenticatorCredentials, Step: 2, Timestamp: time.Now().Unix()},
+			authenticators: []authnprovidermgr.AuthenticatorReference{
+				{Authenticator: authnprovidercm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
+				{Authenticator: authnprovidercm.AuthenticatorCredentials, Step: 2, Timestamp: time.Now().Unix()},
 			},
 			expectedUniqueAuthCount: 1,
 			expectedUniqueFactors:   1, // KNOWLEDGE only
-			expectedAuthContains:    []string{authncm.AuthenticatorCredentials},
-			expectedFactorsContains: []authncm.AuthenticationFactor{authncm.FactorKnowledge},
+			expectedAuthContains:    []string{authnprovidercm.AuthenticatorCredentials},
+			expectedFactorsContains: []authnprovidercm.AuthenticationFactor{authnprovidercm.FactorKnowledge},
 		},
 	}
 
@@ -571,55 +600,55 @@ func (suite *GeneratorTestSuite) TestExtractUniqueFactors() {
 }
 
 func (suite *GeneratorTestSuite) TestCalculateAAL() {
-	generator := &authAssertGenerator{}
+	generator := &authAssertGenerator{authnProvider: suite.mockProvider}
 
 	testCases := []struct {
 		name           string
-		authenticators []authncm.AuthenticatorReference
+		authenticators []authnprovidermgr.AuthenticatorReference
 		expectedAAL    AssuranceLevel
 	}{
 		{
 			name: "Single authenticator - AAL1",
-			authenticators: []authncm.AuthenticatorReference{
-				{Authenticator: authncm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
+			authenticators: []authnprovidermgr.AuthenticatorReference{
+				{Authenticator: authnprovidercm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
 			},
 			expectedAAL: AALLevel1,
 		},
 		{
 			name: "Valid MFA combination",
-			authenticators: []authncm.AuthenticatorReference{
-				{Authenticator: authncm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
-				{Authenticator: authncm.AuthenticatorSMSOTP, Step: 2, Timestamp: time.Now().Unix()},
+			authenticators: []authnprovidermgr.AuthenticatorReference{
+				{Authenticator: authnprovidercm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
+				{Authenticator: authnprovidercm.AuthenticatorSMSOTP, Step: 2, Timestamp: time.Now().Unix()},
 			},
 			expectedAAL: AALLevel2,
 		},
 		{
 			name: "Invalid combination - both knowledge factors",
-			authenticators: []authncm.AuthenticatorReference{
-				{Authenticator: authncm.AuthenticatorGoogle, Step: 1, Timestamp: time.Now().Unix()},
-				{Authenticator: authncm.AuthenticatorGithub, Step: 2, Timestamp: time.Now().Unix()},
+			authenticators: []authnprovidermgr.AuthenticatorReference{
+				{Authenticator: authnprovidercm.AuthenticatorGoogle, Step: 1, Timestamp: time.Now().Unix()},
+				{Authenticator: authnprovidercm.AuthenticatorGithub, Step: 2, Timestamp: time.Now().Unix()},
 			},
 			expectedAAL: AALLevel1,
 		},
 		{
 			name: "Three authenticators with two factors (knowledge + possession)",
-			authenticators: []authncm.AuthenticatorReference{
-				{Authenticator: authncm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
-				{Authenticator: authncm.AuthenticatorSMSOTP, Step: 2, Timestamp: time.Now().Unix()},
-				{Authenticator: authncm.AuthenticatorGoogle, Step: 3, Timestamp: time.Now().Unix()},
+			authenticators: []authnprovidermgr.AuthenticatorReference{
+				{Authenticator: authnprovidercm.AuthenticatorCredentials, Step: 1, Timestamp: time.Now().Unix()},
+				{Authenticator: authnprovidercm.AuthenticatorSMSOTP, Step: 2, Timestamp: time.Now().Unix()},
+				{Authenticator: authnprovidercm.AuthenticatorGoogle, Step: 3, Timestamp: time.Now().Unix()},
 			},
 			expectedAAL: AALLevel2,
 		},
 		{
 			name: "Single unknown authenticator",
-			authenticators: []authncm.AuthenticatorReference{
+			authenticators: []authnprovidermgr.AuthenticatorReference{
 				{Authenticator: "UnknownAuthenticator", Step: 1, Timestamp: time.Now().Unix()},
 			},
 			expectedAAL: AALUnknown,
 		},
 		{
 			name:           "Empty authenticator list",
-			authenticators: []authncm.AuthenticatorReference{},
+			authenticators: []authnprovidermgr.AuthenticatorReference{},
 			expectedAAL:    AALUnknown,
 		},
 	}

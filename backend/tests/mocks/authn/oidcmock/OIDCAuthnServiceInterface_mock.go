@@ -343,6 +343,59 @@ func (_c *OIDCAuthnServiceInterfaceMock_FetchUserInfo_Call) RunAndReturn(run fun
 	return _c
 }
 
+// FilterUserClaims provides a mock function for the type OIDCAuthnServiceInterfaceMock
+func (_mock *OIDCAuthnServiceInterfaceMock) FilterUserClaims(claims map[string]interface{}) map[string]interface{} {
+	ret := _mock.Called(claims)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FilterUserClaims")
+	}
+
+	var r0 map[string]interface{}
+	if returnFunc, ok := ret.Get(0).(func(map[string]interface{}) map[string]interface{}); ok {
+		r0 = returnFunc(claims)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]interface{})
+		}
+	}
+	return r0
+}
+
+// OIDCAuthnServiceInterfaceMock_FilterUserClaims_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FilterUserClaims'
+type OIDCAuthnServiceInterfaceMock_FilterUserClaims_Call struct {
+	*mock.Call
+}
+
+// FilterUserClaims is a helper method to define mock.On call
+//   - claims map[string]interface{}
+func (_e *OIDCAuthnServiceInterfaceMock_Expecter) FilterUserClaims(claims interface{}) *OIDCAuthnServiceInterfaceMock_FilterUserClaims_Call {
+	return &OIDCAuthnServiceInterfaceMock_FilterUserClaims_Call{Call: _e.mock.On("FilterUserClaims", claims)}
+}
+
+func (_c *OIDCAuthnServiceInterfaceMock_FilterUserClaims_Call) Run(run func(claims map[string]interface{})) *OIDCAuthnServiceInterfaceMock_FilterUserClaims_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 map[string]interface{}
+		if args[0] != nil {
+			arg0 = args[0].(map[string]interface{})
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *OIDCAuthnServiceInterfaceMock_FilterUserClaims_Call) Return(stringToIfaceVal map[string]interface{}) *OIDCAuthnServiceInterfaceMock_FilterUserClaims_Call {
+	_c.Call.Return(stringToIfaceVal)
+	return _c
+}
+
+func (_c *OIDCAuthnServiceInterfaceMock_FilterUserClaims_Call) RunAndReturn(run func(claims map[string]interface{}) map[string]interface{}) *OIDCAuthnServiceInterfaceMock_FilterUserClaims_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetIDTokenClaims provides a mock function for the type OIDCAuthnServiceInterfaceMock
 func (_mock *OIDCAuthnServiceInterfaceMock) GetIDTokenClaims(idToken string) (map[string]interface{}, *serviceerror.ServiceError) {
 	ret := _mock.Called(idToken)

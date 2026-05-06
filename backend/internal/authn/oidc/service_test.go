@@ -462,3 +462,52 @@ func (suite *OIDCAuthnServiceTestSuite) TestValidateIDTokenWithoutJWKSEndpoint()
 	err := suite.service.ValidateIDToken(context.Background(), testOIDCIDPID, idToken)
 	suite.Nil(err)
 }
+
+func (suite *OIDCAuthnServiceTestSuite) TestFilterUserClaimsEmptyInput() {
+	result := suite.service.FilterUserClaims(map[string]interface{}{})
+	suite.NotNil(result)
+	suite.Empty(result)
+}
+
+func (suite *OIDCAuthnServiceTestSuite) TestFilterUserClaimsOnlyNonUserAttributes() {
+	claims := map[string]interface{}{
+		"aud":     "client123",
+		"exp":     1700000000,
+		"iat":     1699990000,
+		"iss":     "https://idp.example.com",
+		"at_hash": "abc123",
+		"azp":     "client123",
+		"nonce":   "nonce_value",
+		"sub":     "user123",
+	}
+	result := suite.service.FilterUserClaims(claims)
+	suite.NotNil(result)
+	suite.Empty(result)
+}
+
+func (suite *OIDCAuthnServiceTestSuite) TestFilterUserClaimsOnlyUserAttributes() {
+	claims := map[string]interface{}{
+		"email":       "user@example.com",
+		"given_name":  "John",
+		"family_name": "Doe",
+	}
+	result := suite.service.FilterUserClaims(claims)
+	suite.Equal(claims, result)
+}
+
+func (suite *OIDCAuthnServiceTestSuite) TestFilterUserClaimsMixedAttributes() {
+	claims := map[string]interface{}{
+		"sub":        "user123",
+		"iss":        "https://idp.example.com",
+		"iat":        1699990000,
+		"email":      "user@example.com",
+		"given_name": "John",
+	}
+	result := suite.service.FilterUserClaims(claims)
+	suite.Len(result, 2)
+	suite.Equal("user@example.com", result["email"])
+	suite.Equal("John", result["given_name"])
+	suite.NotContains(result, "sub")
+	suite.NotContains(result, "iss")
+	suite.NotContains(result, "iat")
+}

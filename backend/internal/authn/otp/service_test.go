@@ -27,7 +27,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/authn/common"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	notifcommon "github.com/asgardeo/thunder/internal/notification/common"
 	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
@@ -193,8 +192,9 @@ func (suite *OTPAuthnServiceTestSuite) TestAuthenticateSuccess() {
 	result, err := suite.service.Authenticate(context.Background(), testSessionToken, otp)
 	suite.Nil(err)
 	suite.NotNil(result)
-	suite.Equal(userID, result.ID)
-	suite.Equal(orgUnit, result.OUID)
+	suite.NotNil(result.InternalEntity)
+	suite.Equal(userID, result.InternalEntity.ID)
+	suite.Equal(orgUnit, result.InternalEntity.OUID)
 }
 
 func (suite *OTPAuthnServiceTestSuite) TestAuthenticateWithInvalidInputs() {
@@ -309,39 +309,32 @@ func (suite *OTPAuthnServiceTestSuite) TestAuthenticateWithUserServiceError() {
 		identifyErr  *entityprovider.EntityProviderError
 		getUserRet   *entityprovider.Entity
 		getUserErr   *entityprovider.EntityProviderError
+		expectNoUser bool
 		expectedCode string
 	}{
 		{
-			"NonExistentUser",
-			nil,
-			&entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound},
-			nil,
-			nil,
-			common.ErrorUserNotFound.Code,
+			name:         "NonExistentUser",
+			identifyRet:  nil,
+			identifyErr:  &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound},
+			expectNoUser: true,
 		},
 		{
-			"IdentifyServerError",
-			nil,
-			serverErr,
-			nil,
-			nil,
-			serviceerror.InternalServerError.Code,
+			name:         "IdentifyServerError",
+			identifyRet:  nil,
+			identifyErr:  serverErr,
+			expectedCode: serviceerror.InternalServerError.Code,
 		},
 		{
-			"GetUserServerError",
-			&userID,
-			nil,
-			nil,
-			serverErr,
-			serviceerror.InternalServerError.Code,
+			name:         "GetUserServerError",
+			identifyRet:  &userID,
+			getUserErr:   serverErr,
+			expectedCode: serviceerror.InternalServerError.Code,
 		},
 		{
-			"UserIDNil",
-			nil,
-			(*entityprovider.EntityProviderError)(nil),
-			nil,
-			nil,
-			common.ErrorUserNotFound.Code,
+			name:         "UserIDNil",
+			identifyRet:  nil,
+			identifyErr:  (*entityprovider.EntityProviderError)(nil),
+			expectNoUser: true,
 		},
 	}
 
@@ -360,9 +353,16 @@ func (suite *OTPAuthnServiceTestSuite) TestAuthenticateWithUserServiceError() {
 			}
 
 			result, err := suite.service.Authenticate(context.Background(), testSessionToken, "123456")
-			suite.Nil(result)
-			suite.NotNil(err)
-			suite.Equal(tc.expectedCode, err.Code)
+			if tc.expectNoUser {
+				suite.NotNil(result)
+				suite.Nil(result.InternalEntity)
+				suite.Nil(err)
+				suite.Equal("+1234567890", result.VerifiedIdentifiers["mobileNumber"])
+			} else {
+				suite.Nil(result)
+				suite.NotNil(err)
+				suite.Equal(tc.expectedCode, err.Code)
+			}
 		})
 	}
 }

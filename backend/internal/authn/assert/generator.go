@@ -21,7 +21,8 @@
 package assert
 
 import (
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
+	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
+	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	"github.com/asgardeo/thunder/internal/system/log"
 )
@@ -32,25 +33,30 @@ const loggerComponentName = "AuthAssertGenerator"
 
 // AuthAssertGeneratorInterface defines the interface for generating auth assertion claims.
 type AuthAssertGeneratorInterface interface {
-	GenerateAssertion(authenticators []authncm.AuthenticatorReference) (*AssertionResult,
+	GenerateAssertion(authenticators []authnprovidermgr.AuthenticatorReference) (*AssertionResult,
 		*serviceerror.ServiceError)
-	UpdateAssertion(context *AssuranceContext, authenticator authncm.AuthenticatorReference) (
+	UpdateAssertion(context *AssuranceContext, authenticator authnprovidermgr.AuthenticatorReference) (
 		*AssertionResult, *serviceerror.ServiceError)
 	VerifyAssurance(context *AssuranceContext, requiredAAL AssuranceLevel, requiredIAL AssuranceLevel) (
 		bool, *serviceerror.ServiceError)
 }
 
 // authAssertGenerator implements the AuthAssertGeneratorInterface.
-type authAssertGenerator struct{}
+type authAssertGenerator struct {
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface
+}
 
 // newAuthAssertGenerator creates a new instance of AuthAssertGeneratorInterface.
-func newAuthAssertGenerator() AuthAssertGeneratorInterface {
-	return &authAssertGenerator{}
+func newAuthAssertGenerator(
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface) AuthAssertGeneratorInterface {
+	return &authAssertGenerator{
+		authnProvider: authnProvider,
+	}
 }
 
 // GenerateAssertion generates authenticator assertion based on the provided authenticators.
 func (ag *authAssertGenerator) GenerateAssertion(
-	authenticators []authncm.AuthenticatorReference) (*AssertionResult, *serviceerror.ServiceError) {
+	authenticators []authnprovidermgr.AuthenticatorReference) (*AssertionResult, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug("Generating authentication assertion")
 
@@ -74,13 +80,13 @@ func (ag *authAssertGenerator) GenerateAssertion(
 
 // UpdateAssertion updates existing assurance context with the provided authenticator.
 func (ag *authAssertGenerator) UpdateAssertion(context *AssuranceContext,
-	authenticator authncm.AuthenticatorReference) (*AssertionResult, *serviceerror.ServiceError) {
+	authenticator authnprovidermgr.AuthenticatorReference) (*AssertionResult, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug("Updating authentication assertion with new authenticator")
 
 	if context == nil {
 		logger.Debug("No existing assurance context found, generating new assertion")
-		return ag.GenerateAssertion([]authncm.AuthenticatorReference{authenticator})
+		return ag.GenerateAssertion([]authnprovidermgr.AuthenticatorReference{authenticator})
 	}
 
 	// Validate authenticator name is present
@@ -90,7 +96,7 @@ func (ag *authAssertGenerator) UpdateAssertion(context *AssuranceContext,
 	}
 
 	// Merge authenticators
-	allAuthenticators := make([]authncm.AuthenticatorReference, 0, len(context.Authenticators)+1)
+	allAuthenticators := make([]authnprovidermgr.AuthenticatorReference, 0, len(context.Authenticators)+1)
 	allAuthenticators = append(allAuthenticators, context.Authenticators...)
 	allAuthenticators = append(allAuthenticators, authenticator)
 
@@ -132,15 +138,15 @@ func (ag *authAssertGenerator) VerifyAssurance(context *AssuranceContext, requir
 
 // extractUniqueAuthenticators extracts unique authenticators and factors from authenticator references.
 // Returns slices of unique authenticator names and authentication factors.
-func (ag *authAssertGenerator) extractUniqueAuthenticators(authenticators []authncm.AuthenticatorReference,
-	logger *log.Logger) ([]string, []authncm.AuthenticationFactor) {
+func (ag *authAssertGenerator) extractUniqueAuthenticators(authenticators []authnprovidermgr.AuthenticatorReference,
+	logger *log.Logger) ([]string, []authnprovidercm.AuthenticationFactor) {
 	authenticatorsMap := make(map[string]bool)
-	factorSet := make(map[authncm.AuthenticationFactor]bool)
+	factorSet := make(map[authnprovidercm.AuthenticationFactor]bool)
 
 	for _, auth := range authenticators {
 		authenticatorsMap[auth.Authenticator] = true
 
-		factors := authncm.GetAuthenticatorFactors(auth.Authenticator)
+		factors := ag.authnProvider.GetAuthenticatorFactors(auth.Authenticator)
 		if len(factors) == 0 {
 			logger.Debug("No factors found for authenticator. Skipping",
 				log.String("authenticator", auth.Authenticator))
@@ -158,7 +164,7 @@ func (ag *authAssertGenerator) extractUniqueAuthenticators(authenticators []auth
 		uniqueAuthenticators = append(uniqueAuthenticators, authName)
 	}
 
-	uniqueFactors := make([]authncm.AuthenticationFactor, 0, len(factorSet))
+	uniqueFactors := make([]authnprovidercm.AuthenticationFactor, 0, len(factorSet))
 	for factor := range factorSet {
 		uniqueFactors = append(uniqueFactors, factor)
 	}
@@ -171,7 +177,7 @@ func (ag *authAssertGenerator) extractUniqueAuthenticators(authenticators []auth
 // - AAL1: Single-factor authentication (any one factor)
 // - AAL2: Two-factor authentication (two different factors)
 // - AAL3: Multi-factor authentication with hardware-based cryptographic authenticator
-func (ag *authAssertGenerator) calculateAAL(factorSet []authncm.AuthenticationFactor,
+func (ag *authAssertGenerator) calculateAAL(factorSet []authnprovidercm.AuthenticationFactor,
 	logger *log.Logger) AssuranceLevel {
 	var aal AssuranceLevel
 	factorCount := len(factorSet)

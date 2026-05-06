@@ -228,7 +228,7 @@ func registerServices(mux *http.ServeMux) jwt.JWTServiceInterface {
 		federatedAuths)
 
 	// Initialize authentication services.
-	authAssertGen := authnAssert.Initialize()
+	authAssertGen := authnAssert.Initialize(authnProvider)
 	consentEnforcer := authnConsent.Initialize(consentService, jwtService)
 
 	authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen, passkeyService,

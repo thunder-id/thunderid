@@ -170,14 +170,6 @@ var (
 				"executor": map[string]interface{}{
 					"name": "HTTPRequestExecutor",
 				},
-				"onSuccess": "auth_assert",
-			},
-			{
-				"id":   "auth_assert",
-				"type": "TASK_EXECUTION",
-				"executor": map[string]interface{}{
-					"name": "AuthAssertExecutor",
-				},
 				"onSuccess": "end",
 			},
 			{

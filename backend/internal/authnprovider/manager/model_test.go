@@ -23,8 +23,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
-
-	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
 )
 
 type ModelTestSuite struct {
@@ -36,17 +34,30 @@ func TestModelTestSuite(t *testing.T) {
 }
 
 func (s *ModelTestSuite) TestAuthUserMarshalUnmarshal() {
-	var authUser AuthUser
-	authUser.setIdentity("user-123", "customer", "ou-456")
-	authUser.setProviderData(defaultProvider, providerData{
-		token: "secret-token",
-		attributes: &authnprovidercm.AttributesResponse{
-			Attributes: map[string]*authnprovidercm.AttributeResponse{
-				"email": {Value: "test@example.com"},
+	authUser := AuthUser{
+		userState: ProviderUserStateExists,
+		authHistory: []*authResult{
+			{
+				authenticator: "password",
+				isVerified:    true,
+				runtimeAttributes: map[string]interface{}{
+					"email": "test@example.com",
+				},
 			},
 		},
-		isAttributeValuesIncluded: true,
-	})
+		userHistory: []*providerUserResult{
+			{
+				userID:   "user-123",
+				userType: "customer",
+				ouID:     "ou-456",
+				attributes: map[string]interface{}{
+					"name": "Test User",
+				},
+				isValuesIncluded: true,
+				token:            "secret-token",
+			},
+		},
+	}
 
 	// Marshal
 	data, err := json.Marshal(&authUser)
@@ -57,37 +68,56 @@ func (s *ModelTestSuite) TestAuthUserMarshalUnmarshal() {
 	err = json.Unmarshal(data, &restored)
 	s.NoError(err)
 
-	// Identity round-trips correctly
-	s.Equal("user-123", restored.userID)
-	s.Equal("customer", restored.userType)
-	s.Equal("ou-456", restored.ouID)
+	// User state round-trips correctly
+	s.Equal(ProviderUserStateExists, restored.userState)
 
-	// Provider data round-trips correctly
-	pd, ok := restored.getProviderData(defaultProvider)
-	s.True(ok)
-	s.Equal("secret-token", pd.token)
-	s.True(pd.isAttributeValuesIncluded)
-	s.NotNil(pd.attributes)
-	s.Equal("test@example.com", pd.attributes.Attributes["email"].Value)
+	// Auth history round-trips correctly
+	s.Require().Len(restored.authHistory, 1)
+	ar := restored.authHistory[0]
+	s.Equal("password", ar.authenticator)
+	s.True(ar.isVerified)
+	s.NotNil(ar.runtimeAttributes)
+	s.Equal("test@example.com", ar.runtimeAttributes["email"])
+
+	// User history round-trips correctly
+	s.Require().Len(restored.userHistory, 1)
+	ur := restored.userHistory[0]
+	s.Equal("user-123", ur.userID)
+	s.Equal("customer", ur.userType)
+	s.Equal("ou-456", ur.ouID)
+	s.NotNil(ur.attributes)
+	s.Equal("Test User", ur.attributes["name"])
+	s.True(ur.isValuesIncluded)
+	s.Equal("secret-token", ur.token)
 }
 
-func (s *ModelTestSuite) TestAuthUserIsAuthenticated_ZeroValue() {
+func (s *ModelTestSuite) TestAuthUserIsSet_ZeroValue() {
 	var a AuthUser
-	s.False(a.IsAuthenticated())
+	s.False(a.IsSet())
 }
 
-func (s *ModelTestSuite) TestAuthUserIsAuthenticated_EmptyAuthUser() {
+func (s *ModelTestSuite) TestAuthUserIsSet_EmptyAuthUser() {
 	a := AuthUser{}
-	s.False(a.IsAuthenticated())
+	s.False(a.IsSet())
 }
 
-func (s *ModelTestSuite) TestAuthUserIsAuthenticated_WithUserID() {
+func (s *ModelTestSuite) TestAuthUserIsSet_WithUserHistory() {
 	a := AuthUser{}
-	a.setIdentity("user-123", "customer", "ou-456")
-	s.True(a.IsAuthenticated())
+	a.userHistory = []*providerUserResult{
+		{userID: "user-123", userType: "customer", ouID: "ou-456"},
+	}
+	s.True(a.IsSet())
 }
 
-func (s *ModelTestSuite) TestAuthUserMarshalNilProviderData() {
+func (s *ModelTestSuite) TestAuthUserIsSet_WithOnlyAuthHistory() {
+	a := AuthUser{}
+	a.authHistory = []*authResult{
+		{authenticator: "password"},
+	}
+	s.True(a.IsSet())
+}
+
+func (s *ModelTestSuite) TestAuthUserMarshalNilAuthHistory() {
 	// An empty AuthUser must marshal and unmarshal without panicking
 	authUser := AuthUser{}
 
@@ -98,6 +128,6 @@ func (s *ModelTestSuite) TestAuthUserMarshalNilProviderData() {
 	var restored AuthUser
 	err = json.Unmarshal(data, &restored)
 	s.NoError(err)
-	s.Empty(restored.userID)
-	s.Empty(restored.providersAuthData)
+	s.Empty(restored.userHistory)
+	s.Empty(restored.authHistory)
 }

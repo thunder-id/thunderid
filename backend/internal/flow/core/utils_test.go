@@ -19,12 +19,24 @@
 package core
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
+	"github.com/asgardeo/thunder/internal/authnprovider/manager"
 )
+
+func makeAuthUser(userID, ouID string) manager.AuthUser {
+	var a manager.AuthUser
+	data, _ := json.Marshal(map[string]interface{}{
+		"authHistory": []interface{}{},
+		"userHistory": []map[string]interface{}{{"userId": userID, "ouId": ouID, "isValuesIncluded": true}},
+		"userState":   "exists",
+	})
+	_ = json.Unmarshal(data, &a)
+	return a
+}
 
 type UtilsTestSuite struct {
 	suite.Suite
@@ -112,9 +124,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderRuntimeTakesPrecedence() {
 func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromAuthenticatedUser() {
 	ctx := &NodeContext{
 		RuntimeData: map[string]string{},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			UserID: "user-123",
-		},
+		AuthUser:    makeAuthUser("user-123", ""),
 	}
 
 	result := ResolvePlaceholder(ctx, "{{ context.userId }}")
@@ -124,9 +134,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromAuthenticatedUser() {
 func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromRuntimeData() {
 	ctx := &NodeContext{
 		RuntimeData: map[string]string{"userId": "runtime-user-456"},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			UserID: "",
-		},
+		AuthUser:    makeAuthUser("", ""),
 	}
 
 	result := ResolvePlaceholder(ctx, "{{ context.userId }}")
@@ -136,22 +144,18 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromRuntimeData() {
 func (s *UtilsTestSuite) TestResolvePlaceholderUserIDAuthenticatedUserTakesPrecedence() {
 	ctx := &NodeContext{
 		RuntimeData: map[string]string{"userId": "runtime-user-id"},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			UserID: "auth-user-id",
-		},
+		AuthUser:    makeAuthUser("auth-user-id", ""),
 	}
 
 	result := ResolvePlaceholder(ctx, "{{ context.userId }}")
-	s.Equal("auth-user-id", result, "AuthenticatedUser.UserID should take precedence over RuntimeData")
+	s.Equal("auth-user-id", result, "AuthUser.GetUserID() should take precedence over RuntimeData")
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderUserIDNotFromUserInputs() {
 	ctx := &NodeContext{
 		UserInputs:  map[string]string{"userId": "input-user-id"},
 		RuntimeData: map[string]string{},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			UserID: "",
-		},
+		AuthUser:    makeAuthUser("", ""),
 	}
 
 	result := ResolvePlaceholder(ctx, "{{ context.userId }}")
@@ -161,9 +165,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDNotFromUserInputs() {
 func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromAuthenticatedUser() {
 	ctx := &NodeContext{
 		RuntimeData: map[string]string{},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "ou-123",
-		},
+		AuthUser:    makeAuthUser("", "ou-123"),
 	}
 
 	result := ResolvePlaceholder(ctx, "{{ context.ouId }}")
@@ -173,9 +175,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromAuthenticatedUser() {
 func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromRuntimeData() {
 	ctx := &NodeContext{
 		RuntimeData: map[string]string{"ouId": "runtime-ou-456"},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "",
-		},
+		AuthUser:    makeAuthUser("", ""),
 	}
 
 	result := ResolvePlaceholder(ctx, "{{ context.ouId }}")
@@ -185,22 +185,18 @@ func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromRuntimeData() {
 func (s *UtilsTestSuite) TestResolvePlaceholderOUIDAuthenticatedUserTakesPrecedence() {
 	ctx := &NodeContext{
 		RuntimeData: map[string]string{"ouId": "runtime-ou-id"},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "auth-ou-id",
-		},
+		AuthUser:    makeAuthUser("", "auth-ou-id"),
 	}
 
 	result := ResolvePlaceholder(ctx, "{{ context.ouId }}")
-	s.Equal("auth-ou-id", result, "AuthenticatedUser.OUID should take precedence over RuntimeData")
+	s.Equal("auth-ou-id", result, "AuthUser.GetOUID() should take precedence over RuntimeData")
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderOUIDNotFromUserInputs() {
 	ctx := &NodeContext{
 		UserInputs:  map[string]string{"ouId": "input-ou-id"},
 		RuntimeData: map[string]string{},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "",
-		},
+		AuthUser:    makeAuthUser("", ""),
 	}
 
 	result := ResolvePlaceholder(ctx, "{{ context.ouId }}")

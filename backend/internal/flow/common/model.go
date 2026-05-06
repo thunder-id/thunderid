@@ -21,7 +21,6 @@ package common
 import (
 	"slices"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
 	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 )
 
@@ -55,34 +54,32 @@ type Prompt struct {
 
 // NodeResponse represents the response from a node execution
 type NodeResponse struct {
-	Status            NodeStatus                `json:"status"`
-	Type              NodeResponseType          `json:"type"`
-	FailureReason     string                    `json:"failureReason,omitempty"`
-	Inputs            []Input                   `json:"inputs,omitempty"`
-	AdditionalData    map[string]string         `json:"additionalData,omitempty"`
-	RedirectURL       string                    `json:"redirectUrl,omitempty"`
-	Actions           []Action                  `json:"actions,omitempty"`
-	Meta              interface{}               `json:"meta,omitempty"`
-	NextNodeID        string                    `json:"nextNodeId,omitempty"`
-	RuntimeData       map[string]string         `json:"runtimeData,omitempty"`
-	ForwardedData     map[string]interface{}    `json:"forwardedData,omitempty"`
-	AuthenticatedUser authncm.AuthenticatedUser `json:"authenticatedUser,omitempty"`
-	Assertion         string                    `json:"assertion,omitempty"`
-	AuthUser          authnprovidermgr.AuthUser `json:"-"`
+	Status         NodeStatus                `json:"status"`
+	Type           NodeResponseType          `json:"type"`
+	FailureReason  string                    `json:"failureReason,omitempty"`
+	Inputs         []Input                   `json:"inputs,omitempty"`
+	AdditionalData map[string]string         `json:"additionalData,omitempty"`
+	RedirectURL    string                    `json:"redirectUrl,omitempty"`
+	Actions        []Action                  `json:"actions,omitempty"`
+	Meta           interface{}               `json:"meta,omitempty"`
+	NextNodeID     string                    `json:"nextNodeId,omitempty"`
+	RuntimeData    map[string]string         `json:"runtimeData,omitempty"`
+	ForwardedData  map[string]interface{}    `json:"forwardedData,omitempty"`
+	Assertion      string                    `json:"assertion,omitempty"`
+	AuthUser       authnprovidermgr.AuthUser `json:"-"`
 }
 
 // ExecutorResponse represents the response from an executor
 type ExecutorResponse struct {
-	Status            ExecutorStatus            `json:"status"`
-	Inputs            []Input                   `json:"inputs,omitempty"`
-	AdditionalData    map[string]string         `json:"additionalData,omitempty"`
-	RedirectURL       string                    `json:"redirectUrl,omitempty"`
-	RuntimeData       map[string]string         `json:"runtimeData,omitempty"`
-	ForwardedData     map[string]interface{}    `json:"forwardedData,omitempty"`
-	AuthenticatedUser authncm.AuthenticatedUser `json:"authenticatedUser,omitempty"`
-	Assertion         string                    `json:"assertion,omitempty"`
-	FailureReason     string                    `json:"failureReason,omitempty"`
-	AuthUser          authnprovidermgr.AuthUser `json:"-"`
+	Status         ExecutorStatus            `json:"status"`
+	Inputs         []Input                   `json:"inputs,omitempty"`
+	AdditionalData map[string]string         `json:"additionalData,omitempty"`
+	RedirectURL    string                    `json:"redirectUrl,omitempty"`
+	RuntimeData    map[string]string         `json:"runtimeData,omitempty"`
+	ForwardedData  map[string]interface{}    `json:"forwardedData,omitempty"`
+	Assertion      string                    `json:"assertion,omitempty"`
+	FailureReason  string                    `json:"failureReason,omitempty"`
+	AuthUser       authnprovidermgr.AuthUser `json:"-"`
 }
 
 // NodeExecutionRecord represents a record of a node execution in the flow.

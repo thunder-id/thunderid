@@ -28,9 +28,10 @@ import (
 
 // AuthnProviderInterface defines the interface for authentication providers.
 type AuthnProviderInterface interface {
-	Authenticate(ctx context.Context, identifiers, credentials map[string]interface{},
+	Authenticate(ctx context.Context, authType string, authnData any,
 		metadata *authnprovidercm.AuthnMetadata) (*authnprovidercm.AuthnResult, *serviceerror.ServiceError)
 	GetAttributes(ctx context.Context, token string, requestedAttributes *authnprovidercm.RequestedAttributes,
 		metadata *authnprovidercm.GetAttributesMetadata) (
 		*authnprovidercm.GetAttributesResult, *serviceerror.ServiceError)
+	GetAuthenticatorMetadata(authenticatorName string) *authnprovidercm.AuthenticatorMeta
 }

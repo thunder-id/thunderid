@@ -18,7 +18,7 @@
 
 package assert
 
-import authncm "github.com/asgardeo/thunder/internal/authn/common"
+import authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 
 // AssuranceLevel represents the level of assurance for authentication.
 type AssuranceLevel string
@@ -41,9 +41,9 @@ func (al AssuranceLevel) Level() int {
 
 // AssuranceContext contains authentication assurance information.
 type AssuranceContext struct {
-	AAL            AssuranceLevel                   `json:"aal"`
-	IAL            AssuranceLevel                   `json:"ial"`
-	Authenticators []authncm.AuthenticatorReference `json:"authenticators"`
+	AAL            AssuranceLevel                            `json:"aal"`
+	IAL            AssuranceLevel                            `json:"ial"`
+	Authenticators []authnprovidermgr.AuthenticatorReference `json:"authenticators"`
 }
 
 // AssertionResult contains the result of an authentication assertion.

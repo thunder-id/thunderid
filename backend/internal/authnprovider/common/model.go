@@ -19,6 +19,8 @@
 // Package common provides common data models and error types shared across authnprovider sub-packages.
 package common
 
+import "github.com/asgardeo/thunder/internal/idp"
+
 // AuthnMetadata contains metadata for authentication.
 type AuthnMetadata struct {
 	AppMetadata map[string]interface{} `json:"appMetadata,omitempty"`
@@ -46,6 +48,8 @@ type AuthnResult struct {
 	ExternalClaims  map[string]interface{} `json:"externalClaims,omitempty"`
 	IsExistingUser  bool                   `json:"isExistingUser"`
 	IsAmbiguousUser bool                   `json:"isAmbiguousUser"`
+
+	AuthType string `json:"authType,omitempty"`
 }
 
 // GetAttributesMetadata contains metadata for fetching attributes.
@@ -132,4 +136,50 @@ type AttributesResponse struct {
 type AttributeResponse struct {
 	Value                     interface{}                `json:"value,omitempty"`
 	AssuranceMetadataResponse *AssuranceMetadataResponse `json:"assuranceMetadataResponse,omitempty"`
+}
+
+// CredentialsAuthnData carries the identifiers and credentials for credential-based authentication.
+type CredentialsAuthnData struct {
+	Identifiers map[string]interface{}
+	Credentials map[string]interface{}
+}
+
+// PasskeyAuthnData carries the necessary data for passkey-based authentication.
+type PasskeyAuthnData struct {
+	CredentialID      string
+	CredentialType    string
+	ClientDataJSON    string
+	AuthenticatorData string
+	Signature         string
+	UserHandle        string
+	SessionToken      string
+}
+
+// OTPAuthnData carries the necessary data for OTP-based authentication.
+type OTPAuthnData struct {
+	SessionToken string
+	OTP          string
+}
+
+// FederatedAuthnData carries the credential data for federated authentication.
+type FederatedAuthnData struct {
+	IDPID   string
+	IDPType idp.IDPType
+	OAuthCredential
+}
+
+// OAuthCredential carries the credential data for OAuth-based authentication.
+type OAuthCredential struct {
+	Code string
+}
+
+// AuthenticationFactor represents the type of authentication factor.
+type AuthenticationFactor string
+
+// AuthenticatorMeta represents an authenticator's metadata including authentication factors.
+type AuthenticatorMeta struct {
+	// Name is the unique identifier for the authenticator (used in individual authentication APIs)
+	Name string
+	// Factors represents the authentication factors this authenticator validates
+	Factors []AuthenticationFactor
 }

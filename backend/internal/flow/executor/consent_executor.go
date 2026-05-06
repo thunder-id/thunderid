@@ -29,6 +29,7 @@ import (
 
 	consentauthn "github.com/asgardeo/thunder/internal/authn/consent"
 	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
+	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/consent"
 	"github.com/asgardeo/thunder/internal/flow/common"
 	"github.com/asgardeo/thunder/internal/flow/core"
@@ -48,6 +49,7 @@ const (
 type consentExecutor struct {
 	core.ExecutorInterface
 	consentEnforcer consentauthn.ConsentEnforcerServiceInterface
+	authnProvider   authnprovidermgr.AuthnProviderManagerInterface
 	logger          *log.Logger
 }
 
@@ -57,6 +59,7 @@ var _ core.ExecutorInterface = (*consentExecutor)(nil)
 func newConsentExecutor(
 	flowFactory core.FlowFactoryInterface,
 	consentEnforcer consentauthn.ConsentEnforcerServiceInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *consentExecutor {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, "ConsentExecutor"),
@@ -83,6 +86,7 @@ func newConsentExecutor(
 	return &consentExecutor{
 		ExecutorInterface: base,
 		consentEnforcer:   consentEnforcer,
+		authnProvider:     authnProvider,
 		logger:            logger,
 	}
 }
@@ -108,7 +112,7 @@ func (e *consentExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRespon
 	// TODO: Replace with application's actual OU when OU support is added
 	ouID := "default"
 	appID := ctx.AppID
-	userID := ctx.AuthenticatedUser.UserID
+	userID := ctx.AuthUser.GetUserID()
 
 	if !e.HasRequiredInputs(ctx, execResp) {
 		logger.Debug("Required consent decisions not provided; checking if consent is needed")
@@ -126,7 +130,7 @@ func (e *consentExecutor) checkConsent(ctx *core.NodeContext, execResp *common.E
 	logger.Debug("Checking if user consent is required")
 
 	essentialAttributes, optionalAttributes := e.getRequiredAttributes(ctx)
-	availableAttributes := buildAugmentedAvailableAttributes(ctx)
+	availableAttributes := e.buildAugmentedAvailableAttributes(ctx)
 
 	// Resolve consent to determine if any required consents are missing and need to be prompted
 	promptData, svcErr := e.consentEnforcer.ResolveConsent(
@@ -301,8 +305,11 @@ func (e *consentExecutor) getRequiredAttributes(ctx *core.NodeContext) (
 // special attribute keys (groups, userType, ouId, ouName, ouHandle) that are present by
 // construction in the authenticated user context but are never included in AttributesResponse
 // by authentication providers.
-func buildAugmentedAvailableAttributes(ctx *core.NodeContext) *authnprovidercm.AttributesResponse {
-	base := ctx.AuthenticatedUser.AvailableAttributes
+func (e *consentExecutor) buildAugmentedAvailableAttributes(ctx *core.NodeContext) *authnprovidercm.AttributesResponse {
+	var base *authnprovidercm.AttributesResponse
+	if ctx.AuthUser.IsAuthenticated() {
+		base, _ = e.authnProvider.GetUserAvailableAttributes(ctx.Context, ctx.AuthUser)
+	}
 
 	var baseAttrs map[string]*authnprovidercm.AttributeResponse
 	var baseVerifications map[string]*authnprovidercm.VerificationResponse
@@ -320,15 +327,15 @@ func buildAugmentedAvailableAttributes(ctx *core.NodeContext) *authnprovidercm.A
 	// Inject special attribute keys.
 	// Value is set to empty since the consent enforcer only checks for presence of the key, and the actual values
 	// can be obtained from the authenticated user context if needed
-	if ctx.AuthenticatedUser.UserType != "" {
+	if ctx.AuthUser.GetUserType() != "" {
 		augmented[oauth2const.ClaimUserType] = &authnprovidercm.AttributeResponse{}
 	}
-	if ctx.AuthenticatedUser.OUID != "" {
+	if ctx.AuthUser.GetOUID() != "" {
 		augmented[oauth2const.ClaimOUID] = &authnprovidercm.AttributeResponse{}
 		augmented[oauth2const.ClaimOUName] = &authnprovidercm.AttributeResponse{}
 		augmented[oauth2const.ClaimOUHandle] = &authnprovidercm.AttributeResponse{}
 	}
-	if ctx.AuthenticatedUser.UserID != "" {
+	if ctx.AuthUser.GetUserID() != "" {
 		augmented[oauth2const.UserAttributeGroups] = &authnprovidercm.AttributeResponse{}
 	}
 

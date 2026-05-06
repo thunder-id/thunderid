@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 
+	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/flow/common"
 	"github.com/asgardeo/thunder/internal/flow/core"
@@ -40,6 +41,7 @@ const (
 type attributeCollector struct {
 	core.ExecutorInterface
 	entityProvider entityprovider.EntityProviderInterface
+	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
 	logger         *log.Logger
 }
 
@@ -49,6 +51,7 @@ var _ core.ExecutorInterface = (*attributeCollector)(nil)
 func newAttributeCollector(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *attributeCollector {
 	prerequisites := []common.Input{
 		{
@@ -66,6 +69,7 @@ func newAttributeCollector(
 	return &attributeCollector{
 		ExecutorInterface: base,
 		entityProvider:    entityProvider,
+		authnProvider:     authnProvider,
 		logger:            logger,
 	}
 }
@@ -86,7 +90,7 @@ func (a *attributeCollector) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 		return execResp, nil
 	}
 
-	if !ctx.AuthenticatedUser.IsAuthenticated {
+	if !ctx.AuthUser.IsAuthenticated() {
 		logger.Debug("User is not authenticated, cannot collect attributes")
 		execResp.Status = common.ExecFailure
 		execResp.FailureReason = failureReasonUserNotAuthenticated
@@ -133,42 +137,43 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 	}
 
 	// Update the executor response with the required inputs retrieved from authenticated user attributes.
-	authnUserAttrs := ctx.AuthenticatedUser.Attributes
-	if len(authnUserAttrs) > 0 {
-		logger.Debug("Authenticated user attributes found, updating executor response required inputs")
+	if ctx.AuthUser.IsAuthenticated() {
+		_, attrsResp, svcErr := a.authnProvider.GetUserAttributes(ctx.Context, nil, nil, ctx.AuthUser)
+		if svcErr == nil && attrsResp != nil && len(attrsResp.Attributes) > 0 {
+			logger.Debug("Authenticated user attributes found, updating executor response required inputs")
 
-		// Clear the required data in the executor response to avoid duplicates.
-		missingAttributes := execResp.Inputs
-		execResp.Inputs = make([]common.Input, 0)
-		if execResp.RuntimeData == nil {
-			execResp.RuntimeData = make(map[string]string)
-		}
+			// Clear the required data in the executor response to avoid duplicates.
+			missingAttributes := execResp.Inputs
+			execResp.Inputs = make([]common.Input, 0)
+			if execResp.RuntimeData == nil {
+				execResp.RuntimeData = make(map[string]string)
+			}
 
-		for _, input := range missingAttributes {
-			attribute, exists := authnUserAttrs[input.Identifier]
-			if exists {
+			for _, input := range missingAttributes {
 				// If the attribute is a password, do not retrieve it from the profile.
 				if input.Identifier == userAttributePassword {
 					continue
 				}
 
-				attributeStr, ok := attribute.(string)
-				if ok {
-					logger.Debug("Input exists in authenticated user attributes, adding to runtime data",
+				attrResp, exists := attrsResp.Attributes[input.Identifier]
+				if exists && attrResp != nil {
+					if attrStr, ok := attrResp.Value.(string); ok {
+						logger.Debug("Input exists in authenticated user attributes, adding to runtime data",
+							log.String("attributeName", input.Identifier))
+						execResp.RuntimeData[input.Identifier] = attrStr
+					}
+				} else {
+					logger.Debug("Input does not exist in authenticated user attributes, adding to required inputs",
 						log.String("attributeName", input.Identifier))
-					execResp.RuntimeData[input.Identifier] = attributeStr
+					execResp.Inputs = append(execResp.Inputs, input)
 				}
-			} else {
-				logger.Debug("Input does not exist in authenticated user attributes, adding to required inputs",
-					log.String("attributeName", input.Identifier))
-				execResp.Inputs = append(execResp.Inputs, input)
 			}
-		}
 
-		if len(execResp.Inputs) == 0 {
-			logger.Debug("All required inputs are available in authenticated user attributes, " +
-				"no further action needed")
-			return true
+			if len(execResp.Inputs) == 0 {
+				logger.Debug("All required inputs are available in authenticated user attributes, " +
+					"no further action needed")
+				return true
+			}
 		}
 	}
 

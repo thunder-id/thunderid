@@ -22,12 +22,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	appmodel "github.com/asgardeo/thunder/internal/application/model"
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
-	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
 	managerpkg "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/flow/common"
 	"github.com/asgardeo/thunder/internal/flow/core"
@@ -57,10 +54,9 @@ type EngineContext struct {
 	Graph       core.GraphInterface
 	Application appmodel.Application
 
-	AuthenticatedUser authncm.AuthenticatedUser
-	AuthUser          managerpkg.AuthUser
-	Assertion         string
-	ExecutionHistory  map[string]*common.NodeExecutionRecord
+	AuthUser         managerpkg.AuthUser
+	Assertion        string
+	ExecutionHistory map[string]*common.NodeExecutionRecord
 
 	ChallengeTokenIn   string
 	ChallengeTokenHash string
@@ -226,49 +222,6 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context, graph core.GraphInt
 		runtimeData = make(map[string]string)
 	}
 
-	// Parse authenticated user attributes
-	var userAttributes map[string]interface{}
-	if content.UserAttributes != nil {
-		if err := json.Unmarshal([]byte(*content.UserAttributes), &userAttributes); err != nil {
-			return EngineContext{}, err
-		}
-	} else {
-		userAttributes = make(map[string]interface{})
-	}
-
-	var token string
-	if content.Token != nil {
-		token = *content.Token
-	}
-
-	// Parse available attributes
-	var availableAttributes *authnprovidercm.AttributesResponse
-	if content.AvailableAttributes != nil && strings.TrimSpace(*content.AvailableAttributes) != "" {
-		var attrs authnprovidercm.AttributesResponse
-		if err := json.Unmarshal([]byte(*content.AvailableAttributes), &attrs); err != nil {
-			return EngineContext{}, err
-		}
-		availableAttributes = &attrs
-	}
-
-	// Build authenticated user
-	authenticatedUser := authncm.AuthenticatedUser{
-		IsAuthenticated:     content.IsAuthenticated,
-		UserID:              "",
-		Attributes:          userAttributes,
-		Token:               token,
-		AvailableAttributes: availableAttributes,
-	}
-	if content.UserID != nil {
-		authenticatedUser.UserID = *content.UserID
-	}
-	if content.OUID != nil {
-		authenticatedUser.OUID = *content.OUID
-	}
-	if content.UserType != nil {
-		authenticatedUser.UserType = *content.UserType
-	}
-
 	// Parse execution history
 	var executionHistory map[string]*common.NodeExecutionRecord
 	if content.ExecutionHistory != nil {
@@ -326,7 +279,6 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context, graph core.GraphInt
 		CurrentAction:      currentAction,
 		CurrentSegmentID:   currentSegmentID,
 		Graph:              graph,
-		AuthenticatedUser:  authenticatedUser,
 		AuthUser:           authUser,
 		ExecutionHistory:   executionHistory,
 		ChallengeTokenHash: challengeTokenHash,
@@ -348,13 +300,6 @@ func FromEngineContext(ctx EngineContext) (*FlowContextDB, error) {
 		return nil, err
 	}
 	runtimeData := string(runtimeDataJSON)
-
-	// Serialize authenticated user attributes
-	userAttributesJSON, err := json.Marshal(ctx.AuthenticatedUser.Attributes)
-	if err != nil {
-		return nil, err
-	}
-	userAttributes := string(userAttributesJSON)
 
 	// Serialize execution history
 	executionHistoryJSON, err := json.Marshal(ctx.ExecutionHistory)
@@ -382,43 +327,9 @@ func FromEngineContext(ctx EngineContext) (*FlowContextDB, error) {
 		currentSegmentID = &ctx.CurrentSegmentID
 	}
 
-	// Get authenticated user ID
-	var authenticatedUserID *string
-	if ctx.AuthenticatedUser.UserID != "" {
-		authenticatedUserID = &ctx.AuthenticatedUser.UserID
-	}
-
-	// Get organization unit ID
-	var oUID *string
-	if ctx.AuthenticatedUser.OUID != "" {
-		oUID = &ctx.AuthenticatedUser.OUID
-	}
-
-	// Get user type
-	var userType *string
-	if ctx.AuthenticatedUser.UserType != "" {
-		userType = &ctx.AuthenticatedUser.UserType
-	}
-
-	var token *string
-	if ctx.AuthenticatedUser.Token != "" {
-		token = &ctx.AuthenticatedUser.Token
-	}
-
-	// Serialize available attributes
-	var availableAttributes *string
-	if ctx.AuthenticatedUser.AvailableAttributes != nil {
-		availableAttrsJSON, err := json.Marshal(ctx.AuthenticatedUser.AvailableAttributes)
-		if err != nil {
-			return nil, err
-		}
-		availableAttrsStr := string(availableAttrsJSON)
-		availableAttributes = &availableAttrsStr
-	}
-
 	// Serialize AuthUser if present
 	var authUserStr *string
-	if ctx.AuthUser.IsAuthenticated() {
+	if ctx.AuthUser.IsSet() {
 		authUserJSON, err := json.Marshal(&ctx.AuthUser)
 		if err != nil {
 			return nil, err
@@ -440,24 +351,17 @@ func FromEngineContext(ctx EngineContext) (*FlowContextDB, error) {
 	}
 
 	content := flowContextContent{
-		AppID:               ctx.AppID,
-		Verbose:             ctx.Verbose,
-		CurrentNodeID:       currentNodeID,
-		CurrentAction:       currentAction,
-		CurrentSegmentID:    currentSegmentID,
-		GraphID:             graphID,
-		RuntimeData:         &runtimeData,
-		ExecutionHistory:    &executionHistory,
-		IsAuthenticated:     ctx.AuthenticatedUser.IsAuthenticated,
-		UserID:              authenticatedUserID,
-		OUID:                oUID,
-		UserType:            userType,
-		UserInputs:          &userInputs,
-		UserAttributes:      &userAttributes,
-		Token:               token,
-		AvailableAttributes: availableAttributes,
-		AuthUser:            authUserStr,
-		ChallengeTokenHash:  challengeTokenHash,
+		AppID:              ctx.AppID,
+		Verbose:            ctx.Verbose,
+		CurrentNodeID:      currentNodeID,
+		CurrentAction:      currentAction,
+		CurrentSegmentID:   currentSegmentID,
+		GraphID:            graphID,
+		RuntimeData:        &runtimeData,
+		ExecutionHistory:   &executionHistory,
+		UserInputs:         &userInputs,
+		AuthUser:           authUserStr,
+		ChallengeTokenHash: challengeTokenHash,
 	}
 
 	encryptedContext, err := content.encrypt(ctx.Context)

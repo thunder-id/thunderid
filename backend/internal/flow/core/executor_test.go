@@ -19,11 +19,12 @@
 package core
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
+	"github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/flow/common"
 )
 
@@ -224,7 +225,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 	tests := []struct {
 		name               string
 		prerequisites      []common.Input
-		authenticatedUser  authncm.AuthenticatedUser
+		authUserID         string
 		userInputs         map[string]string
 		runtimeData        map[string]string
 		expectedValid      bool
@@ -234,7 +235,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"No prerequisites",
 			[]common.Input{},
-			authncm.AuthenticatedUser{},
+			"",
 			map[string]string{},
 			map[string]string{},
 			true,
@@ -244,7 +245,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"UserID prerequisite met via authenticated user",
 			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
-			authncm.AuthenticatedUser{UserID: "user-123"},
+			"user-123",
 			map[string]string{},
 			map[string]string{},
 			true,
@@ -254,7 +255,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"UserID prerequisite not met",
 			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
-			authncm.AuthenticatedUser{},
+			"",
 			map[string]string{},
 			map[string]string{},
 			false,
@@ -264,7 +265,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Other prerequisite met via user input",
 			[]common.Input{{Identifier: "email", Required: true}},
-			authncm.AuthenticatedUser{},
+			"",
 			map[string]string{"email": "test@example.com"},
 			map[string]string{},
 			true,
@@ -274,7 +275,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Other prerequisite met via runtime data",
 			[]common.Input{{Identifier: "token", Required: true}},
-			authncm.AuthenticatedUser{},
+			"",
 			map[string]string{},
 			map[string]string{"token": "abc123"},
 			true,
@@ -284,7 +285,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Prerequisite not met",
 			[]common.Input{{Identifier: "apiKey", Required: true}},
-			authncm.AuthenticatedUser{},
+			"",
 			map[string]string{},
 			map[string]string{},
 			false,
@@ -294,7 +295,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Optional prerequisite not met",
 			[]common.Input{{Identifier: "optionalKey", Required: false}},
-			authncm.AuthenticatedUser{},
+			"",
 			map[string]string{},
 			map[string]string{},
 			true,
@@ -304,7 +305,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Prerequisite met via forwarded data (string)",
 			[]common.Input{{Identifier: "email", Required: true}},
-			authncm.AuthenticatedUser{},
+			"",
 			map[string]string{},
 			map[string]string{},
 			true,
@@ -314,7 +315,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Prerequisite not met via forwarded data (non-string)",
 			[]common.Input{{Identifier: "email", Required: true}},
-			authncm.AuthenticatedUser{},
+			"",
 			map[string]string{},
 			map[string]string{},
 			false,
@@ -326,11 +327,16 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, tt.prerequisites)
+			var authUser manager.AuthUser
+			if tt.authUserID != "" {
+				_ = json.Unmarshal([]byte(`{"authHistory":[],"userHistory":[{"userId":"`+tt.authUserID+
+					`","isValuesIncluded":true}],"userState":"exists"}`), &authUser)
+			}
 			ctx := &NodeContext{
-				ExecutionID:       "test-flow",
-				AuthenticatedUser: tt.authenticatedUser,
-				UserInputs:        tt.userInputs,
-				RuntimeData:       tt.runtimeData,
+				ExecutionID: "test-flow",
+				AuthUser:    authUser,
+				UserInputs:  tt.userInputs,
+				RuntimeData: tt.runtimeData,
 			}
 
 			// Add ForwardedData for specific test cases
@@ -357,36 +363,36 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 
 func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 	tests := []struct {
-		name              string
-		authenticatedUser authncm.AuthenticatedUser
-		runtimeData       map[string]string
-		userInputs        map[string]string
-		expectedUserID    string
+		name           string
+		authUserID     string
+		runtimeData    map[string]string
+		userInputs     map[string]string
+		expectedUserID string
 	}{
 		{
 			"UserID from authenticated user",
-			authncm.AuthenticatedUser{UserID: "user-123"},
+			"user-123",
 			map[string]string{},
 			map[string]string{},
 			"user-123",
 		},
 		{
 			"UserID from runtime data",
-			authncm.AuthenticatedUser{},
+			"",
 			map[string]string{userAttributeUserID: "user-456"},
 			map[string]string{},
 			"user-456",
 		},
 		{
 			"Priority: authenticated user over runtime data",
-			authncm.AuthenticatedUser{UserID: "user-auth"},
+			"user-auth",
 			map[string]string{userAttributeUserID: "user-runtime"},
 			map[string]string{},
 			"user-auth",
 		},
 		{
 			"No userID available",
-			authncm.AuthenticatedUser{},
+			"",
 			map[string]string{},
 			map[string]string{},
 			"",
@@ -396,10 +402,15 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, nil)
+			var authUser manager.AuthUser
+			if tt.authUserID != "" {
+				_ = json.Unmarshal([]byte(`{"authHistory":[],"userHistory":[{"userId":"`+tt.authUserID+
+					`","isValuesIncluded":true}],"userState":"exists"}`), &authUser)
+			}
 			ctx := &NodeContext{
-				AuthenticatedUser: tt.authenticatedUser,
-				RuntimeData:       tt.runtimeData,
-				UserInputs:        tt.userInputs,
+				AuthUser:    authUser,
+				RuntimeData: tt.runtimeData,
+				UserInputs:  tt.userInputs,
 			}
 
 			result := exec.GetUserIDFromContext(ctx)

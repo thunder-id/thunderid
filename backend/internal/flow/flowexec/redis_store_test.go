@@ -30,7 +30,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
 	"github.com/asgardeo/thunder/internal/flow/common"
 	"github.com/asgardeo/thunder/internal/system/config"
 	"github.com/asgardeo/thunder/tests/mocks/flow/coremock"
@@ -88,13 +87,9 @@ func (suite *RedisFlowStoreTestSuite) buildEngineContext() EngineContext {
 	mockGraph := coremock.NewGraphInterfaceMock(suite.T())
 	mockGraph.On("GetID").Return("test-graph-id").Maybe()
 	return EngineContext{
-		ExecutionID: redisTestFlowID,
-		AppID:       "test-app-id",
-		FlowType:    common.FlowTypeAuthentication,
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-			Attributes:      map[string]interface{}{},
-		},
+		ExecutionID:      redisTestFlowID,
+		AppID:            "test-app-id",
+		FlowType:         common.FlowTypeAuthentication,
 		UserInputs:       map[string]string{},
 		RuntimeData:      map[string]string{},
 		ExecutionHistory: map[string]*common.NodeExecutionRecord{},

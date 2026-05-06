@@ -22,10 +22,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
 	authnoauth "github.com/asgardeo/thunder/internal/authn/oauth"
+	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
 	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/entityprovider"
 	"github.com/asgardeo/thunder/internal/entitytype"
@@ -34,7 +33,6 @@ import (
 	"github.com/asgardeo/thunder/internal/idp"
 	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	"github.com/asgardeo/thunder/internal/system/log"
-	systemutils "github.com/asgardeo/thunder/internal/system/utils"
 )
 
 const (
@@ -53,16 +51,13 @@ type OAuthTokenResponse struct {
 	ExpiresIn    int    `json:"expires_in"`
 }
 
-// userInfoSkipAttributes contains the list of user info attributes to skip when mapping to context user.
-var userInfoSkipAttributes = []string{"username", "sub", "id"}
-
 // oAuthExecutorInterface defines the interface for OAuth authentication executors.
 type oAuthExecutorInterface interface {
 	core.ExecutorInterface
 	BuildAuthorizeFlow(ctx *core.NodeContext, execResp *common.ExecutorResponse) error
 	ProcessAuthFlowResponse(ctx *core.NodeContext, execResp *common.ExecutorResponse) error
 	ResolveContextUser(ctx *core.NodeContext, execResp *common.ExecutorResponse,
-		sub string, internalUser *entityprovider.Entity, isAmbiguous bool) (*authncm.AuthenticatedUser, error)
+		sub string, internalUser *entityprovider.Entity, isAmbiguous bool) error
 	GetIdpID(ctx *core.NodeContext) (string, error)
 }
 
@@ -150,7 +145,7 @@ func (o *oAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse
 
 	logger.Debug("OAuth authentication executor execution completed",
 		log.String("status", string(execResp.Status)),
-		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
+		log.Bool("isAuthenticated", execResp.AuthUser.IsAuthenticated()))
 
 	return execResp, nil
 }
@@ -202,10 +197,8 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 
 	code, ok := ctx.UserInputs[userInputCode]
 	if !ok || code == "" {
-		execResp.AuthenticatedUser = authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-		}
-		return nil
+		logger.Error("Federated authentication failed. Authorization code not found in user inputs")
+		return errors.New("federated authentication failed")
 	}
 
 	idpID, err := o.GetIdpID(ctx)
@@ -213,15 +206,15 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return err
 	}
 
-	credentials := map[string]interface{}{
-		"federated": &authncm.FederatedAuthCredential{
-			IDPID:   idpID,
-			IDPType: o.idpType,
-			Code:    code,
+	authnData := &authnprovidercm.FederatedAuthnData{
+		IDPID:   idpID,
+		IDPType: o.idpType,
+		OAuthCredential: authnprovidercm.OAuthCredential{
+			Code: code,
 		},
 	}
-	newAuthUser, basicResult, svcErr := o.authnProvider.AuthenticateUser(
-		ctx.Context, nil, credentials, nil, nil, ctx.AuthUser)
+	authUser, svcErr := o.authnProvider.AuthenticateUser(
+		ctx.Context, authnprovidercm.AuthnDataTypeFederated, authnData, nil, nil, ctx.AuthUser)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
 			execResp.Status = common.ExecFailure
@@ -234,9 +227,11 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return errors.New("federated authentication failed")
 	}
 
-	sub := basicResult.ExternalSub
+	execResp.AuthUser = authUser
 
-	if basicResult.IsAmbiguousUser {
+	sub := authUser.GetLastFederatedSub()
+
+	if authUser.IsLocalUserAmbiguous() {
 		if execResp.RuntimeData == nil {
 			execResp.RuntimeData = make(map[string]string)
 		}
@@ -244,31 +239,23 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	}
 
 	var internalUser *entityprovider.Entity
-	if basicResult.IsExistingUser {
+	if authUser.IsLocalUserExists() {
 		internalUser = &entityprovider.Entity{
-			ID:   basicResult.UserID,
-			OUID: basicResult.OUID,
-			Type: basicResult.UserType,
+			ID:   authUser.GetUserID(),
+			OUID: authUser.GetOUID(),
+			Type: authUser.GetUserType(),
 		}
 	}
 
-	contextUser, err := o.ResolveContextUser(ctx, execResp, sub, internalUser, basicResult.IsAmbiguousUser)
+	err = o.ResolveContextUser(ctx, execResp, sub, internalUser, authUser.IsLocalUserAmbiguous())
 	if err != nil {
 		return err
 	}
 	if execResp.Status == common.ExecFailure {
 		return nil
 	}
-	if contextUser == nil {
-		logger.Error("Failed to resolve context user after OAuth authentication")
-		return errors.New("unexpected error occurred while resolving user")
-	}
 
-	userInfo := systemutils.ConvertInterfaceMapToStringMap(basicResult.ExternalClaims)
-	contextUser.Attributes = o.getContextUserAttributes(execResp, userInfo)
-	execResp.AuthenticatedUser = *contextUser
-	execResp.AuthUser = newAuthUser
-
+	// TODO: userAttributeEmail was previously added to runtime data. we need to see if this is needed or not.
 	return nil
 }
 
@@ -315,164 +302,125 @@ func (o *oAuthExecutor) getIDPName(ctx context.Context, idpID string) (string, e
 
 // ResolveContextUser resolves the authenticated user in context with the attributes.
 func (o *oAuthExecutor) ResolveContextUser(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse, sub string, internalUser *entityprovider.Entity, isAmbiguous bool) (
-	*authncm.AuthenticatedUser, error) {
+	execResp *common.ExecutorResponse, sub string, localUser *entityprovider.Entity, isLocalUserAmbiguous bool) error {
 	if ctx.FlowType == common.FlowTypeAuthentication {
-		return o.getContextUserForAuthentication(ctx, execResp, sub, internalUser, isAmbiguous)
+		return o.getContextUserForAuthentication(ctx, execResp, sub, localUser, isLocalUserAmbiguous)
 	}
-	return o.getContextUserForRegistration(ctx, execResp, sub, internalUser, isAmbiguous)
+	return o.getContextUserForRegistration(ctx, execResp, sub, localUser, isLocalUserAmbiguous)
 }
 
 // getContextUserForAuthentication resolves the authenticated user in context for authentication flows.
 func (o *oAuthExecutor) getContextUserForAuthentication(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse, sub string, internalUser *entityprovider.Entity, isAmbiguous bool) (
-	*authncm.AuthenticatedUser, error) {
+	execResp *common.ExecutorResponse, sub string, localUser *entityprovider.Entity, isLocalUserAmbiguous bool) error {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	// If no local user is found, check if authentication without local user is allowed
-	if internalUser == nil {
-		allowAuthWithoutLocalUser := false
-		if val, ok := ctx.NodeProperties[common.NodePropertyAllowAuthenticationWithoutLocalUser]; ok {
-			if boolVal, ok := val.(bool); ok {
-				allowAuthWithoutLocalUser = boolVal
-			}
-		}
+	if localUser != nil {
+		execResp.Status = common.ExecComplete
+		execResp.RuntimeData[userAttributeSub] = sub
+		return nil
+	}
 
-		if allowAuthWithoutLocalUser {
-			if execResp.RuntimeData == nil {
-				execResp.RuntimeData = make(map[string]string)
-			}
-
-			if isAmbiguous {
-				// Ambiguous user: exists in multiple OUs. Set sub for downstream
-				// disambiguation but do NOT mark as eligible for provisioning since
-				// the user already exists.
-				logger.Debug("Ambiguous user detected, deferring to flow for disambiguation")
-				execResp.Status = common.ExecComplete
-				execResp.FailureReason = ""
-				execResp.RuntimeData[userAttributeSub] = sub
-
-				return &authncm.AuthenticatedUser{
-					IsAuthenticated: false,
-				}, nil
-			}
-
-			// Genuinely new user: no local account exists
-			logger.Debug("User not found, but authentication is allowed without a local user")
-
-			err := o.resolveUserTypeForAutoProvisioning(ctx, execResp)
-			if err != nil {
-				return nil, err
-			}
-			if execResp.Status == common.ExecFailure {
-				return nil, nil
-			}
-
-			execResp.Status = common.ExecComplete
-			execResp.FailureReason = ""
-			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
-			execResp.RuntimeData[userAttributeSub] = sub
-
-			return &authncm.AuthenticatedUser{
-				IsAuthenticated: false,
-			}, nil
-		}
-
+	if !isAuthenticationAllowedWithoutLocalUser(ctx) {
 		execResp.Status = common.ExecFailure
 		execResp.FailureReason = "User not found"
-		return nil, nil
+		return nil
 	}
 
-	// User found, proceed with authentication
+	if isLocalUserAmbiguous {
+		// Ambiguous user: exists in multiple OUs. Set sub for downstream
+		// disambiguation but do NOT mark as eligible for provisioning since
+		// the user already exists.
+		logger.Debug("Ambiguous user detected, deferring to flow for disambiguation")
+		execResp.Status = common.ExecComplete
+		execResp.RuntimeData[userAttributeSub] = sub
+		return nil
+	}
+
+	logger.Debug("User not found, but authentication is allowed without a local user")
+
+	if err := o.resolveUserTypeForAutoProvisioning(ctx, execResp); err != nil {
+		return err
+	}
+	if execResp.Status == common.ExecFailure {
+		return nil
+	}
+
 	execResp.Status = common.ExecComplete
-	if execResp.RuntimeData == nil {
-		execResp.RuntimeData = make(map[string]string)
-	}
+	execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
 	execResp.RuntimeData[userAttributeSub] = sub
-	authenticatedUser := authncm.AuthenticatedUser{
-		IsAuthenticated: true,
-		UserID:          internalUser.ID,
-		OUID:            internalUser.OUID,
-		UserType:        internalUser.Type,
-	}
+	return nil
+}
 
-	return &authenticatedUser, nil
+func isAuthenticationAllowedWithoutLocalUser(ctx *core.NodeContext) bool {
+	allowAuthWithoutLocalUser := false
+	if val, ok := ctx.NodeProperties[common.NodePropertyAllowAuthenticationWithoutLocalUser]; ok {
+		if boolVal, ok := val.(bool); ok {
+			allowAuthWithoutLocalUser = boolVal
+		}
+	}
+	return allowAuthWithoutLocalUser
 }
 
 // getContextUserForRegistration resolves the authenticated user in context for registration flows.
 func (o *oAuthExecutor) getContextUserForRegistration(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse, sub string, internalUser *entityprovider.Entity, isAmbiguous bool) (
-	*authncm.AuthenticatedUser, error) {
+	execResp *common.ExecutorResponse, sub string, localUser *entityprovider.Entity,
+	isLocalUserAmbiguous bool) error {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	if isAmbiguous {
+	if isLocalUserAmbiguous {
 		logger.Debug("Ambiguous user detected in registration flow, cannot proceed with registration")
 		execResp.Status = common.ExecFailure
 		execResp.FailureReason = "User identity is ambiguous and cannot be registered."
-		return nil, nil
+		return nil
 	}
 
-	// If no local user is found, proceed with registration
-	if internalUser == nil {
+	if localUser == nil {
 		logger.Debug("User not found for the provided sub claim. Proceeding with registration flow.")
 		execResp.Status = common.ExecComplete
-		execResp.FailureReason = ""
 		execResp.RuntimeData[userAttributeSub] = sub
-
-		return &authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-		}, nil
+		return nil
 	}
 
-	// If a local user is found, check if registration with existing user is allowed
-	allowRegistrationWithExistingUser := false
-	if val, ok := ctx.NodeProperties[common.NodePropertyAllowRegistrationWithExistingUser]; ok {
-		if boolVal, ok := val.(bool); ok {
-			allowRegistrationWithExistingUser = boolVal
-		}
-	}
-
-	if allowRegistrationWithExistingUser {
-		// Check if cross-OU provisioning is enabled
-		allowCrossOUProvisioning := false
-		if val, ok := ctx.NodeProperties[common.NodePropertyAllowCrossOUProvisioning]; ok {
-			if boolVal, ok := val.(bool); ok {
-				allowCrossOUProvisioning = boolVal
-			}
-		}
-
-		if allowCrossOUProvisioning {
+	if isRegistrationWithExistingUserAllowed(ctx) {
+		if isCrossOUProvisioningAllowed(ctx) {
 			// Allow the flow to continue so the ProvisioningExecutor can create the user in
 			// the target OU. The same-OU duplicate guard is enforced by the ProvisioningExecutor
 			// itself, which has access to the target OU context. We intentionally do not set
 			// RuntimeKeySkipProvisioning here because we want provisioning to run.
 			logger.Debug("User already exists, proceeding with cross-OU provisioning to target OU")
 			execResp.Status = common.ExecComplete
-			execResp.FailureReason = ""
 			execResp.RuntimeData[userAttributeSub] = sub
-
-			return &authncm.AuthenticatedUser{
-				IsAuthenticated: false,
-			}, nil
+			return nil
 		}
-
 		logger.Debug("User already exists, but registration flow is allowed to continue")
 		execResp.Status = common.ExecComplete
-		execResp.FailureReason = ""
 		execResp.RuntimeData[common.RuntimeKeySkipProvisioning] = dataValueTrue
-
-		return &authncm.AuthenticatedUser{
-			IsAuthenticated: true,
-			UserID:          internalUser.ID,
-			OUID:            internalUser.OUID,
-			UserType:        internalUser.Type,
-		}, nil
+		return nil
 	}
 
-	// Fail the execution as a unique user is found in the system.
 	execResp.Status = common.ExecFailure
 	execResp.FailureReason = "User already exists with the provided sub claim."
-	return nil, nil
+	return nil
+}
+
+func isCrossOUProvisioningAllowed(ctx *core.NodeContext) bool {
+	allowCrossOUProvisioning := false
+	if val, ok := ctx.NodeProperties[common.NodePropertyAllowCrossOUProvisioning]; ok {
+		if boolVal, ok := val.(bool); ok {
+			allowCrossOUProvisioning = boolVal
+		}
+	}
+	return allowCrossOUProvisioning
+}
+
+func isRegistrationWithExistingUserAllowed(ctx *core.NodeContext) bool {
+	allowRegistrationWithExistingUser := false
+	if val, ok := ctx.NodeProperties[common.NodePropertyAllowRegistrationWithExistingUser]; ok {
+		if boolVal, ok := val.(bool); ok {
+			allowRegistrationWithExistingUser = boolVal
+		}
+	}
+	return allowRegistrationWithExistingUser
 }
 
 // resolveUserTypeForAutoProvisioning resolves the user type for auto provisioning in authentication flows.
@@ -530,28 +478,4 @@ func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext
 	execResp.RuntimeData[userTypeKey] = selfRegEnabledSchemas[0].Name
 	execResp.RuntimeData[defaultOUIDKey] = selfRegEnabledSchemas[0].OUID
 	return nil
-}
-
-// getContextUserAttributes extracts and returns user attributes from the user info map.
-// TODO: Need to convert attributes as per the IDP to local attribute mapping when the support is implemented.
-func (o *oAuthExecutor) getContextUserAttributes(execResp *common.ExecutorResponse,
-	userInfo map[string]string) map[string]interface{} {
-	attributes := make(map[string]interface{})
-	for key, value := range userInfo {
-		if !slices.Contains(userInfoSkipAttributes, key) {
-			attributes[key] = value
-		}
-	}
-
-	// Append email to runtime data if available.
-	if email, ok := attributes[userAttributeEmail]; ok {
-		if emailStr, ok := email.(string); ok && emailStr != "" {
-			if execResp.RuntimeData == nil {
-				execResp.RuntimeData = make(map[string]string)
-			}
-			execResp.RuntimeData[userAttributeEmail] = emailStr
-		}
-	}
-
-	return attributes
 }

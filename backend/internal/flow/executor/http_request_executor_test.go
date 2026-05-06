@@ -28,7 +28,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
+	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
 	"github.com/asgardeo/thunder/internal/flow/common"
 	"github.com/asgardeo/thunder/internal/flow/core"
 	"github.com/asgardeo/thunder/internal/ou"
@@ -140,15 +140,16 @@ func (suite *HTTPRequestExecutorTestSuite) TestResolvePlaceholderUserIDSpecialHa
 		w.WriteHeader(http.StatusOK)
 	}))
 
+	var authUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[],"userHistory":[{"userId":"auth-user-456","isValuesIncluded":true}],`+
+		`"userState":"exists"}`), &authUser)
 	ctx := &core.NodeContext{
 		ExecutionID: "test-flow",
 		UserInputs: map[string]string{
 			"userId": "input-user-id", // This should NOT be used for userId
 		},
 		RuntimeData: map[string]string{},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			UserID: "auth-user-456",
-		},
+		AuthUser:    authUser,
 		NodeProperties: map[string]interface{}{
 			"url":    suite.mockServer.URL + "/api/user",
 			"method": "POST",
@@ -737,11 +738,12 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromAuthe
 		Return(newMockExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility, []common.Input{}, []common.Input{}))
 	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService)
 
+	var authUser authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[],"userHistory":[{"ouId":"ou-auth-123","isValuesIncluded":true}],`+
+		`"userState":"exists"}`), &authUser)
 	ctx := &core.NodeContext{
 		ExecutionID: "test-flow",
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "ou-auth-123",
-		},
+		AuthUser:    authUser,
 		RuntimeData: map[string]string{},
 		UserInputs:  map[string]string{},
 		NodeProperties: map[string]interface{}{
@@ -792,10 +794,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_FallbackToRun
 	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService)
 
 	ctx := &core.NodeContext{
-		ExecutionID:       "test-flow",
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			// OUID is empty — falls back to RuntimeData["ouId"]
-		},
+		ExecutionID: "test-flow",
+		// AuthUser zero value has empty ouID — falls back to RuntimeData["ouId"]
 		RuntimeData: map[string]string{
 			"ouId": "ou-runtime-456",
 		},
@@ -848,11 +848,12 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_Authenticated
 		Return(newMockExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility, []common.Input{}, []common.Input{}))
 	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService)
 
+	var authUser2 authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[],"userHistory":[{"ouId":"ou-auth-primary","isValuesIncluded":true}],`+
+		`"userState":"exists"}`), &authUser2)
 	ctx := &core.NodeContext{
 		ExecutionID: "test-flow",
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "ou-auth-primary",
-		},
+		AuthUser:    authUser2,
 		RuntimeData: map[string]string{
 			"ouId": "ou-runtime-fallback", // should NOT be used
 		},
@@ -902,11 +903,12 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OverwritesExi
 		Return(newMockExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility, []common.Input{}, []common.Input{}))
 	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService)
 
+	var authUser3 authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[],"userHistory":[{"ouId":"ou-overwrite-test",`+
+		`"isValuesIncluded":true}],"userState":"exists"}`), &authUser3)
 	ctx := &core.NodeContext{
 		ExecutionID: "test-flow",
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "ou-overwrite-test",
-		},
+		AuthUser:    authUser3,
 		RuntimeData: map[string]string{
 			"ouHandle": "stale-handle", // pre-populated — must be overwritten
 		},
@@ -954,11 +956,12 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 		Return(newMockExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility, []common.Input{}, []common.Input{}))
 	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService)
 
+	var authUser4 authnprovidermgr.AuthUser
+	_ = json.Unmarshal([]byte(`{"authHistory":[],"userHistory":[{"ouId":"ou-not-found","isValuesIncluded":true}],`+
+		`"userState":"exists"}`), &authUser4)
 	ctx := &core.NodeContext{
 		ExecutionID: "test-flow",
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "ou-not-found",
-		},
+		AuthUser:    authUser4,
 		RuntimeData: map[string]string{},
 		UserInputs:  map[string]string{},
 		NodeProperties: map[string]interface{}{
