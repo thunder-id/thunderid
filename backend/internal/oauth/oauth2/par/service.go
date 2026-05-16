@@ -40,7 +40,7 @@ const requestURIPrefix = "urn:ietf:params:oauth:request_uri:"
 type PARServiceInterface interface {
 	HandlePushedAuthorizationRequest(
 		ctx context.Context, params map[string]string, resources []string,
-		oauthApp *inboundmodel.OAuthClient,
+		oauthApp *inboundmodel.OAuthClient, dpopHeaderJkt string,
 	) (*parResponse, string, string)
 	ResolvePushedAuthorizationRequest(
 		ctx context.Context, requestURI string, clientID string,
@@ -69,7 +69,7 @@ func newPARService(
 // Returns the response on success, or (errorCode, errorDescription) on failure.
 func (s *parService) HandlePushedAuthorizationRequest(
 	ctx context.Context, params map[string]string, resources []string,
-	oauthApp *inboundmodel.OAuthClient,
+	oauthApp *inboundmodel.OAuthClient, dpopHeaderJkt string,
 ) (*parResponse, string, string) {
 	// The request MUST NOT contain a request_uri parameter.
 	if params[oauth2const.RequestParamRequestURI] != "" {
@@ -84,7 +84,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 	}
 
 	// Validate the authorization parameters using the same rules as the authorize endpoint.
-	errCode, errMsg := requestvalidator.ValidateAuthorizationRequestParams(params, oauthApp)
+	errCode, errMsg := requestvalidator.ValidateAuthorizationRequestParams(params, oauthApp, dpopHeaderJkt)
 	if errCode != "" {
 		return nil, errCode, errMsg
 	}
@@ -135,6 +135,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 		ClaimsLocales:       params[oauth2const.RequestParamClaimsLocales],
 		Nonce:               params[oauth2const.RequestParamNonce],
 		AcrValues:           params[oauth2const.RequestParamAcrValues],
+		DPoPJkt:             resolveDPoPJkt(params[oauth2const.RequestParamDPoPJkt], dpopHeaderJkt),
 	}
 
 	parRequest := pushedAuthorizationRequest{
@@ -154,6 +155,15 @@ func (s *parService) HandlePushedAuthorizationRequest(
 		RequestURI: requestURIPrefix + randomKey,
 		ExpiresIn:  expiresIn,
 	}, "", ""
+}
+
+// resolveDPoPJkt picks the effective DPoP key thumbprint. The proof-derived thumbprint
+// takes precedence; the validator has already enforced equality when both are present.
+func resolveDPoPJkt(paramJkt, headerJkt string) string {
+	if headerJkt != "" {
+		return headerJkt
+	}
+	return paramJkt
 }
 
 // ResolvePushedAuthorizationRequest retrieves and consumes a stored PAR request.

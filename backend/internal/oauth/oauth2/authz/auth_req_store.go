@@ -154,6 +154,7 @@ func (authzRS *authorizationRequestStore) getJSONDataBytes(authRequestCtx authRe
 		jsonKeyResource:            authRequestCtx.OAuthParameters.Resources,
 		jsonKeyClaimsLocales:       authRequestCtx.OAuthParameters.ClaimsLocales,
 		jsonKeyNonce:               authRequestCtx.OAuthParameters.Nonce,
+		jsonKeyDPoPJkt:             authRequestCtx.OAuthParameters.DPoPJkt,
 	}
 
 	// Add claims_request if present
@@ -238,6 +239,9 @@ func (authzRS *authorizationRequestStore) buildAuthRequestContextFromResultRow(
 		if nonce, ok := requestDataMap[jsonKeyNonce].(string); ok {
 			oauthParams.Nonce = nonce
 		}
+	}
+	if dpopJkt, ok := requestDataMap[jsonKeyDPoPJkt].(string); ok {
+		oauthParams.DPoPJkt = dpopJkt
 	}
 
 	// Parse claims_request if present

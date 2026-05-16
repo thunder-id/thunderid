@@ -412,3 +412,29 @@ func (suite *JWSUtilsTestSuite) TestJWKToPublicKeyInvalidEC() {
 	assert.Contains(suite.T(), err.Error(), "point not on curve")
 	assert.Nil(suite.T(), publicKey)
 }
+
+func (suite *JWSUtilsTestSuite) TestIsValidJKT() {
+	testCases := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"Valid43CharBase64URL", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ", true},
+		{"ValidWithDashAndUnderscore", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL-_012", true},
+		{"ValidAllDigits", "0123456789012345678901234567890123456789012", true},
+		{"TooShort", "abc", false},
+		{"TooLong", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQR", false},
+		{"Empty", "", false},
+		{"WithPadding", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=", false},
+		{"WithStandardBase64Slash", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/", false},
+		{"WithStandardBase64Plus", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa+", false},
+		{"WithWhitespace", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ", false},
+		{"WithSpecialChar", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!", false},
+	}
+
+	for _, tc := range testCases {
+		suite.T().Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, IsValidJKT(tc.input))
+		})
+	}
+}

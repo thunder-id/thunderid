@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
@@ -46,6 +47,8 @@ const serviceLoggerComponentName = "UserInfoService"
 // userInfoServiceInterface defines the interface for OIDC UserInfo endpoint.
 type userInfoServiceInterface interface {
 	GetUserInfo(ctx context.Context, accessToken string) (*UserInfoResponse, *serviceerror.ServiceError)
+	GetUserInfoForDPoP(ctx context.Context, accessToken, proof, htm, htu string) (
+		*UserInfoResponse, *serviceerror.ServiceError)
 }
 
 // userInfoService implements the userInfoServiceInterface.
@@ -58,6 +61,7 @@ type userInfoService struct {
 	ouService         ou.OrganizationUnitServiceInterface
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface
 	transactioner     transaction.Transactioner
+	dpopVerifier      dpop.VerifierInterface
 	logger            *log.Logger
 }
 
@@ -71,6 +75,7 @@ func newUserInfoService(
 	ouService ou.OrganizationUnitServiceInterface,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	transactioner transaction.Transactioner,
+	dpopVerifier dpop.VerifierInterface,
 ) userInfoServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, serviceLoggerComponentName))
 	return &userInfoService{
@@ -82,11 +87,13 @@ func newUserInfoService(
 		ouService:         ouService,
 		attributeCacheSvc: attributeCacheSvc,
 		transactioner:     transactioner,
+		dpopVerifier:      dpopVerifier,
 		logger:            logger,
 	}
 }
 
-// GetUserInfo validates the access token and returns user information based on authorized scopes.
+// GetUserInfo validates the access token under the Bearer scheme. A DPoP-bound
+// access token presented under Bearer is rejected as a downgrade.
 func (s *userInfoService) GetUserInfo(
 	ctx context.Context, accessToken string,
 ) (*UserInfoResponse, *serviceerror.ServiceError) {
@@ -99,6 +106,60 @@ func (s *userInfoService) GetUserInfo(
 		s.logger.Debug("Failed to verify access token", log.Error(err))
 		return nil, &errorInvalidAccessToken
 	}
+
+	boundJkt, _ := dpop.ExtractCnfJkt(accessTokenClaims.Claims)
+	if boundJkt != "" {
+		s.logger.Debug("DPoP-bound access token presented under Bearer scheme")
+		return nil, &errorBearerDowngrade
+	}
+
+	return s.buildResponseFromClaims(ctx, accessTokenClaims)
+}
+
+// GetUserInfoForDPoP validates the access token under the DPoP scheme. The access
+// token must be DPoP-bound and the proof must bind to the same key, htm, htu, and
+// access token (via ath).
+func (s *userInfoService) GetUserInfoForDPoP(
+	ctx context.Context, accessToken, proof, htm, htu string,
+) (*UserInfoResponse, *serviceerror.ServiceError) {
+	if accessToken == "" {
+		return nil, &errorInvalidAccessToken
+	}
+
+	accessTokenClaims, err := s.tokenValidator.ValidateAccessToken(accessToken)
+	if err != nil {
+		s.logger.Debug("Failed to verify access token", log.Error(err))
+		return nil, &errorInvalidAccessToken
+	}
+
+	expectedJkt, _ := dpop.ExtractCnfJkt(accessTokenClaims.Claims)
+	if expectedJkt == "" {
+		s.logger.Debug("DPoP scheme used with non-bound access token")
+		return nil, &errorDPoPProofInvalid
+	}
+
+	if s.dpopVerifier == nil {
+		s.logger.Error("DPoP verifier not configured")
+		return nil, &serviceerror.InternalServerError
+	}
+	if _, dpopErr := s.dpopVerifier.Verify(ctx, dpop.VerifyParams{
+		Proof:       proof,
+		HTM:         htm,
+		HTU:         htu,
+		AccessToken: accessToken,
+		ExpectedJkt: expectedJkt,
+	}); dpopErr != nil {
+		s.logger.Debug("DPoP proof verification failed", log.Error(dpopErr))
+		return nil, &errorDPoPProofInvalid
+	}
+
+	return s.buildResponseFromClaims(ctx, accessTokenClaims)
+}
+
+// buildResponseFromClaims builds the UserInfo response from validated access token claims.
+func (s *userInfoService) buildResponseFromClaims(
+	ctx context.Context, accessTokenClaims *tokenservice.AccessTokenClaims,
+) (*UserInfoResponse, *serviceerror.ServiceError) {
 	tokenClaims := accessTokenClaims.Claims
 	sub := accessTokenClaims.Sub
 
@@ -126,7 +187,6 @@ func (s *userInfoService) GetUserInfo(
 		attributeCacheID = val
 	}
 
-	// Fetch user attributes with groups and default claims
 	userAttributes, err := tokenservice.FetchUserAttributes(ctx, s.attributeCacheSvc,
 		allowedUserAttributes, attributeCacheID)
 	if err != nil {

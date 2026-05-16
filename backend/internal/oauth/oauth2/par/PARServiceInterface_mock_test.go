@@ -40,8 +40,8 @@ func (_m *PARServiceInterfaceMock) EXPECT() *PARServiceInterfaceMock_Expecter {
 }
 
 // HandlePushedAuthorizationRequest provides a mock function for the type PARServiceInterfaceMock
-func (_mock *PARServiceInterfaceMock) HandlePushedAuthorizationRequest(ctx context.Context, params map[string]string, resources []string, oauthApp *model.OAuthClient) (*parResponse, string, string) {
-	ret := _mock.Called(ctx, params, resources, oauthApp)
+func (_mock *PARServiceInterfaceMock) HandlePushedAuthorizationRequest(ctx context.Context, params map[string]string, resources []string, oauthApp *model.OAuthClient, dpopHeaderJkt string) (*parResponse, string, string) {
+	ret := _mock.Called(ctx, params, resources, oauthApp, dpopHeaderJkt)
 
 	if len(ret) == 0 {
 		panic("no return value specified for HandlePushedAuthorizationRequest")
@@ -50,23 +50,23 @@ func (_mock *PARServiceInterfaceMock) HandlePushedAuthorizationRequest(ctx conte
 	var r0 *parResponse
 	var r1 string
 	var r2 string
-	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]string, []string, *model.OAuthClient) (*parResponse, string, string)); ok {
-		return returnFunc(ctx, params, resources, oauthApp)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]string, []string, *model.OAuthClient, string) (*parResponse, string, string)); ok {
+		return returnFunc(ctx, params, resources, oauthApp, dpopHeaderJkt)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]string, []string, *model.OAuthClient) *parResponse); ok {
-		r0 = returnFunc(ctx, params, resources, oauthApp)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]string, []string, *model.OAuthClient, string) *parResponse); ok {
+		r0 = returnFunc(ctx, params, resources, oauthApp, dpopHeaderJkt)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*parResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]string, []string, *model.OAuthClient) string); ok {
-		r1 = returnFunc(ctx, params, resources, oauthApp)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]string, []string, *model.OAuthClient, string) string); ok {
+		r1 = returnFunc(ctx, params, resources, oauthApp, dpopHeaderJkt)
 	} else {
 		r1 = ret.Get(1).(string)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, map[string]string, []string, *model.OAuthClient) string); ok {
-		r2 = returnFunc(ctx, params, resources, oauthApp)
+	if returnFunc, ok := ret.Get(2).(func(context.Context, map[string]string, []string, *model.OAuthClient, string) string); ok {
+		r2 = returnFunc(ctx, params, resources, oauthApp, dpopHeaderJkt)
 	} else {
 		r2 = ret.Get(2).(string)
 	}
@@ -83,11 +83,12 @@ type PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call struct {
 //   - params map[string]string
 //   - resources []string
 //   - oauthApp *model.OAuthClient
-func (_e *PARServiceInterfaceMock_Expecter) HandlePushedAuthorizationRequest(ctx interface{}, params interface{}, resources interface{}, oauthApp interface{}) *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call {
-	return &PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call{Call: _e.mock.On("HandlePushedAuthorizationRequest", ctx, params, resources, oauthApp)}
+//   - dpopHeaderJkt string
+func (_e *PARServiceInterfaceMock_Expecter) HandlePushedAuthorizationRequest(ctx interface{}, params interface{}, resources interface{}, oauthApp interface{}, dpopHeaderJkt interface{}) *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call {
+	return &PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call{Call: _e.mock.On("HandlePushedAuthorizationRequest", ctx, params, resources, oauthApp, dpopHeaderJkt)}
 }
 
-func (_c *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call) Run(run func(ctx context.Context, params map[string]string, resources []string, oauthApp *model.OAuthClient)) *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call {
+func (_c *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call) Run(run func(ctx context.Context, params map[string]string, resources []string, oauthApp *model.OAuthClient, dpopHeaderJkt string)) *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -105,11 +106,16 @@ func (_c *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call) Run(run
 		if args[3] != nil {
 			arg3 = args[3].(*model.OAuthClient)
 		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -120,7 +126,7 @@ func (_c *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call) Return(
 	return _c
 }
 
-func (_c *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call) RunAndReturn(run func(ctx context.Context, params map[string]string, resources []string, oauthApp *model.OAuthClient) (*parResponse, string, string)) *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call {
+func (_c *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call) RunAndReturn(run func(ctx context.Context, params map[string]string, resources []string, oauthApp *model.OAuthClient, dpopHeaderJkt string) (*parResponse, string, string)) *PARServiceInterfaceMock_HandlePushedAuthorizationRequest_Call {
 	_c.Call.Return(run)
 	return _c
 }

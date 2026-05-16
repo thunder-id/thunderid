@@ -78,3 +78,15 @@ CREATE TABLE "PAR_REQUEST" (
 
 -- Index for expiry time on PAR_REQUEST (supports cleanup and expiry checks)
 CREATE INDEX idx_par_request_expiry_time ON "PAR_REQUEST" (EXPIRY_TIME);
+
+-- Table to store JWT jti values for replay protection across consumers. Rows are isolated by NAMESPACE.
+CREATE TABLE "JTI_RECORD" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    NAMESPACE VARCHAR(64) NOT NULL,
+    JTI VARCHAR(256) NOT NULL,
+    EXPIRY_TIME DATETIME NOT NULL,
+    PRIMARY KEY (DEPLOYMENT_ID, NAMESPACE, JTI)
+);
+
+-- Index for expiry time on JTI_RECORD (supports cleanup and expiry checks)
+CREATE INDEX idx_jti_record_expiry_time ON "JTI_RECORD" (EXPIRY_TIME);

@@ -107,3 +107,91 @@ func (_c *userInfoServiceInterfaceMock_GetUserInfo_Call) RunAndReturn(run func(c
 	_c.Call.Return(run)
 	return _c
 }
+
+// GetUserInfoForDPoP provides a mock function for the type userInfoServiceInterfaceMock
+func (_mock *userInfoServiceInterfaceMock) GetUserInfoForDPoP(ctx context.Context, accessToken string, proof string, htm string, htu string) (*UserInfoResponse, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, accessToken, proof, htm, htu)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserInfoForDPoP")
+	}
+
+	var r0 *UserInfoResponse
+	var r1 *serviceerror.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) (*UserInfoResponse, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, accessToken, proof, htm, htu)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) *UserInfoResponse); ok {
+		r0 = returnFunc(ctx, accessToken, proof, htm, htu)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*UserInfoResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, accessToken, proof, htm, htu)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUserInfoForDPoP'
+type userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call struct {
+	*mock.Call
+}
+
+// GetUserInfoForDPoP is a helper method to define mock.On call
+//   - ctx context.Context
+//   - accessToken string
+//   - proof string
+//   - htm string
+//   - htu string
+func (_e *userInfoServiceInterfaceMock_Expecter) GetUserInfoForDPoP(ctx interface{}, accessToken interface{}, proof interface{}, htm interface{}, htu interface{}) *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call {
+	return &userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call{Call: _e.mock.On("GetUserInfoForDPoP", ctx, accessToken, proof, htm, htu)}
+}
+
+func (_c *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call) Run(run func(ctx context.Context, accessToken string, proof string, htm string, htu string)) *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call) Return(userInfoResponse *UserInfoResponse, serviceError *serviceerror.ServiceError) *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call {
+	_c.Call.Return(userInfoResponse, serviceError)
+	return _c
+}
+
+func (_c *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call) RunAndReturn(run func(ctx context.Context, accessToken string, proof string, htm string, htu string) (*UserInfoResponse, *serviceerror.ServiceError)) *userInfoServiceInterfaceMock_GetUserInfoForDPoP_Call {
+	_c.Call.Return(run)
+	return _c
+}

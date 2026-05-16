@@ -116,6 +116,22 @@ packages:
       pkgname: granthandlersmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop:
+    config:
+      all: true
+      dir: tests/mocks/oauth/oauth2/dpopmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: dpopmock
+      filename: "{{.InterfaceName}}_mock.go"
+
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/jti:
+    config:
+      all: true
+      dir: tests/mocks/oauth/oauth2/jtimock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: jtimock
+      filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/oauth/oauth2/token:
     config:
       all: true

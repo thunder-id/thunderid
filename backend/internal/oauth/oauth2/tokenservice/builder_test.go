@@ -74,7 +74,7 @@ func (suite *TokenBuilderTestSuite) SetupTest() {
 	// Initialize Runtime for tests
 	testConfig := &config.Config{
 		JWT: config.JWTConfig{
-			Issuer:         "https://thunder.io",
+			Issuer:         "https://example.com",
 			ValidityPeriod: 3600,
 		},
 	}
@@ -121,7 +121,7 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_Basic() {
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			return claims["scope"] == "read write" &&
@@ -171,7 +171,7 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithActorClaim(
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			act, ok := claims["act"].(map[string]interface{})
@@ -214,7 +214,7 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithNestedActor
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			act, ok := claims["act"].(map[string]interface{})
@@ -246,7 +246,7 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_EmptyScopes() {
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			_, hasScope := claims["scope"]
@@ -278,7 +278,7 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_EmptyClientID()
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			_, hasClientID := claims["client_id"]
@@ -310,7 +310,7 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_EmptyGrantType(
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			_, hasGrantType := claims["grant_type"]
@@ -351,7 +351,7 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_CustomValidityP
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io", // Server-level issuer always used
+		"https://example.com", // Server-level issuer always used
 		int64(7200),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return(expectedToken, expectedIat, nil)
@@ -386,7 +386,7 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Error_JWTGenerationFail
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return("", int64(0), &serviceerror.ServiceError{
@@ -426,7 +426,7 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithClaimsLocal
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			return claims["scope"] == "openid profile" &&
@@ -443,6 +443,68 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithClaimsLocal
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), expectedToken, result.Token)
 	assert.Equal(suite.T(), "en-US fr-CA ja", result.ClaimsLocales)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithDPoPJkt() {
+	const testJkt = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I"
+
+	ctx := &AccessTokenBuildContext{
+		Subject:        "user123",
+		Audiences:      []string{"app123"},
+		ClientID:       "test-client",
+		Scopes:         []string{"read"},
+		UserAttributes: map[string]any{},
+		GrantType:      string(constants.GrantTypeAuthorizationCode),
+		OAuthApp:       suite.oauthApp,
+		DPoPJkt:        testJkt,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything,
+		"user123",
+		"https://example.com",
+		int64(3600),
+		mock.MatchedBy(func(claims map[string]any) bool {
+			cnf, ok := claims["cnf"].(map[string]any)
+			return ok && cnf["jkt"] == testJkt
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), constants.TokenTypeDPoP, result.TokenType)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_Success_WithoutDPoPJkt_BearerType() {
+	ctx := &AccessTokenBuildContext{
+		Subject:        "user123",
+		Audiences:      []string{"app123"},
+		ClientID:       "test-client",
+		Scopes:         []string{"read"},
+		UserAttributes: map[string]any{},
+		GrantType:      string(constants.GrantTypeAuthorizationCode),
+		OAuthApp:       suite.oauthApp,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything,
+		"user123",
+		"https://example.com",
+		int64(3600),
+		mock.MatchedBy(func(claims map[string]any) bool {
+			_, hasCnf := claims["cnf"]
+			return !hasCnf
+		}), mock.Anything, mock.Anything,
+	).Return(testAccessToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildAccessToken(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), constants.TokenTypeBearer, result.TokenType)
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
@@ -474,7 +536,7 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_Basic() {
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"test-client",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			return claims["scope"] == "read write" &&
@@ -494,7 +556,65 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_Basic() {
 	assert.Equal(suite.T(), int64(3600), result.ExpiresIn)
 	assert.Equal(suite.T(), []string{"read", "write"}, result.Scopes)
 	assert.Equal(suite.T(), "test-client", result.ClientID)
-	assert.Equal(suite.T(), []string{"https://thunder.io"}, result.Audiences)
+	assert.Equal(suite.T(), []string{"https://example.com"}, result.Audiences)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithDPoPJkt() {
+	const testJkt = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I"
+
+	ctx := &RefreshTokenBuildContext{
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(constants.GrantTypeAuthorizationCode),
+		AccessTokenSubject:   "user123",
+		AccessTokenAudiences: []string{"app123"},
+		OAuthApp:             suite.oauthApp,
+		DPoPJkt:              testJkt,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything,
+		"test-client",
+		"https://example.com",
+		int64(3600),
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims["dpop_jkt"] == testJkt
+		}), mock.Anything, mock.Anything,
+	).Return(testRefreshToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildRefreshToken(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithoutDPoPJkt() {
+	ctx := &RefreshTokenBuildContext{
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(constants.GrantTypeAuthorizationCode),
+		AccessTokenSubject:   "user123",
+		AccessTokenAudiences: []string{"app123"},
+		OAuthApp:             suite.oauthApp,
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything,
+		"test-client",
+		"https://example.com",
+		int64(3600),
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			_, has := claims["dpop_jkt"]
+			return !has
+		}), mock.Anything, mock.Anything,
+	).Return(testRefreshToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildRefreshToken(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
@@ -515,7 +635,7 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithoutUserAtt
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"test-client",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			_, hasAttrCacheID := claims["aci"]
@@ -547,7 +667,7 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithNilOAuthAp
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"test-client",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			return claims["aci"] == testCacheID
@@ -578,7 +698,7 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_EmptyScopes() 
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"test-client",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			_, hasScope := claims["scope"]
@@ -617,7 +737,7 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithTokenConfi
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"test-client",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return(expectedToken, expectedIat, nil)
@@ -654,7 +774,7 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithNilAccessT
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"test-client",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			return claims["aci"] == testCacheID
@@ -690,7 +810,7 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Error_JWTGenerationFai
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"test-client",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return("", int64(0), &serviceerror.ServiceError{
@@ -730,7 +850,7 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithClaimsLoca
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"test-client",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			return claims["scope"] == "openid profile" &&
@@ -770,7 +890,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_Basic() {
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			// sub is passed as first arg to GenerateJWT, not in claims map
@@ -808,7 +928,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_WithNonce() {
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			return claims["nonce"] == "test-nonce-123"
@@ -839,7 +959,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_WithoutNonce() {
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			_, exists := claims["nonce"]
@@ -870,7 +990,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_NoAuthTime() {
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			_, hasAuthTime := claims["auth_time"]
@@ -914,7 +1034,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_WithScopeClaims() {
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			return claims["name"] == testUserName && claims["email"] == "john@example.com"
@@ -954,7 +1074,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_WithStandardOIDCSco
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			// Check that both name (from profile scope) and email (from email scope) are present
@@ -985,7 +1105,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_NoUserAttributes() 
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			return claims["auth_time"] == ctx.AuthTime
@@ -1024,7 +1144,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_EmptyUserAttributes
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
 			_, hasName := claims["name"]
@@ -1065,7 +1185,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_CustomValidityPerio
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(7200),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return(expectedToken, expectedIat, nil)
@@ -1099,7 +1219,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Error_JWTGenerationFailed()
 	suite.mockJWTService.On("GenerateJWT",
 		mock.Anything,
 		"user123",
-		"https://thunder.io",
+		"https://example.com",
 		int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return("", int64(0), &serviceerror.ServiceError{
@@ -1168,7 +1288,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_WithEncryption_Inli
 	}
 
 	suite.mockJWTService.On("GenerateJWT",
-		mock.Anything, "user123", "https://thunder.io", int64(3600),
+		mock.Anything, "user123", "https://example.com", int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return(signedJWS, time.Now().Unix(), (*serviceerror.ServiceError)(nil))
 
@@ -1218,7 +1338,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Error_EncryptionKeyNotFound
 	}
 
 	suite.mockJWTService.On("GenerateJWT",
-		mock.Anything, "user123", "https://thunder.io", int64(3600),
+		mock.Anything, "user123", "https://example.com", int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return("header.payload.signature", time.Now().Unix(), (*serviceerror.ServiceError)(nil))
 
@@ -1282,7 +1402,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Error_EncryptionFailed() {
 	}
 
 	suite.mockJWTService.On("GenerateJWT",
-		mock.Anything, "user123", "https://thunder.io", int64(3600),
+		mock.Anything, "user123", "https://example.com", int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return("header.payload.signature", time.Now().Unix(), (*serviceerror.ServiceError)(nil))
 
@@ -1350,7 +1470,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_WithEncryption_JWKS
 	}
 
 	suite.mockJWTService.On("GenerateJWT",
-		mock.Anything, "user123", "https://thunder.io", int64(3600),
+		mock.Anything, "user123", "https://example.com", int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return("header.payload.signature", time.Now().Unix(), (*serviceerror.ServiceError)(nil))
 
@@ -1399,7 +1519,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Error_NilJWEService() {
 	}
 
 	suite.mockJWTService.On("GenerateJWT",
-		mock.Anything, "user123", "https://thunder.io", int64(3600),
+		mock.Anything, "user123", "https://example.com", int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return("header.payload.signature", time.Now().Unix(), (*serviceerror.ServiceError)(nil))
 
@@ -1435,7 +1555,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_NoEncryptionAlg() {
 	}
 
 	suite.mockJWTService.On("GenerateJWT",
-		mock.Anything, "user123", "https://thunder.io", int64(3600),
+		mock.Anything, "user123", "https://example.com", int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return("header.payload.signature", time.Now().Unix(), (*serviceerror.ServiceError)(nil))
 
@@ -1479,7 +1599,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Error_UnsupportedCertType()
 	mockJWE := jwemock.NewJWEServiceInterfaceMock(suite.T())
 
 	suite.mockJWTService.On("GenerateJWT",
-		mock.Anything, "user123", "https://thunder.io", int64(3600),
+		mock.Anything, "user123", "https://example.com", int64(3600),
 		mock.Anything, mock.Anything, mock.Anything,
 	).Return("header.payload.signature", time.Now().Unix(), (*serviceerror.ServiceError)(nil))
 

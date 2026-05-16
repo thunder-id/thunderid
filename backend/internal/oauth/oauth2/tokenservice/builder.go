@@ -24,6 +24,7 @@ import (
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
@@ -79,8 +80,13 @@ func (tb *tokenBuilder) BuildAccessToken(ctx *AccessTokenBuildContext) (*oauth2m
 		return nil, fmt.Errorf("failed to build access token claims: %w", claimsErr)
 	}
 
+	tokenType := constants.TokenTypeBearer
+	if ctx.DPoPJkt != "" {
+		tokenType = constants.TokenTypeDPoP
+	}
+
 	tokenDTO := &oauth2model.TokenDTO{
-		TokenType:        constants.TokenTypeBearer,
+		TokenType:        tokenType,
 		ExpiresIn:        tokenConfig.ValidityPeriod,
 		Scopes:           ctx.Scopes,
 		ClientID:         ctx.ClientID,
@@ -175,6 +181,8 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 	} else if len(ctx.Audiences) == 1 {
 		claims["aud"] = ctx.Audiences[0]
 	}
+
+	dpop.SetCnfJkt(claims, ctx.DPoPJkt)
 
 	return claims, nil
 }
@@ -304,6 +312,10 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 	// Include claims_locales if present
 	if ctx.ClaimsLocales != "" {
 		claims["access_token_claims_locales"] = ctx.ClaimsLocales
+	}
+
+	if ctx.DPoPJkt != "" {
+		claims[constants.ClaimDPoPJkt] = ctx.DPoPJkt
 	}
 
 	return claims, nil

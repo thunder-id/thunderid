@@ -50,6 +50,7 @@ type DCRRegistrationRequest struct {
 	PolicyURI               string                              `json:"policy_uri,omitempty"`
 
 	RequirePushedAuthorizationRequests bool   `json:"require_pushed_authorization_requests,omitempty"`
+	DPoPBoundAccessTokens              bool   `json:"dpop_bound_access_tokens,omitempty"`
 	UserInfoSignedResponseAlg          string `json:"userinfo_signed_response_alg,omitempty"`
 	UserInfoEncryptedResponseAlg       string `json:"userinfo_encrypted_response_alg,omitempty"`
 	UserInfoEncryptedResponseEnc       string `json:"userinfo_encrypted_response_enc,omitempty"`
@@ -146,6 +147,7 @@ type DCRRegistrationResponse struct {
 	AppID                   string                              `json:"app_id,omitempty"`
 
 	RequirePushedAuthorizationRequests bool   `json:"require_pushed_authorization_requests,omitempty"`
+	DPoPBoundAccessTokens              bool   `json:"dpop_bound_access_tokens,omitempty"`
 	UserInfoSignedResponseAlg          string `json:"userinfo_signed_response_alg,omitempty"`
 	UserInfoEncryptedResponseAlg       string `json:"userinfo_encrypted_response_alg,omitempty"`
 	UserInfoEncryptedResponseEnc       string `json:"userinfo_encrypted_response_enc,omitempty"`

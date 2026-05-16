@@ -61,6 +61,9 @@ type AccessTokenBuildContext struct {
 	ClaimsRequest    *oauth2model.ClaimsRequest
 	ClaimsLocales    string
 	ClientAttributes map[string]interface{}
+	// DPoPJkt, when set, sender-constrains the access token to the supplied JWK thumbprint.
+	// The token receives a `cnf.jkt` claim and is issued with `token_type=DPoP`.
+	DPoPJkt string
 }
 
 // RefreshTokenBuildContext contains all the information needed to build a refresh token.
@@ -75,6 +78,7 @@ type RefreshTokenBuildContext struct {
 	OAuthApp             *inboundmodel.OAuthClient
 	ClaimsRequest        *oauth2model.ClaimsRequest
 	ClaimsLocales        string
+	DPoPJkt              string
 }
 
 // IDTokenBuildContext contains all the information needed to build an ID token (OIDC).
@@ -101,6 +105,7 @@ type RefreshTokenClaims struct {
 	Iat              int64
 	ClaimsRequest    *oauth2model.ClaimsRequest
 	ClaimsLocales    string
+	DPoPJkt          string
 }
 
 // SubjectTokenClaims represents the validated claims from a subject token (for token exchange).
@@ -111,6 +116,9 @@ type SubjectTokenClaims struct {
 	Scopes         []string
 	UserAttributes map[string]interface{}
 	NestedAct      map[string]interface{}
+	// CnfJkt is the JWK thumbprint extracted from the subject token's cnf.jkt claim.
+	// Empty when the subject token is not DPoP-bound.
+	CnfJkt string
 }
 
 // AccessTokenClaims represents the validated claims from an access token.

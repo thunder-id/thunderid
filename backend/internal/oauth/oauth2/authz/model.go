@@ -52,6 +52,7 @@ type AuthorizationCode struct {
 	ClaimsLocales       string
 	Nonce               string
 	CompletedACR        string
+	DPoPJkt             string
 }
 
 // AuthZPostRequest represents the request body for the authorization POST request.

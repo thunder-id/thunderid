@@ -37,6 +37,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
@@ -44,6 +45,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/dpopmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
@@ -81,7 +83,7 @@ func (s *UserInfoServiceTestSuite) SetupTest() {
 	s.userInfoService = newUserInfoService(
 		s.mockJWTService, nil, nil, s.mockTokenValidator,
 		s.mockInboundClient, s.mockOUService,
-		s.mockAttributeCacheService, s.mockTransactioner)
+		s.mockAttributeCacheService, s.mockTransactioner, nil)
 
 	// Initialize server runtime for tests
 	config.ResetServerRuntime()
@@ -1117,6 +1119,86 @@ func (s *UserInfoServiceTestSuite) TestGetUserInfo_JWS_ResponseType() {
 	s.mockJWTService.AssertExpectations(s.T())
 	s.mockAttributeCacheService.AssertExpectations(s.T())
 	s.mockInboundClient.AssertExpectations(s.T())
+}
+
+// TestGetUserInfo_BearerScheme_DPoPBoundToken_Rejected verifies that a DPoP-bound
+// access token (carrying cnf.jkt) presented under the Bearer scheme is rejected as
+// a downgrade.
+func (s *UserInfoServiceTestSuite) TestGetUserInfo_BearerScheme_DPoPBoundToken_Rejected() {
+	claims := map[string]any{
+		"sub":   "user123",
+		"scope": "openid",
+		"cnf":   map[string]any{"jkt": "thumbprint-abc"},
+	}
+	token := s.createToken(claims)
+
+	s.mockTokenValidator.On("ValidateAccessToken", token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
+
+	response, svcErr := s.userInfoService.GetUserInfo(context.Background(), token)
+	assert.NotNil(s.T(), svcErr)
+	assert.Equal(s.T(), errorBearerDowngrade.Code, svcErr.Code)
+	assert.Contains(s.T(), svcErr.ErrorDescription.DefaultValue, "DPoP-bound")
+	assert.Nil(s.T(), response)
+	s.mockTokenValidator.AssertExpectations(s.T())
+}
+
+// TestGetUserInfoForDPoP_NotBoundToken_Rejected verifies that a non-bound access token
+// presented under the DPoP scheme is rejected.
+func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_NotBoundToken_Rejected() {
+	verifier := dpopmock.NewVerifierInterfaceMock(s.T())
+	s.userInfoService = newUserInfoService(
+		s.mockJWTService, nil, nil, s.mockTokenValidator,
+		s.mockInboundClient, s.mockOUService,
+		s.mockAttributeCacheService, s.mockTransactioner, verifier)
+
+	claims := map[string]any{
+		"sub":   "user123",
+		"scope": "openid",
+	}
+	token := s.createToken(claims)
+
+	s.mockTokenValidator.On("ValidateAccessToken", token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
+
+	response, svcErr := s.userInfoService.GetUserInfoForDPoP(
+		context.Background(), token, "proof", "GET", "https://example.com/oauth2/userinfo")
+	assert.NotNil(s.T(), svcErr)
+	assert.Equal(s.T(), errorDPoPProofInvalid.Code, svcErr.Code)
+	assert.Nil(s.T(), response)
+	s.mockTokenValidator.AssertExpectations(s.T())
+}
+
+// TestGetUserInfoForDPoP_VerifierFails_Rejected verifies that a DPoP-bound access
+// token whose proof fails verification is rejected.
+func (s *UserInfoServiceTestSuite) TestGetUserInfoForDPoP_VerifierFails_Rejected() {
+	verifier := dpopmock.NewVerifierInterfaceMock(s.T())
+	s.userInfoService = newUserInfoService(
+		s.mockJWTService, nil, nil, s.mockTokenValidator,
+		s.mockInboundClient, s.mockOUService,
+		s.mockAttributeCacheService, s.mockTransactioner, verifier)
+
+	claims := map[string]any{
+		"sub":   "user123",
+		"scope": "openid",
+		"cnf":   map[string]any{"jkt": "thumbprint-abc"},
+	}
+	token := s.createToken(claims)
+
+	s.mockTokenValidator.On("ValidateAccessToken", token).Return(
+		&tokenservice.AccessTokenClaims{Sub: "user123", Claims: claims}, nil)
+	verifier.EXPECT().Verify(mock.Anything, mock.MatchedBy(func(p dpop.VerifyParams) bool {
+		return p.Proof == "proof" && p.HTM == "GET" && p.AccessToken == token &&
+			p.ExpectedJkt == "thumbprint-abc" &&
+			p.HTU == "https://example.com/oauth2/userinfo"
+	})).Return(nil, errors.New("bad proof"))
+
+	response, svcErr := s.userInfoService.GetUserInfoForDPoP(
+		context.Background(), token, "proof", "GET", "https://example.com/oauth2/userinfo")
+	assert.NotNil(s.T(), svcErr)
+	assert.Equal(s.T(), errorDPoPProofInvalid.Code, svcErr.Code)
+	assert.Nil(s.T(), response)
+	s.mockTokenValidator.AssertExpectations(s.T())
 }
 
 // TestGetUserInfo_JWS_GenerateJWTFailure tests that

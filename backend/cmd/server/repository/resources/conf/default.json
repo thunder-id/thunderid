@@ -122,6 +122,13 @@
       "require_par": false,
       "expires_in": 60
     },
+    "dpop": {
+      "required": false,
+      "iat_window": 60,
+      "leeway": 5,
+      "allowed_algs": ["ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256"],
+      "max_jti_length": 256
+    },
     "allow_wildcard_redirect_uri": false
   },
   "flow": {

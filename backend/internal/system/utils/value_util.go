@@ -101,6 +101,43 @@ func ToFloat64(v interface{}) (float64, bool) {
 	}
 }
 
+// ToInt64 attempts to convert a value to int64.
+// Supports conversion from all standard numeric types:
+// - Floating-point: float32, float64 (truncated toward zero)
+// - Signed integers: int, int8, int16, int32, int64
+// - Unsigned integers: uint, uint8, uint16, uint32, uint64
+// Returns the int64 value and true if successful, or 0 and false if not convertible.
+func ToInt64(v any) (int64, bool) {
+	switch n := v.(type) {
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	case int8:
+		return int64(n), true
+	case int16:
+		return int64(n), true
+	case int32:
+		return int64(n), true
+	case uint:
+		return int64(n), true
+	case uint8:
+		return int64(n), true
+	case uint16:
+		return int64(n), true
+	case uint32:
+		return int64(n), true
+	case uint64:
+		return int64(n), true
+	case float32:
+		return int64(n), true
+	case float64:
+		return int64(n), true
+	default:
+		return 0, false
+	}
+}
+
 // SecondsToMinutes converts seconds to minutes and returns as a string.
 func SecondsToMinutes(seconds int64) string {
 	minutes := seconds / 60

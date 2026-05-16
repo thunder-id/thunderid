@@ -376,6 +376,31 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken() {
 	}
 }
 
+// TestIntrospectToken_DPoPBoundToken_SurfacesCnfAndDPoPType verifies that a token
+// carrying cnf.jkt is reported with token_type=DPoP and the cnf claim is surfaced.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_DPoPBoundToken_SurfacesCnfAndDPoPType() {
+	claims := map[string]any{
+		"exp":       float64(time.Now().Add(time.Hour).Unix()),
+		"nbf":       float64(time.Now().Add(-time.Minute).Unix()),
+		"iat":       float64(time.Now().Unix()),
+		"sub":       "user123",
+		"client_id": "client123",
+		"cnf":       map[string]any{"jkt": "thumbprint-abc"},
+	}
+	token := s.createToken(claims)
+
+	s.jwtServiceMock.On("GetPublicKey").Return(&s.privateKey.PublicKey).Maybe()
+	s.jwtServiceMock.On("VerifyJWT", token, "", "").Return(nil)
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+	assert.NoError(s.T(), err)
+	assert.NotNil(s.T(), response)
+	assert.True(s.T(), response.Active)
+	assert.Equal(s.T(), constants.TokenTypeDPoP, response.TokenType)
+	assert.NotNil(s.T(), response.Cnf)
+	assert.Equal(s.T(), "thumbprint-abc", response.Cnf.Jkt)
+}
+
 // Helper methods to create tokens with specific claims
 func (s *TokenIntrospectionServiceTestSuite) createToken(claims map[string]interface{}) string {
 	header := map[string]interface{}{

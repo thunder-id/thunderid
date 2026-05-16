@@ -61,6 +61,12 @@ const (
 	RequestParamPrompt              string = "prompt"
 	RequestParamRequestURI          string = "request_uri"
 	RequestParamAcrValues           string = "acr_values"
+	RequestParamDPoPJkt             string = "dpop_jkt"
+)
+
+// OAuth2 HTTP headers.
+const (
+	HeaderDPoP string = "DPoP"
 )
 
 // OIDC prompt parameter values.
@@ -207,6 +213,7 @@ func (tam TokenEndpointAuthMethod) IsValid() bool {
 // OAuth2 token types.
 const (
 	TokenTypeBearer = "Bearer"
+	TokenTypeDPoP   = "DPoP"
 )
 
 // TokenTypeIdentifier defines a type for RFC 8693 token type identifiers.
@@ -257,6 +264,7 @@ const (
 	ErrorLoginRequired            string = "login_required"
 	ErrorConsentRequired          string = "consent_required"
 	ErrorAccountSelectionRequired string = "account_selection_required"
+	ErrorInvalidDPoPProof         string = "invalid_dpop_proof"
 )
 
 // UnSupportedGrantTypeError is returned when an unsupported grant type is requested.
@@ -319,6 +327,7 @@ const (
 	ClaimClaimsRequest      string = "claims_req"
 	ClaimClaimsLocales      string = "claims_locales"
 	ClaimCompletedAuthClass string = "completed_auth_class"
+	ClaimDPoPJkt            string = "dpop_jkt"
 )
 
 // OIDC subject types.

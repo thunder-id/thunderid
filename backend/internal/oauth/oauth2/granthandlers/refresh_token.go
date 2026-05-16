@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
@@ -107,6 +108,10 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Invalid refresh token",
 		}
+	}
+
+	if errResp := dpop.VerifyProofBinding(ctx, refreshTokenClaims.DPoPJkt, "refresh token"); errResp != nil {
+		return nil, errResp
 	}
 
 	newTokenScopes, scopeErr := h.validateAndApplyScopes(tokenRequest.Scope, refreshTokenClaims.Scopes, logger)
@@ -192,6 +197,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		OAuthApp:         oauthApp,
 		ClaimsRequest:    refreshTokenClaims.ClaimsRequest,
 		ClaimsLocales:    refreshTokenClaims.ClaimsLocales,
+		DPoPJkt:          dpop.GetJkt(ctx),
 	})
 	if err != nil {
 		logger.Error("Failed to generate access token", log.Error(err))
@@ -283,6 +289,7 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 		OAuthApp:             oauthApp,
 		ClaimsRequest:        claimsRequest,
 		ClaimsLocales:        claimsLocales,
+		DPoPJkt:              dpopJktForRefresh(ctx, oauthApp),
 	}
 
 	// Build refresh token using token builder
@@ -299,6 +306,15 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 	}
 	tokenResponse.RefreshToken = *refreshToken
 	return nil
+}
+
+// dpopJktForRefresh returns the DPoP jkt to bind onto a newly issued refresh token.
+// Confidential clients receive unbound refresh tokens.
+func dpopJktForRefresh(ctx context.Context, oauthApp *inboundmodel.OAuthClient) string {
+	if oauthApp == nil || !oauthApp.PublicClient {
+		return ""
+	}
+	return dpop.GetJkt(ctx)
 }
 
 // extendCacheTTL extends the attribute cache TTL when the desired lifetime exceeds what is already

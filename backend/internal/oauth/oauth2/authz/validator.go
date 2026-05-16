@@ -58,7 +58,9 @@ func (av *authorizationValidator) validateInitialAuthorizationRequest(msg *OAuth
 	}
 
 	// All subsequent validation errors can be sent to the client application via redirect.
-	errCode, errMsg := requestvalidator.ValidateAuthorizationRequestParams(msg.RequestQueryParams, oauthApp)
+	// The /authorize endpoint does not accept a DPoP header (proofs are bound at /par
+	// or /token), so dpopHeaderJkt is always empty here.
+	errCode, errMsg := requestvalidator.ValidateAuthorizationRequestParams(msg.RequestQueryParams, oauthApp, "")
 	if errCode != "" {
 		return true, errCode, errMsg
 	}

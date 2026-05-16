@@ -60,6 +60,13 @@ func (suite *DiscoveryTestSuite) SetupTest() {
 			ValidityPeriod: 3600,
 		},
 		OAuth: config.OAuthConfig{
+			DPoP: config.DPoPConfig{
+				Required:     false,
+				IatWindow:    60,
+				Leeway:       5,
+				AllowedAlgs:  []string{"ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256"},
+				MaxJTILength: 256,
+			},
 			AuthClass: config.AuthClassConfig{
 				Amrs: []string{"PWD", "OTP"},
 				AcrAMR: map[string][]string{
@@ -151,6 +158,35 @@ func (suite *DiscoveryTestSuite) TestOIDCDiscovery() {
 	assert.True(suite.T(), metadata.AuthorizationResponseIssParameterSupported)
 	assert.Contains(suite.T(), metadata.AcrValuesSupported, "urn:thunder:acr:password")
 	assert.Contains(suite.T(), metadata.AcrValuesSupported, "urn:thunder:acr:generated-code")
+}
+
+func (suite *DiscoveryTestSuite) TestDPoPSigningAlgValuesAdvertised() {
+	expected := []string{"ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256"}
+
+	oauth2Meta := suite.discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background())
+	assert.Equal(suite.T(), expected, oauth2Meta.DPoPSigningAlgValuesSupported)
+
+	oidcMeta, err := suite.discoveryService.GetOIDCMetadata(context.Background())
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), expected, oidcMeta.DPoPSigningAlgValuesSupported)
+}
+
+func (suite *DiscoveryTestSuite) TestDPoPSigningAlgValuesOmittedWhenUnconfigured() {
+	config.ResetServerRuntime()
+	testConfig := &config.Config{
+		Server: config.ServerConfig{Hostname: "localhost", Port: 8080},
+		JWT:    config.JWTConfig{Issuer: "https://auth.example.com"},
+	}
+	_ = config.InitializeServerRuntime("test", testConfig)
+	defer config.ResetServerRuntime()
+
+	svc := newDiscoveryService(suite.cryptoMock)
+	oauth2Meta := svc.GetOAuth2AuthorizationServerMetadata(context.Background())
+	assert.Nil(suite.T(), oauth2Meta.DPoPSigningAlgValuesSupported)
+
+	body, err := json.Marshal(oauth2Meta)
+	assert.NoError(suite.T(), err)
+	assert.NotContains(suite.T(), string(body), "dpop_signing_alg_values_supported")
 }
 
 // TestGrantTypeIsValid tests the GrantType.IsValid() method

@@ -32,6 +32,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/resource"
@@ -51,6 +52,7 @@ const (
 	testCodeChallengeMethodS256 = "S256"
 	testClientCallbackURL       = "https://client.example.com/callback"
 	testCacheID                 = "test-cache-id"
+	testDPoPThumbprint          = "thumbprint-abc"
 )
 
 // convertToStringSlice converts groups from various formats to []string for testing.
@@ -1354,4 +1356,59 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_TokenReques
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), []string{testResourceURL}, capturedAudiences)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DPoPBoundCode_NoProof_InvalidGrant() {
+	authzCodeBound := suite.testAuthzCode
+	authzCodeBound.DPoPJkt = testDPoPThumbprint
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authzCodeBound, nil)
+
+	result, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+	assert.Contains(suite.T(), err.ErrorDescription, "DPoP proof required")
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DPoPBoundCode_ProofMismatch_InvalidGrant() {
+	authzCodeBound := suite.testAuthzCode
+	authzCodeBound.DPoPJkt = testDPoPThumbprint
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authzCodeBound, nil)
+
+	ctx := dpop.WithJkt(context.Background(), "thumbprint-xyz")
+	result, err := suite.handler.HandleGrant(ctx, suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), constants.ErrorInvalidGrant, err.Error)
+	assert.Contains(suite.T(), err.ErrorDescription, "does not match")
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DPoPBoundCode_ProofMatches_Success() {
+	authzCodeBound := suite.testAuthzCode
+	authzCodeBound.DPoPJkt = testDPoPThumbprint
+	suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+		Return(&authzCodeBound, nil)
+
+	suite.mockTokenBuilder.On("BuildAccessToken",
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.DPoPJkt == testDPoPThumbprint
+		})).Return(&model.TokenDTO{
+		Token:     "test-jwt-token",
+		TokenType: constants.TokenTypeDPoP,
+		IssuedAt:  time.Now().Unix(),
+		ExpiresIn: 3600,
+		Scopes:    []string{"read", "write"},
+		ClientID:  testClientID,
+	}, nil)
+
+	ctx := dpop.WithJkt(context.Background(), testDPoPThumbprint)
+	result, err := suite.handler.HandleGrant(ctx, suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), constants.TokenTypeDPoP, result.AccessToken.TokenType)
 }

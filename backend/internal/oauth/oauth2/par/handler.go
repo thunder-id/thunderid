@@ -19,10 +19,13 @@
 package par
 
 import (
+	"context"
+	"errors"
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -34,15 +37,21 @@ type parHandlerInterface interface {
 
 // parHandler implements parHandlerInterface.
 type parHandler struct {
-	parService PARServiceInterface
-	logger     *log.Logger
+	parService   PARServiceInterface
+	dpopVerifier dpop.VerifierInterface
+	parEndpoint  string
+	logger       *log.Logger
 }
 
 // newPARHandler creates a new PAR handler instance.
-func newPARHandler(parService PARServiceInterface) parHandlerInterface {
+func newPARHandler(
+	parService PARServiceInterface, dpopVerifier dpop.VerifierInterface, parEndpoint string,
+) parHandlerInterface {
 	return &parHandler{
-		parService: parService,
-		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "PARHandler")),
+		parService:   parService,
+		dpopVerifier: dpopVerifier,
+		parEndpoint:  parEndpoint,
+		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "PARHandler")),
 	}
 }
 
@@ -66,6 +75,28 @@ func (h *parHandler) HandlePARRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A DPoP proof at the PAR endpoint binds the auth code to the proof's key.
+	dpopHeaderJkt, errCode, errDesc := h.verifyDPoPHeader(ctx, r)
+	if errCode != "" {
+		statusCode := http.StatusBadRequest
+		if errCode == oauth2const.ErrorServerError {
+			h.logger.Error("Internal server error verifying DPoP header",
+				log.MaskedString("clientID", clientInfo.ClientID),
+				log.String("errorCode", errCode),
+				log.String("errorDescription", errDesc),
+			)
+			statusCode = http.StatusInternalServerError
+		}
+		if errCode == oauth2const.ErrorInvalidDPoPProof {
+			h.logger.Debug("DPoP proof rejected at PAR",
+				log.MaskedString("clientID", clientInfo.ClientID),
+				log.String("error", errDesc))
+			errDesc = "Invalid DPoP proof"
+		}
+		utils.WriteJSONError(w, errCode, errDesc, statusCode, nil)
+		return
+	}
+
 	params := make(map[string]string)
 	for key, values := range r.PostForm {
 		if len(values) > 0 {
@@ -74,7 +105,8 @@ func (h *parHandler) HandlePARRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	resources := r.PostForm[oauth2const.RequestParamResource]
 
-	resp, errCode, errDesc := h.parService.HandlePushedAuthorizationRequest(ctx, params, resources, clientInfo.OAuthApp)
+	resp, errCode, errDesc := h.parService.HandlePushedAuthorizationRequest(
+		ctx, params, resources, clientInfo.OAuthApp, dpopHeaderJkt)
 	if errCode != "" {
 		statusCode := http.StatusBadRequest
 		if errCode == oauth2const.ErrorServerError {
@@ -90,4 +122,31 @@ func (h *parHandler) HandlePARRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	utils.WriteSuccessResponse(w, http.StatusCreated, resp)
+}
+
+// verifyDPoPHeader verifies the DPoP proof header if present and returns the JKT, error code, and error description.
+func (h *parHandler) verifyDPoPHeader(ctx context.Context, r *http.Request) (string, string, string) {
+	dpopHeaders := r.Header.Values(oauth2const.HeaderDPoP)
+	if len(dpopHeaders) == 0 {
+		return "", "", ""
+	}
+	if len(dpopHeaders) > 1 {
+		return "", oauth2const.ErrorInvalidDPoPProof, "Multiple DPoP headers"
+	}
+	if h.dpopVerifier == nil {
+		h.logger.Error("DPoP verifier is not configured")
+		return "", oauth2const.ErrorServerError, "Something went wrong"
+	}
+	result, err := h.dpopVerifier.Verify(ctx, dpop.VerifyParams{
+		Proof: dpopHeaders[0],
+		HTM:   http.MethodPost,
+		HTU:   h.parEndpoint,
+	})
+	if err != nil {
+		if errors.Is(err, dpop.ErrReplayedProof) {
+			return "", oauth2const.ErrorInvalidDPoPProof, "DPoP proof replayed"
+		}
+		return "", oauth2const.ErrorInvalidDPoPProof, err.Error()
+	}
+	return result.JKT, "", ""
 }

@@ -35,6 +35,7 @@ type OAuthParameters struct {
 	ClaimsLocales       string
 	Nonce               string
 	AcrValues           string
+	DPoPJkt             string
 }
 
 // ClaimsRequest represents the OIDC claims request parameter structure.

@@ -26,6 +26,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/idp"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -149,6 +150,15 @@ func (tv *tokenValidator) ValidateRefreshToken(token string, clientID string) (*
 	// Extract claims_locales if present
 	claimsLocales, _ := extractStringClaim(claims, "access_token_claims_locales")
 
+	var dpopJkt string
+	if _, exists := claims["dpop_jkt"]; exists {
+		s, err := extractStringClaim(claims, "dpop_jkt")
+		if err != nil {
+			return nil, fmt.Errorf("invalid 'dpop_jkt' claim in refresh token: %w", err)
+		}
+		dpopJkt = s
+	}
+
 	// Extract user type and organizational unit details if present
 	return &RefreshTokenClaims{
 		Sub:              sub,
@@ -159,6 +169,7 @@ func (tv *tokenValidator) ValidateRefreshToken(token string, clientID string) (*
 		Iat:              iat,
 		ClaimsRequest:    claimsRequest,
 		ClaimsLocales:    claimsLocales,
+		DPoPJkt:          dpopJkt,
 	}, nil
 }
 
@@ -301,6 +312,11 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		nestedAct = actClaim
 	}
 
+	cnfJkt, err := dpop.ExtractCnfJkt(claims)
+	if err != nil {
+		return nil, err
+	}
+
 	return &SubjectTokenClaims{
 		Sub:            sub,
 		Iss:            iss,
@@ -308,6 +324,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 		Scopes:         scopes,
 		UserAttributes: userAttributes,
 		NestedAct:      nestedAct,
+		CnfJkt:         cnfJkt,
 	}, nil
 }
 

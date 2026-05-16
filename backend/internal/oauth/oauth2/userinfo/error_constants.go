@@ -80,4 +80,34 @@ var (
 			DefaultValue: "The 'openid' scope is required for this request",
 		},
 	}
+
+	// errorBearerDowngrade is returned when a DPoP-bound access token is presented
+	// under the Bearer scheme.
+	errorBearerDowngrade = serviceerror.ServiceError{
+		Type: serviceerror.ClientErrorType,
+		Code: "invalid_token",
+		Error: core.I18nMessage{
+			Key:          "error.userinfoservice.dpop_bound_token_bearer_scheme",
+			DefaultValue: "Invalid access token",
+		},
+		ErrorDescription: core.I18nMessage{
+			Key:          "error.userinfoservice.dpop_bound_token_bearer_scheme_description",
+			DefaultValue: "DPoP-bound token must use DPoP scheme",
+		},
+	}
+
+	// errorDPoPProofInvalid is returned when the DPoP-scheme request fails to bind:
+	// access token not DPoP-bound, or proof verification fails.
+	errorDPoPProofInvalid = serviceerror.ServiceError{
+		Type: serviceerror.ClientErrorType,
+		Code: "invalid_token",
+		Error: core.I18nMessage{
+			Key:          "error.userinfoservice.invalid_dpop_proof",
+			DefaultValue: "Invalid access token",
+		},
+		ErrorDescription: core.I18nMessage{
+			Key:          "error.userinfoservice.invalid_dpop_proof_description",
+			DefaultValue: "DPoP proof verification failed",
+		},
+	}
 )

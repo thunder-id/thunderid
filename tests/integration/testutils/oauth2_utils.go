@@ -20,16 +20,26 @@ package testutils
 
 import (
 	"bytes"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"io"
 	"log"
+	"math/big"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
 )
 
 // InitiateAuthorizationFlow starts the OAuth2 authorization flow
@@ -885,4 +895,400 @@ func generateCodeChallenge(verifier string) string {
 	hash := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
 	return challenge
+}
+
+// DPoPKey is an asymmetric key pair plus the public-key JWK and its SHA-256
+// thumbprint, used to mint DPoP proofs in integration tests.
+type DPoPKey struct {
+	Alg     string
+	Private crypto.Signer
+	JWK     map[string]any
+	JKT     string
+}
+
+// GenerateDPoPKey generates a fresh key pair for the supplied DPoP signing
+// algorithm. Supported values: ES256, ES384, ES512, PS256, RS256, EdDSA.
+func GenerateDPoPKey(alg string) (*DPoPKey, error) {
+	switch alg {
+	case "ES256":
+		return generateECKey(elliptic.P256(), "P-256", "ES256")
+	case "ES384":
+		return generateECKey(elliptic.P384(), "P-384", "ES384")
+	case "ES512":
+		return generateECKey(elliptic.P521(), "P-521", "ES512")
+	case "PS256":
+		return generateRSAKey("PS256")
+	case "RS256":
+		return generateRSAKey("RS256")
+	case "EdDSA":
+		return generateEdKey()
+	default:
+		return nil, fmt.Errorf("unsupported DPoP alg: %s", alg)
+	}
+}
+
+func generateECKey(curve elliptic.Curve, crv, alg string) (*DPoPKey, error) {
+	priv, err := ecdsa.GenerateKey(curve, rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	byteSize := (curve.Params().BitSize + 7) / 8
+	x := leftPadBytes(priv.PublicKey.X.Bytes(), byteSize)
+	y := leftPadBytes(priv.PublicKey.Y.Bytes(), byteSize)
+
+	jwk := map[string]any{
+		"kty": "EC",
+		"crv": crv,
+		"x":   base64.RawURLEncoding.EncodeToString(x),
+		"y":   base64.RawURLEncoding.EncodeToString(y),
+	}
+	jkt, err := computeJKT(jwk)
+	if err != nil {
+		return nil, err
+	}
+	return &DPoPKey{Alg: alg, Private: priv, JWK: jwk, JKT: jkt}, nil
+}
+
+func generateRSAKey(alg string) (*DPoPKey, error) {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, err
+	}
+	jwk := map[string]any{
+		"kty": "RSA",
+		"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(priv.E)).Bytes()),
+		"n":   base64.RawURLEncoding.EncodeToString(priv.N.Bytes()),
+	}
+	jkt, err := computeJKT(jwk)
+	if err != nil {
+		return nil, err
+	}
+	return &DPoPKey{Alg: alg, Private: priv, JWK: jwk, JKT: jkt}, nil
+}
+
+func generateEdKey() (*DPoPKey, error) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	jwk := map[string]any{
+		"kty": "OKP",
+		"crv": "Ed25519",
+		"x":   base64.RawURLEncoding.EncodeToString(pub),
+	}
+	jkt, err := computeJKT(jwk)
+	if err != nil {
+		return nil, err
+	}
+	return &DPoPKey{Alg: "EdDSA", Private: priv, JWK: jwk, JKT: jkt}, nil
+}
+
+// computeJKT computes the SHA-256 thumbprint of a JWK using only the
+// required public-key members in lexicographic order.
+func computeJKT(jwk map[string]any) (string, error) {
+	kty, _ := jwk["kty"].(string)
+	var canonical string
+	switch kty {
+	case "EC":
+		crv, _ := jwk["crv"].(string)
+		x, _ := jwk["x"].(string)
+		y, _ := jwk["y"].(string)
+		canonical = fmt.Sprintf(`{"crv":%q,"kty":"EC","x":%q,"y":%q}`, crv, x, y)
+	case "RSA":
+		e, _ := jwk["e"].(string)
+		n, _ := jwk["n"].(string)
+		canonical = fmt.Sprintf(`{"e":%q,"kty":"RSA","n":%q}`, e, n)
+	case "OKP":
+		crv, _ := jwk["crv"].(string)
+		x, _ := jwk["x"].(string)
+		canonical = fmt.Sprintf(`{"crv":%q,"kty":"OKP","x":%q}`, crv, x)
+	default:
+		return "", fmt.Errorf("unsupported kty for JKT: %s", kty)
+	}
+	sum := sha256.Sum256([]byte(canonical))
+	return base64.RawURLEncoding.EncodeToString(sum[:]), nil
+}
+
+// DPoPProofOptions tweaks the proof JWT created by CreateProof. Default-zero
+// values mean "use sensible defaults" — fresh jti, current iat, no ath, the
+// key's natural alg and JWK, etc.
+type DPoPProofOptions struct {
+	// HTM/HTU override the supplied request method/URL inside the proof body.
+	// Empty values keep the values passed to CreateProof.
+	HTM string
+	HTU string
+
+	// Iat overrides the "iat" claim. Zero means time.Now().
+	Iat int64
+	// IatOffset, when Iat is zero, shifts the default iat by the given seconds.
+	// Negative values produce a stale proof; positive values produce a proof
+	// from the future.
+	IatOffset int
+
+	// Jti overrides the random "jti". Empty means a random 22-char value.
+	Jti string
+	// OmitJTI removes the "jti" claim entirely.
+	OmitJTI bool
+
+	// AccessToken, when non-empty, populates the "ath" claim with the
+	// base64url(SHA-256(token)) hash. Ignored when AthOverride is set.
+	AccessToken string
+	// AthOverride, when non-empty, sets the literal "ath" value.
+	AthOverride string
+	// OmitAth removes the "ath" claim even when AccessToken is set.
+	OmitAth bool
+
+	// Typ overrides the "typ" header. Empty means "dpop+jwt".
+	Typ string
+	// OmitTyp removes the "typ" header.
+	OmitTyp bool
+
+	// Alg overrides the JWS "alg" header. Empty means the key's natural alg.
+	Alg string
+
+	// JWKOverride replaces the embedded JWK header completely.
+	JWKOverride map[string]any
+	// IncludePrivateInJWK adds a "d" member to the embedded JWK to simulate
+	// a misconfigured client leaking private-key material.
+	IncludePrivateInJWK bool
+	// OmitJWK removes the JWK header entirely.
+	OmitJWK bool
+
+	// TamperSignature flips a bit in the signature so the JWS verification
+	// fails while leaving the structure parseable.
+	TamperSignature bool
+
+	// Extra header members merged into the JWS protected header.
+	ExtraHeader map[string]any
+	// Extra payload members merged into the JWT body.
+	ExtraPayload map[string]any
+}
+
+// CreateProof signs a DPoP proof JWT bound to the given HTTP method and URL.
+// All proof inputs (typ, alg, jwk, htm, htu, iat, jti, ath) can be individually
+// tampered with via opts to drive negative-path tests.
+func (k *DPoPKey) CreateProof(htm, htu string, opts DPoPProofOptions) (string, error) {
+	if opts.HTM != "" {
+		htm = opts.HTM
+	}
+	if opts.HTU != "" {
+		htu = opts.HTU
+	}
+
+	header := map[string]any{
+		"typ": "dpop+jwt",
+		"alg": k.Alg,
+		"jwk": k.JWK,
+	}
+	if opts.Typ != "" {
+		header["typ"] = opts.Typ
+	}
+	if opts.OmitTyp {
+		delete(header, "typ")
+	}
+	if opts.Alg != "" {
+		header["alg"] = opts.Alg
+	}
+	if opts.JWKOverride != nil {
+		header["jwk"] = opts.JWKOverride
+	}
+	if opts.IncludePrivateInJWK {
+		jwk := cloneJWK(k.JWK)
+		jwk["d"] = "AAAA"
+		header["jwk"] = jwk
+	}
+	if opts.OmitJWK {
+		delete(header, "jwk")
+	}
+	for k2, v := range opts.ExtraHeader {
+		header[k2] = v
+	}
+
+	iat := opts.Iat
+	if iat == 0 {
+		iat = time.Now().Unix() + int64(opts.IatOffset)
+	}
+
+	payload := map[string]any{
+		"htm": htm,
+		"htu": htu,
+		"iat": iat,
+	}
+	if !opts.OmitJTI {
+		jti := opts.Jti
+		if jti == "" {
+			jti = randomJTI()
+		}
+		payload["jti"] = jti
+	}
+	if !opts.OmitAth {
+		switch {
+		case opts.AthOverride != "":
+			payload["ath"] = opts.AthOverride
+		case opts.AccessToken != "":
+			sum := sha256.Sum256([]byte(opts.AccessToken))
+			payload["ath"] = base64.RawURLEncoding.EncodeToString(sum[:])
+		}
+	}
+	for k2, v := range opts.ExtraPayload {
+		payload[k2] = v
+	}
+
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		return "", err
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	signingInput := base64.RawURLEncoding.EncodeToString(headerJSON) +
+		"." + base64.RawURLEncoding.EncodeToString(payloadJSON)
+
+	sig, err := signProof(k.Private, k.Alg, signingInput)
+	if err != nil {
+		return "", err
+	}
+	if opts.TamperSignature && len(sig) > 0 {
+		sig[len(sig)-1] ^= 0x01
+	}
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
+}
+
+// MakeUnsignedDPoPProof builds a header.payload."" JWS where the signature
+// segment is empty. Useful for asserting that the verifier rejects alg=none.
+func (k *DPoPKey) MakeUnsignedDPoPProof(htm, htu string) (string, error) {
+	header := map[string]any{
+		"typ": "dpop+jwt",
+		"alg": "none",
+		"jwk": k.JWK,
+	}
+	payload := map[string]any{
+		"htm": htm,
+		"htu": htu,
+		"iat": time.Now().Unix(),
+		"jti": randomJTI(),
+	}
+	hb, err := json.Marshal(header)
+	if err != nil {
+		return "", err
+	}
+	pb, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(hb) + "." +
+		base64.RawURLEncoding.EncodeToString(pb) + ".", nil
+}
+
+func signProof(priv crypto.Signer, alg, signingInput string) ([]byte, error) {
+	switch alg {
+	case "ES256", "ES384", "ES512":
+		k, ok := priv.(*ecdsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("alg %s requires *ecdsa.PrivateKey", alg)
+		}
+		h, err := ecHash(alg)
+		if err != nil {
+			return nil, err
+		}
+		h.Write([]byte(signingInput))
+		r, s, err := ecdsa.Sign(rand.Reader, k, h.Sum(nil))
+		if err != nil {
+			return nil, err
+		}
+		byteSize := (k.Curve.Params().BitSize + 7) / 8
+		sig := make([]byte, 2*byteSize)
+		copy(sig[byteSize-len(r.Bytes()):byteSize], r.Bytes())
+		copy(sig[2*byteSize-len(s.Bytes()):], s.Bytes())
+		return sig, nil
+	case "PS256":
+		k, ok := priv.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("alg PS256 requires *rsa.PrivateKey")
+		}
+		h := sha256.Sum256([]byte(signingInput))
+		return rsa.SignPSS(rand.Reader, k, crypto.SHA256, h[:], &rsa.PSSOptions{
+			SaltLength: rsa.PSSSaltLengthEqualsHash,
+		})
+	case "RS256":
+		k, ok := priv.(*rsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("alg RS256 requires *rsa.PrivateKey")
+		}
+		h := sha256.Sum256([]byte(signingInput))
+		return rsa.SignPKCS1v15(rand.Reader, k, crypto.SHA256, h[:])
+	case "EdDSA":
+		k, ok := priv.(ed25519.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("alg EdDSA requires ed25519.PrivateKey")
+		}
+		return ed25519.Sign(k, []byte(signingInput)), nil
+	default:
+		return nil, fmt.Errorf("unsupported alg for signing: %s", alg)
+	}
+}
+
+func ecHash(alg string) (hash.Hash, error) {
+	switch alg {
+	case "ES256":
+		return sha256.New(), nil
+	case "ES384":
+		return sha512.New384(), nil
+	case "ES512":
+		return sha512.New(), nil
+	default:
+		return nil, fmt.Errorf("unsupported EC alg: %s", alg)
+	}
+}
+
+func leftPadBytes(b []byte, size int) []byte {
+	if len(b) >= size {
+		return b
+	}
+	out := make([]byte, size)
+	copy(out[size-len(b):], b)
+	return out
+}
+
+func cloneJWK(jwk map[string]any) map[string]any {
+	out := make(map[string]any, len(jwk))
+	for k, v := range jwk {
+		out[k] = v
+	}
+	return out
+}
+
+// randomJTI returns a fresh url-safe identifier suitable for the "jti" claim.
+func randomJTI() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		panic(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+// AthFor computes the DPoP "ath" hash for a given access token.
+func AthFor(accessToken string) string {
+	sum := sha256.Sum256([]byte(accessToken))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// DecodeJWTPayloadMap decodes a JWS payload as a generic claims map without
+// verifying the signature. Tests use this to inspect cnf.jkt and token_type.
+func DecodeJWTPayloadMap(token string) (map[string]any, error) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid JWT format")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, err
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, err
+	}
+	return claims, nil
 }

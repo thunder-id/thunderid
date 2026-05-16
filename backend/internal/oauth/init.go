@@ -33,8 +33,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/jwks"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dcr"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/introspect"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/token"
@@ -43,6 +45,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/scope"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
@@ -85,8 +88,10 @@ func Initialize(
 	tokenBuilder, tokenValidator := tokenservice.Initialize(jwtService, jweService, resolver, idpService)
 	scopeValidator := scope.Initialize()
 	discoveryService := discovery.Initialize(mux, runtimeCrypto)
+	jtiStore := jti.Initialize(config.GetServerRuntime().Config.Server.Identifier)
+	dpopVerifier := dpop.Initialize(jtiStore)
 	parService := par.Initialize(mux, inboundClient, authnProvider, jwtService, discoveryService,
-		resourceService)
+		resourceService, dpopVerifier)
 	grantHandlerProvider, err := granthandlers.Initialize(
 		mux, jwtService, inboundClient, flowExecService, tokenBuilder, tokenValidator,
 		attributeCacheSvc, ouService, authzService, entityProvider, resourceService, parService)
@@ -94,10 +99,11 @@ func Initialize(
 		return err
 	}
 	token.Initialize(mux, jwtService, inboundClient, authnProvider, grantHandlerProvider,
-		scopeValidator, observabilitySvc, discoveryService, transactioner)
+		scopeValidator, observabilitySvc, discoveryService, transactioner, dpopVerifier)
 	introspect.Initialize(mux, jwtService, inboundClient, authnProvider, discoveryService)
 	userinfo.Initialize(mux, jwtService, jweService, resolver,
-		tokenValidator, inboundClient, ouService, attributeCacheSvc, transactioner)
+		tokenValidator, inboundClient, ouService, attributeCacheSvc, transactioner,
+		discoveryService, dpopVerifier)
 	dcr.Initialize(mux, applicationService, ouService, i18nService, transactioner)
 	return nil
 }

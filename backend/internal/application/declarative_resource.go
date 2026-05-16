@@ -209,6 +209,7 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 					PKCERequired:                       config.OAuthConfig.PKCERequired,
 					PublicClient:                       config.OAuthConfig.PublicClient,
 					RequirePushedAuthorizationRequests: config.OAuthConfig.RequirePushedAuthorizationRequests,
+					DPoPBoundAccessTokens:              config.OAuthConfig.DPoPBoundAccessTokens,
 					Token:                              config.OAuthConfig.Token,
 					Scopes:                             config.OAuthConfig.Scopes,
 					UserInfo:                           config.OAuthConfig.UserInfo,

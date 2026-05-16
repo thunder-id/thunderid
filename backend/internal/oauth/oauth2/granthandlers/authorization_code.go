@@ -28,6 +28,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/pkce"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
@@ -116,6 +117,10 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		return nil, errResponse
 	}
 
+	if errResp := dpop.VerifyProofBinding(ctx, authCode.DPoPJkt, "authorization code"); errResp != nil {
+		return nil, errResp
+	}
+
 	// Parse authorized scopes
 	authorizedScopes := tokenservice.ParseScopes(authCode.Scopes)
 
@@ -196,6 +201,7 @@ func (h *authorizationCodeGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		OAuthApp:         oauthApp,
 		ClaimsRequest:    authCode.ClaimsRequest,
 		ClaimsLocales:    authCode.ClaimsLocales,
+		DPoPJkt:          dpop.GetJkt(ctx),
 	})
 	if err != nil {
 		return nil, &model.ErrorResponse{

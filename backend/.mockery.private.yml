@@ -45,6 +45,22 @@ packages:
       pkgname: par
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop:
+    config:
+      all: true
+      dir: internal/oauth/oauth2/dpop
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: dpop
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/jti:
+    config:
+      all: true
+      dir: internal/oauth/oauth2/jti
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: jti
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/oauth/oauth2/authz:
     config:
       all: true

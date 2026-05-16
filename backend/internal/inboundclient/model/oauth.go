@@ -116,6 +116,7 @@ type OAuthProfile struct {
 	PKCERequired                       bool                `json:"pkceRequired"`
 	PublicClient                       bool                `json:"publicClient"`
 	RequirePushedAuthorizationRequests bool                `json:"requirePushedAuthorizationRequests"`
+	DPoPBoundAccessTokens              bool                `json:"dpopBoundAccessTokens"`
 	Token                              *OAuthTokenConfig   `json:"token,omitempty"`
 	Scopes                             []string            `json:"scopes,omitempty"`
 	UserInfo                           *UserInfoConfig     `json:"userInfo,omitempty"`
@@ -136,6 +137,7 @@ type OAuthConfigWithSecret struct {
 	PKCERequired                       bool                                `json:"pkceRequired"                                yaml:"pkce_required"                                jsonschema:"Require PKCE for security. Recommended for all user-interactive flows."`
 	PublicClient                       bool                                `json:"publicClient"                                yaml:"public_client"                                jsonschema:"Identify if client is public (cannot store secrets). Set true for SPA/Mobile."`
 	RequirePushedAuthorizationRequests bool                                `json:"requirePushedAuthorizationRequests"          yaml:"require_pushed_authorization_requests"        jsonschema:"Require Pushed Authorization Requests (PAR) per RFC 9126."`
+	DPoPBoundAccessTokens              bool                                `json:"dpopBoundAccessTokens"                       yaml:"dpop_bound_access_tokens"                     jsonschema:"Require DPoP-bound access tokens (RFC 9449)."`
 	Token                              *OAuthTokenConfig                   `json:"token,omitempty"                             yaml:"token,omitempty"                              jsonschema:"Token configuration for access tokens and ID tokens"`
 	Scopes                             []string                            `json:"scopes,omitempty"                            yaml:"scopes,omitempty"                             jsonschema:"Allowed OAuth scopes. Add custom scopes as needed for your application."`
 	UserInfo                           *UserInfoConfig                     `json:"userInfo,omitempty"                          yaml:"user_info,omitempty"                          jsonschema:"UserInfo endpoint configuration. Configure user attributes returned from the OIDC userinfo endpoint."`
@@ -155,6 +157,7 @@ type OAuthConfig struct {
 	PKCERequired                       bool                                `json:"pkceRequired"`
 	PublicClient                       bool                                `json:"publicClient"`
 	RequirePushedAuthorizationRequests bool                                `json:"requirePushedAuthorizationRequests"`
+	DPoPBoundAccessTokens              bool                                `json:"dpopBoundAccessTokens"`
 	Token                              *OAuthTokenConfig                   `json:"token,omitempty"`
 	Scopes                             []string                            `json:"scopes,omitempty"`
 	UserInfo                           *UserInfoConfig                     `json:"userInfo,omitempty"`
@@ -181,6 +184,7 @@ type OAuthClient struct {
 	PKCERequired                       bool                                `yaml:"pkce_required,omitempty"`
 	PublicClient                       bool                                `yaml:"public_client,omitempty"`
 	RequirePushedAuthorizationRequests bool                                `yaml:"require_pushed_authorization_requests,omitempty"`
+	DPoPBoundAccessTokens              bool                                `yaml:"dpop_bound_access_tokens,omitempty"`
 	Token                              *OAuthTokenConfig                   `yaml:"token,omitempty"`
 	Scopes                             []string                            `yaml:"scopes,omitempty"`
 	UserInfo                           *UserInfoConfig                     `yaml:"user_info,omitempty"`

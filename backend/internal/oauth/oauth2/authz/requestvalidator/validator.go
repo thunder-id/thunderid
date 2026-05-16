@@ -27,21 +27,26 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/pkce"
+	"github.com/thunder-id/thunderid/internal/system/jose/jws"
 )
 
 // ValidateAuthorizationRequestParams validates the common authorization request parameters
 // shared by both the standard authorize endpoint and the PAR endpoint.
 //
-// This validates: prompt, grant_type, response_type, PKCE, and nonce.
+// This validates: prompt, grant_type, response_type, PKCE, nonce, and dpop_jkt.
 // Callers are responsible for validating client_id and redirect_uri before calling this
 // function, since those validations have endpoint-specific error handling semantics
 // (e.g., the authorize endpoint must not redirect errors when the redirect_uri is invalid).
 // Resource indicators (RFC 8707) are multi-valued and must be validated separately by callers
 // via resourceindicators.ValidateResourceURIs.
 //
+// dpopHeaderJkt is the thumbprint computed from a verified DPoP proof at the same endpoint
+// or empty when no proof was sent. When both the dpop_jkt request
+// param and a proof-derived thumbprint are present, they must match.
+//
 // Returns (errorCode, errorDescription). Empty errorCode means validation passed.
 func ValidateAuthorizationRequestParams(
-	params map[string]string, oauthApp *inboundmodel.OAuthClient,
+	params map[string]string, oauthApp *inboundmodel.OAuthClient, dpopHeaderJkt string,
 ) (string, string) {
 	responseType := params[constants.RequestParamResponseType]
 
@@ -88,6 +93,16 @@ func ValidateAuthorizationRequestParams(
 	nonce := params[constants.RequestParamNonce]
 	if nonce != "" && len(nonce) > constants.MaxNonceLength {
 		return constants.ErrorInvalidRequest, "nonce exceeds maximum allowed length"
+	}
+
+	if dpopJktParam := params[constants.RequestParamDPoPJkt]; dpopJktParam != "" {
+		if !jws.IsValidJKT(dpopJktParam) {
+			return constants.ErrorInvalidRequest, "Invalid dpop_jkt parameter"
+		}
+		if dpopHeaderJkt != "" && dpopJktParam != dpopHeaderJkt {
+			return constants.ErrorInvalidDPoPProof,
+				"dpop_jkt parameter does not match DPoP proof thumbprint"
+		}
 	}
 
 	return "", ""

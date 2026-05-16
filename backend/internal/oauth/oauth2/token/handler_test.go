@@ -34,6 +34,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 )
 
@@ -229,6 +230,49 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_Success() {
 	assert.Equal(suite.T(), "Bearer", response["token_type"])
 	assert.Equal(suite.T(), float64(3600), response["expires_in"])
 	assert.Equal(suite.T(), "openid profile", response["scope"])
+}
+
+func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_MultipleDPoPHeaders_Rejected() {
+	handler := suite.newHandler()
+	mockApp := &inboundmodel.OAuthClient{ClientID: "test-client-id"}
+	formData := url.Values{}
+	formData.Set("grant_type", "authorization_code")
+	req := suite.withClientContext(suite.buildRequest(formData), mockApp)
+	req.Header.Add(constants.HeaderDPoP, "proof-1")
+	req.Header.Add(constants.HeaderDPoP, "proof-2")
+
+	rr := httptest.NewRecorder()
+	handler.HandleTokenRequest(rr, req)
+
+	assert.Equal(suite.T(), http.StatusBadRequest, rr.Code)
+	var response map[string]any
+	assert.NoError(suite.T(), json.Unmarshal(rr.Body.Bytes(), &response))
+	assert.Equal(suite.T(), constants.ErrorInvalidDPoPProof, response["error"])
+	suite.mockTokenService.AssertNotCalled(suite.T(), "ProcessTokenRequest", mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_SingleDPoPHeader_PropagatedToService() {
+	handler := suite.newHandler()
+	mockApp := &inboundmodel.OAuthClient{ClientID: "test-client-id"}
+	formData := url.Values{}
+	formData.Set("grant_type", "authorization_code")
+	formData.Set("code", "test-code")
+	req := suite.withClientContext(suite.buildRequest(formData), mockApp)
+	const proof = "valid-proof-jwt"
+	req.Header.Set(constants.HeaderDPoP, proof)
+
+	suite.mockTokenService.EXPECT().
+		ProcessTokenRequest(
+			mock.MatchedBy(func(ctx context.Context) bool { return dpop.GetProof(ctx) == proof }),
+			mock.Anything, mock.Anything,
+		).
+		Return(&model.TokenResponse{AccessToken: "at", TokenType: constants.TokenTypeDPoP, ExpiresIn: 3600}, nil)
+
+	rr := httptest.NewRecorder()
+	handler.HandleTokenRequest(rr, req)
+
+	assert.Equal(suite.T(), http.StatusOK, rr.Code)
 }
 
 func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_SuccessWithIssuedTokenType() {

@@ -33,6 +33,7 @@ import (
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/resource"
@@ -2230,6 +2231,137 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 	assert.Nil(suite.T(), errResp)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), []string{"read", "write"}, result.AccessToken.Scopes)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DPoPProof_PropagatesJktToBuilder() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub":   testUserID,
+		"iss":   testCustomIssuer,
+		"exp":   float64(now + 3600),
+		"scope": "read",
+	})
+
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:    testUserID,
+			Iss:    testCustomIssuer,
+			Scopes: []string{"read"},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+		return ctx.DPoPJkt == "thumbprint-tx"
+	})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeDPoP,
+		IssuedAt:  now,
+		ExpiresIn: 7200,
+		Scopes:    []string{"read"},
+		ClientID:  testClientID,
+	}, nil)
+
+	ctx := dpop.WithJkt(context.Background(), "thumbprint-tx")
+	result, errResp := suite.handler.HandleGrant(ctx, tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), constants.TokenTypeDPoP, result.AccessToken.TokenType)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_BoundSubjectToken_ProofMatches_Success() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub":   testUserID,
+		"iss":   testCustomIssuer,
+		"exp":   float64(now + 3600),
+		"scope": "read",
+		"cnf":   map[string]interface{}{"jkt": "thumbprint-tx"},
+	})
+
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:    testUserID,
+			Iss:    testCustomIssuer,
+			Scopes: []string{"read"},
+			CnfJkt: "thumbprint-tx",
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+		return ctx.DPoPJkt == "thumbprint-tx"
+	})).Return(&model.TokenDTO{
+		Token:     testTokenExchangeJWT,
+		TokenType: constants.TokenTypeDPoP,
+		IssuedAt:  now,
+		ExpiresIn: 7200,
+		Scopes:    []string{"read"},
+		ClientID:  testClientID,
+	}, nil)
+
+	ctx := dpop.WithJkt(context.Background(), "thumbprint-tx")
+	result, errResp := suite.handler.HandleGrant(ctx, tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), constants.TokenTypeDPoP, result.AccessToken.TokenType)
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_BoundSubjectToken_NoProof_InvalidDPoPProof() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub":   testUserID,
+		"iss":   testCustomIssuer,
+		"exp":   float64(now + 3600),
+		"scope": "read",
+		"cnf":   map[string]interface{}{"jkt": "thumbprint-tx"},
+	})
+
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:    testUserID,
+			Iss:    testCustomIssuer,
+			Scopes: []string{"read"},
+			CnfJkt: "thumbprint-tx",
+		}, nil)
+
+	result, errResp := suite.handler.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidDPoPProof, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription, "DPoP proof required")
+}
+
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_BoundSubjectToken_ProofMismatch_InvalidDPoPProof() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub":   testUserID,
+		"iss":   testCustomIssuer,
+		"exp":   float64(now + 3600),
+		"scope": "read",
+		"cnf":   map[string]interface{}{"jkt": "thumbprint-tx"},
+	})
+
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:    testUserID,
+			Iss:    testCustomIssuer,
+			Scopes: []string{"read"},
+			CnfJkt: "thumbprint-tx",
+		}, nil)
+
+	ctx := dpop.WithJkt(context.Background(), "thumbprint-other")
+	result, errResp := suite.handler.HandleGrant(ctx, tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidDPoPProof, errResp.Error)
+	assert.Contains(suite.T(), errResp.ErrorDescription, "does not match")
 }
 
 func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_MultipleResources_UnionScopes() {

@@ -29,8 +29,10 @@ import (
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/scope"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/dpopmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/granthandlersmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/scopemock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
@@ -43,6 +45,7 @@ type TokenServiceTestSuite struct {
 	mockGrantHandler   *granthandlersmock.GrantHandlerInterfaceMock
 	mockObsSvc         *observabilitymock.ObservabilityServiceInterfaceMock
 	mockTransactioner  *MockTransactioner
+	mockDPoPVerifier   *dpopmock.VerifierInterfaceMock
 }
 
 // MockTransactioner is a simple implementation of Transactioner for testing.
@@ -66,6 +69,7 @@ func (suite *TokenServiceTestSuite) SetupTest() {
 	suite.mockObsSvc.On("PublishEvent", mock.Anything).Return().Maybe()
 
 	suite.mockTransactioner = &MockTransactioner{}
+	suite.mockDPoPVerifier = dpopmock.NewVerifierInterfaceMock(suite.T())
 
 	// Common grant handler lookup; individual tests may override this.
 	suite.mockGrantProvider.
@@ -75,7 +79,8 @@ func (suite *TokenServiceTestSuite) SetupTest() {
 
 // newService builds a fresh tokenService using the suite's mocks.
 func (suite *TokenServiceTestSuite) newService() TokenServiceInterface {
-	return newTokenService(suite.mockGrantProvider, suite.mockScopeValidator, suite.mockObsSvc, suite.mockTransactioner)
+	return newTokenService(suite.mockGrantProvider, suite.mockScopeValidator, suite.mockObsSvc,
+		suite.mockTransactioner, suite.mockDPoPVerifier, "https://example.test/oauth2/token", false)
 }
 
 // defaultApp returns an OAuthClient that allows the authorization_code grant.
@@ -332,6 +337,159 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_Success() {
 	assert.Equal(suite.T(), "Bearer", tokenResp.TokenType)
 	assert.Equal(suite.T(), int64(3600), tokenResp.ExpiresIn)
 	assert.Equal(suite.T(), "openid profile", tokenResp.Scope)
+}
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_Verified_PropagatesJktToHandler() {
+	req := &model.TokenRequest{
+		ClientID:  "test-client-id",
+		GrantType: string(constants.GrantTypeAuthorizationCode),
+		Code:      "test-code",
+		Scope:     "openid",
+	}
+	app := suite.defaultApp()
+
+	const testJkt = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I"
+	const testProof = "eyJ.dpop.proof"
+
+	suite.mockGrantProvider.ExpectedCalls = nil
+	suite.mockGrantProvider.
+		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		Return(suite.mockGrantHandler, nil)
+	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
+	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
+
+	suite.mockDPoPVerifier.
+		On("Verify", mock.Anything, mock.MatchedBy(func(p dpop.VerifyParams) bool {
+			return p.Proof == testProof && p.HTM == "POST" &&
+				p.HTU == "https://example.test/oauth2/token"
+		})).
+		Return(&dpop.ProofResult{JKT: testJkt}, nil)
+
+	suite.mockGrantHandler.
+		On("HandleGrant",
+			mock.MatchedBy(func(ctx context.Context) bool { return dpop.GetJkt(ctx) == testJkt }),
+			mock.Anything, app).
+		Return(&model.TokenResponseDTO{
+			AccessToken: model.TokenDTO{Token: "at", TokenType: constants.TokenTypeDPoP, ExpiresIn: 3600},
+		}, nil)
+
+	svc := suite.newService()
+	ctx := dpop.WithProof(context.Background(), testProof)
+	resp, errResp := svc.ProcessTokenRequest(ctx, req, app)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), constants.TokenTypeDPoP, resp.TokenType)
+}
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_DPoPProof_VerifyFails_InvalidDPoPProof() {
+	req := &model.TokenRequest{
+		ClientID:  "test-client-id",
+		GrantType: string(constants.GrantTypeAuthorizationCode),
+		Code:      "test-code",
+		Scope:     "openid",
+	}
+	app := suite.defaultApp()
+
+	suite.mockGrantProvider.ExpectedCalls = nil
+	suite.mockGrantProvider.
+		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		Return(suite.mockGrantHandler, nil)
+	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
+	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
+
+	suite.mockDPoPVerifier.
+		On("Verify", mock.Anything, mock.Anything).
+		Return(nil, dpop.ErrInvalidProof)
+
+	svc := suite.newService()
+	ctx := dpop.WithProof(context.Background(), "bad-proof")
+	_, errResp := svc.ProcessTokenRequest(ctx, req, app)
+
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidDPoPProof, errResp.Error)
+}
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_VerifierNotInvoked() {
+	req := &model.TokenRequest{
+		ClientID:  "test-client-id",
+		GrantType: string(constants.GrantTypeAuthorizationCode),
+		Code:      "test-code",
+		Scope:     "openid",
+	}
+	app := suite.defaultApp()
+
+	suite.mockGrantProvider.ExpectedCalls = nil
+	suite.mockGrantProvider.
+		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		Return(suite.mockGrantHandler, nil)
+	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
+	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
+	suite.mockGrantHandler.
+		On("HandleGrant", mock.Anything, mock.Anything, app).
+		Return(&model.TokenResponseDTO{
+			AccessToken: model.TokenDTO{Token: "at", TokenType: constants.TokenTypeBearer, ExpiresIn: 3600},
+		}, nil)
+
+	svc := suite.newService()
+	resp, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+	assert.Nil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.TokenTypeBearer, resp.TokenType)
+	suite.mockDPoPVerifier.AssertNotCalled(suite.T(), "Verify", mock.Anything, mock.Anything)
+}
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_PerClientFlag_Rejected() {
+	req := &model.TokenRequest{
+		ClientID:  "test-client-id",
+		GrantType: string(constants.GrantTypeAuthorizationCode),
+		Code:      "test-code",
+		Scope:     "openid",
+	}
+	app := &inboundmodel.OAuthClient{
+		ClientID:              "test-client-id",
+		GrantTypes:            []constants.GrantType{constants.GrantTypeAuthorizationCode},
+		DPoPBoundAccessTokens: true,
+	}
+
+	suite.mockGrantProvider.ExpectedCalls = nil
+	suite.mockGrantProvider.
+		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		Return(suite.mockGrantHandler, nil)
+	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
+	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
+
+	svc := suite.newService()
+	_, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidDPoPProof, errResp.Error)
+	suite.mockDPoPVerifier.AssertNotCalled(suite.T(), "Verify", mock.Anything, mock.Anything)
+}
+
+func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_GlobalRequired_Rejected() {
+	req := &model.TokenRequest{
+		ClientID:  "test-client-id",
+		GrantType: string(constants.GrantTypeAuthorizationCode),
+		Code:      "test-code",
+		Scope:     "openid",
+	}
+	app := suite.defaultApp()
+
+	suite.mockGrantProvider.ExpectedCalls = nil
+	suite.mockGrantProvider.
+		On("GetGrantHandler", constants.GrantTypeAuthorizationCode).
+		Return(suite.mockGrantHandler, nil)
+	suite.mockGrantHandler.On("ValidateGrant", mock.Anything, mock.Anything, app).Return(nil)
+	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
+
+	svc := newTokenService(suite.mockGrantProvider, suite.mockScopeValidator, suite.mockObsSvc,
+		suite.mockTransactioner, suite.mockDPoPVerifier, "https://example.test/oauth2/token", true)
+	_, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
+
+	assert.NotNil(suite.T(), errResp)
+	assert.Equal(suite.T(), constants.ErrorInvalidDPoPProof, errResp.Error)
+	suite.mockDPoPVerifier.AssertNotCalled(suite.T(), "Verify", mock.Anything, mock.Anything)
 }
 
 func (suite *TokenServiceTestSuite) TestProcessTokenRequest_WithRefreshToken() {

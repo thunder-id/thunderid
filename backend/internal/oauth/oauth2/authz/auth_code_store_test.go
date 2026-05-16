@@ -696,6 +696,44 @@ func (suite *AuthorizationCodeStoreTestSuite) TestParseTimeField_InvalidStringFo
 	assert.True(suite.T(), result.IsZero())
 }
 
+func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_WithDPoPJkt() {
+	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+
+	authzData := map[string]any{
+		"redirect_uri":       "https://client.example.com/callback",
+		"authorized_user_id": "test-user-id",
+		"scopes":             "read write",
+		"dpop_jkt":           "thumbprint-abc",
+	}
+
+	authzDataJSON, _ := json.Marshal(authzData)
+
+	suite.mockDBClient.On("QueryContext",
+		mock.Anything,
+		queryGetAuthorizationCode,
+		"test-code",
+		testDeploymentID,
+	).Return([]map[string]any{
+		{
+			"code_id":            "test-code-id",
+			"authorization_code": "test-code",
+			"client_id":          "test-client-id",
+			"state":              AuthCodeStateActive,
+			"authz_data":         string(authzDataJSON),
+			"time_created":       "2023-01-01 12:00:00",
+			"expiry_time":        "2023-01-01 12:10:00",
+		},
+	}, nil)
+
+	result, err := suite.store.GetAuthorizationCode(context.Background(), "test-code")
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "thumbprint-abc", result.DPoPJkt)
+
+	suite.mockdbProvider.AssertExpectations(suite.T())
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
 func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_WithNonce() {
 	suite.mockdbProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
 

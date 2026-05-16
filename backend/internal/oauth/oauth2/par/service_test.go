@@ -37,6 +37,11 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
+const (
+	testJKT      = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I"
+	testOtherJKT = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+)
+
 type ServiceTestSuite struct {
 	suite.Suite
 	ctx context.Context
@@ -103,7 +108,7 @@ func (s *ServiceTestSuite) TestHandlePAR_Success() {
 	app := s.newTestApp()
 	params := s.newValidParams()
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Empty(s.T(), errCode)
 	assert.NotNil(s.T(), resp)
@@ -118,7 +123,7 @@ func (s *ServiceTestSuite) TestHandlePAR_RejectsRequestURIInBody() {
 	params := s.newValidParams()
 	params[oauth2const.RequestParamRequestURI] = "urn:ietf:params:oauth:request_uri:test"
 
-	resp, errCode, errDesc := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, errDesc := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidRequest, errCode)
@@ -132,7 +137,7 @@ func (s *ServiceTestSuite) TestHandlePAR_MissingResponseType() {
 	params := s.newValidParams()
 	delete(params, oauth2const.RequestParamResponseType)
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidRequest, errCode)
@@ -145,7 +150,7 @@ func (s *ServiceTestSuite) TestHandlePAR_InvalidRedirectURI() {
 	params := s.newValidParams()
 	params[oauth2const.RequestParamRedirectURI] = "https://evil.com/callback"
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidRequest, errCode)
@@ -158,7 +163,7 @@ func (s *ServiceTestSuite) TestHandlePAR_UnauthorizedGrantType() {
 	app.GrantTypes = []oauth2const.GrantType{oauth2const.GrantTypeClientCredentials}
 	params := s.newValidParams()
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorUnauthorizedClient, errCode)
@@ -171,7 +176,7 @@ func (s *ServiceTestSuite) TestHandlePAR_UnsupportedResponseType() {
 	params := s.newValidParams()
 	params[oauth2const.RequestParamResponseType] = "token"
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorUnsupportedResponseType, errCode)
@@ -185,7 +190,7 @@ func (s *ServiceTestSuite) TestHandlePAR_PKCERequired() {
 	params := s.newValidParams()
 	// No code_challenge provided.
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidRequest, errCode)
@@ -198,7 +203,7 @@ func (s *ServiceTestSuite) TestHandlePAR_StoreError() {
 	app := s.newTestApp()
 	params := s.newValidParams()
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorServerError, errCode)
@@ -211,7 +216,7 @@ func (s *ServiceTestSuite) TestHandlePAR_PromptNone_LoginRequired() {
 	params := s.newValidParams()
 	params[oauth2const.RequestParamPrompt] = "none"
 
-	resp, errCode, errDesc := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, errDesc := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorLoginRequired, errCode)
@@ -225,7 +230,7 @@ func (s *ServiceTestSuite) TestHandlePAR_PromptInvalid() {
 	params := s.newValidParams()
 	params[oauth2const.RequestParamPrompt] = "invalid_value"
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidRequest, errCode)
@@ -239,7 +244,7 @@ func (s *ServiceTestSuite) TestHandlePAR_PromptLogin_Success() {
 	params := s.newValidParams()
 	params[oauth2const.RequestParamPrompt] = "login"
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Empty(s.T(), errCode)
 	assert.NotNil(s.T(), resp)
@@ -252,7 +257,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ResourceWithFragment() {
 	params := s.newValidParams()
 	resources := []string{"https://api.example.com/resource#fragment"}
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidTarget, errCode)
@@ -265,7 +270,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ResourceMissingScheme() {
 	params := s.newValidParams()
 	resources := []string{"api.example.com/resource"}
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidTarget, errCode)
@@ -279,7 +284,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ValidResource_Success() {
 	params := s.newValidParams()
 	resources := []string{"https://api.example.com/resource"}
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app, "")
 
 	assert.Empty(s.T(), errCode)
 	assert.NotNil(s.T(), resp)
@@ -298,7 +303,7 @@ func (s *ServiceTestSuite) TestHandlePAR_UnregisteredResource_InvalidTarget() {
 	params := s.newValidParams()
 	resources := []string{"https://unknown.example.com"}
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidTarget, errCode)
@@ -317,7 +322,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ResourceResolutionServerError() {
 	params := s.newValidParams()
 	resources := []string{"https://api.example.com/resource"}
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorServerError, errCode)
@@ -348,7 +353,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ScopesDownscopedAgainstResourceServers(
 	params[oauth2const.RequestParamScope] = "read write"
 	resources := []string{"https://api.example.com"}
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, resources, app, "")
 
 	assert.Empty(s.T(), errCode)
 	assert.NotNil(s.T(), resp)
@@ -368,13 +373,63 @@ func (s *ServiceTestSuite) TestHandlePAR_AcrValuesPropagated() {
 	params := s.newValidParams()
 	params[oauth2const.RequestParamAcrValues] = "urn:thunder:acr:password urn:thunder:acr:generated-code"
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Empty(s.T(), errCode)
 	assert.NotNil(s.T(), resp)
 	assert.Equal(s.T(),
 		"urn:thunder:acr:password urn:thunder:acr:generated-code",
 		captured.OAuthParameters.AcrValues)
+}
+
+func (s *ServiceTestSuite) TestHandlePAR_DPoPHeaderJkt_PersistedOnRequest() {
+	var captured pushedAuthorizationRequest
+	store := newParStoreInterfaceMock(s.T())
+	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, req pushedAuthorizationRequest, _ int64) {
+			captured = req
+		}).Return("test-uri", nil)
+	svc := newPARService(store, s.newPermissiveResourceMock())
+	app := s.newTestApp()
+	params := s.newValidParams()
+
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, testJKT)
+
+	assert.Empty(s.T(), errCode)
+	assert.NotNil(s.T(), resp)
+	assert.Equal(s.T(), testJKT, captured.OAuthParameters.DPoPJkt)
+}
+
+func (s *ServiceTestSuite) TestHandlePAR_DPoPJktParam_PersistedWhenNoHeader() {
+	var captured pushedAuthorizationRequest
+	store := newParStoreInterfaceMock(s.T())
+	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, req pushedAuthorizationRequest, _ int64) {
+			captured = req
+		}).Return("test-uri", nil)
+	svc := newPARService(store, s.newPermissiveResourceMock())
+	app := s.newTestApp()
+	params := s.newValidParams()
+	params[oauth2const.RequestParamDPoPJkt] = testJKT
+
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
+
+	assert.Empty(s.T(), errCode)
+	assert.NotNil(s.T(), resp)
+	assert.Equal(s.T(), testJKT, captured.OAuthParameters.DPoPJkt)
+}
+
+func (s *ServiceTestSuite) TestHandlePAR_DPoPJktParam_HeaderMismatch_Rejected() {
+	store := newParStoreInterfaceMock(s.T())
+	svc := newPARService(store, s.newPermissiveResourceMock())
+	app := s.newTestApp()
+	params := s.newValidParams()
+	params[oauth2const.RequestParamDPoPJkt] = testJKT
+
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, testOtherJKT)
+
+	assert.Nil(s.T(), resp)
+	assert.Equal(s.T(), oauth2const.ErrorInvalidDPoPProof, errCode)
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_NonceTooLong() {
@@ -384,7 +439,7 @@ func (s *ServiceTestSuite) TestHandlePAR_NonceTooLong() {
 	params := s.newValidParams()
 	params[oauth2const.RequestParamNonce] = strings.Repeat("a", oauth2const.MaxNonceLength+1)
 
-	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app)
+	resp, errCode, _ := svc.HandlePushedAuthorizationRequest(s.ctx, params, nil, app, "")
 
 	assert.Nil(s.T(), resp)
 	assert.Equal(s.T(), oauth2const.ErrorInvalidRequest, errCode)

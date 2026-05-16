@@ -21,6 +21,7 @@ package userinfo
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,7 +45,8 @@ func TestUserInfoHandlerTestSuite(t *testing.T) {
 
 func (s *UserInfoHandlerTestSuite) SetupTest() {
 	s.mockService = new(userInfoServiceInterfaceMock)
-	s.handler = newUserInfoHandler(s.mockService)
+	s.handler = newUserInfoHandler(s.mockService, "https://example.com/oauth2/userinfo",
+		[]string{"ES256", "PS256"})
 }
 
 // TestHandleUserInfo_MissingAuthorizationHeader tests missing Authorization header.
@@ -318,6 +320,95 @@ func (s *UserInfoHandlerTestSuite) TestWriteServiceErrorResponse_DefaultCase() {
 	wwwAuth := rr.Header().Get("WWW-Authenticate")
 	assert.Contains(s.T(), wwwAuth, "Bearer")
 	assert.Contains(s.T(), wwwAuth, "unknown_error")
+	s.mockService.AssertExpectations(s.T())
+}
+
+// TestHandleUserInfo_DPoPScheme_Success verifies the handler dispatches to GetUserInfoForDPoP
+// when the DPoP scheme is used and forwards proof/htm/htu correctly.
+func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_DPoPScheme_Success() {
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/userinfo", nil)
+	req.Header.Set("Authorization", "DPoP valid-token")
+	req.Header.Set("DPoP", "proof-jwt")
+	rr := httptest.NewRecorder()
+
+	userInfo := map[string]any{"sub": "user123"}
+	s.mockService.On("GetUserInfoForDPoP", mock.Anything, "valid-token", "proof-jwt",
+		http.MethodGet, "https://example.com/oauth2/userinfo").
+		Return(jsonResponse(userInfo), nil)
+
+	s.handler.HandleUserInfo(rr, req)
+
+	assert.Equal(s.T(), http.StatusOK, rr.Code)
+	assert.Contains(s.T(), rr.Body.String(), `"sub":"user123"`)
+	s.mockService.AssertExpectations(s.T())
+}
+
+// TestHandleUserInfo_DPoPScheme_MissingDPoPHeader rejects requests under the DPoP scheme
+// that omit the DPoP proof header.
+func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_DPoPScheme_MissingDPoPHeader() {
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/userinfo", nil)
+	req.Header.Set("Authorization", "DPoP valid-token")
+	rr := httptest.NewRecorder()
+
+	s.handler.HandleUserInfo(rr, req)
+
+	assert.Equal(s.T(), http.StatusUnauthorized, rr.Code)
+	assert.Contains(s.T(), rr.Body.String(), "invalid_token")
+	wwwAuth := rr.Header().Get("WWW-Authenticate")
+	assert.Contains(s.T(), wwwAuth, "DPoP")
+	assert.Contains(s.T(), wwwAuth, `algs="ES256 PS256"`)
+}
+
+// TestHandleUserInfo_DPoPScheme_MultipleDPoPHeaders rejects requests with more than one
+// DPoP proof header.
+func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_DPoPScheme_MultipleDPoPHeaders() {
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/userinfo", nil)
+	req.Header.Set("Authorization", "DPoP valid-token")
+	req.Header.Add("DPoP", "proof-1")
+	req.Header.Add("DPoP", "proof-2")
+	rr := httptest.NewRecorder()
+
+	s.handler.HandleUserInfo(rr, req)
+
+	assert.Equal(s.T(), http.StatusUnauthorized, rr.Code)
+	assert.Contains(s.T(), rr.Header().Get("WWW-Authenticate"), "DPoP")
+}
+
+// TestHandleUserInfo_DPoPScheme_ServiceError surfaces service errors with WWW-Authenticate: DPoP.
+func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_DPoPScheme_ServiceError() {
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/userinfo", nil)
+	req.Header.Set("Authorization", "DPoP token")
+	req.Header.Set("DPoP", "proof-jwt")
+	rr := httptest.NewRecorder()
+
+	s.mockService.On("GetUserInfoForDPoP", mock.Anything, "token", "proof-jwt",
+		http.MethodGet, "https://example.com/oauth2/userinfo").
+		Return(nil, &errorDPoPProofInvalid)
+
+	s.handler.HandleUserInfo(rr, req)
+
+	assert.Equal(s.T(), http.StatusUnauthorized, rr.Code)
+	wwwAuth := rr.Header().Get("WWW-Authenticate")
+	assert.Contains(s.T(), wwwAuth, "DPoP")
+	assert.Contains(s.T(), wwwAuth, "invalid_token")
+	s.mockService.AssertExpectations(s.T())
+}
+
+// TestHandleUserInfo_BearerDowngrade_DPoPWWWAuth checks that a Bearer-scheme request
+// for a DPoP-bound token returns 401 with WWW-Authenticate: DPoP.
+func (s *UserInfoHandlerTestSuite) TestHandleUserInfo_BearerDowngrade_DPoPWWWAuth() {
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/userinfo", nil)
+	req.Header.Set("Authorization", "Bearer bound-token")
+	rr := httptest.NewRecorder()
+
+	s.mockService.On("GetUserInfo", mock.Anything, "bound-token").
+		Return(nil, &errorBearerDowngrade)
+
+	s.handler.HandleUserInfo(rr, req)
+
+	assert.Equal(s.T(), http.StatusUnauthorized, rr.Code)
+	assert.Contains(s.T(), rr.Body.String(), "DPoP-bound")
+	assert.True(s.T(), strings.HasPrefix(rr.Header().Get("WWW-Authenticate"), "DPoP"))
 	s.mockService.AssertExpectations(s.T())
 }
 

@@ -214,12 +214,62 @@ type PARConfig struct {
 	ExpiresIn  int64 `yaml:"expires_in" json:"expires_in"`
 }
 
+// DPoPConfig holds the OAuth 2.0 DPoP configuration.
+type DPoPConfig struct {
+	Required     bool     `yaml:"required" json:"required"`
+	IatWindow    int      `yaml:"iat_window" json:"iat_window"`
+	Leeway       int      `yaml:"leeway" json:"leeway"`
+	AllowedAlgs  []string `yaml:"allowed_algs" json:"allowed_algs"`
+	MaxJTILength int      `yaml:"max_jti_length" json:"max_jti_length"`
+}
+
+// IsConfigured reports whether any DPoP field has been set. When false, callers should
+// skip validation: this matches the convention used by TrustedIssuerConfig and keeps
+// config-loading tests that omit the dpop section working without surprise failures.
+func (c *DPoPConfig) IsConfigured() bool {
+	return c.Required || c.IatWindow != 0 || c.Leeway != 0 ||
+		c.MaxJTILength != 0 || len(c.AllowedAlgs) > 0
+}
+
+// Validate ensures DPoP configuration values are within accepted bounds and the
+// allowed_algs list contains only asymmetric JWS algorithms supported for DPoP.
+func (c *DPoPConfig) Validate() error {
+	if !c.IsConfigured() {
+		return nil
+	}
+	if c.IatWindow <= 0 {
+		return fmt.Errorf("oauth.dpop.iat_window must be greater than 0")
+	}
+	if c.Leeway < 0 {
+		return fmt.Errorf("oauth.dpop.leeway must be greater than or equal to 0")
+	}
+	if c.MaxJTILength <= 0 {
+		return fmt.Errorf("oauth.dpop.max_jti_length must be greater than 0")
+	}
+	if len(c.AllowedAlgs) == 0 {
+		return fmt.Errorf("oauth.dpop.allowed_algs must contain at least one algorithm")
+	}
+	supported := map[string]struct{}{
+		"ES256": {}, "ES384": {}, "ES512": {},
+		"PS256": {}, "PS384": {}, "PS512": {},
+		"RS256": {}, "RS384": {}, "RS512": {},
+		"EdDSA": {},
+	}
+	for _, alg := range c.AllowedAlgs {
+		if _, ok := supported[alg]; !ok {
+			return fmt.Errorf("oauth.dpop.allowed_algs contains unsupported or symmetric algorithm: %q", alg)
+		}
+	}
+	return nil
+}
+
 // OAuthConfig holds the OAuth configuration details.
 type OAuthConfig struct {
 	RefreshToken      RefreshTokenConfig      `yaml:"refresh_token" json:"refresh_token"`
 	AuthorizationCode AuthorizationCodeConfig `yaml:"authorization_code" json:"authorization_code"`
 	DCR               DCRConfig               `yaml:"dcr" json:"dcr"`
 	PAR               PARConfig               `yaml:"par" json:"par"`
+	DPoP              DPoPConfig              `yaml:"dpop" json:"dpop"`
 	AuthClass         AuthClassConfig         `yaml:"auth_class" json:"auth_class"`
 	// AllowWildcardRedirectURI enables wildcard pattern matching for redirect URIs.
 	// When false (default), only exact redirect URI matching is performed.
@@ -712,6 +762,9 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 
 	// Validate ACR-AMR mapping.
 	if err := cfg.OAuth.AuthClass.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.OAuth.DPoP.Validate(); err != nil {
 		return nil, err
 	}
 

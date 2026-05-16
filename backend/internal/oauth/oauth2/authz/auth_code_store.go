@@ -49,6 +49,7 @@ const (
 	jsonDataKeyClaimsLocales       = "claims_locales"
 	jsonDataKeyNonce               = "nonce"
 	jsonDataKeyCompletedACR        = "completed_acr"
+	jsonDataKeyDPoPJkt             = "dpop_jkt"
 )
 
 // AuthorizationCodeStoreInterface defines the interface for managing authorization codes.
@@ -145,6 +146,7 @@ func (acs *authorizationCodeStore) getJSONDataBytes(authzCode AuthorizationCode)
 		jsonDataKeyClaimsLocales:       authzCode.ClaimsLocales,
 		jsonDataKeyNonce:               authzCode.Nonce,
 		jsonDataKeyCompletedACR:        authzCode.CompletedACR,
+		jsonDataKeyDPoPJkt:             authzCode.DPoPJkt,
 	}
 
 	// Include user attributes if present
@@ -273,6 +275,9 @@ func appendAuthzDataJSON(row map[string]interface{}, authzCode *AuthorizationCod
 	}
 	if completedACR, ok := authzData[jsonDataKeyCompletedACR].(string); ok {
 		authzCode.CompletedACR = completedACR
+	}
+	if dpopJkt, ok := authzData[jsonDataKeyDPoPJkt].(string); ok {
+		authzCode.DPoPJkt = dpopJkt
 	}
 
 	if claimsData, ok := authzData[jsonDataKeyClaimsRequest]; ok && claimsData != nil {

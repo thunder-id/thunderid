@@ -24,6 +24,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/clientauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	sysconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -69,6 +70,20 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// The DPoP header must appear at most once.
+	dpopHeaders := r.Header.Values(constants.HeaderDPoP)
+	if len(dpopHeaders) > 1 {
+		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), "", "", "",
+			http.StatusBadRequest, "Multiple DPoP headers", startTime)
+		utils.WriteJSONError(w, constants.ErrorInvalidDPoPProof,
+			"Multiple DPoP headers", http.StatusBadRequest, nil)
+		return
+	}
+	ctx := r.Context()
+	if len(dpopHeaders) == 1 {
+		ctx = dpop.WithProof(ctx, dpopHeaders[0])
+	}
+
 	// Get authenticated client from context (set by ClientAuthMiddleware).
 	clientInfo := clientauth.GetOAuthClient(r.Context())
 	if clientInfo == nil {
@@ -100,7 +115,7 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Delegate all business logic to the token service.
-	tokenResponse, tokenError := th.tokenService.ProcessTokenRequest(r.Context(), tokenRequest, clientInfo.OAuthApp)
+	tokenResponse, tokenError := th.tokenService.ProcessTokenRequest(ctx, tokenRequest, clientInfo.OAuthApp)
 	if tokenError != nil {
 		if tokenError.Error != "" {
 			var statusCode int
@@ -110,7 +125,12 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 			default:
 				statusCode = http.StatusBadRequest
 			}
-			utils.WriteJSONError(w, tokenError.Error, tokenError.ErrorDescription, statusCode, nil)
+			description := tokenError.ErrorDescription
+			if tokenError.Error == constants.ErrorInvalidDPoPProof {
+				logger.Debug("DPoP proof rejected", log.String("error", description))
+				description = "Invalid DPoP proof"
+			}
+			utils.WriteJSONError(w, tokenError.Error, description, statusCode, nil)
 		} else {
 			utils.WriteJSONError(w, constants.ErrorServerError, "Something went wrong",
 				http.StatusInternalServerError, nil)
