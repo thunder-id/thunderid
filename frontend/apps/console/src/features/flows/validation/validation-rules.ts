@@ -204,7 +204,8 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
       const formElement = resource as FlowElement;
 
       const hasInputFields = formElement.components?.some(
-        (element: FlowElement) => element.category === ElementCategories.Field,
+        (element: FlowElement) =>
+          element.category === ElementCategories.Field || element.type === ElementTypes.DynamicInputPlaceholder,
       );
 
       const hasSubmitButton = formElement.components?.some(

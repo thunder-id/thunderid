@@ -32,6 +32,7 @@ const {
   mockGetNodes,
   mockUpdateNodeData,
   mockSetNodes,
+  mockSetEdges,
   mockSetIsOpenResourcePropertiesPanel,
   registeredHandlers,
   mockUnsubscribes,
@@ -40,6 +41,7 @@ const {
   mockGetNodes: vi.fn().mockReturnValue([]),
   mockUpdateNodeData: vi.fn(),
   mockSetNodes: vi.fn(),
+  mockSetEdges: vi.fn(),
   mockSetIsOpenResourcePropertiesPanel: vi.fn(),
   registeredHandlers: {} as Record<string, ((...args: unknown[]) => Promise<boolean>)[]>,
   mockUnsubscribes: {} as Record<string, ReturnType<typeof vi.fn>[]>,
@@ -99,6 +101,7 @@ vi.mock('@xyflow/react', async () => {
       getNodes: mockGetNodes,
       updateNodeData: mockUpdateNodeData,
       setNodes: mockSetNodes,
+      setEdges: mockSetEdges,
     }),
   };
 });
@@ -346,7 +349,7 @@ describe('useDeleteExecutionResource', () => {
           id: 'edge-1',
           source: 'action-1',
           target: 'execution-1',
-          sourceHandle: 'button-1-next',
+          sourceHandle: 'button-1_NEXT',
         },
       ]);
 
@@ -483,7 +486,7 @@ describe('useDeleteExecutionResource', () => {
           id: 'edge-1',
           source: 'view-1',
           target: 'view-2',
-          sourceHandle: 'button-1-next',
+          sourceHandle: 'button-1_NEXT',
         },
       ];
 
@@ -522,7 +525,7 @@ describe('useDeleteExecutionResource', () => {
           id: 'edge-1',
           source: 'action-1',
           target: 'execution-1',
-          sourceHandle: 'button-1-next',
+          sourceHandle: 'button-1_NEXT',
         },
       ];
 
@@ -573,13 +576,13 @@ describe('useDeleteExecutionResource', () => {
           id: 'edge-1',
           source: 'action-1',
           target: 'execution-1',
-          sourceHandle: 'button-1-next',
+          sourceHandle: 'button-1_NEXT',
         },
         {
           id: 'edge-2',
           source: 'action-1',
           target: 'execution-2',
-          sourceHandle: 'button-2-next',
+          sourceHandle: 'button-2_NEXT',
         },
       ];
 
@@ -656,7 +659,7 @@ describe('useDeleteExecutionResource', () => {
           id: 'edge-1',
           source: 'action-1',
           target: 'execution-1',
-          sourceHandle: 'button-1-next',
+          sourceHandle: 'button-1_NEXT',
         },
       ];
 
@@ -667,6 +670,71 @@ describe('useDeleteExecutionResource', () => {
       const result = capturedCallback!(actionNode);
       expect(result.components).toHaveLength(1);
       expect(result.components[0]).toEqual({id: 'button-2', type: 'ACTION'});
+    });
+
+    it('should not delete execution node when it has other incoming edges (loop-back pattern)', async () => {
+      const executionNode: Node = {
+        id: 'execution-1',
+        type: 'TASK_EXECUTION',
+        position: {x: 100, y: 0},
+        data: {},
+      };
+
+      const promptView: Node = {
+        id: 'prompt-view',
+        type: 'VIEW',
+        position: {x: 0, y: 200},
+        data: {
+          components: [{id: 'submit-btn', type: 'ACTION'}],
+        },
+      };
+
+      mockGetNodes.mockReturnValue([promptView, executionNode]);
+
+      // execution-1 has a second incoming edge from a previous step (e.g. BasicAuthExecutor onSuccess).
+      // This simulates the provisioning loop-back pattern where the prompt VIEW loops back to
+      // ProvisioningExecutor which is also reached via another executor's onSuccess.
+      mockGetEdges.mockReturnValue([
+        {
+          id: 'other-incoming',
+          source: 'prev-executor',
+          target: 'execution-1',
+          sourceHandle: 'prev-executor_SUCCESS',
+        },
+        {
+          id: 'loop-back',
+          source: 'prompt-view',
+          target: 'execution-1',
+          sourceHandle: 'submit-btn_NEXT',
+        },
+      ]);
+
+      renderHook(() => useDeleteExecutionResource(), {
+        wrapper: createWrapper(),
+      });
+
+      const deleteEdgeHandler = registeredHandlers.onEdgeDelete?.[0];
+
+      // Delete the loop-back edge from the prompt VIEW to the execution node.
+      const deletedEdges = [
+        {
+          id: 'loop-back',
+          source: 'prompt-view',
+          target: 'execution-1',
+          sourceHandle: 'submit-btn_NEXT',
+        },
+      ];
+
+      const result = await deleteEdgeHandler(deletedEdges);
+      expect(result).toBe(true);
+
+      // The execution node must survive because it still has 'other-incoming'.
+      expect(mockSetNodes).not.toHaveBeenCalled();
+      // Edges are not modified since no node was cascade-deleted.
+      expect(mockSetEdges).not.toHaveBeenCalled();
+
+      // The action button component in the prompt VIEW is still cleaned up.
+      expect(mockUpdateNodeData).toHaveBeenCalledWith('prompt-view', expect.any(Function));
     });
   });
 

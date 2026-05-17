@@ -40,7 +40,7 @@ export interface FlowConfigContextProps {
     resource: Resource;
     onChange: (
       propertyKey: string,
-      newValue: string | boolean | object,
+      newValue: string | number | boolean | object,
       resource: Resource,
       debounce?: boolean,
     ) => void;

@@ -32,6 +32,7 @@ import {type Template} from '../models/templates';
 import type {Widget} from '../models/widget';
 import autoAssignConnections from '../utils/autoAssignConnections';
 import generateResourceId from '../utils/generateResourceId';
+import {widgetNeedsViewContainer} from '../utils/widgetUtils';
 
 /**
  * Props interface for useResourceAdd hook
@@ -43,6 +44,7 @@ export interface UseResourceAddProps {
     targetResource: Resource,
     currentNodes: Node[],
     edges: Edge[],
+    removeTargetViewWhenStandalone?: boolean,
   ) => [Node[], Edge[], Resource | null, string | null];
   onStepLoad: (step: Step) => Step;
   setNodes: React.Dispatch<React.SetStateAction<Node[]>>;
@@ -158,7 +160,11 @@ const useResourceAdd = (props: UseResourceAddProps): ((resource: Resource) => vo
     if (resource.resourceType === ResourceTypes.Widget) {
       const currentNodes = getNodes();
       const currentEdges = getEdges();
-      const existingViewStep = currentNodes.find((node) => node.type === StepTypes.View);
+      const widget = clonedResource as Widget;
+      const needsViewContainer = widgetNeedsViewContainer(widget);
+      const existingViewStep = needsViewContainer
+        ? currentNodes.find((node) => node.type === StepTypes.View)
+        : undefined;
       let targetViewStep: Step;
       let nodesToPass: Node[];
 
@@ -166,7 +172,7 @@ const useResourceAdd = (props: UseResourceAddProps): ((resource: Resource) => vo
         const nodeData = existingViewStep.data as StepData | undefined;
         targetViewStep = {...existingViewStep, data: {...nodeData}} as Step;
         nodesToPass = currentNodes;
-      } else {
+      } else if (needsViewContainer) {
         const position: XYPosition = screenToFlowPosition({
           x: window.innerWidth / 2,
           y: window.innerHeight / 2,
@@ -181,9 +187,18 @@ const useResourceAdd = (props: UseResourceAddProps): ((resource: Resource) => vo
           type: StepTypes.View,
         } as Step;
         nodesToPass = [...currentNodes, targetViewStep];
+      } else {
+        targetViewStep = {} as Step;
+        nodesToPass = currentNodes;
       }
 
-      const [newNodes, newEdges] = onWidgetLoad(clonedResource as Widget, targetViewStep, nodesToPass, currentEdges);
+      const [newNodes, newEdges] = onWidgetLoad(
+        widget,
+        targetViewStep,
+        nodesToPass,
+        currentEdges,
+        needsViewContainer && !existingViewStep,
+      );
 
       if (metadata?.executorConnections) {
         autoAssignConnections(newNodes, metadata.executorConnections);

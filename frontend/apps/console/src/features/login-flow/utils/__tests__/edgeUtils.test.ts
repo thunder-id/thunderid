@@ -541,6 +541,69 @@ describe('generateUnconnectedEdges', () => {
       expect(result).toEqual([]);
     });
 
+    it('should handle action with falsy onIncomplete value', () => {
+      const nodes: Node[] = [createMockNode({id: 'step-1', data: {action: {onIncomplete: ''}}})];
+      expect(generateUnconnectedEdges([], nodes, 'default')).toEqual([]);
+    });
+  });
+
+  describe('onIncomplete edges', () => {
+    it('should generate onIncomplete edge for step-level action', () => {
+      const nodes: Node[] = [
+        createMockNode({id: 'executor-1', data: {action: {onIncomplete: 'prompt-1'}}}),
+        createMockNode({id: 'prompt-1'}),
+      ];
+
+      const result = generateUnconnectedEdges([], nodes, 'smoothstep');
+
+      const incompleteEdge = result.find((e) => e.id === 'executor-1_executor-1_INCOMPLETE_MISSING_EDGE');
+      expect(incompleteEdge).toBeDefined();
+      expect(incompleteEdge?.source).toBe('executor-1');
+      expect(incompleteEdge?.sourceHandle).toBe('executor-1_INCOMPLETE');
+      expect(incompleteEdge?.target).toBe('prompt-1');
+      expect(incompleteEdge?.type).toBe('smoothstep');
+    });
+
+    it('should not generate onIncomplete edge when target node does not exist', () => {
+      const nodes: Node[] = [createMockNode({id: 'executor-1', data: {action: {onIncomplete: 'non-existent'}}})];
+      expect(generateUnconnectedEdges([], nodes, 'default')).toEqual([]);
+    });
+
+    it('should not generate onIncomplete edge when correct edge already exists', () => {
+      const nodes: Node[] = [
+        createMockNode({id: 'executor-1', data: {action: {onIncomplete: 'prompt-1'}}}),
+        createMockNode({id: 'prompt-1'}),
+      ];
+      const existingEdges: Edge[] = [
+        {id: 'e1', source: 'executor-1', sourceHandle: 'executor-1_INCOMPLETE', target: 'prompt-1'} as Edge,
+      ];
+
+      expect(generateUnconnectedEdges(existingEdges, nodes, 'default')).toEqual([]);
+    });
+
+    it('should generate onIncomplete edge when existing edge points to wrong target', () => {
+      const nodes: Node[] = [
+        createMockNode({id: 'executor-1', data: {action: {onIncomplete: 'prompt-1'}}}),
+        createMockNode({id: 'prompt-1'}),
+        createMockNode({id: 'wrong-prompt'}),
+      ];
+      const existingEdges: Edge[] = [
+        {
+          id: 'e1',
+          source: 'executor-1',
+          sourceHandle: 'executor-1_INCOMPLETE',
+          target: 'wrong-prompt',
+        } as Edge,
+      ];
+
+      const result = generateUnconnectedEdges(existingEdges, nodes, 'default');
+      const incompleteEdge = result.find((e) => e.id === 'executor-1_executor-1_INCOMPLETE_MISSING_EDGE');
+      expect(incompleteEdge).toBeDefined();
+      expect(incompleteEdge?.target).toBe('prompt-1');
+    });
+  });
+
+  describe('Edge cases (continued)', () => {
     it('should handle components array being empty', () => {
       const nodes: Node[] = [
         createMockNode({

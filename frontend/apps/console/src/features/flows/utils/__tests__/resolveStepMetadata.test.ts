@@ -424,6 +424,72 @@ describe('resolveStepMetadata', () => {
       expect(result).toHaveLength(1);
     });
 
+    it('should coerce string property values to the type defined in executor defaults', () => {
+      const steps: Step[] = [
+        createMockStep({
+          id: 'provisioning-step',
+          type: 'TASK_EXECUTION',
+          data: {
+            action: {executor: {name: 'ProvisioningExecutor'}},
+            properties: {maxPerPrompt: '3', includeOptional: 'true', assignGroup: 'some-group'},
+          },
+        }),
+      ];
+
+      const resources = createMockResources({
+        executors: [
+          createMockStep({
+            display: {label: 'Provisioning', image: '', showOnResourcePanel: true},
+            data: {
+              action: {executor: {name: 'ProvisioningExecutor'}},
+              properties: {maxPerPrompt: 5, includeOptional: false, assignGroup: ''},
+            },
+          }),
+        ],
+      });
+
+      const result = resolveStepMetadata(resources, steps);
+      const props = (result[0].data as {properties?: Record<string, unknown>})?.properties;
+
+      expect(props?.maxPerPrompt).toBe(3);
+      expect(typeof props?.maxPerPrompt).toBe('number');
+      expect(props?.includeOptional).toBe(true);
+      expect(typeof props?.includeOptional).toBe('boolean');
+      expect(props?.assignGroup).toBe('some-group');
+    });
+
+    it('should leave property unchanged when string cannot be coerced to the expected type', () => {
+      const steps: Step[] = [
+        createMockStep({
+          id: 'provisioning-step',
+          type: 'TASK_EXECUTION',
+          data: {
+            action: {executor: {name: 'ProvisioningExecutor'}},
+            properties: {maxPerPrompt: 'not-a-number'},
+          },
+        }),
+      ];
+
+      const resources = createMockResources({
+        executors: [
+          createMockStep({
+            display: {label: 'Provisioning', image: '', showOnResourcePanel: true},
+            data: {
+              action: {executor: {name: 'ProvisioningExecutor'}},
+              properties: {maxPerPrompt: 5},
+            },
+          }),
+        ],
+      });
+
+      const result = resolveStepMetadata(resources, steps);
+      const props = (result[0].data as {properties?: Record<string, unknown>})?.properties;
+
+      expect(props?.maxPerPrompt).toBe('not-a-number');
+    });
+  });
+
+  describe('Executor Edge Cases', () => {
     it('should handle executor without matching name', () => {
       const steps: Step[] = [
         createMockStep({

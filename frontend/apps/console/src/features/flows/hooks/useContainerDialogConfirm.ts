@@ -46,6 +46,7 @@ export interface UseContainerDialogConfirmProps {
     targetResource: Resource,
     currentNodes: Node[],
     edges: Edge[],
+    removeTargetViewWhenStandalone?: boolean,
   ) => [Node[], Edge[], Resource | null, string | null];
   metadata?: MetadataInterface;
   pendingDropRef: React.MutableRefObject<{
@@ -228,6 +229,7 @@ const useContainerDialogConfirm = (props: UseContainerDialogConfirmProps): (() =
         generatedViewStep,
         [...currentNodes, generatedViewStep],
         currentEdges,
+        true,
       );
 
       // Auto-assign connections for execution steps.

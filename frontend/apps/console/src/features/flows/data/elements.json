@@ -450,5 +450,17 @@
       "image": "Puzzle",
       "showOnResourcePanel": true
     }
+  },
+  {
+    "resourceType": "ELEMENT",
+    "category": "DISPLAY",
+    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+    "display": {
+      "label": "Dynamic Input",
+      "image": "Layers",
+      "showOnResourcePanel": true
+    },
+    "placeholder": "Dynamic Input",
+    "hint": "Resolves input fields passed from runtime when the flow executes"
   }
 ]

@@ -493,9 +493,10 @@ describe('useResourceAdd', () => {
 
       expect(mockOnWidgetLoad).toHaveBeenCalledWith(
         expect.objectContaining({id: 'widget-1'}),
-        expect.objectContaining({id: 'view-1'}),
-        expect.any(Array),
-        expect.any(Array),
+        {},
+        [expect.objectContaining({id: 'view-1'})],
+        [],
+        false,
       );
       expect(mockSetNodes).toHaveBeenCalledWith(newNodes);
     });
@@ -518,13 +519,7 @@ describe('useResourceAdd', () => {
         result.current(widget);
       });
 
-      expect(mockScreenToFlowPosition).toHaveBeenCalled();
-      expect(mockOnWidgetLoad).toHaveBeenCalledWith(
-        expect.objectContaining({id: 'widget-1'}),
-        expect.objectContaining({type: StepTypes.View}),
-        expect.any(Array),
-        expect.any(Array),
-      );
+      expect(mockOnWidgetLoad).toHaveBeenCalledWith(expect.objectContaining({id: 'widget-1'}), {}, [], [], false);
     });
 
     it('should apply auto-assign connections for widgets when metadata exists', () => {

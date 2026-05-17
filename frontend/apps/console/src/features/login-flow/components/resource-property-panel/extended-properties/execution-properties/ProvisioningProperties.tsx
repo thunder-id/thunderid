@@ -44,6 +44,23 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
     [resource, onChange],
   );
 
+  const handleNumberPropertyChange = useCallback(
+    (propertyName: string, value: string): void => {
+      if (value === '') {
+        onChange(`data.properties.${propertyName}`, 0, resource, true);
+        return;
+      }
+
+      const num = Number(value);
+      if (Number.isNaN(num)) {
+        return;
+      }
+
+      onChange(`data.properties.${propertyName}`, Math.max(0, Math.floor(num)), resource, true);
+    },
+    [resource, onChange],
+  );
+
   return (
     <Stack gap={2}>
       <Typography variant="body2" color="text.secondary">
@@ -65,6 +82,23 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
       <FormControlLabel
         control={
           <Checkbox
+            checked={!!properties.includeOptional}
+            onChange={(e) => handleBooleanPropertyChange('includeOptional', e.target.checked)}
+            size="small"
+          />
+        }
+        label={t('flows:core.executions.provisioning.includeOptional.label', 'Allow Optional Non Credential')}
+      />
+      <FormHelperText>
+        {t(
+          'flows:core.executions.provisioning.includeOptional.hint',
+          'Prompt for optional non-credential attributes during dynamic input collection.',
+        )}
+      </FormHelperText>
+
+      <FormControlLabel
+        control={
+          <Checkbox
             checked={!!properties.includeOptionalCredentials}
             onChange={(e) => handleBooleanPropertyChange('includeOptionalCredentials', e.target.checked)}
             size="small"
@@ -73,6 +107,30 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         label={t('flows:core.executions.provisioning.includeOptionalCredentials.label')}
       />
       <FormHelperText>{t('flows:core.executions.provisioning.includeOptionalCredentials.hint')}</FormHelperText>
+
+      <div>
+        <FormLabel htmlFor="max-per-prompt">
+          {t('flows:core.executions.provisioning.maxPerPrompt.label', 'Max Per Prompt')}
+        </FormLabel>
+        <TextField
+          id="max-per-prompt"
+          value={
+            typeof properties.maxPerPrompt === 'number' ? properties.maxPerPrompt : Number(properties.maxPerPrompt ?? 0)
+          }
+          onChange={(e) => handleNumberPropertyChange('maxPerPrompt', e.target.value)}
+          placeholder={t('flows:core.executions.provisioning.maxPerPrompt.placeholder', '0')}
+          fullWidth
+          size="small"
+          type="number"
+          inputProps={{min: 0}}
+        />
+        <FormHelperText>
+          {t(
+            'flows:core.executions.provisioning.maxPerPrompt.hint',
+            'Number of dynamic inputs to show per prompt when connected to this provisioning executor.',
+          )}
+        </FormHelperText>
+      </div>
 
       <div>
         <FormLabel htmlFor="assign-group">{t('flows:core.executions.provisioning.assignGroup.label')}</FormLabel>

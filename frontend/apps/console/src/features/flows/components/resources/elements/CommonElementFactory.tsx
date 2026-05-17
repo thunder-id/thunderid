@@ -24,6 +24,7 @@ import ChoiceAdapter from './adapters/ChoiceAdapter';
 import ConsentAdapter from './adapters/ConsentAdapter';
 import CustomAdapter from './adapters/CustomAdapter';
 import DividerAdapter from './adapters/DividerAdapter';
+import DynamicInputPlaceholderAdapter from './adapters/DynamicInputPlaceholderAdapter';
 import FormAdapter from './adapters/FormAdapter';
 import IconAdapter from './adapters/IconAdapter';
 import ImageAdapter from './adapters/ImageAdapter';
@@ -168,6 +169,9 @@ function CommonElementFactory({
   }
   if (resource.type === ElementTypes.Custom) {
     return <CustomAdapter resource={resource} />;
+  }
+  if (resource.type === ElementTypes.DynamicInputPlaceholder) {
+    return <DynamicInputPlaceholderAdapter resource={resource} />;
   }
 
   return null;

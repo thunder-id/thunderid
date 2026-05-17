@@ -70,7 +70,12 @@ export interface ResourcePropertiesProps {
    * The event handler for the property change. Applies immediately by default.
    * Pass `true` as the 4th argument for text/number inputs to enable 300ms debouncing.
    */
-  onChange: (propertyKey: string, newValue: string | boolean | object, resource: Resource, debounce?: boolean) => void;
+  onChange: (
+    propertyKey: string,
+    newValue: string | boolean | number | object,
+    resource: Resource,
+    debounce?: boolean,
+  ) => void;
   /**
    * The event handler for the variant change.
    * @param variant - The variant of the element.

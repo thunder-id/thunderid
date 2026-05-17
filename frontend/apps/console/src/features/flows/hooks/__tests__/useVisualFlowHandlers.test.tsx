@@ -304,6 +304,39 @@ describe('useVisualFlowHandlers', () => {
 
       expect(mockSetEdges).toHaveBeenCalled();
     });
+
+    it('should reconnect nodes from the latest edges passed into the setter', () => {
+      const nodes = [{id: 'node-1'}, {id: 'node-2'}, {id: 'node-3'}] as Node[];
+      const latestEdges = [
+        {id: 'edge-1', source: 'node-1', target: 'node-2'},
+        {id: 'edge-2', source: 'node-2', target: 'node-3'},
+      ] as Edge[];
+
+      mockGetNodes.mockReturnValue(nodes);
+      mockGetEdges.mockReturnValue([]);
+
+      const {result} = renderHook(() => useVisualFlowHandlers({setEdges: mockSetEdges}), {
+        wrapper: createWrapper({edgeStyle: EdgeStyleTypes.Step}),
+      });
+
+      act(() => {
+        result.current.handleNodesDelete([{id: 'node-2'} as Node]);
+      });
+
+      const setterFn = mockSetEdges.mock.calls[0][0] as (edges: Edge[]) => Edge[];
+      const newEdges = setterFn(latestEdges);
+
+      expect(mockGetEdges).not.toHaveBeenCalled();
+      expect(newEdges).toEqual([
+        {
+          id: 'node-1-->node-3',
+          source: 'node-1',
+          target: 'node-3',
+          type: EdgeStyleTypes.Step,
+          markerEnd: {type: 'arrowclosed'},
+        },
+      ]);
+    });
   });
 
   describe('handleEdgesDelete', () => {

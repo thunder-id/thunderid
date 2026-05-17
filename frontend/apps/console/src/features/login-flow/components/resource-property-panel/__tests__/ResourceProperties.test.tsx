@@ -579,6 +579,23 @@ describe('ResourceProperties', () => {
       // This test verifies the component renders without errors
       expect(screen.getByTestId('field-extended-properties')).toBeInTheDocument();
     });
+
+    it('should preserve number values before calling onChange', () => {
+      const resource = createMockResource({category: ElementCategories.Field});
+
+      render(
+        <ResourceProperties
+          resource={resource}
+          properties={{maxPerPrompt: 3}}
+          onChange={mockOnChange}
+          onVariantChange={mockOnVariantChange}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('trigger-change-maxPerPrompt'));
+
+      expect(mockOnChange).toHaveBeenCalledWith('maxPerPrompt', 3, resource, undefined);
+    });
   });
 
   describe('Sync Selected Variant on Resource Change', () => {
@@ -1157,7 +1174,7 @@ describe('ResourceProperties', () => {
       expect(mockOnChange).toHaveBeenCalledWith('label', 'test string', resource, undefined);
     });
 
-    it('should convert number values to string in onChange', () => {
+    it('should preserve number values in onChange', () => {
       const resource = createMockResource({
         category: ElementCategories.Field,
       });
@@ -1174,7 +1191,7 @@ describe('ResourceProperties', () => {
       const triggerButton = screen.getByTestId('trigger-change-maxLength');
       fireEvent.click(triggerButton);
 
-      expect(mockOnChange).toHaveBeenCalledWith('maxLength', '100', resource, undefined);
+      expect(mockOnChange).toHaveBeenCalledWith('maxLength', 100, resource, undefined);
     });
 
     it('should convert null values to empty string in onChange', () => {

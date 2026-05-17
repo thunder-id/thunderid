@@ -287,6 +287,94 @@ describe('CommonStepPropertyFactory', () => {
     });
   });
 
+  describe('Number Properties', () => {
+    it('should render FormControl with number input for numeric value', () => {
+      const resource: Resource = {
+        id: 'resource-1',
+        type: 'VIEW',
+        config: {},
+      } as Resource;
+
+      render(
+        <CommonStepPropertyFactory
+          resource={resource}
+          propertyKey="maxPerPrompt"
+          propertyValue={5}
+          onChange={mockOnChange}
+        />,
+      );
+
+      const numberField = screen.getByRole('spinbutton');
+      expect(numberField).toBeInTheDocument();
+      expect(numberField).toHaveValue(5);
+      expect(screen.getByText('Max Per Prompt')).toBeInTheDocument();
+    });
+
+    it('should call onChange with numeric value when number input changes', () => {
+      const resource: Resource = {
+        id: 'resource-1',
+        type: 'VIEW',
+        config: {},
+      } as Resource;
+
+      render(
+        <CommonStepPropertyFactory
+          resource={resource}
+          propertyKey="maxPerPrompt"
+          propertyValue={5}
+          onChange={mockOnChange}
+        />,
+      );
+
+      const numberField = screen.getByRole('spinbutton');
+      fireEvent.change(numberField, {target: {value: '3'}});
+
+      expect(mockOnChange).toHaveBeenCalledWith('maxPerPrompt', 3, resource, true);
+    });
+
+    it('should ignore empty numeric input values', () => {
+      const resource: Resource = {
+        id: 'resource-1',
+        type: 'VIEW',
+        config: {},
+      } as Resource;
+
+      render(
+        <CommonStepPropertyFactory
+          resource={resource}
+          propertyKey="maxPerPrompt"
+          propertyValue={5}
+          onChange={mockOnChange}
+        />,
+      );
+
+      const numberField = screen.getByRole('spinbutton');
+      fireEvent.change(numberField, {target: {value: ''}});
+
+      expect(mockOnChange).not.toHaveBeenCalled();
+    });
+
+    it('should use cleaned labels for nested data property keys', () => {
+      const resource: Resource = {
+        id: 'resource-1',
+        type: 'VIEW',
+        config: {},
+      } as Resource;
+
+      render(
+        <CommonStepPropertyFactory
+          resource={resource}
+          propertyKey="data.properties.maxPerPrompt"
+          propertyValue={5}
+          onChange={mockOnChange}
+        />,
+      );
+
+      expect(screen.getByText('Max Per Prompt')).toBeInTheDocument();
+      expect(screen.queryByText('Data Properties Max Per Prompt')).not.toBeInTheDocument();
+    });
+  });
+
   describe('Null Cases', () => {
     it('should return null for object property values', () => {
       const resource: Resource = {
@@ -300,25 +388,6 @@ describe('CommonStepPropertyFactory', () => {
           resource={resource}
           propertyKey="config"
           propertyValue={{nested: 'value'}}
-          onChange={mockOnChange}
-        />,
-      );
-
-      expect(container.firstChild).toBeNull();
-    });
-
-    it('should return null for number property values', () => {
-      const resource: Resource = {
-        id: 'resource-1',
-        type: 'VIEW',
-        config: {},
-      } as Resource;
-
-      const {container} = render(
-        <CommonStepPropertyFactory
-          resource={resource}
-          propertyKey="order"
-          propertyValue={123}
           onChange={mockOnChange}
         />,
       );

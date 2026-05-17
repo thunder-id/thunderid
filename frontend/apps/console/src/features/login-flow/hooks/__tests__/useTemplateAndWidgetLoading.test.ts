@@ -370,7 +370,7 @@ describe('useTemplateAndWidgetLoading', () => {
           data: {
             steps: [createMockStep()],
             __generationMeta__: {
-              replacers: [{placeholder: '{{ID}}', value: 'new-id'}],
+              replacers: [{key: 'ID', type: 'ID'}],
             },
           },
         },
@@ -459,6 +459,109 @@ describe('useTemplateAndWidgetLoading', () => {
       const [nodes] = result.current.handleWidgetLoad(widget, {} as Resource, currentNodes, currentEdges);
 
       expect(nodes.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should remove a scaffolded drop-point view when a standalone widget does not merge into it', () => {
+      const {result} = renderUseTemplateAndWidgetLoading();
+
+      // Simulates the Provisioning widget: two standalone steps, neither merges into the drop point.
+      const widget = {
+        id: 'provisioning-widget',
+        config: {
+          data: {
+            steps: [
+              {
+                id: '{{EXECUTOR_STEP_ID}}',
+                type: StepTypes.Execution,
+                position: {x: 200, y: 200},
+                data: {
+                  action: {
+                    type: 'EXECUTOR',
+                    executor: {name: 'ProvisioningExecutor'},
+                    onIncomplete: '{{PROMPT_STEP_ID}}',
+                  },
+                },
+              },
+              {
+                id: '{{PROMPT_STEP_ID}}',
+                type: StepTypes.View,
+                position: {x: 200, y: 50},
+                data: {components: []},
+              },
+            ],
+            __generationMeta__: {
+              replacers: [
+                {key: 'EXECUTOR_STEP_ID', type: 'ID'},
+                {key: 'PROMPT_STEP_ID', type: 'ID'},
+              ],
+            },
+          },
+        },
+      } as unknown as Widget;
+
+      const targetView = createMockNode({id: 'drop-point-view', type: StepTypes.View});
+      const currentNodes = [createMockNode({id: 'existing-node'}), targetView];
+      const currentEdges: Edge[] = [];
+
+      const [nodes] = result.current.handleWidgetLoad(
+        widget,
+        targetView as unknown as Resource,
+        currentNodes,
+        currentEdges,
+        true,
+      );
+
+      // The empty drop-point VIEW must be removed; only the widget's own nodes should remain.
+      expect(nodes.find((n) => n.id === 'drop-point-view')).toBeUndefined();
+      // The two widget steps (still with placeholder IDs) should be present alongside existing nodes.
+      expect(nodes.find((n) => n.id === 'existing-node')).toBeDefined();
+      expect(nodes.length).toBe(3); // existing-node + executor step + prompt step
+    });
+
+    it('should preserve an existing target view when a standalone widget is added into the flow', () => {
+      const {result} = renderUseTemplateAndWidgetLoading();
+
+      const widget = {
+        id: 'provisioning-widget',
+        config: {
+          data: {
+            steps: [
+              {
+                id: '{{EXECUTOR_STEP_ID}}',
+                type: StepTypes.Execution,
+                position: {x: 200, y: 200},
+              },
+              {
+                id: '{{PROMPT_STEP_ID}}',
+                type: StepTypes.View,
+                position: {x: 200, y: 50},
+                data: {components: []},
+              },
+            ],
+            __generationMeta__: {
+              replacers: [
+                {key: 'EXECUTOR_STEP_ID', type: 'ID'},
+                {key: 'PROMPT_STEP_ID', type: 'ID'},
+              ],
+            },
+          },
+        },
+      } as unknown as Widget;
+
+      const existingTargetView = createMockNode({id: 'existing-target-view', type: StepTypes.View});
+      const currentNodes = [createMockNode({id: 'existing-node'}), existingTargetView];
+      const currentEdges: Edge[] = [];
+
+      const [nodes] = result.current.handleWidgetLoad(
+        widget,
+        existingTargetView as unknown as Resource,
+        currentNodes,
+        currentEdges,
+      );
+
+      expect(nodes.find((n) => n.id === 'existing-target-view')).toBeDefined();
+      expect(nodes.find((n) => n.id === 'existing-node')).toBeDefined();
+      expect(nodes.length).toBe(4);
     });
 
     it('should find default property selector at node level', () => {

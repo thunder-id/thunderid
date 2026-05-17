@@ -45,6 +45,7 @@ export interface UseDragDropHandlersProps {
     targetResource: Resource,
     currentNodes: Node[],
     edges: Edge[],
+    removeTargetViewWhenStandalone?: boolean,
   ) => [Node[], Edge[], Resource | null, string | null];
   metadata?: MetadataInterface;
 }
@@ -178,6 +179,7 @@ const useDragDropHandlers = (props: UseDragDropHandlersProps): UseDragDropHandle
           targetResource,
           currentNodes,
           currentEdges,
+          false,
         );
 
         // Auto-assign connections for execution steps
@@ -287,6 +289,7 @@ const useDragDropHandlers = (props: UseDragDropHandlersProps): UseDragDropHandle
             targetNode as Resource,
             currentNodes,
             currentEdges,
+            false,
           );
 
           // Now we need to reorder the components to insert at the correct position

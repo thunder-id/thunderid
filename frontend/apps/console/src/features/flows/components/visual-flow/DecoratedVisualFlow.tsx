@@ -71,9 +71,11 @@ import {type Step, type StepData} from '../../models/steps';
 import {type Template} from '../../models/templates';
 import type {Widget} from '../../models/widget';
 import applyAutoLayout from '../../utils/applyAutoLayout';
+import autoAssignConnections from '../../utils/autoAssignConnections';
 import computeExecutorConnections from '../../utils/computeExecutorConnections';
 import generateResourceId from '../../utils/generateResourceId';
 import {resolveCollisions} from '../../utils/resolveCollisions';
+import {widgetNeedsViewContainer} from '../../utils/widgetUtils';
 import Droppable from '../dnd/Droppable';
 import ResourcePanel from '../resource-panel/ResourcePanel';
 import ResourcePropertyPanel from '../resource-property-panel/ResourcePropertyPanel';
@@ -99,6 +101,7 @@ export interface DecoratedVisualFlowPropsInterface extends Omit<VisualFlowPropsI
     targetResource: Resource,
     currentNodes: Node[],
     edges: Edge[],
+    removeTargetViewWhenStandalone?: boolean,
   ) => [Node[], Edge[], Resource | null, string | null];
   onStepLoad: (step: Step) => Step;
   onResourceAdd: (resource: Resource) => void;
@@ -406,11 +409,36 @@ function DecoratedVisualFlow({
         return;
       }
 
-      // Widget dropped on canvas -> needs View
+      // Widget dropped on canvas
       if (isWidgetDrop && isCanvasTarget) {
+        const widget = sourceData.dragged as Widget;
+        const needsViewContainer = widgetNeedsViewContainer(widget);
+
         pendingDropRef.current = {event, sourceData, targetData};
         setDropScenario('widget-on-canvas');
-        setIsContainerDialogOpen(true);
+
+        if (needsViewContainer) {
+          setIsContainerDialogOpen(true);
+        } else {
+          const currentNodes = getNodes();
+          const currentEdges = getEdges();
+          const [newNodes, newEdges, defSelector, defStepId] = onWidgetLoad(
+            widget,
+            {} as Resource,
+            currentNodes,
+            currentEdges,
+          );
+
+          if (computedMetadata?.executorConnections) {
+            autoAssignConnections(newNodes, computedMetadata.executorConnections);
+          }
+
+          setNodes(() => newNodes);
+          setEdges(() => newEdges);
+          onResourceDropOnCanvas(defSelector ?? (widget as Resource), defStepId ?? '');
+          notifyElementAdded('widget');
+          pendingDropRef.current = null;
+        }
         return;
       }
 
@@ -532,6 +560,12 @@ function DecoratedVisualFlow({
       addToViewAtIndex,
       addToFormAtIndex,
       getNodes,
+      getEdges,
+      onWidgetLoad,
+      setNodes,
+      setEdges,
+      onResourceDropOnCanvas,
+      computedMetadata,
       notifyElementAdded,
     ],
   );

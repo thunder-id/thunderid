@@ -985,6 +985,112 @@ describe('reactFlowTransformer', () => {
         expect(execNode?.executor?.name).toBe('TestExecutor');
         expect(execNode?.executor?.inputs).toBeUndefined();
       });
+
+      it('should not override ProvisioningExecutor inputs when preceding PROMPT has only dynamic placeholder content', () => {
+        const promptComponents: Element[] = [
+          {
+            id: 'block-1',
+            type: 'BLOCK',
+            category: ElementCategories.Block,
+            components: [
+              {
+                id: 'dynamic-inputs-1',
+                type: ElementTypes.DynamicInputPlaceholder,
+                category: ElementCategories.Display,
+              } as unknown as Element,
+              {
+                id: 'button-1',
+                type: ElementTypes.Action,
+                category: ElementCategories.Action,
+                action: {onSuccess: 'exec-1'},
+              } as Element,
+            ],
+          } as unknown as Element,
+        ];
+
+        const canvasData: ReactFlowCanvasData = {
+          nodes: [
+            createNode('view-1', StepTypes.View, {x: 0, y: 0}, {components: promptComponents}),
+            createNode(
+              'exec-1',
+              StepTypes.Execution,
+              {x: 100, y: 0},
+              {
+                action: {
+                  executor: {
+                    name: 'ProvisioningExecutor',
+                  },
+                },
+              },
+            ),
+          ],
+          edges: [createEdge('edge-1', 'view-1', 'exec-1', 'button-1_NEXT')],
+        };
+
+        const result = transformReactFlow(canvasData);
+
+        const execNode = result.nodes.find((n) => n.id === 'exec-1');
+        expect(execNode?.executor?.name).toBe('ProvisioningExecutor');
+        expect(execNode?.executor?.inputs).toBeUndefined();
+      });
+
+      it('should preserve ProvisioningExecutor inputs when preceding PROMPT has only dynamic placeholder content', () => {
+        const promptComponents: Element[] = [
+          {
+            id: 'block-1',
+            type: 'BLOCK',
+            category: ElementCategories.Block,
+            components: [
+              {
+                id: 'dynamic-inputs-1',
+                type: ElementTypes.DynamicInputPlaceholder,
+                category: ElementCategories.Display,
+              } as unknown as Element,
+              {
+                id: 'button-1',
+                type: ElementTypes.Action,
+                category: ElementCategories.Action,
+                action: {onSuccess: 'exec-1'},
+              } as Element,
+            ],
+          } as unknown as Element,
+        ];
+
+        const existingInputs = [
+          {
+            ref: 'input_given_name',
+            type: 'TEXT_INPUT',
+            identifier: 'given_name',
+            required: true,
+          },
+        ];
+
+        const canvasData: ReactFlowCanvasData = {
+          nodes: [
+            createNode('view-1', StepTypes.View, {x: 0, y: 0}, {components: promptComponents}),
+            createNode(
+              'exec-1',
+              StepTypes.Execution,
+              {x: 100, y: 0},
+              {
+                action: {
+                  executor: {
+                    name: 'ProvisioningExecutor',
+                    inputs: existingInputs,
+                  },
+                },
+              },
+            ),
+          ],
+          edges: [createEdge('edge-1', 'view-1', 'exec-1', 'button-1_NEXT')],
+        };
+
+        const result = transformReactFlow(canvasData);
+
+        const execNode = result.nodes.find((n) => n.id === 'exec-1');
+        expect(execNode?.executor?.name).toBe('ProvisioningExecutor');
+        expect(execNode?.executor?.inputs).toEqual(existingInputs);
+      });
     });
 
     describe('Event Type Derivation', () => {

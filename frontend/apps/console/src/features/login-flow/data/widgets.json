@@ -950,5 +950,123 @@
         ]
       }
     }
+  },
+  {
+    "resourceType": "WIDGET",
+    "category": "FLOW",
+    "type": "PROVISIONING",
+    "display": {
+      "label": "Provisioning",
+      "description": "Provision a user and prompt for any missing schema attributes using dynamic inputs",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "data": {
+        "__generationMeta__": {
+          "defaultPropertySelectorId": "{{PROVISIONING_EXECUTOR_STEP_ID}}",
+          "replacers": [
+            {
+              "key": "PROVISIONING_EXECUTOR_STEP_ID",
+              "type": "ID"
+            },
+            {
+              "key": "PROVISIONING_PROMPT_STEP_ID",
+              "type": "ID"
+            }
+          ]
+        },
+        "steps": [
+          {
+            "id": "{{PROVISIONING_EXECUTOR_STEP_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 820,
+              "y": 800
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "ProvisioningExecutor"
+                },
+                "onSuccess": "",
+                "onFailure": "",
+                "onIncomplete": "{{PROVISIONING_PROMPT_STEP_ID}}"
+              },
+              "properties": {
+                "allowCrossOUProvisioning": false,
+                "assignGroup": "",
+                "assignRole": "",
+                "includeOptional": false,
+                "includeOptionalCredentials": false,
+                "maxPerPrompt": 5
+              }
+            }
+          },
+          {
+            "id": "{{PROVISIONING_PROMPT_STEP_ID}}",
+            "type": "VIEW",
+            "size": {
+              "width": 350,
+              "height": 430
+            },
+            "position": {
+              "x": 820,
+              "y": 100
+            },
+            "data": {
+              "components": [
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "IMAGE",
+                  "src": "{{ meta(application.logoUrl) }}",
+                  "alt": "{{ t(signup:images.app_logo.alt) }}",
+                  "height": "60",
+                  "width": ""
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "variant": "HEADING_1",
+                  "align": "center",
+                  "label": "{{ t(signup:forms.user_info.title) }}"
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "BLOCK",
+                  "type": "BLOCK",
+                  "components": [
+                    {
+                      "id": "{{ID}}",
+                      "category": "DISPLAY",
+                      "type": "DYNAMIC_INPUT_PLACEHOLDER"
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "variant": "PRIMARY",
+                      "eventType": "SUBMIT",
+                      "label": "{{ t(signup:forms.user_info.actions.continue.label) }}",
+                      "action": {
+                        "type": "NEXT",
+                        "onSuccess": "{{PROVISIONING_EXECUTOR_STEP_ID}}"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
   }
 ]

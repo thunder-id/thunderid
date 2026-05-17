@@ -64,6 +64,7 @@ export const ElementTypes = {
   Timer: 'TIMER',
   Consent: 'CONSENT',
   Custom: 'CUSTOM',
+  DynamicInputPlaceholder: 'DYNAMIC_INPUT_PLACEHOLDER',
 } as const;
 
 export const BlockTypes = {

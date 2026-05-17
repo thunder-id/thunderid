@@ -20,9 +20,9 @@
 
 import {render, screen, fireEvent, waitFor, cleanup} from '@thunderid/test-utils';
 import type {Node, Edge} from '@xyflow/react';
-import React from 'react';
+import React, {act} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
-import type {Resources} from '../../../models/resources';
+import type {Resource, Resources} from '../../../models/resources';
 import DecoratedVisualFlow from '../DecoratedVisualFlow';
 
 // Mock hooks
@@ -33,25 +33,36 @@ vi.mock('../../../hooks/useUIPanelState', () => ({
   }),
 }));
 
+const {flowConfigState, mockSetFlowNodes, mockOnResourceDropOnCanvas, mockNotifyElementAdded, mockTriggerAutoLayout} =
+  vi.hoisted(() => ({
+    flowConfigState: {
+      metadata: undefined as unknown,
+    },
+    mockSetFlowNodes: vi.fn(),
+    mockOnResourceDropOnCanvas: vi.fn(),
+    mockNotifyElementAdded: vi.fn(),
+    mockTriggerAutoLayout: vi.fn(),
+  }));
+
 vi.mock('../../../hooks/useFlowConfig', () => ({
   default: () => ({
     isFlowMetadataLoading: false,
-    metadata: undefined,
-    setFlowNodes: vi.fn(),
+    metadata: flowConfigState.metadata,
+    setFlowNodes: mockSetFlowNodes,
   }),
 }));
 
 vi.mock('../../../hooks/useInteractionState', () => ({
   default: () => ({
-    onResourceDropOnCanvas: vi.fn(),
+    onResourceDropOnCanvas: mockOnResourceDropOnCanvas,
   }),
 }));
 
 vi.mock('../../../hooks/useFlowEvents', () => ({
   default: () => ({
-    notifyElementAdded: vi.fn(),
+    notifyElementAdded: mockNotifyElementAdded,
     onElementAdded: vi.fn(() => vi.fn()),
-    triggerAutoLayout: vi.fn(),
+    triggerAutoLayout: mockTriggerAutoLayout,
     onAutoLayout: vi.fn(() => vi.fn()),
     restoreFromHistory: vi.fn(),
     onRestoreFromHistory: vi.fn(() => vi.fn()),
@@ -125,6 +136,14 @@ vi.mock('../../../utils/computeExecutorConnections', () => ({
   default: vi.fn(() => []),
 }));
 
+const {mockAutoAssignConnections} = vi.hoisted(() => ({
+  mockAutoAssignConnections: vi.fn(),
+}));
+
+vi.mock('../../../utils/autoAssignConnections', () => ({
+  default: mockAutoAssignConnections,
+}));
+
 vi.mock('@/features/integrations/api/useIdentityProviders', () => ({
   default: () => ({data: []}),
 }));
@@ -134,16 +153,23 @@ vi.mock('@/features/notification-senders/api/useNotificationSenders', () => ({
 }));
 
 // Use vi.hoisted for mocks that need to be referenced in vi.mock
-const {mockToObject, mockGetNodes, mockGetEdges, mockUpdateNodeData, mockFitView, mockUpdateNodeInternals} = vi.hoisted(
-  () => ({
-    mockToObject: vi.fn(() => ({viewport: {x: 0, y: 0, zoom: 1}})),
-    mockGetNodes: vi.fn((): Node[] => []),
-    mockGetEdges: vi.fn((): Edge[] => []),
-    mockUpdateNodeData: vi.fn(),
-    mockFitView: vi.fn().mockResolvedValue(undefined),
-    mockUpdateNodeInternals: vi.fn(),
-  }),
-);
+const {
+  mockToObject,
+  mockGetNodes,
+  mockGetEdges,
+  mockUpdateNodeData,
+  mockFitView,
+  mockUpdateNodeInternals,
+  mockScreenToFlowPosition,
+} = vi.hoisted(() => ({
+  mockToObject: vi.fn(() => ({viewport: {x: 0, y: 0, zoom: 1}})),
+  mockGetNodes: vi.fn((): Node[] => []),
+  mockGetEdges: vi.fn((): Edge[] => []),
+  mockUpdateNodeData: vi.fn(),
+  mockFitView: vi.fn().mockResolvedValue(undefined),
+  mockUpdateNodeInternals: vi.fn(),
+  mockScreenToFlowPosition: vi.fn(({x, y}: {x: number; y: number}) => ({x, y})),
+}));
 
 vi.mock('@xyflow/react', () => ({
   useReactFlow: () => ({
@@ -152,6 +178,7 @@ vi.mock('@xyflow/react', () => ({
     getEdges: mockGetEdges,
     updateNodeData: mockUpdateNodeData,
     fitView: mockFitView,
+    screenToFlowPosition: mockScreenToFlowPosition,
   }),
   useUpdateNodeInternals: () => mockUpdateNodeInternals,
 }));
@@ -163,6 +190,10 @@ type DragEndCallback = (event: {
     target: {id: string; data: Record<string, unknown>} | null;
   };
   canceled: boolean;
+  nativeEvent?: {
+    clientX: number;
+    clientY: number;
+  };
 }) => void;
 type DragOverCallback = (event: {
   operation: {
@@ -330,12 +361,14 @@ describe('DecoratedVisualFlow', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    flowConfigState.metadata = undefined;
     mockGetNodes.mockReturnValue([]);
     mockGetEdges.mockReturnValue([]);
     // Reset applyAutoLayout to return a resolved promise by default
     mockApplyAutoLayout.mockResolvedValue([]);
     // Reset fitView to return a resolved promise by default
     mockFitView.mockResolvedValue(undefined);
+    mockScreenToFlowPosition.mockImplementation(({x, y}: {x: number; y: number}) => ({x, y}));
   });
 
   afterEach(async () => {
@@ -787,22 +820,24 @@ describe('DecoratedVisualFlow', () => {
       renderComponent(<DecoratedVisualFlow {...defaultProps} />);
 
       // Simulate input drop on canvas
-      if (capturedOnDragEnd) {
-        capturedOnDragEnd({
-          operation: {
-            source: {
-              data: {
-                dragged: {category: 'FIELD'},
+      act(() => {
+        if (capturedOnDragEnd) {
+          capturedOnDragEnd({
+            operation: {
+              source: {
+                data: {
+                  dragged: {category: 'FIELD'},
+                },
+              },
+              target: {
+                id: 'flow-builder-canvas_test',
+                data: {},
               },
             },
-            target: {
-              id: 'flow-builder-canvas_test',
-              data: {},
-            },
-          },
-          canceled: false,
-        });
-      }
+            canceled: false,
+          });
+        }
+      });
 
       await waitFor(() => {
         const dialog = screen.getByTestId('form-requires-view-dialog');
@@ -814,22 +849,24 @@ describe('DecoratedVisualFlow', () => {
       renderComponent(<DecoratedVisualFlow {...defaultProps} />);
 
       // Simulate input drop on view
-      if (capturedOnDragEnd) {
-        capturedOnDragEnd({
-          operation: {
-            source: {
-              data: {
-                dragged: {category: 'FIELD'},
+      act(() => {
+        if (capturedOnDragEnd) {
+          capturedOnDragEnd({
+            operation: {
+              source: {
+                data: {
+                  dragged: {category: 'FIELD'},
+                },
+              },
+              target: {
+                id: 'flow-builder-view_test',
+                data: {},
               },
             },
-            target: {
-              id: 'flow-builder-view_test',
-              data: {},
-            },
-          },
-          canceled: false,
-        });
-      }
+            canceled: false,
+          });
+        }
+      });
 
       await waitFor(() => {
         const dialog = screen.getByTestId('form-requires-view-dialog');
@@ -841,27 +878,127 @@ describe('DecoratedVisualFlow', () => {
       renderComponent(<DecoratedVisualFlow {...defaultProps} />);
 
       // Simulate widget drop on canvas
-      if (capturedOnDragEnd) {
-        capturedOnDragEnd({
-          operation: {
-            source: {
-              data: {
-                dragged: {resourceType: 'WIDGET'},
+      act(() => {
+        if (capturedOnDragEnd) {
+          capturedOnDragEnd({
+            operation: {
+              source: {
+                data: {
+                  dragged: {resourceType: 'WIDGET'},
+                },
+              },
+              target: {
+                id: 'flow-builder-canvas_test',
+                data: {},
               },
             },
-            target: {
-              id: 'flow-builder-canvas_test',
-              data: {},
-            },
-          },
-          canceled: false,
-        });
-      }
+            canceled: false,
+          });
+        }
+      });
 
       await waitFor(() => {
         const dialog = screen.getByTestId('form-requires-view-dialog');
         expect(dialog).toHaveAttribute('data-scenario', 'widget-on-canvas');
       });
+    });
+
+    it('should open the container dialog for merge-at-drop-point widgets', async () => {
+      renderComponent(<DecoratedVisualFlow {...defaultProps} />);
+
+      act(() => {
+        if (capturedOnDragEnd) {
+          capturedOnDragEnd({
+            operation: {
+              source: {
+                data: {
+                  dragged: {
+                    config: {
+                      data: {
+                        steps: [{__generationMeta__: {strategy: 'MERGE_WITH_DROP_POINT'}}],
+                      },
+                    },
+                    resourceType: 'WIDGET',
+                  },
+                },
+              },
+              target: {
+                id: 'flow-builder-canvas_test',
+                data: {},
+              },
+            },
+            canceled: false,
+          });
+        }
+      });
+
+      await waitFor(() => {
+        const dialog = screen.getByTestId('form-requires-view-dialog');
+        expect(dialog).toHaveAttribute('data-open', 'true');
+        expect(dialog).toHaveAttribute('data-scenario', 'widget-on-canvas');
+      });
+    });
+
+    it('should scaffold standalone widgets directly on the canvas', async () => {
+      const currentNodes: Node[] = [{id: 'existing-node', position: {x: 10, y: 20}, data: {}}];
+      const currentEdges: Edge[] = [{id: 'existing-edge', source: 'existing-node', target: 'target-node'}];
+      const widget = {
+        config: {
+          data: {
+            steps: [{__generationMeta__: {strategy: 'INLINE'}}],
+          },
+        },
+        id: 'widget-1',
+        resourceType: 'WIDGET',
+      };
+      const generatedNodes: Node[] = [{id: 'generated-node', position: {x: 150, y: 260}, data: {}}];
+      const generatedEdges: Edge[] = [{id: 'generated-edge', source: 'generated-node', target: 'view_test123'}];
+      const defaultSelector = {id: 'selector-1'} as Resource;
+      const onWidgetLoad = vi.fn(
+        () => [generatedNodes, generatedEdges, defaultSelector, 'generated-step'] as [Node[], Edge[], Resource, string],
+      );
+      const dragEvent = {
+        operation: {
+          source: {
+            data: {
+              dragged: widget,
+            },
+          },
+          target: {
+            id: 'flow-builder-canvas_test',
+            data: {},
+          },
+        },
+        canceled: false,
+        nativeEvent: {clientX: 150, clientY: 260},
+      } satisfies Parameters<NonNullable<typeof capturedOnDragEnd>>[0];
+      flowConfigState.metadata = {executorConnections: [{connections: ['social'], executorName: 'google'}]};
+      mockGetNodes.mockReturnValue(currentNodes);
+      mockGetEdges.mockReturnValue(currentEdges);
+
+      renderComponent(<DecoratedVisualFlow {...defaultProps} onWidgetLoad={onWidgetLoad} />);
+
+      act(() => {
+        capturedOnDragEnd?.(dragEvent);
+      });
+
+      await waitFor(() => {
+        expect(onWidgetLoad).toHaveBeenCalledWith(widget, {}, currentNodes, currentEdges);
+        expect(mockAutoAssignConnections).toHaveBeenCalledWith(generatedNodes, [
+          {connections: ['social'], executorName: 'google'},
+        ]);
+        expect(defaultProps.setNodes).toHaveBeenCalled();
+        expect(defaultProps.setEdges).toHaveBeenCalled();
+        expect(mockOnResourceDropOnCanvas).toHaveBeenCalledWith(defaultSelector, 'generated-step');
+        expect(mockNotifyElementAdded).toHaveBeenCalledWith('widget');
+      });
+
+      const setNodesUpdater = defaultProps.setNodes.mock.calls[0][0] as () => Node[];
+      const setEdgesUpdater = defaultProps.setEdges.mock.calls[0][0] as () => Edge[];
+
+      expect(setNodesUpdater()).toEqual(generatedNodes);
+      expect(setEdgesUpdater()).toEqual(generatedEdges);
+      expect(screen.getByTestId('form-requires-view-dialog')).toHaveAttribute('data-open', 'false');
     });
 
     it('should return early when event is canceled', () => {

@@ -45,7 +45,7 @@ export interface CommonStepPropertyFactoryPropsInterface {
    * @param newValue - The new value of the property.
    * @param resource - The resource associated with the property.
    */
-  onChange: (propertyKey: string, newValue: string | boolean, resource: Resource, debounce?: boolean) => void;
+  onChange: (propertyKey: string, newValue: string | boolean | number, resource: Resource, debounce?: boolean) => void;
   /**
    * Additional props.
    */
@@ -65,6 +65,9 @@ function CommonStepPropertyFactory({
   onChange,
   ...rest
 }: CommonStepPropertyFactoryPropsInterface): ReactElement | null {
+  const displayKey = propertyKey.replace(/^data\.properties\./, '');
+  const displayLabel = startCase(displayKey);
+
   if (propertyKey === 'text') {
     if (resource.type === ElementTypes.RichText) {
       return (
@@ -81,22 +84,47 @@ function CommonStepPropertyFactory({
     return (
       <FormControlLabel
         control={<Checkbox checked={propertyValue} />}
-        label={startCase(propertyKey)}
+        label={displayLabel}
         onChange={(_event: SyntheticEvent, checked: boolean) => onChange(propertyKey, checked, resource)}
         {...rest}
       />
     );
   }
 
+  if (typeof propertyValue === 'number') {
+    return (
+      <FormControl fullWidth sx={{mb: 3}}>
+        <FormLabel htmlFor={propertyKey}>{displayLabel} </FormLabel>
+        <TextField
+          fullWidth
+          id={propertyKey}
+          defaultValue={propertyValue}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            const val = e.target.value;
+            const num = Number(val);
+            if (val === '' || Number.isNaN(num)) {
+              return;
+            }
+            onChange(propertyKey, num, resource, true);
+          }}
+          placeholder={`Enter ${displayLabel}`}
+          type="number"
+          {...rest}
+        />
+      </FormControl>
+    );
+  }
+
   if (typeof propertyValue === 'string') {
     return (
       <FormControl fullWidth sx={{mb: 3}}>
-        <FormLabel htmlFor="name">{startCase(propertyKey)} </FormLabel>
+        <FormLabel htmlFor={propertyKey}>{displayLabel} </FormLabel>
         <TextField
           fullWidth
+          id={propertyKey}
           defaultValue={propertyValue}
           onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(propertyKey, e.target.value, resource, true)}
-          placeholder={`Enter ${startCase(propertyKey)}`}
+          placeholder={`Enter ${displayLabel}`}
           {...rest}
         />
       </FormControl>

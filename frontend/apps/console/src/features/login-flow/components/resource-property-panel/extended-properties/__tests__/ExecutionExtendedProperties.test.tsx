@@ -69,6 +69,13 @@ vi.mock('react-i18next', () => ({
         'flows:core.executions.identifying.mode.placeholder': 'Select a mode',
         'flows:core.executions.identifying.mode.identify': 'Identify',
         'flows:core.executions.identifying.mode.resolve': 'Resolve (Disambiguation)',
+        'flows:core.executions.provisioning.description': 'Configure the provisioning executor settings.',
+        'flows:core.executions.federation.allowCrossOUProvisioning.label': 'Allow Cross-OU Provisioning',
+        'flows:core.executions.provisioning.includeOptional.label': 'Allow Optional Non Credential',
+        'flows:core.executions.provisioning.maxPerPrompt.label': 'Max Per Prompt',
+        'flows:core.executions.provisioning.includeOptionalCredentials.label': 'Include Optional Credentials',
+        'flows:core.executions.provisioning.assignGroup.label': 'Assign Group',
+        'flows:core.executions.provisioning.assignRole.label': 'Assign Role',
       };
       return translations[key] || key;
     },
@@ -1316,6 +1323,9 @@ describe('ExecutionExtendedProperties', () => {
         },
         properties: {
           allowCrossOUProvisioning: false,
+          includeOptional: false,
+          includeOptionalCredentials: false,
+          maxPerPrompt: 5,
           assignGroup: '',
           assignRole: '',
         },
@@ -1325,13 +1335,13 @@ describe('ExecutionExtendedProperties', () => {
     it('should render provisioning configuration', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
-      expect(screen.getByText('flows:core.executions.provisioning.description')).toBeInTheDocument();
-      expect(screen.getByText('flows:core.executions.federation.allowCrossOUProvisioning.label')).toBeInTheDocument();
-      expect(
-        screen.getByText('flows:core.executions.provisioning.includeOptionalCredentials.label'),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText('flows:core.executions.provisioning.assignGroup.label')).toBeInTheDocument();
-      expect(screen.getByLabelText('flows:core.executions.provisioning.assignRole.label')).toBeInTheDocument();
+      expect(screen.getByText('Configure the provisioning executor settings.')).toBeInTheDocument();
+      expect(screen.getByText('Allow Cross-OU Provisioning')).toBeInTheDocument();
+      expect(screen.getByText('Allow Optional Non Credential')).toBeInTheDocument();
+      expect(screen.getByLabelText('Max Per Prompt')).toBeInTheDocument();
+      expect(screen.getByText('Include Optional Credentials')).toBeInTheDocument();
+      expect(screen.getByLabelText('Assign Group')).toBeInTheDocument();
+      expect(screen.getByLabelText('Assign Role')).toBeInTheDocument();
     });
 
     it('should call onChange without debounce when allowCrossOUProvisioning checkbox is toggled', () => {
@@ -1344,11 +1354,31 @@ describe('ExecutionExtendedProperties', () => {
       expect(mockOnChange).toHaveBeenCalledWith('data.properties.allowCrossOUProvisioning', true, provisioningResource);
     });
 
+    it('should call onChange without debounce when includeOptional checkbox is toggled', () => {
+      render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
+
+      const checkboxes = screen.getAllByRole('checkbox');
+      const includeOptionalCheckbox = checkboxes[1];
+      fireEvent.click(includeOptionalCheckbox);
+
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.includeOptional', true, provisioningResource);
+    });
+
+    it('should call onChange with debounce when maxPerPrompt changes', () => {
+      render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
+
+      fireEvent.change(screen.getByLabelText('Max Per Prompt'), {
+        target: {value: '3'},
+      });
+
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.maxPerPrompt', 3, provisioningResource, true);
+    });
+
     it('should call onChange without debounce when includeOptionalCredentials checkbox is toggled', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
       const checkboxes = screen.getAllByRole('checkbox');
-      const includeOptionalCredentialsCheckbox = checkboxes[1];
+      const includeOptionalCredentialsCheckbox = checkboxes[2];
       fireEvent.click(includeOptionalCredentialsCheckbox);
 
       expect(mockOnChange).toHaveBeenCalledWith(
@@ -1361,7 +1391,7 @@ describe('ExecutionExtendedProperties', () => {
     it('should call onChange with debounce when assignGroup changes', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
-      fireEvent.change(screen.getByLabelText('flows:core.executions.provisioning.assignGroup.label'), {
+      fireEvent.change(screen.getByLabelText('Assign Group'), {
         target: {value: 'admin-group'},
       });
 
@@ -1376,7 +1406,7 @@ describe('ExecutionExtendedProperties', () => {
     it('should call onChange with debounce when assignRole changes', () => {
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
-      fireEvent.change(screen.getByLabelText('flows:core.executions.provisioning.assignRole.label'), {
+      fireEvent.change(screen.getByLabelText('Assign Role'), {
         target: {value: 'editor-role'},
       });
 

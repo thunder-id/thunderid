@@ -33,7 +33,7 @@ import {StepTypes} from '../models/steps';
  */
 const useDeleteExecutionResource = (): void => {
   const {setIsOpenResourcePropertiesPanel} = useUIPanelState();
-  const {getEdges, getNodes, updateNodeData, setNodes} = useReactFlow();
+  const {getEdges, getNodes, updateNodeData, setNodes, setEdges} = useReactFlow();
   const {onNodeDelete, onNodeElementDelete, onEdgeDelete} = useFlowPlugins();
 
   /**
@@ -124,27 +124,45 @@ const useDeleteExecutionResource = (): void => {
    */
   function deleteComponentAndNode(deleted: Edge[]): boolean {
     const nodes: Node[] = getNodes();
+    const allEdges: Edge[] = getEdges();
     const executionNodeIds: string[] = [];
     const actionNodeIds: string[] = [];
     const actionComponentIds: string[] = [];
 
+    const deletedEdgeIds = new Set(deleted.map((e: Edge) => e.id));
+    const remainingEdges = allEdges.filter((e: Edge) => !deletedEdgeIds.has(e.id));
+
     deleted.forEach((edge: Edge) => {
       nodes.forEach((node: Node) => {
-        if (node.type === StepTypes.Execution && edge.target === node.id && edge.sourceHandle) {
+        if (
+          node.type === StepTypes.Execution &&
+          edge.target === node.id &&
+          edge.sourceHandle?.includes(VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX)
+        ) {
           actionComponentIds.push(
             edge.sourceHandle.slice(0, -VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX.length),
           );
           actionNodeIds.push(edge.source);
-          executionNodeIds.push(edge.target);
+
+          // Cascade-delete the executor only if no other callers remain after this batch.
+          const hasOtherIncoming = remainingEdges.some((e: Edge) => e.target === node.id);
+
+          if (!hasOtherIncoming) {
+            executionNodeIds.push(edge.target);
+          }
         }
       });
     });
 
-    if (executionNodeIds.length === 0) {
+    if (actionComponentIds.length === 0) {
       return true;
     }
 
-    setNodes((nds: Node[]) => nds?.filter((node: Node) => !executionNodeIds.includes(node.id)));
+    if (executionNodeIds.length > 0) {
+      const deletedSet = new Set(executionNodeIds);
+      setNodes((nds: Node[]) => nds?.filter((node: Node) => !deletedSet.has(node.id)));
+      setEdges((eds: Edge[]) => eds?.filter((e: Edge) => !deletedSet.has(e.source) && !deletedSet.has(e.target)));
+    }
 
     actionNodeIds.forEach((actionNodeId: string) => {
       updateNodeData(actionNodeId, (node: Node) => {

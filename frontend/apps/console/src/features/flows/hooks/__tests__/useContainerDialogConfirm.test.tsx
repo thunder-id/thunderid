@@ -467,6 +467,7 @@ describe('useContainerDialogConfirm', () => {
         expect.objectContaining({type: StepTypes.View}),
         expect.any(Array),
         expect.any(Array),
+        true,
       );
       expect(mockSetNodes).toHaveBeenCalled();
       expect(mockSetEdges).toHaveBeenCalled();

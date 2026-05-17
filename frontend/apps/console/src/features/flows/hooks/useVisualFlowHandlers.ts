@@ -114,16 +114,15 @@ const useVisualFlowHandlers = (props: UseVisualFlowHandlersProps): UseVisualFlow
     handleNodesDelete: (deleted: Node[]): void => {
       const {props: currentProps, reactFlowInstance: rf, edgeStyle: currentEdgeStyle} = depsRef.current;
       const {setEdges} = currentProps;
-      const {getNodes, getEdges} = rf;
+      const {getNodes} = rf;
 
       const currentNodes = getNodes();
-      const currentEdges = getEdges();
 
-      setEdges(
+      setEdges((latestEdges: Edge[]) =>
         deleted.reduce((acc: Edge[], node: Node) => {
-          const incomers: Node[] = getIncomers(node, currentNodes, currentEdges);
-          const outgoers: Node[] = getOutgoers(node, currentNodes, currentEdges);
-          const connectedEdges: Edge[] = getConnectedEdges([node], currentEdges);
+          const incomers: Node[] = getIncomers(node, currentNodes, acc);
+          const outgoers: Node[] = getOutgoers(node, currentNodes, acc);
+          const connectedEdges: Edge[] = getConnectedEdges([node], acc);
 
           const remainingEdges: Edge[] = acc.filter((edge: Edge) => !connectedEdges.includes(edge));
 
@@ -138,7 +137,7 @@ const useVisualFlowHandlers = (props: UseVisualFlowHandlersProps): UseVisualFlow
           );
 
           return [...remainingEdges, ...createdEdges];
-        }, currentEdges),
+        }, latestEdges),
       );
     },
 

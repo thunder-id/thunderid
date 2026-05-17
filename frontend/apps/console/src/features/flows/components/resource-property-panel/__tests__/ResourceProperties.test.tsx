@@ -238,6 +238,39 @@ describe('ResourceProperties', () => {
       expect(properties.placeholder).toBe('Test Placeholder');
       expect(properties.required).toBe(true);
     });
+
+    it('should extract step data properties for task resources', () => {
+      const stepResourceWithProperties: Base = {
+        ...mockBaseResource,
+        resourceType: 'STEP',
+        type: 'TASK_EXECUTION',
+        data: {
+          properties: {
+            includeOptional: false,
+            maxPerPrompt: 5,
+          },
+        },
+      } as Base & {
+        data: {
+          properties: {
+            includeOptional: boolean;
+            maxPerPrompt: number;
+          };
+        };
+      };
+
+      const contextWithStepProperties = createContextValue({
+        lastInteractedResource: stepResourceWithProperties,
+      });
+
+      render(<ResourceProperties />, {wrapper: createWrapper(contextWithStepProperties)});
+
+      const propertiesDiv = screen.getByTestId('properties');
+      const properties = JSON.parse(propertiesDiv.textContent ?? '{}') as Record<string, unknown>;
+
+      expect(properties['data.properties.includeOptional']).toBe(false);
+      expect(properties['data.properties.maxPerPrompt']).toBe(5);
+    });
   });
 
   describe('Variant Change', () => {

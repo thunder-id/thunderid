@@ -69,6 +69,7 @@ export interface UseTemplateAndWidgetLoadingReturn {
     targetResource: Resource,
     currentNodes: Node[],
     currentEdges: Edge[],
+    removeTargetViewWhenStandalone?: boolean,
   ) => [Node[], Edge[], Resource | null, string | null];
   /** Handle adding a resource from the panel. */
   handleResourceAdd: (resource: Resource) => void;
@@ -179,6 +180,7 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
       targetResource: Resource,
       currentNodes: Node[],
       currentEdges: Edge[],
+      removeTargetViewWhenStandalone = false,
     ): [Node[], Edge[], Resource | null, string | null] => {
       const widgetFlow = widget.config.data as {
         steps?: Step[];
@@ -208,6 +210,8 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
         return undefined;
       };
 
+      let mergedWithDropPoint = false;
+
       widgetFlow.steps.forEach((step: Step) => {
         if (
           step.__generationMeta__ &&
@@ -217,6 +221,7 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
           const {strategy} = step.__generationMeta__ as {strategy?: string};
 
           if (strategy === 'MERGE_WITH_DROP_POINT') {
+            mergedWithDropPoint = true;
             newNodes = newNodes.map((node: Node) => {
               if (node.id === targetResource.id) {
                 // Use mergeWith with the custom merge function
@@ -230,6 +235,11 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
           newNodes = [...newNodes, step] as Node[];
         }
       });
+
+      // Remove only a temporary scaffolded drop-point VIEW when no step merged into it.
+      if (!mergedWithDropPoint && removeTargetViewWhenStandalone) {
+        newNodes = newNodes.filter((node: Node) => node.id !== targetResource.id);
+      }
 
       const replacers = widgetFlow.__generationMeta__?.replacers ?? [];
 

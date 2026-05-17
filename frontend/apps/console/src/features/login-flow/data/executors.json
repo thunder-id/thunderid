@@ -369,7 +369,10 @@
       "properties": {
         "allowCrossOUProvisioning": false,
         "assignGroup": "",
-        "assignRole": ""
+        "assignRole": "",
+        "includeOptional": false,
+        "includeOptionalCredentials": false,
+        "maxPerPrompt": 5
       }
     }
   },

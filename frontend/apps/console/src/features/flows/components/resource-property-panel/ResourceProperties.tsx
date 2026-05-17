@@ -158,6 +158,20 @@ function ResourceProperties(): ReactElement {
       });
     }
 
+    const stepProperties = (
+      lastInteractedResource as Resource & {
+        data?: {
+          properties?: Record<string, unknown>;
+        };
+      }
+    ).data?.properties;
+
+    if (stepProperties) {
+      Object.entries(stepProperties).forEach(([key, value]) => {
+        (accumulated as Record<string, unknown>)[`data.properties.${key}`] = value;
+      });
+    }
+
     emitPropertyPanelOpen(lastInteractedResource, accumulated, lastInteractedStepId);
 
     return cloneDeep(accumulated);
@@ -229,13 +243,13 @@ function ResourceProperties(): ReactElement {
    * Handles plugin interception, ReactFlow node updates, and interaction state sync.
    */
   const applyPropertyChangeRef = useRef<
-    ((propertyKey: string, newValue: string | boolean | object, element: Element) => void) | null
+    ((propertyKey: string, newValue: string | boolean | number | object, element: Element) => void) | null
   >(null);
 
   useEffect(() => {
     applyPropertyChangeRef.current = (
       propertyKey: string,
-      newValue: string | boolean | object,
+      newValue: string | boolean | number | object,
       element: Element,
     ): void => {
       const currentStepId = lastInteractedStepIdRef.current;
@@ -319,13 +333,16 @@ function ResourceProperties(): ReactElement {
    * Batches rapid keystrokes with a 300ms delay before committing to ReactFlow state.
    */
   const handlePropertyChangeDebouncedRef = useRef<
-    ((propertyKey: string, newValue: string | boolean | object, element: Element) => void) | null
+    ((propertyKey: string, newValue: string | boolean | number | object, element: Element) => void) | null
   >(null);
 
   useEffect(() => {
-    const debouncedFn = debounce((propertyKey: string, newValue: string | boolean | object, element: Element): void => {
-      applyPropertyChangeRef.current?.(propertyKey, newValue, element);
-    }, 300);
+    const debouncedFn = debounce(
+      (propertyKey: string, newValue: string | boolean | number | object, element: Element): void => {
+        applyPropertyChangeRef.current?.(propertyKey, newValue, element);
+      },
+      300,
+    );
 
     handlePropertyChangeDebouncedRef.current = debouncedFn;
 
@@ -340,7 +357,7 @@ function ResourceProperties(): ReactElement {
    * - debounce=true: batches with 300ms delay for continuous inputs (text fields, number inputs).
    */
   const handlePropertyChange = useCallback(
-    (propertyKey: string, newValue: string | boolean | object, element: Element, shouldDebounce?: boolean) => {
+    (propertyKey: string, newValue: string | boolean | number | object, element: Element, shouldDebounce?: boolean) => {
       if (shouldDebounce) {
         void handlePropertyChangeDebouncedRef.current?.(propertyKey, newValue, element);
       } else {

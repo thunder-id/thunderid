@@ -86,8 +86,8 @@ describe('elements models', () => {
       expect(ElementTypes.Custom).toBe('CUSTOM');
     });
 
-    it('should have exactly 22 element types', () => {
-      expect(Object.keys(ElementTypes)).toHaveLength(22);
+    it('should have exactly 23 element types', () => {
+      expect(Object.keys(ElementTypes)).toHaveLength(23);
     });
   });
 

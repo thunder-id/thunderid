@@ -166,6 +166,14 @@ vi.mock('../adapters/CustomAdapter', () => ({
   ),
 }));
 
+vi.mock('../adapters/DynamicInputPlaceholderAdapter', () => ({
+  default: ({resource}: {resource: Element}) => (
+    <div data-testid="dynamic-input-placeholder-adapter" data-resource-id={resource.id}>
+      Dynamic Input Placeholder Adapter
+    </div>
+  ),
+}));
+
 describe('CommonElementFactory', () => {
   const createMockElement = (overrides: Partial<Element> = {}): Element =>
     ({
@@ -474,6 +482,19 @@ describe('CommonElementFactory', () => {
 
       expect(screen.getByTestId('custom-adapter')).toBeInTheDocument();
       expect(screen.getByTestId('custom-adapter')).toHaveAttribute('data-resource-id', 'element-1');
+    });
+  });
+
+  describe('Dynamic Input Placeholder Element', () => {
+    it('should render DynamicInputPlaceholderAdapter for DynamicInputPlaceholder type', () => {
+      const placeholderElement = createMockElement({
+        type: ElementTypes.DynamicInputPlaceholder,
+      });
+
+      render(<CommonElementFactory stepId="step-1" resource={placeholderElement} />);
+
+      expect(screen.getByTestId('dynamic-input-placeholder-adapter')).toBeInTheDocument();
+      expect(screen.getByTestId('dynamic-input-placeholder-adapter')).toHaveAttribute('data-resource-id', 'element-1');
     });
   });
 

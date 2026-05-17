@@ -80,6 +80,7 @@ class VisualFlowConstants {
     WidgetTypes.GithubFederation,
     WidgetTypes.PasskeyAuthentication,
     WidgetTypes.SelfSignUpLink,
+    WidgetTypes.Provisioning,
     ElementTypes.Timer,
   ];
 
@@ -141,6 +142,7 @@ class VisualFlowConstants {
     ElementTypes.Image,
     ElementTypes.Timer,
     ElementTypes.Custom,
+    ElementTypes.DynamicInputPlaceholder,
   ];
 
   public static readonly FLOW_BUILDER_STACK_ALLOWED_RESOURCE_TYPES: string[] = [

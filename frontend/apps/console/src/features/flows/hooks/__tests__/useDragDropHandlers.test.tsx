@@ -326,7 +326,13 @@ describe('useDragDropHandlers', () => {
         );
       });
 
-      expect(mockOnWidgetLoad).toHaveBeenCalledWith(widgetResource as Widget, expect.any(Object), mockNodes, mockEdges);
+      expect(mockOnWidgetLoad).toHaveBeenCalledWith(
+        widgetResource as Widget,
+        expect.any(Object),
+        mockNodes,
+        mockEdges,
+        false,
+      );
       expect(mockSetNodes).toHaveBeenCalled();
       expect(mockSetEdges).toHaveBeenCalled();
     });

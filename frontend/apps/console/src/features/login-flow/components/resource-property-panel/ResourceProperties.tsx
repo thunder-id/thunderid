@@ -38,14 +38,17 @@ import {StepCategories, StepTypes} from '@/features/flows/models/steps';
  * @param props - Props injected to the component.
  * @returns The ResourceProperties component.
  */
-const coerceValue = (newValue: unknown): string | boolean | object => {
+const coerceValue = (newValue: unknown): string | boolean | number | object => {
   if (typeof newValue === 'boolean') {
+    return newValue;
+  }
+  if (typeof newValue === 'number') {
     return newValue;
   }
   if (typeof newValue === 'object' && newValue !== null) {
     return newValue;
   }
-  if (typeof newValue === 'string' || typeof newValue === 'number') {
+  if (typeof newValue === 'string') {
     return String(newValue);
   }
   return '';
@@ -61,7 +64,8 @@ function ResourceProperties({
 
   const handleChange = useCallback(
     (propertyKey: string, newValue: unknown, changedResource: unknown, debounce?: boolean): void => {
-      onChange(propertyKey, coerceValue(newValue), changedResource as Resource, debounce);
+      const coercedValue = coerceValue(newValue);
+      onChange(propertyKey, coercedValue, changedResource as Resource, debounce);
     },
     [onChange],
   );

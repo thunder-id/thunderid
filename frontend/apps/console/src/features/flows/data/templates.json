@@ -3278,10 +3278,24 @@
           "executor": {
             "name": "BasicAuthExecutor"
           },
-          "onSuccess": "prompt_user_info"
+          "onSuccess": "provisioning"
         },
         {
-          "id": "prompt_user_info",
+          "id": "provisioning",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "onSuccess": "auth_assert",
+          "properties": {
+            "includeOptional": false,
+            "includeOptionalCredentials": false,
+            "maxPerPrompt": 2
+          },
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
           "type": "PROMPT",
           "meta": {
             "components": [
@@ -3298,42 +3312,22 @@
               {
                 "align": "center",
                 "type": "TEXT",
-                "id": "heading_user_info",
+                "id": "heading_schema_attrs",
                 "label": "{{ t(signup:forms.user_info.title) }}",
                 "variant": "HEADING_1"
               },
               {
                 "type": "BLOCK",
-                "id": "block_user_info",
+                "id": "block_dynamic_user_inputs",
                 "components": [
                   {
-                    "type": "TEXT_INPUT",
-                    "id": "input_given_name",
-                    "ref": "given_name",
-                    "label": "{{ t(signup:forms.user_info.fields.first_name.label) }}",
-                    "placeholder": "{{ t(signup:forms.user_info.fields.first_name.placeholder) }}",
-                    "required": true
-                  },
-                  {
-                    "type": "TEXT_INPUT",
-                    "id": "input_family_name",
-                    "ref": "family_name",
-                    "label": "{{ t(signup:forms.user_info.fields.last_name.label) }}",
-                    "placeholder": "{{ t(signup:forms.user_info.fields.last_name.placeholder) }}",
-                    "required": true
-                  },
-                  {
-                    "type": "EMAIL_INPUT",
-                    "id": "input_email",
-                    "ref": "email",
-                    "label": "{{ t(signup:forms.user_info.fields.email_address.label) }}",
-                    "placeholder": "{{ t(signup:forms.user_info.fields.email_address.placeholder) }}",
-                    "required": true
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
                   },
                   {
                     "type": "ACTION",
-                    "id": "action_user_info",
-                    "label": "{{ t(signup:forms.user_info.actions.submit.label) }}",
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signup:forms.user_info.actions.continue.label) }}",
                     "variant": "PRIMARY",
                     "eventType": "SUBMIT"
                   }
@@ -3343,72 +3337,13 @@
           },
           "prompts": [
             {
-              "inputs": [
-                {
-                  "ref": "input_given_name",
-                  "identifier": "given_name",
-                  "type": "TEXT_INPUT",
-                  "required": true
-                },
-                {
-                  "ref": "input_family_name",
-                  "identifier": "family_name",
-                  "type": "TEXT_INPUT",
-                  "required": true
-                },
-                {
-                  "ref": "input_email",
-                  "identifier": "email",
-                  "type": "EMAIL_INPUT",
-                  "required": true
-                }
-              ],
+              "inputs": [],
               "action": {
-                "ref": "action_user_info",
+                "ref": "action_schema_attrs",
                 "nextNode": "provisioning"
               }
             }
           ]
-        },
-        {
-          "id": "provisioning",
-          "type": "TASK_EXECUTION",
-          "executor": {
-            "name": "ProvisioningExecutor",
-            "inputs": [
-              {
-                "ref": "input_001",
-                "identifier": "username",
-                "type": "TEXT_INPUT",
-                "required": true
-              },
-              {
-                "ref": "input_002",
-                "identifier": "password",
-                "type": "PASSWORD_INPUT",
-                "required": true
-              },
-              {
-                "ref": "input_003",
-                "identifier": "given_name",
-                "type": "TEXT_INPUT",
-                "required": true
-              },
-              {
-                "ref": "input_004",
-                "identifier": "family_name",
-                "type": "TEXT_INPUT",
-                "required": true
-              },
-              {
-                "ref": "input_005",
-                "identifier": "email",
-                "type": "EMAIL_INPUT",
-                "required": true
-              }
-            ]
-          },
-          "onSuccess": "auth_assert"
         },
         {
           "id": "auth_assert",
@@ -3804,7 +3739,74 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "auth_assert",
+          "properties": {
+            "includeOptional": false,
+            "includeOptionalCredentials": false,
+            "maxPerPrompt": 2
+          },
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 430
+            },
+            "position": {
+              "x": 2157,
+              "y": -241
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "{{ t(signup:forms.user_info.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signup:forms.user_info.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs",
+                "nextNode": "provisioning"
+              }
+            }
+          ]
         },
         {
           "id": "auth_assert",
@@ -3887,7 +3889,7 @@
           "executor": {
             "name": "UserTypeResolver"
           },
-          "onSuccess": "collect_user_info",
+          "onSuccess": "provisioning",
           "onIncomplete": "prompt_usertype"
         },
         {
@@ -3973,16 +3975,40 @@
           ]
         },
         {
-          "id": "collect_user_info",
+          "id": "provisioning",
+          "type": "TASK_EXECUTION",
+          "layout": {
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 1164,
+              "y": 179
+            }
+          },
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "onSuccess": "passkey_reg_start",
+          "properties": {
+            "includeOptional": false,
+            "includeOptionalCredentials": false,
+            "maxPerPrompt": 2
+          },
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
           "type": "PROMPT",
           "layout": {
             "size": {
               "width": 350,
-              "height": 683
+              "height": 430
             },
             "position": {
-              "x": 652,
-              "y": 264
+              "x": 1089,
+              "y": -421
             }
           },
           "meta": {
@@ -3999,96 +4025,39 @@
               },
               {
                 "align": "center",
-                "category": "DISPLAY",
-                "id": "text_001",
-                "label": "{{ t(signup:forms.collect_user_info.title) }}",
-                "resourceType": "ELEMENT",
                 "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "{{ t(signup:forms.user_info.title) }}",
                 "variant": "HEADING_1"
               },
               {
-                "category": "BLOCK",
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
                 "components": [
                   {
-                    "category": "FIELD",
-                    "hint": "",
-                    "id": "input_001",
-                    "inputType": "text",
-                    "label": "{{ t(signup:forms.collect_user_info.fields.username.label) }}",
-                    "placeholder": "{{ t(signup:forms.collect_user_info.fields.username.placeholder) }}",
-                    "ref": "username",
-                    "required": true,
-                    "resourceType": "ELEMENT",
-                    "type": "TEXT_INPUT"
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
                   },
                   {
-                    "category": "FIELD",
-                    "hint": "",
-                    "id": "input_002",
-                    "inputType": "text",
-                    "label": "{{ t(signup:forms.collect_user_info.fields.email.label) }}",
-                    "placeholder": "{{ t(signup:forms.collect_user_info.fields.email.placeholder) }}",
-                    "ref": "email",
-                    "required": true,
-                    "resourceType": "ELEMENT",
-                    "type": "TEXT_INPUT"
-                  },
-                  {
-                    "category": "ACTION",
-                    "eventType": "SUBMIT",
-                    "id": "action_001",
-                    "label": "{{ t(signup:forms.collect_user_info.actions.submit.label) }}",
-                    "resourceType": "ELEMENT",
                     "type": "ACTION",
-                    "variant": "PRIMARY"
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signup:forms.user_info.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
                   }
-                ],
-                "id": "block_001",
-                "resourceType": "ELEMENT",
-                "type": "BLOCK"
+                ]
               }
             ]
           },
           "prompts": [
             {
-              "inputs": [
-                {
-                  "ref": "input_001",
-                  "type": "TEXT_INPUT",
-                  "identifier": "username",
-                  "required": true
-                },
-                {
-                  "ref": "input_002",
-                  "type": "TEXT_INPUT",
-                  "identifier": "email",
-                  "required": true
-                }
-              ],
+              "inputs": [],
               "action": {
-                "ref": "action_001",
+                "ref": "action_schema_attrs",
                 "nextNode": "provisioning"
               }
             }
           ]
-        },
-        {
-          "id": "provisioning",
-          "type": "TASK_EXECUTION",
-          "layout": {
-            "size": {
-              "width": 200,
-              "height": 113
-            },
-            "position": {
-              "x": 1164,
-              "y": 179
-            }
-          },
-          "executor": {
-            "name": "ProvisioningExecutor"
-          },
-          "onSuccess": "passkey_reg_start"
         },
         {
           "id": "passkey_reg_start",
@@ -4397,7 +4366,7 @@
             {
               "action": {
                 "ref": "action_passkey",
-                "nextNode": "collect_passkey_user_info"
+                "nextNode": "passkey_provisioning"
               }
             }
           ],
@@ -4418,7 +4387,7 @@
           "executor": {
             "name": "BasicAuthExecutor"
           },
-          "onSuccess": "prompt_basic_user_info",
+          "onSuccess": "provisioning",
           "layout": {
             "size": {
               "width": 217,
@@ -4427,114 +4396,6 @@
             "position": {
               "x": 1183,
               "y": 645
-            }
-          }
-        },
-        {
-          "id": "prompt_basic_user_info",
-          "type": "PROMPT",
-          "meta": {
-            "components": [
-              {
-                "alt": "{{ t(signup:images.app_logo.alt) }}",
-                "category": "DISPLAY",
-                "height": "60",
-                "id": "image",
-                "resourceType": "ELEMENT",
-                "src": "{{ meta(application.logoUrl) }}",
-                "type": "IMAGE",
-                "width": ""
-              },
-              {
-                "align": "center",
-                "type": "TEXT",
-                "id": "text_user_info_heading",
-                "label": "{{ t(signup:forms.basic_user_info.title) }}",
-                "variant": "HEADING_1"
-              },
-              {
-                "category": "DISPLAY",
-                "id": "text_user_info_description",
-                "label": "{{ t(signup:forms.basic_user_info.complete_profile) }}",
-                "resourceType": "ELEMENT",
-                "type": "TEXT",
-                "variant": "BODY"
-              },
-              {
-                "type": "BLOCK",
-                "id": "block_user_info",
-                "components": [
-                  {
-                    "type": "TEXT_INPUT",
-                    "id": "input_given_name",
-                    "ref": "given_name",
-                    "label": "{{ t(signup:forms.basic_user_info.fields.first_name.label) }}",
-                    "placeholder": "{{ t(signup:forms.basic_user_info.fields.first_name.placeholder) }}",
-                    "required": true
-                  },
-                  {
-                    "type": "TEXT_INPUT",
-                    "id": "input_family_name",
-                    "ref": "family_name",
-                    "label": "{{ t(signup:forms.basic_user_info.fields.last_name.label) }}",
-                    "placeholder": "{{ t(signup:forms.basic_user_info.fields.last_name.placeholder) }}",
-                    "required": true
-                  },
-                  {
-                    "type": "EMAIL_INPUT",
-                    "id": "input_email",
-                    "ref": "email",
-                    "label": "{{ t(signup:forms.basic_user_info.fields.email.label) }}",
-                    "placeholder": "{{ t(signup:forms.basic_user_info.fields.email.placeholder) }}",
-                    "required": true
-                  },
-                  {
-                    "type": "ACTION",
-                    "id": "action_user_info",
-                    "label": "{{ t(signup:forms.basic_user_info.actions.continue.label) }}",
-                    "variant": "PRIMARY",
-                    "eventType": "SUBMIT"
-                  }
-                ]
-              }
-            ]
-          },
-          "prompts": [
-            {
-              "inputs": [
-                {
-                  "ref": "input_given_name",
-                  "identifier": "given_name",
-                  "type": "TEXT_INPUT",
-                  "required": true
-                },
-                {
-                  "ref": "input_family_name",
-                  "identifier": "family_name",
-                  "type": "TEXT_INPUT",
-                  "required": true
-                },
-                {
-                  "ref": "input_email",
-                  "identifier": "email",
-                  "type": "EMAIL_INPUT",
-                  "required": true
-                }
-              ],
-              "action": {
-                "ref": "action_user_info",
-                "nextNode": "provisioning"
-              }
-            }
-          ],
-          "layout": {
-            "size": {
-              "width": 350,
-              "height": 835
-            },
-            "position": {
-              "x": 1501,
-              "y": 283
             }
           }
         },
@@ -4553,6 +4414,73 @@
             "position": {
               "x": 2017,
               "y": 911
+            }
+          },
+          "properties": {
+            "includeOptional": false,
+            "includeOptionalCredentials": false,
+            "maxPerPrompt": 2
+          },
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "{{ t(signup:forms.user_info.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signup:forms.user_info.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs",
+                "nextNode": "provisioning"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 430
+            },
+            "position": {
+              "x": 1942,
+              "y": 311
             }
           }
         },
@@ -4681,100 +4609,6 @@
           }
         },
         {
-          "id": "collect_passkey_user_info",
-          "type": "PROMPT",
-          "meta": {
-            "components": [
-              {
-                "alt": "{{ t(signup:images.app_logo.alt) }}",
-                "category": "DISPLAY",
-                "height": "60",
-                "id": "image",
-                "resourceType": "ELEMENT",
-                "src": "{{ meta(application.logoUrl) }}",
-                "type": "IMAGE",
-                "width": ""
-              },
-              {
-                "align": "center",
-                "type": "TEXT",
-                "id": "text_passkey_info_heading",
-                "label": "{{ t(signup:forms.collect_passkey_user_info.title) }}",
-                "variant": "HEADING_1"
-              },
-              {
-                "category": "DISPLAY",
-                "id": "text_passkey_info_description",
-                "label": "{{ t(signup:forms.collect_passkey_user_info.description) }}",
-                "resourceType": "ELEMENT",
-                "type": "TEXT",
-                "variant": "BODY"
-              },
-              {
-                "type": "BLOCK",
-                "id": "block_passkey_info",
-                "components": [
-                  {
-                    "type": "TEXT_INPUT",
-                    "id": "input_passkey_username",
-                    "ref": "username",
-                    "label": "{{ t(signup:forms.collect_passkey_user_info.fields.username.label) }}",
-                    "placeholder": "{{ t(signup:forms.collect_passkey_user_info.fields.username.placeholder) }}",
-                    "required": true
-                  },
-                  {
-                    "type": "EMAIL_INPUT",
-                    "id": "input_passkey_email",
-                    "ref": "email",
-                    "label": "{{ t(signup:forms.collect_passkey_user_info.fields.email.label) }}",
-                    "placeholder": "{{ t(signup:forms.collect_passkey_user_info.fields.email.placeholder) }}",
-                    "required": true
-                  },
-                  {
-                    "type": "ACTION",
-                    "id": "action_passkey_continue",
-                    "label": "{{ t(signup:forms.collect_passkey_user_info.actions.continue.label) }}",
-                    "variant": "PRIMARY",
-                    "eventType": "SUBMIT"
-                  }
-                ]
-              }
-            ]
-          },
-          "prompts": [
-            {
-              "inputs": [
-                {
-                  "ref": "input_passkey_username",
-                  "identifier": "username",
-                  "type": "TEXT_INPUT",
-                  "required": true
-                },
-                {
-                  "ref": "input_passkey_email",
-                  "identifier": "email",
-                  "type": "EMAIL_INPUT",
-                  "required": true
-                }
-              ],
-              "action": {
-                "ref": "action_passkey_continue",
-                "nextNode": "passkey_provisioning"
-              }
-            }
-          ],
-          "layout": {
-            "size": {
-              "width": 350,
-              "height": 756
-            },
-            "position": {
-              "x": 1496,
-              "y": 1218
-            }
-          }
-        },
-        {
           "id": "passkey_provisioning",
           "type": "TASK_EXECUTION",
           "executor": {
@@ -4789,6 +4623,73 @@
             "position": {
               "x": 2027,
               "y": 1445
+            }
+          },
+          "properties": {
+            "includeOptional": false,
+            "includeOptionalCredentials": false,
+            "maxPerPrompt": 2
+          },
+          "onIncomplete": "prompt_schema_attrs_passkey"
+        },
+        {
+          "id": "prompt_schema_attrs_passkey",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image_passkey",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs_passkey",
+                "label": "{{ t(signup:forms.user_info.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs_passkey",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs_passkey"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs_passkey",
+                    "label": "{{ t(signup:forms.user_info.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs_passkey",
+                "nextNode": "passkey_provisioning"
+              }
+            }
+          ],
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 430
+            },
+            "position": {
+              "x": 1952,
+              "y": 845
             }
           }
         },
@@ -5232,7 +5133,74 @@
               "x": 1388,
               "y": 1130
             }
-          }
+          },
+          "properties": {
+            "includeOptional": false,
+            "includeOptionalCredentials": false,
+            "maxPerPrompt": 2
+          },
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 430
+            },
+            "position": {
+              "x": 1313,
+              "y": 530
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "{{ t(signup:forms.user_info.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signup:forms.user_info.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs",
+                "nextNode": "provisioning"
+              }
+            }
+          ]
         },
         {
           "id": "auth_assert",
@@ -5876,7 +5844,74 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "auth_assert"
+          "onSuccess": "auth_assert",
+          "properties": {
+            "includeOptional": false,
+            "includeOptionalCredentials": false,
+            "maxPerPrompt": 2
+          },
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 430
+            },
+            "position": {
+              "x": 2718,
+              "y": 148
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "{{ t(signup:forms.user_info.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signup:forms.user_info.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs",
+                "nextNode": "provisioning"
+              }
+            }
+          ]
         },
         {
           "id": "auth_assert",
@@ -6185,39 +6220,7 @@
           "id": "provisioning",
           "type": "TASK_EXECUTION",
           "executor": {
-            "name": "ProvisioningExecutor",
-            "inputs": [
-              {
-                "ref": "input_001",
-                "identifier": "username",
-                "type": "TEXT_INPUT",
-                "required": true
-              },
-              {
-                "ref": "input_002",
-                "identifier": "password",
-                "type": "PASSWORD_INPUT",
-                "required": true
-              },
-              {
-                "ref": "input_003",
-                "identifier": "given_name",
-                "type": "TEXT_INPUT",
-                "required": true
-              },
-              {
-                "ref": "input_004",
-                "identifier": "family_name",
-                "type": "TEXT_INPUT",
-                "required": true
-              },
-              {
-                "ref": "input_005",
-                "identifier": "email",
-                "type": "EMAIL_INPUT",
-                "required": true
-              }
-            ]
+            "name": "ProvisioningExecutor"
           },
           "onSuccess": "auth_assert",
           "layout": {
@@ -6229,7 +6232,74 @@
               "x": 1383,
               "y": 933
             }
-          }
+          },
+          "properties": {
+            "includeOptional": false,
+            "includeOptionalCredentials": false,
+            "maxPerPrompt": 2
+          },
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "prompt_schema_attrs",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 430
+            },
+            "position": {
+              "x": 1308,
+              "y": 333
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "{{ t(signup:forms.user_info.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signup:forms.user_info.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs",
+                "nextNode": "provisioning"
+              }
+            }
+          ]
         },
         {
           "id": "auth_assert",
@@ -6508,7 +6578,7 @@
             "name": "EmailExecutor",
             "mode": "send"
           },
-          "onSuccess": "invite_verify",
+          "onSuccess": "registration_email_sent",
           "layout": {
             "size": {
               "width": 200,
@@ -6519,6 +6589,47 @@
               "y": 835
             }
           }
+        },
+        {
+          "id": "registration_email_sent",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 381
+            },
+            "position": {
+              "x": 2242,
+              "y": 617
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_email_sent_icon",
+                "label": "✅",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_email_sent_heading",
+                "label": "{{ t(signup:forms.email_sent.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_email_sent_message",
+                "label": "{{ t(signup:forms.email_sent.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Check your email for a verification link",
+          "next": "invite_verify"
         },
         {
           "id": "invite_verify",
@@ -6568,6 +6679,13 @@
                 "id": "text_header_details",
                 "label": "{{ t(signup:forms.user_details.title) }}",
                 "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_subtitle_user_details",
+                "label": "{{ t(signup:forms.credentials.complete_profile) }}",
+                "variant": "HEADING_6"
               },
               {
                 "type": "BLOCK",
@@ -6718,7 +6836,7 @@
           "executor": {
             "name": "ProvisioningExecutor"
           },
-          "onSuccess": "end",
+          "onSuccess": "registration_complete",
           "layout": {
             "size": {
               "width": 200,
@@ -6728,7 +6846,115 @@
               "x": 3480,
               "y": 832
             }
-          }
+          },
+          "properties": {
+            "includeOptional": false,
+            "includeOptionalCredentials": false,
+            "maxPerPrompt": 2
+          },
+          "onIncomplete": "prompt_schema_attrs"
+        },
+        {
+          "id": "registration_complete",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 381
+            },
+            "position": {
+              "x": 3874,
+              "y": 698
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_complete_icon",
+                "label": "✅",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_complete_heading",
+                "label": "{{ t(invite:complete.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_complete_message",
+                "label": "{{ t(invite:complete.description) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Registration complete",
+          "next": "end"
+        },
+        {
+          "id": "prompt_schema_attrs",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 430
+            },
+            "position": {
+              "x": 3405,
+              "y": 232
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "alt": "{{ t(signup:images.app_logo.alt) }}",
+                "category": "DISPLAY",
+                "height": "60",
+                "id": "image",
+                "resourceType": "ELEMENT",
+                "src": "{{ meta(application.logoUrl) }}",
+                "type": "IMAGE",
+                "width": ""
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "heading_schema_attrs",
+                "label": "{{ t(signup:forms.user_info.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_dynamic_user_inputs",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_schema_attrs",
+                    "label": "{{ t(signup:forms.user_info.actions.continue.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_schema_attrs",
+                "nextNode": "provisioning"
+              }
+            }
+          ]
         },
         {
           "id": "end",
@@ -6739,7 +6965,7 @@
               "height": 34
             },
             "position": {
-              "x": 3814,
+              "x": 4272,
               "y": 870
             }
           }
