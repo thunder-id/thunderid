@@ -275,3 +275,101 @@ type segmentBoundary struct {
 	boundaryNodeID string
 	nextNodeID     string
 }
+
+// Flow management metadata models
+
+// FlowsMeta represents the catalog of flow metadata. Catalogs are omitted from the JSON response when
+// they are not selected via the fields query parameter.
+type FlowsMeta struct {
+	FlowTypes      []FlowTypeItem      `json:"flowTypes,omitempty"`
+	NodeTypes      []NodeTypeItem      `json:"nodeTypes,omitempty"`
+	InputTypes     []InputTypeItem     `json:"inputTypes,omitempty"`
+	Executors      []ExecutorItem      `json:"executors,omitempty"`
+	ComponentTypes []ComponentTypeItem `json:"componentTypes,omitempty"`
+	Actions        []ActionItem        `json:"actions,omitempty"`
+	Elements       []ElementItem       `json:"elements,omitempty"`
+	Steps          []StepItem          `json:"steps,omitempty"`
+	Templates      []TemplateItem      `json:"templates,omitempty"`
+}
+
+// FlowTypeItem describes a supported flow type (e.g. AUTHENTICATION, REGISTRATION).
+type FlowTypeItem struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Description string `json:"description"`
+}
+
+// NodeTypeItem describes a supported node type and which fields it accepts.
+type NodeTypeItem struct {
+	Name          string   `json:"name"`
+	DisplayName   string   `json:"displayName"`
+	Description   string   `json:"description"`
+	AllowedFields []string `json:"allowedFields"`
+}
+
+// InputTypeItem describes an input type used by NodeInput.type.
+type InputTypeItem struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
+}
+
+// ExecutorInput describes a single declared input for an executor.
+type ExecutorInput struct {
+	Identifier string `json:"identifier"`
+	Type       string `json:"type"`
+	Required   bool   `json:"required"`
+}
+
+// ExecutorProperty describes a configuration property that can be set on a TASK_EXECUTION node.
+type ExecutorProperty struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Type        string `json:"type"`
+	Required    bool   `json:"required"`
+	Description string `json:"description,omitempty"`
+}
+
+// ExecutorMode describes a single operational mode of an executor. Inputs and properties listed
+// here are additive to the executor-level common inputs and properties.
+type ExecutorMode struct {
+	Value         string             `json:"value"`
+	DisplayName   string             `json:"displayName"`
+	DefaultInputs []ExecutorInput    `json:"defaultInputs"`
+	Properties    []ExecutorProperty `json:"properties"`
+}
+
+// ExecutorItem describes a registered executor with its declared inputs and properties.
+type ExecutorItem struct {
+	Name               string             `json:"name"`
+	DisplayName        string             `json:"displayName"`
+	Description        string             `json:"description"`
+	SupportedFlowTypes []string           `json:"supportedFlowTypes"`
+	FixedInputs        bool               `json:"fixedInputs"`
+	MaxInputs          int                `json:"maxInputs"`
+	Modes              []ExecutorMode     `json:"modes,omitempty"`
+	DefaultInputs      []ExecutorInput    `json:"defaultInputs"`
+	Properties         []ExecutorProperty `json:"properties"`
+}
+
+// ComponentTypeItem describes a UI component type valid inside PROMPT.meta.components.
+type ComponentTypeItem struct {
+	Name        string   `json:"name"`
+	DisplayName string   `json:"displayName"`
+	Description string   `json:"description"`
+	Category    string   `json:"category"`
+	Properties  []string `json:"properties"`
+}
+
+// ActionItem is an action group definition returned in the flow metadata catalog.
+type ActionItem map[string]interface{}
+
+// ElementItem is a UI element definition returned in the flow metadata catalog.
+type ElementItem map[string]interface{}
+
+// StepItem is a prefabricated PROMPT step definition returned in the flow metadata catalog.
+type StepItem map[string]interface{}
+
+// TemplateItem is a starter flow template returned in the flow metadata catalog.
+type TemplateItem map[string]interface{}

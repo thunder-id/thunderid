@@ -67,6 +67,7 @@ type FlowMgtServiceInterface interface {
 		*CompleteFlowDefinition, *serviceerror.ServiceError)
 	GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *serviceerror.ServiceError)
 	IsValidFlow(ctx context.Context, flowID string, flowType common.FlowType) (bool, *serviceerror.ServiceError)
+	GetFlowsMeta(fields []string) *FlowsMeta
 }
 
 // flowMgtService is the default implementation of the FlowMgtServiceInterface.
@@ -477,6 +478,44 @@ func (s *flowMgtService) IsValidFlow(
 	}
 
 	return flow.FlowType == flowType, nil
+}
+
+// GetFlowsMeta retrieves the metadata catalogs for flows, including flow types, node types,
+// component types, input types, executors, actions, elements, steps, and templates.
+// If fields is empty, all catalogs are populated; otherwise only the listed catalogs are.
+func (s *flowMgtService) GetFlowsMeta(fields []string) *FlowsMeta {
+	meta := &FlowsMeta{}
+	if len(fields) == 0 {
+		fields = []string{
+			MetaFieldFlowTypes, MetaFieldNodeTypes, MetaFieldInputTypes, MetaFieldExecutors,
+			MetaFieldComponentTypes, MetaFieldActions, MetaFieldElements, MetaFieldSteps,
+			MetaFieldTemplates,
+		}
+	}
+	for _, field := range fields {
+		switch field {
+		case MetaFieldFlowTypes:
+			meta.FlowTypes = flowTypeCatalog()
+		case MetaFieldNodeTypes:
+			meta.NodeTypes = nodeTypeCatalog()
+		case MetaFieldInputTypes:
+			meta.InputTypes = inputTypeCatalog()
+		case MetaFieldExecutors:
+			meta.Executors = registeredExecutorCatalog(s.executorRegistry)
+		case MetaFieldComponentTypes:
+			meta.ComponentTypes = componentTypeCatalog()
+		case MetaFieldActions:
+			meta.Actions = parsedActions
+		case MetaFieldElements:
+			meta.Elements = parsedElements
+		case MetaFieldSteps:
+			meta.Steps = parsedSteps
+		case MetaFieldTemplates:
+			meta.Templates = parsedTemplates
+		}
+	}
+
+	return meta
 }
 
 // Helper functions

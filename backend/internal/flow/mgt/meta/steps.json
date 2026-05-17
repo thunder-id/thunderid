@@ -1,0 +1,145 @@
+[
+    {
+        "resourceType": "STEP",
+        "name": "BLANK_VIEW",
+        "displayName": "Blank View",
+        "category": "INTERFACE",
+        "type": "VIEW",
+        "icon": "assets/images/icons/step.svg",
+        "showOnResourcePanel": true
+    },
+    {
+        "resourceType": "STEP",
+        "name": "SMS_OTP_VIEW",
+        "displayName": "SMS OTP View",
+        "category": "INTERFACE",
+        "type": "VIEW",
+        "icon": "assets/images/icons/mobile-message.svg",
+        "showOnResourcePanel": true,
+        "data": {
+            "components": [
+                {
+                    "id": "{{ID}}",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "HEADING_3",
+                    "label": "Verify OTP"
+                },
+                {
+                    "id": "{{ID}}",
+                    "category": "BLOCK",
+                    "type": "BLOCK",
+                    "components": [
+                        {
+                            "id": "{{ID}}",
+                            "category": "FIELD",
+                            "type": "OTP_INPUT",
+                            "inputType": "text",
+                            "hint": "",
+                            "ref": "otp",
+                            "label": "Enter the code sent to your mobile",
+                            "placeholder": ""
+                        },
+                        {
+                            "id": "{{ID}}",
+                            "category": "ACTION",
+                            "type": "ACTION",
+                            "variant": "PRIMARY",
+                            "label": "Verify",
+                            "action": {
+                                "type": "EXECUTOR",
+                                "executor": {
+                                    "name": "SMSOTPAuthExecutor"
+                                },
+                                "onSuccess": ""
+                            }
+                        },
+                        {
+                            "id": "{{ID}}",
+                            "category": "ACTION",
+                            "type": "RESEND",
+                            "label": "Resend OTP"
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    {
+        "resourceType": "STEP",
+        "name": "PASSKEY_VIEW",
+        "displayName": "Passkey View",
+        "category": "INTERFACE",
+        "type": "VIEW",
+        "icon": "assets/images/icons/passkey.svg",
+        "showOnResourcePanel": true,
+        "data": {
+            "components": [
+                {
+                    "id": "{{ID}}",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "HEADING_3",
+                    "label": "Sign In"
+                },
+                {
+                    "id": "{{ID}}",
+                    "category": "BLOCK",
+                    "type": "BLOCK",
+                    "components": [
+                        {
+                            "id": "{{ID}}",
+                            "category": "FIELD",
+                            "type": "TEXT_INPUT",
+                            "ref": "username",
+                            "inputType": "text",
+                            "hint": "",
+                            "label": "Username",
+                            "required": true,
+                            "placeholder": "Enter your username"
+                        },
+                        {
+                            "id": "{{ID}}",
+                            "category": "ACTION",
+                            "type": "ACTION",
+                            "variant": "PRIMARY",
+                            "eventType": "SUBMIT",
+                            "label": "Sign In with Passkey",
+                            "action": {
+                                "type": "NEXT",
+                                "onSuccess": ""
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    {
+        "resourceType": "STEP",
+        "name": "STATUS_SCREEN",
+        "displayName": "Status Screen",
+        "category": "INTERFACE",
+        "type": "VIEW",
+        "icon": "assets/images/icons/display-rich-text.svg",
+        "showOnResourcePanel": true,
+        "data": {
+            "components": [
+                {
+                    "id": "{{ID}}",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "HEADING_3",
+                    "label": "You're All Set"
+                },
+                {
+                    "id": "{{ID}}",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "BODY_1",
+                    "label": "You have successfully completed the process."
+                }
+            ]
+        }
+    }
+]

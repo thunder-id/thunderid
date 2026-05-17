@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
@@ -637,4 +638,137 @@ func (s *FlowMgtHandlerTestSuite) TestSanitizeFlowDefinitionRequest() {
 	s.Equal("Test Flow", result.Name)
 	s.Equal(common.FlowTypeAuthentication, result.FlowType)
 	s.Len(result.Nodes, 1)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetFlowsMeta_Success() {
+	expectedMeta := &FlowsMeta{
+		FlowTypes: []FlowTypeItem{
+			{Name: "AUTHENTICATION", DisplayName: "Sign-in", Description: "User login flows."},
+		},
+		NodeTypes:      []NodeTypeItem{},
+		ComponentTypes: []ComponentTypeItem{},
+		InputTypes:     []InputTypeItem{},
+		Executors:      []ExecutorItem{},
+		Actions:        []ActionItem{},
+		Elements:       []ElementItem{},
+		Steps:          []StepItem{},
+		Templates:      []TemplateItem{},
+	}
+
+	s.mockService.EXPECT().GetFlowsMeta([]string(nil)).Return(expectedMeta)
+
+	req := httptest.NewRequest(http.MethodGet, "/flows/meta", nil)
+	w := httptest.NewRecorder()
+
+	s.handler.getFlowsMeta(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	var response FlowsMeta
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	s.NoError(err)
+	s.Len(response.FlowTypes, 1)
+	s.Equal("AUTHENTICATION", response.FlowTypes[0].Name)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetFlowsMeta_WithFields() {
+	expectedMeta := &FlowsMeta{
+		Executors: []ExecutorItem{{Name: "BasicAuthExecutor"}},
+		Templates: []TemplateItem{{"name": "BLANK"}},
+	}
+
+	s.mockService.EXPECT().GetFlowsMeta([]string{"executors", "templates"}).Return(expectedMeta)
+
+	req := httptest.NewRequest(http.MethodGet, "/flows/meta?fields=executors,templates", nil)
+	w := httptest.NewRecorder()
+
+	s.handler.getFlowsMeta(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetFlowsMeta_InvalidField() {
+	req := httptest.NewRequest(http.MethodGet, "/flows/meta?fields=executors,bogus", nil)
+	w := httptest.NewRecorder()
+
+	s.handler.getFlowsMeta(w, req)
+
+	s.Equal(http.StatusBadRequest, w.Code)
+	var errResp apierror.ErrorResponse
+	s.NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+	s.Equal(ErrorInvalidFieldsParam.Code, errResp.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetFlowsMeta_EmptyToken() {
+	req := httptest.NewRequest(http.MethodGet, "/flows/meta?fields=executors,,templates", nil)
+	w := httptest.NewRecorder()
+
+	s.handler.getFlowsMeta(w, req)
+
+	s.Equal(http.StatusBadRequest, w.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestParseFieldsParam_Cases() {
+	cases := []struct {
+		name      string
+		raw       string
+		expected  []string
+		expectErr bool
+	}{
+		{
+			name: "empty returns nil",
+			raw:  "", expected: nil,
+		},
+		{
+			name:     "whitespace-only returns nil",
+			raw:      "   ",
+			expected: nil,
+		},
+		{
+			name:     "single field",
+			raw:      "executors",
+			expected: []string{"executors"},
+		},
+		{
+			name:     "multiple fields",
+			raw:      "executors,templates",
+			expected: []string{"executors", "templates"},
+		},
+		{
+			name:     "trims whitespace",
+			raw:      " executors , templates ",
+			expected: []string{"executors", "templates"},
+		},
+		{
+			name:     "duplicates deduplicate",
+			raw:      "executors,executors",
+			expected: []string{"executors"},
+		},
+		{
+			name:      "unknown field is rejected",
+			raw:       "executors,bogus",
+			expectErr: true,
+		},
+		{
+			name:      "empty token is rejected",
+			raw:       "executors,,templates",
+			expectErr: true,
+		},
+		{
+			name:      "case-sensitive",
+			raw:       "Executors",
+			expectErr: true,
+		},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			fields, err := parseFieldsParam(tc.raw)
+			if tc.expectErr {
+				s.NotNil(err)
+				s.Equal(ErrorInvalidFieldsParam.Code, err.Code)
+				return
+			}
+			s.Nil(err)
+			s.Equal(tc.expected, fields)
+		})
+	}
 }

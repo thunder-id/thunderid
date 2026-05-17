@@ -259,6 +259,8 @@ const (
 	InputTypeHidden = "HIDDEN"
 	// InputTypeSelect represents a select (dropdown) input type.
 	InputTypeSelect = "SELECT"
+	// InputTypeOUSelect represents an organizational unit select input type.
+	InputTypeOUSelect = "OU_SELECT"
 
 	// TODO: Add support for other sensitive input types:
 	// - Passkey credential fields (credentialId, clientDataJSON, authenticatorData, signature, userHandle)
@@ -273,6 +275,46 @@ const (
 	MetaComponentTypeBlock = "BLOCK"
 	// MetaComponentTypeAction represents an action (button) component.
 	MetaComponentTypeAction = "ACTION"
+	// MetaComponentTypeText represents a text display component.
+	MetaComponentTypeText = "TEXT"
+	// MetaComponentTypeImage represents an image component.
+	MetaComponentTypeImage = "IMAGE"
+	// MetaComponentTypeDivider represents a divider component.
+	MetaComponentTypeDivider = "DIVIDER"
+	// MetaComponentTypeRichText represents a rich text (HTML) display component.
+	MetaComponentTypeRichText = "RICH_TEXT"
+	// MetaComponentTypeIcon represents an icon display component.
+	MetaComponentTypeIcon = "ICON"
+	// MetaComponentTypeTimer represents a countdown timer component.
+	MetaComponentTypeTimer = "TIMER"
+	// MetaComponentTypeStack represents a layout stack component for arranging child components.
+	MetaComponentTypeStack = "STACK"
+	// MetaComponentTypeTextInput represents a text input component.
+	MetaComponentTypeTextInput = "TEXT_INPUT"
+	// MetaComponentTypePasswordInput represents a password input component.
+	MetaComponentTypePasswordInput = "PASSWORD_INPUT"
+	// MetaComponentTypeEmailInput represents an email input component.
+	MetaComponentTypeEmailInput = "EMAIL_INPUT"
+	// MetaComponentTypePhoneInput represents a phone number input component.
+	MetaComponentTypePhoneInput = "PHONE_INPUT"
+	// MetaComponentTypeNumberInput represents a numeric input component.
+	MetaComponentTypeNumberInput = "NUMBER_INPUT"
+	// MetaComponentTypeDateInput represents a date input component.
+	MetaComponentTypeDateInput = "DATE_INPUT"
+	// MetaComponentTypeOTPInput represents a one-time password input component.
+	MetaComponentTypeOTPInput = "OTP_INPUT"
+	// MetaComponentTypeCheckbox represents a checkbox input component.
+	MetaComponentTypeCheckboxInput = "CHECKBOX"
+	// MetaComponentTypeSelectInput represents a select (dropdown) input component.
+	MetaComponentTypeSelectInput = "SELECT"
+	// MetaComponentTypeDropdownInput represents a dropdown input component.
+	MetaComponentTypeDropdownInput = "DROPDOWN"
+	// MetaComponentTypeResendAction represents a resend action button component.
+	MetaComponentTypeResendAction = "RESEND"
+	// MetaComponentTypeCAPTCHA represents a CAPTCHA challenge component.
+	MetaComponentTypeCAPTCHA = "CAPTCHA"
+	// MetaComponentTypeCustom represents a custom component defined by the flow designer.
+	MetaComponentTypeCustom = "CUSTOM"
 	// MetaComponentTypeDynamicInputPlaceholder marks the insertion point for dynamically
 	// derived input components. The renderer replaces this component with the resolved inputs.
 	MetaComponentTypeDynamicInputPlaceholder = "DYNAMIC_INPUT_PLACEHOLDER"

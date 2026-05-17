@@ -51,6 +51,8 @@ tags:
     description: CRUD operations for flow definitions.
   - name: Flow Versioning
     description: Operations for listing and activating flow versions.
+  - name: Flow Metadata
+    description: Discovery endpoint for flow metadata.
 
 security:
   - OAuth2: [system]
@@ -490,6 +492,67 @@ paths:
                 description:
                   key: "error.flowmgtservice.flow_not_found_description"
                   defaultValue: "The specified version does not exist for this flow"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /flows/meta:
+    get:
+      tags:
+        - Flow Metadata
+      summary: Get flow metadata
+      description: |
+        Returns the full catalog of building blocks available for composing flows.
+
+        The response includes:
+        - **flowTypes** — supported flow types (AUTHENTICATION, REGISTRATION, etc.)
+        - **nodeTypes** — supported node types (START, PROMPT, TASK_EXECUTION, END) and their allowed fields
+        - **inputTypes** — input type descriptors used by NodeInput.type
+        - **executors** — registered executors with declared inputs and configurable properties
+        - **componentTypes** — UI component types valid inside PROMPT.meta.components
+        - **actions**, **elements**, **steps** — UI resource definitions
+        - **templates** — starter flow templates
+      operationId: getFlowsMeta
+      parameters:
+        - name: fields
+          in: query
+          required: false
+          description: |
+            Comma-separated list of catalog names to include in the response.
+            When omitted or blank, all catalogs are returned.
+            Valid values: `flowTypes`, `nodeTypes`, `inputTypes`, `executors`,
+            `componentTypes`, `actions`, `elements`, `steps`, `templates`.
+          schema:
+            type: string
+            example: "executors,templates"
+      responses:
+        '400':
+          description: Invalid fields parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "FLM-1020"
+                message:
+                  key: "error.flow_management.invalid_fields_param"
+                  defaultValue: "Invalid fields parameter"
+                description:
+                  key: "error.flow_management.invalid_fields_param_description"
+                  defaultValue: "The fields query parameter contains an invalid or empty catalog name"
+        '200':
+          description: Flow metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlowsMeta'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1304,6 +1367,252 @@ components:
             $ref: '#/components/schemas/Component'
           description: Nested child components (for BLOCK type)
 
+    FlowsMeta:
+      type: object
+      description: Full flow metadata catalog.
+      properties:
+        flowTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlowTypeItem'
+        nodeTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeTypeItem'
+        componentTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComponentTypeItem'
+        inputTypes:
+          type: array
+          items:
+            $ref: '#/components/schemas/InputTypeItem'
+        executors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutorItem'
+        actions:
+          type: array
+          description: Action group definitions.
+          items:
+            type: object
+            additionalProperties: true
+        elements:
+          type: array
+          description: UI element definitions.
+          items:
+            type: object
+            additionalProperties: true
+        steps:
+          type: array
+          description: Prefabricated PROMPT step templates.
+          items:
+            type: object
+            additionalProperties: true
+        templates:
+          type: array
+          description: Starter flow templates with complete node graphs.
+          items:
+            type: object
+            additionalProperties: true
+
+    MetadataItem:
+      type: object
+      description: Common envelope shared by all catalog items in FlowsMeta.
+      required:
+        - name
+        - displayName
+      properties:
+        name:
+          type: string
+          description: Identifier for the item, used in flow definitions and executor configurations.
+          example: "AUTHENTICATION"
+        displayName:
+          type: string
+          description: Display name for the item.
+          example: "Sign-in"
+        description:
+          type: string
+          description: Description of the item and its intended use.
+          example: "User login flows."
+        category:
+          type: string
+          description: Optional grouping label.
+          example: "INPUT"
+
+    FlowTypeItem:
+      allOf:
+        - $ref: '#/components/schemas/MetadataItem'
+      example:
+        name: "AUTHENTICATION"
+        displayName: "Sign-in"
+        description: "User login flows."
+
+    NodeTypeItem:
+      allOf:
+        - $ref: '#/components/schemas/MetadataItem'
+      properties:
+        allowedFields:
+          type: array
+          items:
+            type: string
+          description: Top-level node fields that are valid for this node type.
+          example: ["executor", "inputs", "properties", "onSuccess", "onFailure", "onIncomplete"]
+      example:
+        name: "TASK_EXECUTION"
+        displayName: "Task Execution"
+        description: "Runs a server-side executor."
+        allowedFields: ["executor", "inputs", "properties", "onSuccess", "onFailure", "onIncomplete"]
+
+    ComponentTypeItem:
+      allOf:
+        - $ref: '#/components/schemas/MetadataItem'
+      properties:
+        properties:
+          type: array
+          items:
+            type: string
+          description: Component-level fields that are valid for this component type.
+          example: ["label", "placeholder", "required"]
+      example:
+        name: "TEXT_INPUT"
+        displayName: "Text Input"
+        description: "Free-text input field."
+        category: "INPUT"
+        properties: ["label", "placeholder", "required", "hint"]
+
+    InputTypeItem:
+      allOf:
+        - $ref: '#/components/schemas/MetadataItem'
+      example:
+        name: "TEXT_INPUT"
+        displayName: "Text"
+        description: "Free-text input."
+        category: "INPUT"
+
+    ExecutorInput:
+      type: object
+      required:
+        - identifier
+        - type
+        - required
+      properties:
+        identifier:
+          type: string
+          description: Attribute identifier mapped by this input.
+          example: "username"
+        type:
+          type: string
+          description: Input type (matches an InputTypeItem name).
+          example: "TEXT_INPUT"
+        required:
+          type: boolean
+          example: true
+
+    ExecutorProperty:
+      type: object
+      required:
+        - name
+        - displayName
+        - type
+        - required
+      properties:
+        name:
+          type: string
+          description: Property key used in the node's properties map.
+          example: "senderId"
+        displayName:
+          type: string
+          example: "Sender ID"
+        type:
+          type: string
+          description: Value type (string, boolean, integer).
+          example: "string"
+        required:
+          type: boolean
+          example: true
+        description:
+          type: string
+          example: "ID of the configured SMS sender."
+
+    ExecutorItem:
+      allOf:
+        - $ref: '#/components/schemas/MetadataItem'
+      properties:
+        supportedFlowTypes:
+          type: array
+          items:
+            type: string
+          description: Flow types this executor can be used in.
+          example: ["AUTHENTICATION"]
+        fixedInputs:
+          type: boolean
+          description: When true, the input set is fixed and cannot be modified by the flow.
+          example: false
+        maxInputs:
+          type: integer
+          description: |
+            Upper bound on the number of inputs the executor accepts. `-1` means unlimited.
+            Ignored when `fixedInputs` is true.
+          example: -1
+        modes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutorMode'
+          description: |
+            Operational modes the executor can run in. Omitted when the executor has no modes.
+            Each mode's `defaultInputs` and `properties` are additive to the executor-level common ones.
+        defaultInputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutorInput'
+          description: Default inputs that apply to the executor across all of its modes. Unless `fixedInputs` is true, the flow definition may override these.
+        properties:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutorProperty'
+          description: Common properties that apply to the executor across all of its modes.
+      example:
+        name: "BasicAuthExecutor"
+        displayName: "Identifier + Credential Authentication"
+        description: "Authenticates a user using an identifier and a credential."
+        category: "AUTHENTICATION"
+        supportedFlowTypes: ["AUTHENTICATION"]
+        defaultInputs:
+          - identifier: "username"
+            type: "TEXT_INPUT"
+            required: true
+          - identifier: "password"
+            type: "PASSWORD_INPUT"
+            required: true
+        properties: []
+
+    ExecutorMode:
+      type: object
+      required:
+        - value
+        - displayName
+        - defaultInputs
+        - properties
+      properties:
+        value:
+          type: string
+          description: Mode identifier stored in the flow node as `executor.mode`.
+          example: "challenge"
+        displayName:
+          type: string
+          description: Display name of the mode.
+          example: "Request Passkey"
+        defaultInputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutorInput'
+          description: Default inputs that apply when the executor runs in this mode. Unless `fixedInputs` is true, the flow definition may override these.
+        properties:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutorProperty'
+          description: Properties that apply only when the executor runs in this mode.
 
     Error:
       type: object

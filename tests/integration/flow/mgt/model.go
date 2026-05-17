@@ -143,3 +143,78 @@ type ErrorResponse struct {
 	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description"`
 }
+
+// FlowsMeta models
+
+type FlowsMeta struct {
+	FlowTypes      []FlowTypeItem      `json:"flowTypes"`
+	NodeTypes      []NodeTypeItem      `json:"nodeTypes"`
+	InputTypes     []InputTypeItem     `json:"inputTypes"`
+	Executors      []ExecutorItem      `json:"executors"`
+	ComponentTypes []ComponentTypeItem `json:"componentTypes"`
+	Actions        []interface{}       `json:"actions"`
+	Elements       []interface{}       `json:"elements"`
+	Steps          []interface{}       `json:"steps"`
+	Templates      []interface{}       `json:"templates"`
+}
+
+type FlowTypeItem struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Description string `json:"description"`
+}
+
+type NodeTypeItem struct {
+	Name          string   `json:"name"`
+	DisplayName   string   `json:"displayName"`
+	Description   string   `json:"description"`
+	AllowedFields []string `json:"allowedFields"`
+}
+
+type InputTypeItem struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Description string `json:"description"`
+	Category    string `json:"category"`
+}
+
+type ExecutorMode struct {
+	Value         string             `json:"value"`
+	DisplayName   string             `json:"displayName"`
+	DefaultInputs []ExecutorInput    `json:"defaultInputs"`
+	Properties    []ExecutorProperty `json:"properties"`
+}
+
+type ExecutorItem struct {
+	Name               string             `json:"name"`
+	DisplayName        string             `json:"displayName"`
+	Description        string             `json:"description"`
+	SupportedFlowTypes []string           `json:"supportedFlowTypes"`
+	FixedInputs        bool               `json:"fixedInputs"`
+	MaxInputs          int                `json:"maxInputs"`
+	Modes              []ExecutorMode     `json:"modes,omitempty"`
+	DefaultInputs      []ExecutorInput    `json:"defaultInputs"`
+	Properties         []ExecutorProperty `json:"properties"`
+}
+
+type ExecutorInput struct {
+	Identifier string `json:"identifier"`
+	Type       string `json:"type"`
+	Required   bool   `json:"required"`
+}
+
+type ExecutorProperty struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Type        string `json:"type"`
+	Required    bool   `json:"required"`
+	Description string `json:"description,omitempty"`
+}
+
+type ComponentTypeItem struct {
+	Name        string   `json:"name"`
+	DisplayName string   `json:"displayName"`
+	Description string   `json:"description"`
+	Category    string   `json:"category"`
+	Properties  []string `json:"properties"`
+}

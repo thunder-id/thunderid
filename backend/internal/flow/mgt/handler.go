@@ -21,6 +21,7 @@ package flowmgt
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
@@ -43,6 +44,7 @@ const (
 	queryParamFlowType = "flowType"
 	queryParamLimit    = "limit"
 	queryParamOffset   = "offset"
+	queryParamFields   = "fields"
 )
 
 // flowMgtHandler handles HTTP requests for flow management
@@ -244,6 +246,20 @@ func (h *flowMgtHandler) restoreFlowVersion(w http.ResponseWriter, r *http.Reque
 		log.String(logKeyFlowID, flowID), log.Int(logKeyVersion, request.Version))
 }
 
+// getFlowsMeta handles GET requests to retrieve the flow metadata. Clients may pass a comma-separated
+// "fields" query parameter to limit the response to specific catalogs.
+func (h *flowMgtHandler) getFlowsMeta(w http.ResponseWriter, r *http.Request) {
+	fields, svcErr := parseFieldsParam(r.URL.Query().Get(queryParamFields))
+	if svcErr != nil {
+		handleError(w, svcErr)
+		return
+	}
+
+	meta := h.service.GetFlowsMeta(fields)
+	utils.WriteSuccessResponse(w, http.StatusOK, meta)
+	h.logger.Debug("Flows metadata retrieved successfully")
+}
+
 // parsePaginationParams extracts and validates pagination parameters from the request.
 func parsePaginationParams(r *http.Request) (int, int, *serviceerror.ServiceError) {
 	limitStr := r.URL.Query().Get(queryParamLimit)
@@ -282,6 +298,32 @@ func sanitizeFlowDefinitionRequest(req *FlowDefinitionRequest) *FlowDefinition {
 	}
 
 	return sanitized
+}
+
+// parseFieldsParam parses the comma-separated fields query parameter and validates each entry against
+// the supported catalog allowlist. Returns a nil slice (meaning "all catalogs") when the parameter is
+// absent or contains only whitespace. Duplicate entries are de-duplicated.
+func parseFieldsParam(raw string) ([]string, *serviceerror.ServiceError) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	seen := make(map[string]bool)
+	fields := make([]string, 0)
+	for _, part := range strings.Split(raw, ",") {
+		name := strings.TrimSpace(part)
+		if name == "" {
+			return nil, &ErrorInvalidFieldsParam
+		}
+		if !allowedMetaFields[name] {
+			return nil, &ErrorInvalidFieldsParam
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		fields = append(fields, name)
+	}
+	return fields, nil
 }
 
 // handleInvalidRequestError writes a standardized error response for invalid requests.
