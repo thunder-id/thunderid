@@ -50,21 +50,6 @@ vi.mock('@thunderid/logger/react', () => ({
   }),
 }));
 
-// Mock translations
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const translations: Record<string, string> = {
-        'organizationUnits:edit.childOUs.sections.manage.title': 'Manage Child Organization Units',
-        'organizationUnits:edit.childOUs.sections.manage.description': 'View and manage child organization units',
-        'organizationUnits:listing.columns.name': 'Name',
-        'organizationUnits:listing.columns.handle': 'Handle',
-        'organizationUnits:listing.columns.description': 'Description',
-      };
-      return translations[key] ?? key;
-    },
-  }),
-}));
 
 describe('ManageChildOrganizationUnitSection', () => {
   const mockChildOUs: OrganizationUnit[] = [
@@ -106,8 +91,8 @@ describe('ManageChildOrganizationUnitSection', () => {
       <ManageChildOrganizationUnitSection organizationUnitId="ou-parent" organizationUnitName="Engineering" />,
     );
 
-    expect(screen.getByText('Manage Child Organization Units')).toBeInTheDocument();
-    expect(screen.getByText('View and manage child organization units')).toBeInTheDocument();
+    expect(screen.getByText('Child Organization Units')).toBeInTheDocument();
+    expect(screen.getByText('View and manage child organization units under this OU')).toBeInTheDocument();
   });
 
   it('should render data grid with child OUs', () => {

@@ -27,21 +27,6 @@ vi.mock('@thunderid/design', () => ({
   useGetThemes: (): unknown => mockUseGetThemes(),
 }));
 
-// Mock translations
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const translations: Record<string, string> = {
-        'organizationUnits:edit.customization.sections.appearance': 'Appearance',
-        'organizationUnits:edit.customization.sections.appearance.description': 'Customize the look and feel',
-        'organizationUnits:edit.customization.labels.theme': 'Theme',
-        'organizationUnits:edit.customization.theme.placeholder': 'Select a theme',
-        'organizationUnits:edit.customization.theme.hint': 'Choose a theme for your organization unit',
-      };
-      return translations[key] ?? key;
-    },
-  }),
-}));
 
 describe('AppearanceSection', () => {
   const mockOrganizationUnit: OrganizationUnit = {
@@ -76,7 +61,7 @@ describe('AppearanceSection', () => {
     );
 
     expect(screen.getByText('Appearance')).toBeInTheDocument();
-    expect(screen.getByText('Customize the look and feel')).toBeInTheDocument();
+    expect(screen.getByText('Customize the look and feel of this organization unit.')).toBeInTheDocument();
   });
 
   it('should render theme label', () => {
@@ -236,6 +221,6 @@ describe('AppearanceSection', () => {
       <AppearanceSection organizationUnit={mockOrganizationUnit} editedOU={{}} onFieldChange={mockOnFieldChange} />,
     );
 
-    expect(screen.getByText('Choose a theme for your organization unit')).toBeInTheDocument();
+    expect(screen.getByText('The theme applied to this organization unit.')).toBeInTheDocument();
   });
 });

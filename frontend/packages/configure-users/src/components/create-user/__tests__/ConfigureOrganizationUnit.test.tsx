@@ -20,15 +20,9 @@ import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ConfigureOrganizationUnit, {type ConfigureOrganizationUnitProps} from '../ConfigureOrganizationUnit';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
-
 // Mock OrganizationUnitTreePicker to isolate this component's logic
-vi.mock('../../../../organization-units/components/OrganizationUnitTreePicker', () => ({
-  default: ({
+vi.mock('@thunderid/configure-organization-units', () => ({
+  OrganizationUnitTreePicker: ({
     rootOuId,
     value,
     onChange,
@@ -67,14 +61,14 @@ describe('ConfigureOrganizationUnit', () => {
   it('renders the component with title and subtitle', () => {
     renderComponent();
 
-    expect(screen.getByText('users:createWizard.selectOrganizationUnit.title')).toBeInTheDocument();
-    expect(screen.getByText('users:createWizard.selectOrganizationUnit.subtitle')).toBeInTheDocument();
+    expect(screen.getByText('Select an organization unit')).toBeInTheDocument();
+    expect(screen.getByText('Choose which organization unit this user should belong to.')).toBeInTheDocument();
   });
 
   it('renders the field label', () => {
     renderComponent();
 
-    expect(screen.getByText('users:createWizard.selectOrganizationUnit.fieldLabel')).toBeInTheDocument();
+    expect(screen.getByText('Organization Unit')).toBeInTheDocument();
   });
 
   it('renders the OU tree picker with correct props', () => {

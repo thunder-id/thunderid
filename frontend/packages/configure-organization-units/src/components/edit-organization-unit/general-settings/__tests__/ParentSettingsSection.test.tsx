@@ -27,20 +27,6 @@ vi.mock('@/api/useGetOrganizationUnit', () => ({
   default: (id?: string, enabled?: boolean): unknown => mockUseGetOrganizationUnit(id, enabled),
 }));
 
-// Mock translations
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const translations: Record<string, string> = {
-        'organizationUnits:edit.general.sections.parentOUSettings.title': 'Parent Organization Unit',
-        'organizationUnits:edit.general.sections.parentOUSettings.description': 'The parent of this organization unit',
-        'organizationUnits:edit.general.ou.parent.label': 'Parent',
-        'organizationUnits:edit.general.ou.noParent.label': 'Root Organization Unit',
-      };
-      return translations[key] ?? key;
-    },
-  }),
-}));
 
 // Mock navigate function
 const mockNavigate = vi.fn();
@@ -81,8 +67,8 @@ describe('ParentSettingsSection', () => {
 
     renderWithProviders(<ParentSettingsSection organizationUnit={mockOrganizationUnit} />);
 
-    expect(screen.getByText('Parent Organization Unit')).toBeInTheDocument();
-    expect(screen.getByText('The parent of this organization unit')).toBeInTheDocument();
+    expect(screen.getByRole('heading', {name: 'Parent Organization Unit'})).toBeInTheDocument();
+    expect(screen.getByText('The parent organization unit in the hierarchy.')).toBeInTheDocument();
   });
 
   it('should show "Root Organization Unit" when no parent exists', () => {

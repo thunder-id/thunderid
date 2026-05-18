@@ -20,22 +20,6 @@ import {screen, fireEvent, renderWithProviders} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import DangerZoneSection from '../DangerZoneSection';
 
-// Mock translations
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const translations: Record<string, string> = {
-        'organizationUnits:edit.general.sections.dangerZone.title': 'Danger Zone',
-        'organizationUnits:edit.general.sections.dangerZone.description': 'Irreversible actions',
-        'organizationUnits:edit.general.sections.dangerZone.deleteOU.title': 'Delete Organization Unit',
-        'organizationUnits:edit.general.sections.dangerZone.deleteOU.description':
-          'Once you delete an organization unit, there is no going back. Please be certain.',
-        'organizationUnits:edit.general.dangerZone.delete.button.label': 'Delete Organization Unit',
-      };
-      return translations[key] ?? key;
-    },
-  }),
-}));
 
 describe('DangerZoneSection', () => {
   const mockOnDeleteClick = vi.fn();
@@ -52,7 +36,7 @@ describe('DangerZoneSection', () => {
     renderWithProviders(<DangerZoneSection onDeleteClick={mockOnDeleteClick} />);
 
     expect(screen.getByText('Danger Zone')).toBeInTheDocument();
-    expect(screen.getByText('Irreversible actions')).toBeInTheDocument();
+    expect(screen.getByText('Actions in this section are irreversible. Proceed with caution.')).toBeInTheDocument();
   });
 
   it('should render delete organization unit title', () => {
@@ -66,7 +50,7 @@ describe('DangerZoneSection', () => {
     renderWithProviders(<DangerZoneSection onDeleteClick={mockOnDeleteClick} />);
 
     expect(
-      screen.getByText('Once you delete an organization unit, there is no going back. Please be certain.'),
+      screen.getByText('Deleting this organization unit is permanent and cannot be undone.'),
     ).toBeInTheDocument();
   });
 

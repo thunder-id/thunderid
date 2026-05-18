@@ -112,12 +112,12 @@ describe('EditGeneralSettings', () => {
   });
 
   it('should handle clipboard copy and show copied state', async () => {
-    // Mock clipboard API
+    // Mock clipboard API — use defineProperty because navigator.clipboard is read-only in browser mode
     const writeTextMock = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, {
-      clipboard: {
-        writeText: writeTextMock,
-      },
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {writeText: writeTextMock},
+      writable: true,
+      configurable: true,
     });
 
     renderWithProviders(
@@ -129,19 +129,18 @@ describe('EditGeneralSettings', () => {
 
     await waitFor(() => {
       expect(writeTextMock).toHaveBeenCalledWith('test');
+      expect(screen.getByText('Copied: handle')).toBeInTheDocument();
     });
-
-    expect(screen.getByText('Copied: handle')).toBeInTheDocument();
   });
 
   it('should clear copied state after 2 seconds', async () => {
     vi.useRealTimers();
     const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     // Mock clipboard API
-    Object.assign(navigator, {
-      clipboard: {
-        writeText: vi.fn().mockResolvedValue(undefined),
-      },
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {writeText: vi.fn().mockResolvedValue(undefined)},
+      writable: true,
+      configurable: true,
     });
 
     renderWithProviders(
@@ -177,10 +176,10 @@ describe('EditGeneralSettings', () => {
     const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
 
     // Mock clipboard API
-    Object.assign(navigator, {
-      clipboard: {
-        writeText: vi.fn().mockResolvedValue(undefined),
-      },
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {writeText: vi.fn().mockResolvedValue(undefined)},
+      writable: true,
+      configurable: true,
     });
 
     renderWithProviders(

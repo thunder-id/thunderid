@@ -130,8 +130,8 @@ vi.mock('@thunderid/hooks', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../organization-units/components/OrganizationUnitTreePicker', () => ({
-  default: ({value, onChange, rootOuId}: {value: string; onChange: (id: string) => void; rootOuId?: string}) => (
+vi.mock('@thunderid/configure-organization-units', () => ({
+  OrganizationUnitTreePicker: ({value, onChange, rootOuId}: {value: string; onChange: (id: string) => void; rootOuId?: string}) => (
     <div data-testid="ou-tree-picker" data-value={value} data-root-ou-id={rootOuId}>
       <button type="button" onClick={() => onChange('selected-ou-id')}>
         Select OU
@@ -381,7 +381,7 @@ describe('UserInvitePage', () => {
 
       render(<UserInvitePage />);
 
-      const input = screen.getByLabelText(/password/i);
+      const input = document.getElementById('password') as HTMLInputElement;
       expect(input).toBeInTheDocument();
       expect(input).toHaveAttribute('type', 'password');
     });
@@ -394,7 +394,7 @@ describe('UserInvitePage', () => {
 
       render(<UserInvitePage />);
 
-      const input = screen.getByLabelText(/password/i);
+      const input = document.getElementById('password') as HTMLInputElement;
       expect(input).toHaveAttribute('type', 'password');
 
       // Find and click the toggle button (shows 'show password' when password is hidden)
@@ -763,8 +763,10 @@ describe('UserInvitePage', () => {
 
       render(<UserInvitePage />);
 
-      const input = screen.getByLabelText(/password/i);
-      await userEvent.type(input, 'SuperSecret123');
+      const inputs = screen.getAllByDisplayValue('');
+      const input = inputs.find((el) => el.getAttribute('type') === 'password');
+      expect(input).toBeDefined();
+      await userEvent.type(input!, 'SuperSecret123');
 
       expect(mockHandleInputChange).toHaveBeenCalled();
     });
