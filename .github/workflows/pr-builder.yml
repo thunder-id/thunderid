@@ -363,11 +363,16 @@ jobs:
           cd frontend/apps/gate
           pnpm test:coverage
 
-      - name: 🧪 Run Package Tests
+      - name: 🧪 Run Package Tests with Coverage
         if: matrix.shard == 1
         run: |
           cd frontend
-          pnpm --filter './packages/*' test
+          pnpm --filter './packages/*' test -- --coverage
+
+      - name: 🔀 Merge package coverage reports
+        if: matrix.shard == 1
+        run: |
+          find frontend/packages/*/coverage -name lcov.info -exec cat {} + > frontend/packages-merged-lcov.info || true
 
       # Strip branch data (BRDA/BRF/BRH) from frontend LCOV reports before uploading.
       # React Compiler (babel-plugin-react-compiler) generates phantom branch points in compiled
@@ -376,7 +381,7 @@ jobs:
       # Line and function coverage remain unaffected and accurately reflect test quality.
       - name: 🧹 Strip branch data from frontend LCOV reports
         run: |
-          for lcov_file in frontend/apps/console/coverage/lcov.info frontend/packages/coverage/lcov.info; do
+          for lcov_file in frontend/apps/console/coverage/lcov.info frontend/apps/gate/coverage/lcov.info frontend/packages-merged-lcov.info; do
             if [ -f "$lcov_file" ]; then
               sed -i '/^BRDA:/d;/^BRF:/d;/^BRH:/d' "$lcov_file"
             fi
@@ -396,6 +401,14 @@ jobs:
           name: gate-coverage
           path: frontend/apps/gate/coverage/lcov.info
           if-no-files-found: error
+
+      - name: 📦 Upload packages coverage artifact
+        if: matrix.shard == 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packages-coverage
+          path: frontend/packages-merged-lcov.info
+          if-no-files-found: warn
 
   upload-frontend-coverage:
     name: 📊 Upload Frontend Coverage
@@ -421,6 +434,12 @@ jobs:
         with:
           name: gate-coverage
           path: coverage/gate
+
+      - name: 📥 Download packages coverage artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: packages-coverage
+          path: coverage/packages
 
       - name: 🔀 Merge console coverage from shards
         run: |
@@ -448,6 +467,18 @@ jobs:
           disable_search: true
           flags: frontend-apps-gate-unit
           name: Frontend Gate App Unit Tests
+          fail_ci_if_error: false
+
+      - name: 📊 Upload Frontend Packages Unit Test Coverage Report to Codecov
+        uses: codecov/codecov-action@v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          use_oidc: true
+          files: coverage/packages/packages-merged-lcov.info
+          disable_search: true
+          flags: frontend-packages-unit
+          name: Frontend Packages Unit Tests
           fail_ci_if_error: false
 
   build_samples:
