@@ -1,0 +1,188 @@
+---
+title: Agent Authentication
+sidebar_position: 2
+persona: iam
+description: Issue M2M and on-behalf-of tokens to agents using <ProductName />'s OAuth 2.0 token endpoint.
+---
+
+# Agent Authentication
+
+An agent occupies multiple identity postures simultaneously, and each posture requires a different authentication pattern.
+
+- **Acting as subject** — the agent authenticates as itself to call APIs on its own behalf. Use the M2M (client credentials) pattern.
+- **Acting as client** — the agent acts on behalf of a user or another principal. Use the OBO (token exchange) pattern. The access the agent carries can never exceed the authority that was delegated to it.
+
+Both patterns use the token endpoint at `POST /oauth2/token`. The agent must be [registered with an OAuth inbound auth config](./manage-agents) before it can request tokens.
+
+## M2M Tokens (Agent as Subject)
+
+Use M2M tokens when the agent acts as a subject — calling APIs on its own behalf with no user involved. Common cases: background jobs, data pipelines, service-to-service calls.
+
+### Request a Token
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<CLIENT_ID>:<CLIENT_SECRET>' \
+  -d 'grant_type=client_credentials'
+```
+
+### Request Specific Scopes
+
+<ProductName /> intersects the requested scopes against the scopes authorized for the agent via its group memberships and role assignments. Requesting a scope the agent is not authorized for results in `invalid_scope`.
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<CLIENT_ID>:<CLIENT_SECRET>' \
+  -d 'grant_type=client_credentials' \
+  -d 'scope=invoices:read invoices:write'
+```
+
+Group membership is evaluated transitively — if the agent is a member of a group that inherits permissions from a parent group, those permissions are included.
+
+### Narrow to a Specific Resource Server
+
+Use the `resource` parameter (RFC 8707) to restrict the token's audience and scopes to a single resource server. This is the recommended approach when the agent calls multiple downstream APIs.
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<CLIENT_ID>:<CLIENT_SECRET>' \
+  -d 'grant_type=client_credentials' \
+  -d 'resource=https://api.example.com/invoices' \
+  -d 'scope=invoices:read'
+```
+
+<ProductName /> resolves the resource identifier against registered resource servers and narrows the token's scopes to only those defined for that resource. Unrecognized resource identifiers return `invalid_target`.
+
+## OBO Tokens (Agent as Client)
+
+Use OBO tokens when the agent acts as a client — carrying delegated authority from a user to a downstream service. The agent can never hold more authority than the principal that empowered it: the issued token's scopes are strictly bounded by what the user's token already contained.
+
+<ProductName /> implements [RFC 8693](https://www.rfc-editor.org/rfc/rfc8693) token exchange.
+
+### Request an OBO Token
+
+The agent presents the user's access token as the `subject_token` and authenticates itself with its own credentials.
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<AGENT_CLIENT_ID>:<AGENT_CLIENT_SECRET>' \
+  -d 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+  -d 'subject_token=<USER_ACCESS_TOKEN>' \
+  -d 'subject_token_type=urn:ietf:params:oauth:token-type:jwt'
+```
+
+The issued token represents the agent acting on behalf of the user. Its scopes are bounded by the scopes present in the `subject_token` — the agent cannot escalate the user's permissions.
+
+### Request a Constrained Scope
+
+Pass a `scope` parameter to request a subset of the user's scopes. <ProductName /> rejects any scope that is not already in the `subject_token`.
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<AGENT_CLIENT_ID>:<AGENT_CLIENT_SECRET>' \
+  -d 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+  -d 'subject_token=<USER_ACCESS_TOKEN>' \
+  -d 'subject_token_type=urn:ietf:params:oauth:token-type:jwt' \
+  -d 'scope=invoices:read'
+```
+
+### Narrow to a Specific Audience or Resource
+
+Use `audience` for a named target service, or `resource` (RFC 8707) for a resource server URI:
+
+```bash
+  -d 'resource=https://api.example.com/invoices'
+```
+
+If both the `subject_token`'s audiences and the requested `resource` are specified, <ProductName /> merges them per RFC 8693 §2.1.
+
+## Token Characteristics
+
+All agent access tokens are signed JWTs (`typ: at+jwt`) and share a common set of claims. The value of some claims differs by grant type.
+
+| Claim | M2M (`client_credentials`) | OBO (token exchange) |
+|---|---|---|
+| `sub` | The agent's Client ID. | The original user's subject identifier. |
+| `iss` | <ProductName /> instance URL. | <ProductName /> instance URL. |
+| `aud` | Resource server identifier(s), or Client ID as fallback. | Resource server identifier(s), or Client ID as fallback. |
+| `scope` | Authorized scopes from the agent's group/role assignments. | A subset of the user's original scopes. |
+| `client_id` | The agent's Client ID. | The agent's Client ID. |
+| `grant_type` | `client_credentials` | `urn:ietf:params:oauth:grant-type:token-exchange` |
+| `act` | Not present. | Present only when an explicit `actor_token` is provided in the request. |
+| `exp`, `iat`, `nbf`, `jti` | Standard JWT lifetime and identity claims. | Standard JWT lifetime and identity claims. |
+
+Custom attributes configured in the agent's **Token** settings are included as additional claims on M2M tokens.
+
+### The `act` Claim
+
+When a token exchange request includes an explicit `actor_token`, the issued OBO token contains an `act` object identifying the actor:
+
+```json
+"act": {
+  "sub": "<ACTOR_CLIENT_ID>",
+  "iss": "<ISSUER>"
+}
+```
+
+If the actor token itself carries an `act` claim (a chained delegation), that claim nests inside the new `act` object, preserving the full delegation chain.
+
+## Use the Token to Call a Protected API
+
+Both M2M and OBO tokens are Bearer tokens. Pass the token in the `Authorization` header:
+
+```bash
+curl https://api.example.com/invoices \
+  -H 'Authorization: Bearer <ACCESS_TOKEN>'
+```
+
+Your resource server should validate:
+
+| Claim | What to verify |
+|---|---|
+| `exp` | Token has not expired. |
+| `iss` | Matches your <ProductName /> instance URL. |
+| `aud` | Matches your resource server identifier. |
+| `scope` | Includes the scope required for the operation. |
+
+Use the <ProductName /> JWKS endpoint to retrieve public keys for signature verification:
+
+```bash
+curl https://localhost:8090/oauth2/jwks
+```
+
+## Refresh Tokens
+
+Agents using the authorization code grant receive refresh tokens to maintain long-lived sessions without requiring the user to re-authenticate.
+
+```bash
+curl -X POST https://localhost:8090/oauth2/token \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -u '<CLIENT_ID>:<CLIENT_SECRET>' \
+  -d 'grant_type=refresh_token' \
+  -d 'refresh_token=<REFRESH_TOKEN>'
+```
+
+Scopes on the new access token are bounded by the scopes of the original grant. You can request a narrower scope with the `scope` parameter; requesting a broader scope returns `invalid_scope`.
+
+Refresh tokens preserve the original full set of authorized audiences, so later narrowing with `resource` still works across refreshes.
+
+## Troubleshooting
+
+| Error | Likely Cause |
+|---|---|
+| `invalid_client` | Wrong `CLIENT_ID` or `CLIENT_SECRET`. Verify credentials and ensure the agent has an OAuth config. |
+| `invalid_scope` | The agent is not authorized for the requested scope. Check the agent's group and role assignments. |
+| `invalid_grant` | The grant type is not in the agent's configured `grantTypes`. |
+| `invalid_target` | The `resource` value does not match a registered resource server. |
+| Token accepted but API returns `403` | Token scope or audience does not meet the resource server's policy. |
+
+## Next Steps
+
+- [Manage Agents](./manage-agents) — Configure OAuth credentials, assign groups, and rotate secrets.
+- [Resource Servers](../resource-servers) — Register resource servers and define the scopes they accept.
+- [Resource Indicators](../resource-indicators) — Use RFC 8707 `resource` parameters to issue audience-restricted tokens.

@@ -187,6 +187,25 @@ const sidebars: SidebarsConfig = {
           ],
         },
         {
+          type: 'category',
+          label: 'Agents',
+          collapsed: true,
+          collapsible: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'guides/guides/agents/manage-agents',
+              label: 'Manage Agents',
+            },
+            {
+              type: 'doc',
+              id: 'guides/guides/agents/agent-authentication',
+              label: 'Agent Authentication',
+              key: 'guides-agent-authentication',
+            },
+          ],
+        },
+        {
           type: 'doc',
           id: 'guides/guides/integrations',
           label: 'Integrations',
@@ -276,7 +295,7 @@ const sidebars: SidebarsConfig = {
           collapsible: true,
           collapsed: true,
           items: [
-            {type: 'doc', id: 'use-cases/ai-agents/agent-authentication', label: 'Agent Authentication'},
+            {type: 'doc', id: 'use-cases/ai-agents/agent-authentication', label: 'Agent Authentication', key: 'use-cases-agent-authentication'},
           ],
         },
       ],
