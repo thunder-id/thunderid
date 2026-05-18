@@ -373,41 +373,56 @@ func (s *IDPServiceTestSuite) TestGetIdentityProviderByName_StoreError() {
 	s.mockStore.AssertExpectations(s.T())
 }
 
-// TestGetIdentityProviderByIssuer_Success tests successful IDP retrieval by issuer
-func (s *IDPServiceTestSuite) TestGetIdentityProviderByIssuer_Success() {
+// TestGetIdentityProvidersByProperty_Success tests successful IDP retrieval by property
+func (s *IDPServiceTestSuite) TestGetIdentityProvidersByProperty_Success() {
 	prop, _ := cmodels.NewProperty(PropIssuer, "https://idp.example.com", false)
-	idp := &IDPDTO{
-		ID:         "idp-123",
-		Name:       "Test IDP",
-		Type:       IDPTypeOIDC,
-		Properties: []cmodels.Property{*prop},
+	idps := []IDPDTO{
+		{
+			ID:         "idp-123",
+			Name:       "Test IDP",
+			Type:       IDPTypeOIDC,
+			Properties: []cmodels.Property{*prop},
+		},
 	}
 
-	s.mockStore.On("GetIdentityProviderByIssuer", mock.Anything, "https://idp.example.com").Return(idp, nil)
+	s.mockStore.On("GetIdentityProvidersByProperty", mock.Anything, "issuer", "https://idp.example.com").
+		Return(idps, nil)
 
-	result, err := s.idpService.GetIdentityProviderByIssuer(context.Background(), "https://idp.example.com")
+	result, err := s.idpService.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://idp.example.com")
 
 	s.Nil(err)
 	s.NotNil(result)
-	s.Equal("idp-123", result.ID)
+	s.Len(result, 1)
+	s.Equal("idp-123", result[0].ID)
 	s.mockStore.AssertExpectations(s.T())
 }
 
-// TestGetIdentityProviderByIssuer_EmptyIssuer tests empty issuer validation
-func (s *IDPServiceTestSuite) TestGetIdentityProviderByIssuer_EmptyIssuer() {
-	result, err := s.idpService.GetIdentityProviderByIssuer(context.Background(), "")
+// TestGetIdentityProvidersByProperty_EmptyKey tests empty property key validation
+func (s *IDPServiceTestSuite) TestGetIdentityProvidersByProperty_EmptyKey() {
+	result, err := s.idpService.GetIdentityProvidersByProperty(context.Background(), "", "some-value")
 
 	s.Nil(result)
 	s.NotNil(err)
 	s.Equal(ErrorInvalidIDPID.Code, err.Code)
 }
 
-// TestGetIdentityProviderByIssuer_NotFound tests IDP not found by issuer
-func (s *IDPServiceTestSuite) TestGetIdentityProviderByIssuer_NotFound() {
-	s.mockStore.On("GetIdentityProviderByIssuer", mock.Anything, "https://unknown.example.com").
-		Return((*IDPDTO)(nil), ErrIDPNotFound)
+// TestGetIdentityProvidersByProperty_EmptyValue tests empty property value validation
+func (s *IDPServiceTestSuite) TestGetIdentityProvidersByProperty_EmptyValue() {
+	result, err := s.idpService.GetIdentityProvidersByProperty(context.Background(), "issuer", "")
 
-	result, err := s.idpService.GetIdentityProviderByIssuer(context.Background(), "https://unknown.example.com")
+	s.Nil(result)
+	s.NotNil(err)
+	s.Equal(ErrorInvalidIDPID.Code, err.Code)
+}
+
+// TestGetIdentityProvidersByProperty_NotFound tests IDP not found by property
+func (s *IDPServiceTestSuite) TestGetIdentityProvidersByProperty_NotFound() {
+	s.mockStore.On("GetIdentityProvidersByProperty", mock.Anything, "issuer", "https://unknown.example.com").
+		Return([]IDPDTO(nil), ErrIDPNotFound)
+
+	result, err := s.idpService.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://unknown.example.com")
 
 	s.Nil(result)
 	s.NotNil(err)
@@ -415,12 +430,13 @@ func (s *IDPServiceTestSuite) TestGetIdentityProviderByIssuer_NotFound() {
 	s.mockStore.AssertExpectations(s.T())
 }
 
-// TestGetIdentityProviderByIssuer_StoreError tests store error handling
-func (s *IDPServiceTestSuite) TestGetIdentityProviderByIssuer_StoreError() {
-	s.mockStore.On("GetIdentityProviderByIssuer", mock.Anything, "https://idp.example.com").
-		Return((*IDPDTO)(nil), errors.New("database error"))
+// TestGetIdentityProvidersByProperty_StoreError tests store error handling
+func (s *IDPServiceTestSuite) TestGetIdentityProvidersByProperty_StoreError() {
+	s.mockStore.On("GetIdentityProvidersByProperty", mock.Anything, "issuer", "https://idp.example.com").
+		Return([]IDPDTO(nil), errors.New("database error"))
 
-	result, err := s.idpService.GetIdentityProviderByIssuer(context.Background(), "https://idp.example.com")
+	result, err := s.idpService.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://idp.example.com")
 
 	s.Nil(result)
 	s.NotNil(err)

@@ -94,15 +94,26 @@ func (f *idpFileBasedStore) GetIdentityProviderList(ctx context.Context) ([]Basi
 	return idpList, nil
 }
 
-// GetIdentityProviderByIssuer retrieves an identity provider by its issuer property from the file-based store.
-func (f *idpFileBasedStore) GetIdentityProviderByIssuer(ctx context.Context, issuer string) (*IDPDTO, error) {
-	data, err := f.GenericFileBasedStore.GetByField(issuer, func(d interface{}) string {
-		return GetPropertyValue(d.(*IDPDTO).Properties, PropIssuer)
-	})
+// GetIdentityProvidersByProperty retrieves identity providers matching a property from the file-based store.
+func (f *idpFileBasedStore) GetIdentityProvidersByProperty(ctx context.Context,
+	propertyKey, propertyValue string) ([]IDPDTO, error) {
+	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
+		return nil, err
+	}
+
+	var idps []IDPDTO
+	for _, item := range list {
+		if idpItem, ok := item.Data.(*IDPDTO); ok {
+			if GetPropertyValue(idpItem.Properties, propertyKey) == propertyValue {
+				idps = append(idps, *idpItem)
+			}
+		}
+	}
+	if len(idps) == 0 {
 		return nil, ErrIDPNotFound
 	}
-	return data.(*IDPDTO), nil
+	return idps, nil
 }
 
 // GetIdentityProviderListCount retrieves the total count of identity providers.

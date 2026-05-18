@@ -362,3 +362,124 @@ func (s *CompositeIDPStoreTestSuite) TestMergeAndDeduplicateIDPs_PreservesDuplic
 	s.Equal("DB Name", result[0].Name)
 	s.False(result[0].IsReadOnly)
 }
+
+// --- GetIdentityProviderListCount tests ---
+
+func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderListCount_ReturnsSumFromBothStores() {
+	s.dbStore.On("GetIdentityProviderListCount", context.Background()).Return(3, nil)
+	s.fileStore.On("GetIdentityProviderListCount", context.Background()).Return(2, nil)
+
+	count, err := s.compositeStore.GetIdentityProviderListCount(context.Background())
+
+	s.NoError(err)
+	s.Equal(5, count)
+}
+
+func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderListCount_ReturnsErrorWhenDBFails() {
+	s.dbStore.On("GetIdentityProviderListCount", context.Background()).Return(0, errors.New("db error"))
+
+	count, err := s.compositeStore.GetIdentityProviderListCount(context.Background())
+
+	s.Error(err)
+	s.Equal(0, count)
+}
+
+func (s *CompositeIDPStoreTestSuite) TestGetIdentityProviderListCount_ReturnsErrorWhenFileFails() {
+	s.dbStore.On("GetIdentityProviderListCount", context.Background()).Return(3, nil)
+	s.fileStore.On("GetIdentityProviderListCount", context.Background()).Return(0, errors.New("file error"))
+
+	count, err := s.compositeStore.GetIdentityProviderListCount(context.Background())
+
+	s.Error(err)
+	s.Equal(0, count)
+}
+
+// --- GetIdentityProvidersByProperty tests ---
+
+func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_DBReturnsResultsFileNotFound() {
+	dbIDPs := []IDPDTO{{ID: "db-1", Name: "DB IDP", Type: IDPTypeOIDC}}
+
+	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return(dbIDPs, nil)
+	s.fileStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return([]IDPDTO(nil), ErrIDPNotFound)
+
+	result, err := s.compositeStore.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://example.com")
+
+	s.NoError(err)
+	s.Len(result, 1)
+	s.Equal("db-1", result[0].ID)
+}
+
+func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_DBNotFoundFileReturnsResults() {
+	fileIDPs := []IDPDTO{{ID: "file-1", Name: "File IDP", Type: IDPTypeOIDC}}
+
+	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return([]IDPDTO(nil), ErrIDPNotFound)
+	s.fileStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return(fileIDPs, nil)
+
+	result, err := s.compositeStore.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://example.com")
+
+	s.NoError(err)
+	s.Len(result, 1)
+	s.Equal("file-1", result[0].ID)
+}
+
+func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_BothReturnResults() {
+	dbIDPs := []IDPDTO{{ID: "db-1", Name: "DB IDP", Type: IDPTypeOIDC}}
+	fileIDPs := []IDPDTO{{ID: "file-1", Name: "File IDP", Type: IDPTypeOIDC}}
+
+	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return(dbIDPs, nil)
+	s.fileStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return(fileIDPs, nil)
+
+	result, err := s.compositeStore.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://example.com")
+
+	s.NoError(err)
+	s.Len(result, 2)
+}
+
+func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_BothNotFound() {
+	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return([]IDPDTO(nil), ErrIDPNotFound)
+	s.fileStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return([]IDPDTO(nil), ErrIDPNotFound)
+
+	result, err := s.compositeStore.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://example.com")
+
+	s.Nil(result)
+	s.ErrorIs(err, ErrIDPNotFound)
+}
+
+func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_DBReturnsNonNotFoundError() {
+	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return([]IDPDTO(nil), errors.New("db connection error"))
+
+	result, err := s.compositeStore.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://example.com")
+
+	s.Nil(result)
+	s.Error(err)
+	s.NotErrorIs(err, ErrIDPNotFound)
+}
+
+func (s *CompositeIDPStoreTestSuite) TestGetIdentityProvidersByProperty_FileReturnsNonNotFoundError() {
+	dbIDPs := []IDPDTO{{ID: "db-1", Name: "DB IDP", Type: IDPTypeOIDC}}
+	s.dbStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return(dbIDPs, nil)
+	s.fileStore.On("GetIdentityProvidersByProperty", context.Background(), "issuer", "https://example.com").
+		Return([]IDPDTO(nil), errors.New("file read error"))
+
+	result, err := s.compositeStore.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://example.com")
+
+	s.Nil(result)
+	s.Error(err)
+	s.NotErrorIs(err, ErrIDPNotFound)
+}

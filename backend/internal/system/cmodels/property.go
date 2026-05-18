@@ -154,6 +154,62 @@ func DeserializePropertiesFromJSON(propertiesJSON string) ([]Property, error) {
 	return properties, nil
 }
 
+// SerializePropertiesToJSONObject serializes an array of properties to a JSON object string
+func SerializePropertiesToJSONObject(properties []Property) (string, error) {
+	if len(properties) == 0 {
+		return "", nil
+	}
+
+	type propertyEntry struct {
+		Value    string `json:"value"`
+		IsSecret bool   `json:"isSecret"`
+	}
+
+	obj := make(map[string]propertyEntry, len(properties))
+	for _, property := range properties {
+		obj[property.GetName()] = propertyEntry{
+			Value:    property.value,
+			IsSecret: property.IsSecret(),
+		}
+	}
+
+	jsonBytes, err := json.Marshal(obj)
+	if err != nil {
+		return "", fmt.Errorf("failed to serialize properties to JSON object: %w", err)
+	}
+
+	return string(jsonBytes), nil
+}
+
+// DeserializePropertiesFromJSONObject deserializes properties from a JSON object string
+func DeserializePropertiesFromJSONObject(propertiesJSON string) ([]Property, error) {
+	if propertiesJSON == "" {
+		return []Property{}, nil
+	}
+
+	type propertyEntry struct {
+		Value    string `json:"value"`
+		IsSecret bool   `json:"isSecret"`
+	}
+
+	var obj map[string]propertyEntry
+	if err := json.Unmarshal([]byte(propertiesJSON), &obj); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal properties JSON object: %w", err)
+	}
+
+	properties := make([]Property, 0, len(obj))
+	for name, entry := range obj {
+		property := Property{
+			name:     name,
+			value:    entry.Value,
+			isSecret: entry.IsSecret,
+		}
+		properties = append(properties, property)
+	}
+
+	return properties, nil
+}
+
 // ToProperty converts PropertyDTO to Property.
 func (dto *PropertyDTO) ToProperty() (*Property, error) {
 	return NewProperty(dto.Name, dto.Value, dto.IsSecret)

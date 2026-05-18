@@ -140,8 +140,8 @@ CREATE TABLE "IDP" (
 -- Composite index for name-based IDP lookups
 CREATE INDEX idx_idp_name_deployment ON "IDP" (DEPLOYMENT_ID, NAME);
 
--- GIN index for JSONB containment queries on IDP properties (e.g. issuer lookup via @>)
-CREATE INDEX idx_idp_properties ON "IDP" USING GIN ("PROPERTIES" jsonb_path_ops);
+-- Expression index for issuer-based IDP lookups
+CREATE INDEX idx_idp_issuer ON "IDP" (DEPLOYMENT_ID, (PROPERTIES->'issuer'->>'value'));
 
 -- Table to store notification senders.
 CREATE TABLE "NOTIFICATION_SENDER" (

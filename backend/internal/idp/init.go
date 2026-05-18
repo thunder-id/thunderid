@@ -82,7 +82,7 @@ func initializeStore(cacheManager cache.CacheManagerInterface) (idpStoreInterfac
 	storeMode := getIdentityProviderStoreMode()
 
 	idpByIDCache := cache.GetCache[*IDPDTO](cacheManager, "IDPByIDCache")
-	idpByIssuerCache := cache.GetCache[*IDPDTO](cacheManager, "IDPByIssuerCache")
+	idpByPropertyCache := cache.GetCache[[]IDPDTO](cacheManager, "IDPByPropertyCache")
 
 	switch storeMode {
 	case serverconst.StoreModeComposite:
@@ -95,21 +95,21 @@ func initializeStore(cacheManager cache.CacheManagerInterface) (idpStoreInterfac
 		if err := loadDeclarativeResources(fileStore); err != nil {
 			return nil, nil, err
 		}
-		return newCacheBackedIDPStore(idpByIDCache, idpByIssuerCache, idpStore), transactioner, nil
+		return newCacheBackedIDPStore(idpByIDCache, idpByPropertyCache, idpStore), transactioner, nil
 
 	case serverconst.StoreModeDeclarative:
 		fileStore, transactioner := newIDPFileBasedStore()
 		if err := loadDeclarativeResources(fileStore); err != nil {
 			return nil, nil, err
 		}
-		return newCacheBackedIDPStore(idpByIDCache, idpByIssuerCache, fileStore), transactioner, nil
+		return newCacheBackedIDPStore(idpByIDCache, idpByPropertyCache, fileStore), transactioner, nil
 
 	default:
 		store, transactioner, err := newIDPStore()
 		if err != nil {
 			return nil, nil, err
 		}
-		return newCacheBackedIDPStore(idpByIDCache, idpByIssuerCache, store), transactioner, nil
+		return newCacheBackedIDPStore(idpByIDCache, idpByPropertyCache, store), transactioner, nil
 	}
 }
 

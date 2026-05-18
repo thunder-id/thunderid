@@ -140,6 +140,9 @@ CREATE TABLE "IDP" (
 -- Composite index for name-based IDP lookups
 CREATE INDEX idx_idp_name_deployment ON "IDP" (DEPLOYMENT_ID, NAME);
 
+-- Expression index for issuer-based IDP lookups
+CREATE INDEX idx_idp_issuer ON "IDP" (DEPLOYMENT_ID, json_extract(PROPERTIES, '$.issuer.value'));
+
 -- Table to store notification senders.
 CREATE TABLE "NOTIFICATION_SENDER" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,

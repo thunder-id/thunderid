@@ -195,3 +195,100 @@ func (suite *FileBasedStoreTestSuite) TestDeleteIdentityProvider_NotSupported() 
 	suite.Error(err)
 	suite.Contains(err.Error(), "not supported in file-based store")
 }
+
+func (suite *FileBasedStoreTestSuite) TestGetIdentityProvidersByProperty_ReturnsMatchingIDPs() {
+	prop1, _ := cmodels.NewProperty("issuer", "https://example.com", false)
+	prop2, _ := cmodels.NewProperty("client_id", "client1", false)
+
+	idp1 := IDPDTO{
+		ID:         "test-idp-prop-1",
+		Name:       "IDP Prop 1",
+		Type:       IDPTypeOIDC,
+		Properties: []cmodels.Property{*prop1, *prop2},
+	}
+
+	prop3, _ := cmodels.NewProperty("issuer", "https://other.com", false)
+	idp2 := IDPDTO{
+		ID:         "test-idp-prop-2",
+		Name:       "IDP Prop 2",
+		Type:       IDPTypeOIDC,
+		Properties: []cmodels.Property{*prop3},
+	}
+
+	suite.NoError(suite.store.CreateIdentityProvider(context.Background(), idp1))
+	suite.NoError(suite.store.CreateIdentityProvider(context.Background(), idp2))
+
+	result, err := suite.store.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://example.com")
+	suite.NoError(err)
+	suite.Len(result, 1)
+	suite.Equal("test-idp-prop-1", result[0].ID)
+}
+
+func (suite *FileBasedStoreTestSuite) TestGetIdentityProvidersByProperty_NonMatchingValue() {
+	prop, _ := cmodels.NewProperty("issuer", "https://example.com", false)
+	idp := IDPDTO{
+		ID:         "test-idp-prop-3",
+		Name:       "IDP Prop 3",
+		Type:       IDPTypeOIDC,
+		Properties: []cmodels.Property{*prop},
+	}
+
+	suite.NoError(suite.store.CreateIdentityProvider(context.Background(), idp))
+
+	result, err := suite.store.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://nomatch.com")
+	suite.ErrorIs(err, ErrIDPNotFound)
+	suite.Nil(result)
+}
+
+func (suite *FileBasedStoreTestSuite) TestGetIdentityProvidersByProperty_MultipleMatches() {
+	prop1, _ := cmodels.NewProperty("issuer", "https://shared.com", false)
+	idp1 := IDPDTO{
+		ID:         "test-idp-prop-4",
+		Name:       "IDP Prop 4",
+		Type:       IDPTypeOIDC,
+		Properties: []cmodels.Property{*prop1},
+	}
+
+	prop2, _ := cmodels.NewProperty("issuer", "https://shared.com", false)
+	idp2 := IDPDTO{
+		ID:         "test-idp-prop-5",
+		Name:       "IDP Prop 5",
+		Type:       IDPTypeOIDC,
+		Properties: []cmodels.Property{*prop2},
+	}
+
+	suite.NoError(suite.store.CreateIdentityProvider(context.Background(), idp1))
+	suite.NoError(suite.store.CreateIdentityProvider(context.Background(), idp2))
+
+	result, err := suite.store.GetIdentityProvidersByProperty(
+		context.Background(), "issuer", "https://shared.com")
+	suite.NoError(err)
+	suite.Len(result, 2)
+}
+
+func (suite *FileBasedStoreTestSuite) TestGetIdentityProviderListCount() {
+	prop1, _ := cmodels.NewProperty("client_id", "client1", false)
+	prop2, _ := cmodels.NewProperty("client_id", "client2", false)
+
+	idp1 := IDPDTO{
+		ID:         "test-idp-count-1",
+		Name:       "Count IDP 1",
+		Type:       IDPTypeOIDC,
+		Properties: []cmodels.Property{*prop1},
+	}
+	idp2 := IDPDTO{
+		ID:         "test-idp-count-2",
+		Name:       "Count IDP 2",
+		Type:       IDPTypeOIDC,
+		Properties: []cmodels.Property{*prop2},
+	}
+
+	suite.NoError(suite.store.CreateIdentityProvider(context.Background(), idp1))
+	suite.NoError(suite.store.CreateIdentityProvider(context.Background(), idp2))
+
+	count, err := suite.store.GetIdentityProviderListCount(context.Background())
+	suite.NoError(err)
+	suite.Equal(2, count)
+}

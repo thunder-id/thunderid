@@ -122,14 +122,31 @@ func (c *compositeIDPStore) GetIdentityProviderByName(ctx context.Context, idpNa
 	)
 }
 
-// GetIdentityProviderByIssuer retrieves an identity provider by its issuer property from either store.
-// Checks database store first, then falls back to file store.
-func (c *compositeIDPStore) GetIdentityProviderByIssuer(ctx context.Context, issuer string) (*IDPDTO, error) {
-	return declarativeresource.CompositeGetHelper(
-		func() (*IDPDTO, error) { return c.dbStore.GetIdentityProviderByIssuer(ctx, issuer) },
-		func() (*IDPDTO, error) { return c.fileStore.GetIdentityProviderByIssuer(ctx, issuer) },
-		ErrIDPNotFound,
-	)
+// GetIdentityProvidersByProperty retrieves identity providers matching a property from both stores.
+func (c *compositeIDPStore) GetIdentityProvidersByProperty(ctx context.Context,
+	propertyKey, propertyValue string) ([]IDPDTO, error) {
+	var allIDPs []IDPDTO
+
+	dbIDPs, err := c.dbStore.GetIdentityProvidersByProperty(ctx, propertyKey, propertyValue)
+	if err != nil && !errors.Is(err, ErrIDPNotFound) {
+		return nil, err
+	}
+	if dbIDPs != nil {
+		allIDPs = append(allIDPs, dbIDPs...)
+	}
+
+	fileIDPs, err := c.fileStore.GetIdentityProvidersByProperty(ctx, propertyKey, propertyValue)
+	if err != nil && !errors.Is(err, ErrIDPNotFound) {
+		return nil, err
+	}
+	if fileIDPs != nil {
+		allIDPs = append(allIDPs, fileIDPs...)
+	}
+
+	if len(allIDPs) == 0 {
+		return nil, ErrIDPNotFound
+	}
+	return allIDPs, nil
 }
 
 // UpdateIdentityProvider updates an identity provider in the database store only.
