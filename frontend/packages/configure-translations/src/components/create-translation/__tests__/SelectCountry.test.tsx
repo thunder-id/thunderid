@@ -21,14 +21,6 @@ import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import SelectCountry from '@/components/create-translation/SelectCountry';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 const mockCountries = [
   {name: 'France', regionCode: 'FR', flag: '🇫🇷'},
   {name: 'Germany', regionCode: 'DE', flag: '🇩🇪'},
@@ -54,20 +46,20 @@ describe('SelectCountry', () => {
     it('renders the step title and subtitle', () => {
       render(<SelectCountry {...defaultProps} />);
 
-      expect(screen.getByText('language.create.country.title')).toBeInTheDocument();
-      expect(screen.getByText('language.create.country.subtitle')).toBeInTheDocument();
+      expect(screen.getByText('Choose a Country')).toBeInTheDocument();
+      expect(screen.getByText('Select the country for the language you want to add.')).toBeInTheDocument();
     });
 
     it('renders the country autocomplete label', () => {
       render(<SelectCountry {...defaultProps} />);
 
-      expect(screen.getByText('language.create.countryLabel')).toBeInTheDocument();
+      expect(screen.getByText('Country')).toBeInTheDocument();
     });
 
     it('renders the helper tip', () => {
       render(<SelectCountry {...defaultProps} />);
 
-      expect(screen.getByText('language.create.country.helperText')).toBeInTheDocument();
+      expect(screen.getByText('Country name will be used to derive a BCP 47 compliant locale code for the language.')).toBeInTheDocument();
     });
 
     it('renders the autocomplete combobox', () => {

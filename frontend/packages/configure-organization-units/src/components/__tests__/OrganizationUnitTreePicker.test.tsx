@@ -76,18 +76,6 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
-// Mock translations — stable t function to avoid useCallback churn
-const translations: Record<string, string> = {
-  'organizationUnits:treePicker.empty': 'No organization units available',
-  'organizationUnits:listing.treeView.noChildren': 'No child organization units',
-  'organizationUnits:listing.treeView.loadMore': 'Load more',
-  'common:status.loading': 'Loading...',
-};
-const stableT = (key: string): string => translations[key] ?? key;
-const stableTranslation = {t: stableT};
-vi.mock('react-i18next', () => ({
-  useTranslation: () => stableTranslation,
-}));
 
 describe('OrganizationUnitTreePicker', () => {
   const mockOUData: OrganizationUnitListResponse = {

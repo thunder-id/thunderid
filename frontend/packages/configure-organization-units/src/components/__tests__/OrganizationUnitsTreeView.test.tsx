@@ -92,38 +92,6 @@ vi.mock('@/api/useDeleteOrganizationUnit', () => ({
   default: () => mockDeleteHook,
 }));
 
-// Mock translations — stable t function to avoid useCallback churn
-const translations: Record<string, string> = {
-  'organizationUnits:listing.error.title': 'Error loading organization units',
-  'organizationUnits:listing.error.unknown': 'An unknown error occurred',
-  'organizationUnits:listing.treeView.empty': 'No organization units found',
-  'organizationUnits:listing.treeView.noChildren': 'No child organization units',
-  'organizationUnits:listing.treeView.loadError': 'Failed to load child organization units',
-  'common:actions.view': 'View',
-  'common:actions.edit': 'Edit',
-  'common:actions.delete': 'Delete',
-  'organizationUnits:listing.treeView.addChild': 'Add child organization unit',
-  'organizationUnits:edit.general.dangerZone.delete.title': 'Delete Organization Unit',
-  'organizationUnits:edit.general.dangerZone.delete.message':
-    'Are you sure you want to delete this organization unit? This action cannot be undone.',
-  'organizationUnits:edit.general.dangerZone.delete.success': 'Organization unit deleted successfully',
-  'organizationUnits:edit.general.dangerZone.delete.error': 'Failed to delete organization unit',
-  'organizationUnits:delete.dialog.title': 'Delete Organization Unit',
-  'organizationUnits:delete.dialog.message':
-    'Are you sure you want to delete this organization unit? This action cannot be undone.',
-  'organizationUnits:delete.dialog.disclaimer': 'This action is permanent and cannot be undone.',
-  'organizationUnits:listing.addRootOrganizationUnit': 'Add Root Organization Unit',
-  'organizationUnits:listing.treeView.addChildOrganizationUnit': 'Add Engineering Unit',
-  'organizationUnits:listing.treeView.loadMore': 'Load more',
-  'common:actions.cancel': 'Cancel',
-  'common:status.loading': 'Loading...',
-  'common:status.deleting': 'Deleting...',
-};
-const stableT = (key: string): string => translations[key] ?? key;
-const stableTranslation = {t: stableT};
-vi.mock('react-i18next', () => ({
-  useTranslation: () => stableTranslation,
-}));
 
 describe('OrganizationUnitsTreeView', () => {
   const mockOUData: OrganizationUnitListResponse = {
@@ -166,7 +134,7 @@ describe('OrganizationUnitsTreeView', () => {
     renderWithProviders(<OrganizationUnitsTreeView />);
 
     await waitFor(() => {
-      expect(screen.getByText('Error loading organization units')).toBeInTheDocument();
+      expect(screen.getByText('Failed to load organization units')).toBeInTheDocument();
       expect(screen.getByText('Network error')).toBeInTheDocument();
     });
   });
@@ -181,7 +149,7 @@ describe('OrganizationUnitsTreeView', () => {
     renderWithProviders(<OrganizationUnitsTreeView />);
 
     await waitFor(() => {
-      expect(screen.getByText('Error loading organization units')).toBeInTheDocument();
+      expect(screen.getByText('Failed to load organization units')).toBeInTheDocument();
       expect(screen.getByText('An unknown error occurred')).toBeInTheDocument();
     });
   });
@@ -235,7 +203,7 @@ describe('OrganizationUnitsTreeView', () => {
       expect(screen.getByText('Root Organization')).toBeInTheDocument();
     });
 
-    expect(screen.getAllByLabelText('Add child organization unit')).toHaveLength(2);
+    expect(screen.getAllByLabelText('Add Child OU')).toHaveLength(2);
     expect(screen.getAllByLabelText('Edit')).toHaveLength(2);
     expect(screen.getAllByLabelText('Delete')).toHaveLength(2);
   });
@@ -247,7 +215,7 @@ describe('OrganizationUnitsTreeView', () => {
       expect(screen.getByText('Root Organization')).toBeInTheDocument();
     });
 
-    expect(screen.getAllByLabelText('Add child organization unit')).toHaveLength(2);
+    expect(screen.getAllByLabelText('Add Child OU')).toHaveLength(2);
     expect(screen.getAllByLabelText('Edit')).toHaveLength(2);
     expect(screen.getAllByLabelText('Delete')).toHaveLength(2);
   });
@@ -259,7 +227,7 @@ describe('OrganizationUnitsTreeView', () => {
       expect(screen.getByText('Root Organization')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getAllByLabelText('Add child organization unit')[0]);
+    fireEvent.click(screen.getAllByLabelText('Add Child OU')[0]);
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/organization-units/create', {
@@ -357,7 +325,7 @@ describe('OrganizationUnitsTreeView', () => {
     fireEvent.click(within(dialog).getByText('Delete'));
 
     await waitFor(() => {
-      expect(screen.getByText('Organization unit deleted successfully')).toBeInTheDocument();
+      expect(screen.getByText('Organization unit deleted successfully.')).toBeInTheDocument();
     });
   });
 
@@ -420,7 +388,7 @@ describe('OrganizationUnitsTreeView', () => {
       expect(screen.getByText('Root Organization')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getAllByLabelText('Add child organization unit')[0]);
+    fireEvent.click(screen.getAllByLabelText('Add Child OU')[0]);
 
     await waitFor(() => {
       expect(stableLogger.error).toHaveBeenCalledWith(
@@ -551,7 +519,7 @@ describe('OrganizationUnitsTreeView', () => {
     fireEvent.click(within(dialog3).getByText('Delete'));
 
     await waitFor(() => {
-      expect(screen.getByText('Organization unit deleted successfully')).toBeInTheDocument();
+      expect(screen.getByText('Organization unit deleted successfully.')).toBeInTheDocument();
     });
 
     // Close the snackbar via the Alert close button
@@ -562,7 +530,7 @@ describe('OrganizationUnitsTreeView', () => {
     }
 
     await waitFor(() => {
-      expect(screen.queryByText('Organization unit deleted successfully')).not.toBeInTheDocument();
+      expect(screen.queryByText('Organization unit deleted successfully.')).not.toBeInTheDocument();
     });
   });
 
@@ -626,7 +594,7 @@ describe('OrganizationUnitsTreeView', () => {
 
     // After expansion, the add child button should appear
     await waitFor(() => {
-      expect(screen.getByText('Add Engineering Unit')).toBeInTheDocument();
+      expect(screen.getByText('Add Child Organization Unit')).toBeInTheDocument();
     });
   });
 
@@ -653,10 +621,10 @@ describe('OrganizationUnitsTreeView', () => {
     fireEvent.click(expandIcons[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Add Engineering Unit')).toBeInTheDocument();
+      expect(screen.getByText('Add Child Organization Unit')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Add Engineering Unit'));
+    fireEvent.click(screen.getByText('Add Child Organization Unit'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/organization-units/create', {
@@ -687,7 +655,7 @@ describe('OrganizationUnitsTreeView', () => {
 
     // Even with no children, the add child button should appear
     await waitFor(() => {
-      expect(screen.getByText('Add Engineering Unit')).toBeInTheDocument();
+      expect(screen.getByText('Add Child Organization Unit')).toBeInTheDocument();
     });
   });
 
@@ -1081,12 +1049,12 @@ describe('OrganizationUnitsTreeView', () => {
     fireEvent.click(within(dialog).getByText('Delete'));
 
     await waitFor(() => {
-      expect(screen.getByText('Organization unit deleted successfully')).toBeInTheDocument();
+      expect(screen.getByText('Organization unit deleted successfully.')).toBeInTheDocument();
     });
 
     await waitFor(
       () => {
-        expect(screen.queryByText('Organization unit deleted successfully')).not.toBeInTheDocument();
+        expect(screen.queryByText('Organization unit deleted successfully.')).not.toBeInTheDocument();
       },
       {timeout: 7000},
     );
@@ -1113,7 +1081,7 @@ describe('OrganizationUnitsTreeView', () => {
     fireEvent.click(within(dialog).getByText('Delete'));
 
     await waitFor(() => {
-      expect(screen.getByText('Organization unit deleted successfully')).toBeInTheDocument();
+      expect(screen.getByText('Organization unit deleted successfully.')).toBeInTheDocument();
     });
 
     act(() => {
@@ -1121,7 +1089,7 @@ describe('OrganizationUnitsTreeView', () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByText('Organization unit deleted successfully')).not.toBeInTheDocument();
+      expect(screen.queryByText('Organization unit deleted successfully.')).not.toBeInTheDocument();
     });
   });
 });

@@ -22,12 +22,6 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {ApiUserType} from '../../../models/users';
 import ConfigureUserDetails, {type ConfigureUserDetailsProps} from '../ConfigureUserDetails';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
-
 const mockSchema: ApiUserType = {
   id: 'schema-1',
   name: 'Employee',
@@ -67,8 +61,8 @@ describe('ConfigureUserDetails', () => {
   it('renders the component with title and subtitle', () => {
     renderComponent();
 
-    expect(screen.getByText('users:createWizard.userDetails.title')).toBeInTheDocument();
-    expect(screen.getByText('users:createWizard.userDetails.subtitle')).toBeInTheDocument();
+    expect(screen.getByText('Enter user details')).toBeInTheDocument();
+    expect(screen.getByText('Fill in the required information for the new user.')).toBeInTheDocument();
   });
 
   it('renders the data-testid attribute', () => {

@@ -327,7 +327,7 @@ describe('EditSchemaSettings (agent-type)', () => {
 
     render(<EditSchemaSettings {...props} />);
 
-    const nameInput = screen.getByPlaceholderText(/e\.g\., email, age, address/i);
+    const nameInput = screen.getByPlaceholderText(/e\.g\., model, environment, team/i);
     await user.type(nameInput, 'X');
 
     expect(mockOnPropertiesChange).toHaveBeenCalledWith(
@@ -345,7 +345,7 @@ describe('EditSchemaSettings (agent-type)', () => {
 
     render(<EditSchemaSettings {...props} />);
 
-    const requiredCheckbox = screen.getByRole('checkbox', {name: /this field must be provided/i});
+    const requiredCheckbox = screen.getByRole('checkbox', {name: /Agents must provide a value for this field/i});
     await user.click(requiredCheckbox);
 
     expect(mockOnPropertiesChange).toHaveBeenCalledWith(
@@ -363,7 +363,7 @@ describe('EditSchemaSettings (agent-type)', () => {
 
     render(<EditSchemaSettings {...props} />);
 
-    const uniqueCheckbox = screen.getByRole('checkbox', {name: /each user must have a distinct value/i});
+    const uniqueCheckbox = screen.getByRole('checkbox', {name: /Each agent must have a distinct value for this field/i});
     await user.click(uniqueCheckbox);
 
     expect(mockOnPropertiesChange).toHaveBeenCalledWith(

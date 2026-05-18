@@ -20,14 +20,6 @@ import {render, screen, act, fireEvent} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach, afterEach} from 'vitest';
 import TranslationJsonEditor from '@/components/edit-translation/TranslationJsonEditor';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 // Monaco Editor is not available in jsdom; replace it with a plain textarea
 // that mirrors the same value/onChange contract.
 vi.mock('@monaco-editor/react', () => ({
@@ -89,7 +81,7 @@ describe('TranslationJsonEditor', () => {
         />,
       );
 
-      expect(screen.queryByText('editor.jsonInvalid')).not.toBeInTheDocument();
+      expect(screen.queryByText('Invalid JSON — fix errors before saving.')).not.toBeInTheDocument();
     });
   });
 
@@ -125,7 +117,7 @@ describe('TranslationJsonEditor', () => {
 
       changeEditor(screen.getByTestId('monaco-editor'), '{"key": "value"}');
 
-      expect(screen.queryByText('editor.jsonInvalid')).not.toBeInTheDocument();
+      expect(screen.queryByText('Invalid JSON — fix errors before saving.')).not.toBeInTheDocument();
     });
   });
 
@@ -143,7 +135,7 @@ describe('TranslationJsonEditor', () => {
 
       changeEditor(screen.getByTestId('monaco-editor'), '{not valid json');
 
-      expect(screen.getByText('editor.jsonInvalid')).toBeInTheDocument();
+      expect(screen.getByText('Invalid JSON — fix errors before saving.')).toBeInTheDocument();
     });
 
     it('does not call onChange while JSON is invalid', () => {
@@ -177,7 +169,7 @@ describe('TranslationJsonEditor', () => {
 
       changeEditor(screen.getByTestId('monaco-editor'), '');
 
-      expect(screen.queryByText('editor.jsonInvalid')).not.toBeInTheDocument();
+      expect(screen.queryByText('Invalid JSON — fix errors before saving.')).not.toBeInTheDocument();
     });
   });
 

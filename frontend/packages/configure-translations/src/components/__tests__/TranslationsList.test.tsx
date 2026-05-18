@@ -21,14 +21,6 @@ import {render, screen, fireEvent} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import TranslationsList from '@/components/TranslationsList';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 const mockNavigate = vi.fn();
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
@@ -152,7 +144,7 @@ describe('TranslationsList', () => {
     const user = userEvent.setup();
     render(<TranslationsList />);
 
-    const editButtons = screen.getAllByRole('button', {name: /common:actions.edit/i});
+    const editButtons = screen.getAllByRole('button', {name: /^edit$/i});
     await user.click(editButtons[0]);
 
     expect(mockNavigate).toHaveBeenCalledWith(expect.stringMatching(/\/translations\//));
@@ -162,7 +154,7 @@ describe('TranslationsList', () => {
     const user = userEvent.setup();
     render(<TranslationsList />);
 
-    const deleteButtons = screen.getAllByRole('button', {name: /common:actions.delete/i});
+    const deleteButtons = screen.getAllByRole('button', {name: /^delete$/i});
     await user.click(deleteButtons[0]);
 
     expect(screen.getByTestId('delete-dialog')).toBeInTheDocument();
@@ -174,7 +166,7 @@ describe('TranslationsList', () => {
     render(<TranslationsList />);
 
     // Open dialog
-    const deleteButtons = screen.getAllByRole('button', {name: /common:actions.delete/i});
+    const deleteButtons = screen.getAllByRole('button', {name: /^delete$/i});
     await user.click(deleteButtons[0]);
 
     expect(screen.getByTestId('delete-dialog')).toBeInTheDocument();

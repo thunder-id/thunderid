@@ -21,14 +21,6 @@ import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import TranslationsEditPage from '@/pages/TranslationsEditPage';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 const mockNavigate = vi.fn();
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
@@ -319,7 +311,7 @@ describe('TranslationsEditPage', () => {
       await user.click(screen.getByText('change field'));
       await user.click(screen.getByText('save'));
 
-      expect(screen.getByText('editor.jsonSaveSuccess')).toBeInTheDocument();
+      expect(screen.getByText('All translations saved.')).toBeInTheDocument();
     });
 
     it('clears dirty changes after a successful save', async () => {
@@ -340,7 +332,7 @@ describe('TranslationsEditPage', () => {
       await user.click(screen.getByText('change field'));
       await user.click(screen.getByText('save'));
 
-      expect(screen.getByText('editor.jsonSaveError')).toBeInTheDocument();
+      expect(screen.getByText('Failed to save some translations.')).toBeInTheDocument();
     });
   });
 

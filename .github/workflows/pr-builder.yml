@@ -363,13 +363,11 @@ jobs:
           cd frontend/apps/gate
           pnpm test:coverage
 
-      # TODO: Enable package tests in CI once the broken tests are fixed
-
-      # - name: 🧪 Run Packages Tests with Coverage
-      #   if: matrix.shard == 1
-      #   run: |
-      #     cd frontend/packages
-      #     pnpm test:coverage
+      - name: 🧪 Run Package Tests
+        if: matrix.shard == 1
+        run: |
+          cd frontend
+          pnpm --filter './packages/*' test
 
       # Strip branch data (BRDA/BRF/BRH) from frontend LCOV reports before uploading.
       # React Compiler (babel-plugin-react-compiler) generates phantom branch points in compiled

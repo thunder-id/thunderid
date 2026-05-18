@@ -68,32 +68,6 @@ vi.mock('@thunderid/utils', () => ({
   generateRandomHumanReadableIdentifiers: () => ['Suggested Name One', 'Suggested Name Two', 'Suggested Name Three'],
 }));
 
-// Mock translations
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const translations: Record<string, string> = {
-        'organizationUnits:create.title': 'Create Organization Unit',
-        'organizationUnits:create.heading': 'Create a new organization unit',
-        'organizationUnits:create.suggestions.label': 'Try these suggestions:',
-        'organizationUnits:create.error': 'Failed to create organization unit',
-        'organizationUnits:edit.general.name.label': 'Name',
-        'organizationUnits:edit.general.name.placeholder': 'Enter organization unit name',
-        'organizationUnits:edit.general.handle.label': 'Handle',
-        'organizationUnits:edit.general.handle.placeholder': 'Enter handle',
-        'organizationUnits:edit.general.handle.hint': 'A unique identifier for this organization unit',
-        'organizationUnits:edit.general.description.label': 'Description',
-        'organizationUnits:edit.general.description.placeholder': 'Enter description',
-        'organizationUnits:edit.general.parent.label': 'Parent Organization Unit',
-        'organizationUnits:edit.general.parent.hint': 'The parent organization unit for this new unit',
-        'organizationUnits:edit.general.ou.noParent.label': 'Root Organization Unit',
-        'common:actions.create': 'Create',
-        'common:status.saving': 'Creating...',
-      };
-      return translations[key] ?? key;
-    },
-  }),
-}));
 
 describe('CreateOrganizationUnitPage', () => {
   beforeEach(() => {
@@ -107,7 +81,7 @@ describe('CreateOrganizationUnitPage', () => {
     renderWithProviders(<CreateOrganizationUnitPage />);
 
     expect(screen.getByText('Create Organization Unit')).toBeInTheDocument();
-    expect(screen.getByText('Create a new organization unit')).toBeInTheDocument();
+    expect(screen.getByText("Let's set up your organization unit")).toBeInTheDocument();
   });
 
   it('should render name input field', () => {
@@ -565,6 +539,6 @@ describe('CreateOrganizationUnitPage', () => {
   it('should render suggestions label', () => {
     renderWithProviders(<CreateOrganizationUnitPage />);
 
-    expect(screen.getByText('Try these suggestions:')).toBeInTheDocument();
+    expect(screen.getByText('In a hurry? Pick a random name:')).toBeInTheDocument();
   });
 });

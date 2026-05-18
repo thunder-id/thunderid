@@ -23,14 +23,6 @@ import type {TranslationCreateContextType} from '@/contexts/TranslationCreate/Tr
 import {TranslationCreateFlowStep} from '@/models/translation-create-flow';
 import TranslationCreatePage from '@/pages/TranslationCreatePage';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 const mockNavigate = vi.fn();
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
@@ -148,7 +140,7 @@ describe('TranslationCreatePage', () => {
     it('renders the current step breadcrumb label', () => {
       render(<TranslationCreatePage />);
 
-      expect(screen.getByText('language.create.steps.country')).toBeInTheDocument();
+      expect(screen.getByText('Country')).toBeInTheDocument();
     });
 
     it('renders the SelectCountry step on mount', () => {
@@ -160,13 +152,13 @@ describe('TranslationCreatePage', () => {
     it('does not render the Back button on the first step', () => {
       render(<TranslationCreatePage />);
 
-      expect(screen.queryByText('common:actions.back')).not.toBeInTheDocument();
+      expect(screen.queryByText('Back')).not.toBeInTheDocument();
     });
 
     it('renders the Continue button on non-final steps', () => {
       render(<TranslationCreatePage />);
 
-      expect(screen.getByText('common:actions.continue')).toBeInTheDocument();
+      expect(screen.getByText('Continue')).toBeInTheDocument();
     });
 
     it('renders the Create button on the final step', () => {
@@ -177,7 +169,7 @@ describe('TranslationCreatePage', () => {
 
       render(<TranslationCreatePage />);
 
-      expect(screen.getByText('language.create.createButton')).toBeInTheDocument();
+      expect(screen.getByText('Create Language')).toBeInTheDocument();
     });
 
     it('renders the SelectLanguage step when currentStep is LANGUAGE', () => {
@@ -231,7 +223,7 @@ describe('TranslationCreatePage', () => {
     it('disables Continue when the current step is not ready', () => {
       render(<TranslationCreatePage />);
 
-      expect(screen.getByText('common:actions.continue').closest('button')).toBeDisabled();
+      expect(screen.getByText('Continue').closest('button')).toBeDisabled();
     });
 
     it('enables Continue after the step reports ready', async () => {
@@ -240,7 +232,7 @@ describe('TranslationCreatePage', () => {
 
       await user.click(screen.getByText('ready'));
 
-      expect(screen.getByText('common:actions.continue').closest('button')).not.toBeDisabled();
+      expect(screen.getByText('Continue').closest('button')).not.toBeDisabled();
     });
   });
 
@@ -256,7 +248,7 @@ describe('TranslationCreatePage', () => {
 
       // Mark step ready then advance
       await user.click(screen.getByText('ready'));
-      await user.click(screen.getByText('common:actions.continue'));
+      await user.click(screen.getByText('Continue'));
 
       expect(setCurrentStep).toHaveBeenCalledWith(TranslationCreateFlowStep.LANGUAGE);
     });
@@ -272,7 +264,7 @@ describe('TranslationCreatePage', () => {
       const user = userEvent.setup();
       render(<TranslationCreatePage />);
 
-      await user.click(screen.getByText('common:actions.back'));
+      await user.click(screen.getByText('Back'));
 
       expect(setCurrentStep).toHaveBeenCalledWith(TranslationCreateFlowStep.COUNTRY);
     });
@@ -298,7 +290,7 @@ describe('TranslationCreatePage', () => {
 
       render(<TranslationCreatePage />);
 
-      expect(screen.getByText('common:actions.continue').closest('button')).toBeDisabled();
+      expect(screen.getByText('Continue').closest('button')).toBeDisabled();
     });
 
     it('disables the close button while isCreating is true', () => {
@@ -331,7 +323,7 @@ describe('TranslationCreatePage', () => {
 
       // Mark step ready then advance
       await user.click(screen.getByText('ready'));
-      await user.click(screen.getByText('common:actions.continue'));
+      await user.click(screen.getByText('Continue'));
 
       expect(setLocaleCodeOverride).toHaveBeenCalledWith('fr-FR');
       expect(setCurrentStep).toHaveBeenCalledWith(TranslationCreateFlowStep.LOCALE_CODE);
@@ -364,7 +356,7 @@ describe('TranslationCreatePage', () => {
       const user = userEvent.setup();
       render(<TranslationCreatePage />);
 
-      await user.click(screen.getByText('language.create.createButton'));
+      await user.click(screen.getByText('Create Language'));
 
       expect(setIsCreating).toHaveBeenCalledWith(true);
       expect(mockRefetch).toHaveBeenCalled();
@@ -401,10 +393,10 @@ describe('TranslationCreatePage', () => {
       const user = userEvent.setup();
       render(<TranslationCreatePage />);
 
-      await user.click(screen.getByText('language.create.createButton'));
+      await user.click(screen.getByText('Create Language'));
 
       await vi.waitFor(() => {
-        expect(setError).toHaveBeenCalledWith('language.add.error');
+        expect(setError).toHaveBeenCalledWith('Failed to add language. Please try again.');
         expect(setIsCreating).toHaveBeenCalledWith(false);
       });
     });
@@ -435,10 +427,10 @@ describe('TranslationCreatePage', () => {
       const user = userEvent.setup();
       render(<TranslationCreatePage />);
 
-      await user.click(screen.getByText('language.create.createButton'));
+      await user.click(screen.getByText('Create Language'));
 
       await vi.waitFor(() => {
-        expect(setError).toHaveBeenCalledWith('language.add.error');
+        expect(setError).toHaveBeenCalledWith('Failed to add language. Please try again.');
         expect(setIsCreating).toHaveBeenCalledWith(false);
       });
     });
@@ -453,7 +445,7 @@ describe('TranslationCreatePage', () => {
       const user = userEvent.setup();
       render(<TranslationCreatePage />);
 
-      await user.click(screen.getByText('language.create.createButton'));
+      await user.click(screen.getByText('Create Language'));
 
       expect(mockRefetch).not.toHaveBeenCalled();
     });
@@ -473,7 +465,7 @@ describe('TranslationCreatePage', () => {
       render(<TranslationCreatePage />);
 
       // Click on the first breadcrumb (COUNTRY)
-      await user.click(screen.getByText('language.create.steps.country'));
+      await user.click(screen.getByText('Country'));
 
       expect(setCurrentStep).toHaveBeenCalledWith(TranslationCreateFlowStep.COUNTRY);
     });
