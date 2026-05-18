@@ -602,10 +602,10 @@ function build_sample_app() {
 
     cd "$REACT_SDK_SAMPLE_APP_DIR" || exit 1
     echo "Installing React SDK sample dependencies..."
-    npm ci
+    pnpm install
 
     echo "Building React SDK sample app..."
-    npm run build
+    pnpm run build
 
     cd - || exit 1
     echo "✅ React SDK sample app built successfully."
@@ -1302,6 +1302,7 @@ case "$1" in
         lint_sdks
         ;;
     build_samples)
+        build_sdks_js
         build_sample_app
         package_sample_app
         ;;

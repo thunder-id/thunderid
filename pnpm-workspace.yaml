@@ -4,6 +4,7 @@ packages:
   - frontend/packages/*
   - docs
   - sdks/**
+  - samples/apps/*
 
 allowBuilds:
   '@parcel/watcher': false
