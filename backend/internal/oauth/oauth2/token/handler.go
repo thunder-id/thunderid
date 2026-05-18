@@ -107,6 +107,8 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 			switch tokenError.Error {
 			case constants.ErrorServerError:
 				statusCode = http.StatusInternalServerError
+			case constants.ErrorInvalidClient:
+				statusCode = http.StatusUnauthorized
 			default:
 				statusCode = http.StatusBadRequest
 			}
