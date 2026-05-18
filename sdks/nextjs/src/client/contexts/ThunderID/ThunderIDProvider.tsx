@@ -35,6 +35,7 @@ import {
 } from '@thunderid/node';
 import {
   I18nProvider,
+  FlowMetaProvider,
   FlowProvider,
   UserProvider,
   ThemeProvider,
@@ -324,28 +325,30 @@ const ThunderIDClientProvider: FC<PropsWithChildren<ThunderIDClientProviderProps
   return (
     <ThunderIDContext.Provider value={contextValue}>
       <I18nProvider preferences={preferences?.i18n}>
-        <BrandingProvider brandingPreference={brandingPreference}>
-          <ThemeProvider
-            theme={preferences?.theme?.overrides}
-            mode={getActiveTheme(preferences?.theme?.mode as any)}
-            inheritFromBranding
-          >
-            <FlowProvider>
-              <UserProvider profile={userProfile} onUpdateProfile={handleProfileUpdate} updateProfile={updateProfile}>
-                <OrganizationProvider
-                  createOrganization={createOrganization}
-                  getAllOrganizations={getAllOrganizations}
-                  myOrganizations={myOrganizations}
-                  currentOrganization={currentOrganization}
-                  onOrganizationSwitch={switchOrganization as any}
-                  revalidateMyOrganizations={revalidateMyOrganizations as any}
-                >
-                  {children}
-                </OrganizationProvider>
-              </UserProvider>
-            </FlowProvider>
-          </ThemeProvider>
-        </BrandingProvider>
+        <FlowMetaProvider enabled={preferences?.resolveFromMeta !== false}>
+          <BrandingProvider brandingPreference={brandingPreference}>
+            <ThemeProvider
+              theme={preferences?.theme?.overrides}
+              mode={getActiveTheme(preferences?.theme?.mode as any)}
+              inheritFromBranding
+            >
+              <FlowProvider>
+                <UserProvider profile={userProfile} onUpdateProfile={handleProfileUpdate} updateProfile={updateProfile}>
+                  <OrganizationProvider
+                    createOrganization={createOrganization}
+                    getAllOrganizations={getAllOrganizations}
+                    myOrganizations={myOrganizations}
+                    currentOrganization={currentOrganization}
+                    onOrganizationSwitch={switchOrganization as any}
+                    revalidateMyOrganizations={revalidateMyOrganizations as any}
+                  >
+                    {children}
+                  </OrganizationProvider>
+                </UserProvider>
+              </FlowProvider>
+            </ThemeProvider>
+          </BrandingProvider>
+        </FlowMetaProvider>
       </I18nProvider>
     </ThunderIDContext.Provider>
   );

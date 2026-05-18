@@ -11,12 +11,110 @@
           "grantTypes": ["authorization_code", "refresh_token"],
           "responseTypes": ["code"],
           "redirectUris": ["http://localhost:3000"],
-          "pkceRequired": true,
-          "tokenEndpointAuthMethod": "client_secret_basic",
+          "pkceRequired": false,
+          "tokenEndpointAuthMethod": "client_secret_post",
           "publicClient": false
         }
       }
     ],
     "allowedUserTypes": []
+  },
+  "fieldConstraints": {
+    "oauth2": {
+      "publicClient": {
+        "readOnly": true,
+        "value": false
+      },
+      "pkceRequired": {
+        "readOnly": true,
+        "value": false
+      },
+      "tokenEndpointAuthMethod": {
+        "readOnly": true,
+        "value": "client_secret_post"
+      }
+    }
+  },
+  "integrationGuides": {
+    "INBUILT": {
+      "llm_prompt": {
+        "id": "llm-prompt",
+        "title": "Integrate with a Coding Agent Prompt",
+        "description": "Use AI to generate integration code for your Next.js application",
+        "type": "llm",
+        "icon": "sparkles",
+        "content": "# Integrate {{productName}} Authentication in Next.js Application\n\n## Context\nI have a Next.js application and I want to integrate {{productName}}'s authentication system using the @thunderid/nextjs SDK with {{productName}}-hosted login pages.\n\n## Requirements\n- Use @thunderid/nextjs SDK for authentication\n- Configure {{productName}}-hosted login pages\n- Implement sign-in and sign-out functionality using prebuilt components\n- Display signed-in user's profile information\n- Handle authentication state on the server side\n\n## Configuration\n- **Client ID**: {{clientId}}\n- **Client Secret**: {{clientSecret}}\n- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)\n- **SDK**: @thunderid/nextjs\n\n## IMPORTANT Configuration Rules\n- Use ThunderIDProvider from @thunderid/nextjs/server in layout.tsx\n- Store Client Secret in THUNDERID_CLIENT_SECRET env var (server-only, never expose to client)\n- Store Client ID in NEXT_PUBLIC_THUNDERID_CLIENT_ID env var\n- Store Base URL in NEXT_PUBLIC_THUNDERID_BASE_URL env var\n- Store after sign-in URL in NEXT_PUBLIC_THUNDERID_AFTER_SIGN_IN_URL env var\n\n## Implementation Steps\n1. Create a Next.js app: `npx create-next-app@latest nextjs-demo`\n2. Install @thunderid/nextjs: `npm install @thunderid/nextjs`\n3. Create .env.local with the configuration values\n4. Add middleware.ts at the project root for the middleware\n5. Wrap your app with <ThunderIDProvider /> in app/layout.tsx\n6. Add <SignInButton /> for signed-out users and <SignOutButton /> for signed-in users\n7. Use <SignedIn> and <SignedOut> components to conditionally render UI\n8. Run the development server: `NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev`\n\nPlease provide complete, working code with proper configuration for {{productName}} authentication using the @thunderid/nextjs SDK."
+      },
+      "manual_steps": [
+        {
+          "step": 1,
+          "title": "Create a Next.js app",
+          "description": "Run the following command to create a new Next.js app:",
+          "code": {
+            "language": "terminal",
+            "content": "npx create-next-app@latest nextjs-demo\ncd nextjs-demo"
+          }
+        },
+        {
+          "step": 2,
+          "title": "Install @thunderid/nextjs",
+          "description": "The ThunderID Next.js SDK provides server-side authentication for Next.js applications.",
+          "subDescription": "Run the following command to install the SDK:",
+          "code": {
+            "language": "terminal",
+            "content": "npm install @thunderid/nextjs"
+          }
+        },
+        {
+          "step": 3,
+          "title": "Configure environment variables",
+          "description": "Create a .env.local file in your project root with the following configuration:",
+          "code": {
+            "language": "bash",
+            "filename": ".env.local",
+            "content": "NEXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090\nNEXT_PUBLIC_THUNDERID_CLIENT_ID={{clientId}}\nNEXT_PUBLIC_THUNDERID_AFTER_SIGN_IN_URL=http://localhost:3000\nTHUNDERID_CLIENT_SECRET={{clientSecret}}"
+          }
+        },
+        {
+          "step": 4,
+          "title": "Add the middleware",
+          "description": "Create a middleware.ts file at the project root to handle OAuth callbacks:",
+          "code": {
+            "language": "typescript",
+            "filename": "middleware.ts",
+            "content": "import { thunderIDMiddleware } from '@thunderid/nextjs/middleware';\n\nexport const middleware = thunderIDMiddleware();\n\nexport const config = {\n  matcher: [\n    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',\n    '/(api|trpc)(.*)',\n  ],\n};"
+          }
+        },
+        {
+          "step": 5,
+          "title": "Add <ThunderIDProvider /> to your layout",
+          "description": "Wrap your application with the ThunderIDProvider in app/layout.tsx:",
+          "code": {
+            "language": "typescript",
+            "filename": "app/layout.tsx",
+            "content": "import { ThunderIDProvider } from '@thunderid/nextjs/server';\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang=\"en\">\n      <body>\n        <ThunderIDProvider>\n          {children}\n        </ThunderIDProvider>\n      </body>\n    </html>\n  );\n}"
+          }
+        },
+        {
+          "step": 6,
+          "title": "Add sign-in and sign-out buttons",
+          "description": "Use the prebuilt components in your page:",
+          "code": {
+            "language": "typescript",
+            "filename": "app/page.tsx",
+            "content": "import { SignedIn, SignedOut, SignInButton, SignOutButton, UserDropdown } from '@thunderid/nextjs';\n\nexport default function Home() {\n  return (\n    <main>\n      <SignedIn>\n        <UserDropdown />\n        <SignOutButton />\n      </SignedIn>\n      <SignedOut>\n        <SignInButton />\n      </SignedOut>\n    </main>\n  );\n}"
+          }
+        },
+        {
+          "step": 7,
+          "title": "Run the app",
+          "description": "Start your development server (NODE_TLS_REJECT_UNAUTHORIZED=0 disables TLS verification for the local Thunder instance):",
+          "code": {
+            "language": "terminal",
+            "content": "NODE_TLS_REJECT_UNAUTHORIZED=0 npm run dev"
+          }
+        }
+      ]
+    }
   }
 }

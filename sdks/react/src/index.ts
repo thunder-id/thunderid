@@ -43,6 +43,9 @@ export type {FlowStep, FlowMessage, FlowContextValue} from './contexts/Flow/Flow
 export {default as FlowProvider} from './contexts/Flow/FlowProvider';
 export type {FlowProviderProps} from './contexts/Flow/FlowProvider';
 
+export {default as FlowMetaProvider} from './contexts/FlowMeta/FlowMetaProvider';
+export type {FlowMetaProviderProps} from './contexts/FlowMeta/FlowMetaProvider';
+
 export {default as useFlow} from './contexts/Flow/useFlow';
 
 export {default as I18nContext} from './contexts/I18n/I18nContext';
