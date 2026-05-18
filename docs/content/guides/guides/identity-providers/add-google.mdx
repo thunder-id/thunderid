@@ -1,0 +1,108 @@
+---
+title: Add a Google Identity Provider
+sidebar_position: 2
+persona: iam
+description: Configure a Google identity provider to enable Sign in with Google for your applications.
+---
+
+# Add a Google Identity Provider
+
+This guide walks you through registering a Google identity provider (IdP) in <ProductName />. Once configured, you can add **Sign in with Google** to any application by including a Google social login executor in its authentication flow.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../getting-started/get-thunderid).
+- An access token with the `system` scope.
+- A Google account with access to [Google Cloud Console](https://console.cloud.google.com).
+
+## Step 1: Register an OAuth App in Google Cloud Console
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com) and sign in.
+2. Select or create a project.
+3. In the navigation menu, go to **APIs & Services** → **Credentials**.
+4. Click **Create Credentials** → **OAuth client ID**.
+5. Set **Application type** to **Web application**.
+6. Under **Authorized redirect URIs**, add the callback URL for your <ProductName /> deployment:
+
+   ```
+   https://<your-thunderid-host>/oauth2/callback
+   ```
+
+7. Click **Create**. Google displays your **Client ID** and **Client Secret**. Copy both values — you need them in the next step.
+
+## Step 2: Create the Google IdP
+
+Send a `POST` request to `/identity-providers` with your Google credentials:
+
+```bash
+curl -kL -X POST https://localhost:8090/identity-providers \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "Google",
+    "description": "Google social login",
+    "type": "GOOGLE",
+    "properties": [
+      { "name": "client_id", "value": "<google-client-id>", "isSecret": false },
+      { "name": "client_secret", "value": "<google-client-secret>", "isSecret": true },
+      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false }
+    ]
+  }'
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Google",
+  "description": "Google social login",
+  "type": "GOOGLE",
+  "properties": [
+    { "name": "client_id", "value": "<google-client-id>", "isSecret": false },
+    { "name": "client_secret", "value": "******", "isSecret": true },
+    { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
+    { "name": "authorization_endpoint", "value": "https://accounts.google.com/o/oauth2/v2/auth", "isSecret": false },
+    { "name": "token_endpoint", "value": "https://oauth2.googleapis.com/token", "isSecret": false },
+    { "name": "userinfo_endpoint", "value": "https://openidconnect.googleapis.com/v1/userinfo", "isSecret": false },
+    { "name": "jwks_endpoint", "value": "https://www.googleapis.com/oauth2/v3/certs", "isSecret": false }
+  ]
+}
+```
+
+<ProductName /> automatically populates the Google authorization, token, userinfo, and JWKS endpoints. You do not need to supply them.
+
+## Optional Properties
+
+You can include the following optional properties in the request `properties` array:
+
+| Property | Description |
+|----------|-------------|
+| `scopes` | Space-separated list of OAuth scopes to request. Defaults to `openid email profile` if not set. |
+| `prompt` | Controls the Google consent screen behavior. Common values: `consent`, `select_account`. |
+| `issuer` | The Google token issuer. Required when `token_exchange_enabled` is `true`. |
+| `token_exchange_enabled` | Set to `true` to enable token exchange. When enabled, `issuer` and the JWKS endpoint must be present. |
+
+Example with optional properties:
+
+```bash
+curl -kL -X POST https://localhost:8090/identity-providers \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "Google",
+    "type": "GOOGLE",
+    "properties": [
+      { "name": "client_id", "value": "<google-client-id>", "isSecret": false },
+      { "name": "client_secret", "value": "<google-client-secret>", "isSecret": true },
+      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
+      { "name": "scopes", "value": "openid email profile", "isSecret": false },
+      { "name": "prompt", "value": "select_account", "isSecret": false }
+    ]
+  }'
+```
+
+## Next Steps
+
+- [Connect an IdP to an Application](./connect-idp-to-application) — Add this Google IdP to an application's authentication flow.
+- [Manage Identity Providers](./manage-identity-providers) — Update or delete identity providers.

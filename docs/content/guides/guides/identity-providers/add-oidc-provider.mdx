@@ -1,0 +1,116 @@
+---
+title: Add an OIDC Identity Provider
+sidebar_position: 4
+persona: iam
+description: Configure a generic OpenID Connect identity provider for federated authentication.
+---
+
+# Add an OIDC Identity Provider
+
+This guide explains how to register a generic OpenID Connect (OIDC) identity provider (IdP) in <ProductName />. Use this type for any OIDC-compliant provider — for example, Microsoft Entra ID, Okta, or Auth0.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../getting-started/get-thunderid).
+- An access token with the `system` scope.
+- A client application registered in the external OIDC provider with a **Client ID**, **Client Secret**, and **redirect URI**.
+
+:::tip Finding endpoint URLs
+Most OIDC providers publish their endpoint URLs in a discovery document at:
+
+```
+https://<provider-domain>/.well-known/openid-configuration
+```
+
+Open this URL in a browser to find the `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`, `jwks_uri`, and `issuer` values.
+:::
+
+## Create the OIDC IdP
+
+Send a `POST` request to `/identity-providers` with your OIDC provider credentials and endpoints:
+
+```bash
+curl -kL -X POST https://localhost:8090/identity-providers \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "My OIDC Provider",
+    "description": "Corporate OIDC provider",
+    "type": "OIDC",
+    "properties": [
+      { "name": "client_id", "value": "<client-id>", "isSecret": false },
+      { "name": "client_secret", "value": "<client-secret>", "isSecret": true },
+      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
+      { "name": "authorization_endpoint", "value": "https://<provider>/oauth2/authorize", "isSecret": false },
+      { "name": "token_endpoint", "value": "https://<provider>/oauth2/token", "isSecret": false }
+    ]
+  }'
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "id": "770e8400-e29b-41d4-a716-446655440002",
+  "name": "My OIDC Provider",
+  "type": "OIDC",
+  "properties": [
+    { "name": "client_id", "value": "<client-id>", "isSecret": false },
+    { "name": "client_secret", "value": "******", "isSecret": true },
+    { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
+    { "name": "authorization_endpoint", "value": "https://<provider>/oauth2/authorize", "isSecret": false },
+    { "name": "token_endpoint", "value": "https://<provider>/oauth2/token", "isSecret": false }
+  ]
+}
+```
+
+## Required Properties
+
+| Property | Description |
+|----------|-------------|
+| `client_id` | The client ID issued by the OIDC provider. |
+| `client_secret` | The client secret issued by the OIDC provider. |
+| `redirect_uri` | The callback URL registered in the OIDC provider. |
+| `authorization_endpoint` | The provider's authorization endpoint URL. |
+| `token_endpoint` | The provider's token endpoint URL. |
+
+## Optional Properties
+
+| Property | Description |
+|----------|-------------|
+| `userinfo_endpoint` | The provider's userinfo endpoint URL. Used to fetch user profile claims. |
+| `jwks_endpoint` | The URL of the provider's JSON Web Key Set. Required when `token_exchange_enabled` is `true`. |
+| `issuer` | The provider's issuer identifier. Required when `token_exchange_enabled` is `true`. |
+| `scopes` | Space-separated list of OIDC scopes to request (for example, `openid email profile`). |
+| `logout_endpoint` | The provider's end-session endpoint. |
+| `prompt` | The `prompt` parameter to send in authorization requests (for example, `login`, `consent`). |
+| `token_exchange_enabled` | Set to `true` to enable token exchange with this provider. Requires `issuer` and `jwks_endpoint`. |
+
+Example with token exchange enabled:
+
+```bash
+curl -kL -X POST https://localhost:8090/identity-providers \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "My OIDC Provider",
+    "type": "OIDC",
+    "properties": [
+      { "name": "client_id", "value": "<client-id>", "isSecret": false },
+      { "name": "client_secret", "value": "<client-secret>", "isSecret": true },
+      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
+      { "name": "authorization_endpoint", "value": "https://<provider>/oauth2/authorize", "isSecret": false },
+      { "name": "token_endpoint", "value": "https://<provider>/oauth2/token", "isSecret": false },
+      { "name": "userinfo_endpoint", "value": "https://<provider>/userinfo", "isSecret": false },
+      { "name": "jwks_endpoint", "value": "https://<provider>/oauth2/v1/keys", "isSecret": false },
+      { "name": "issuer", "value": "https://<provider>", "isSecret": false },
+      { "name": "scopes", "value": "openid email profile", "isSecret": false },
+      { "name": "token_exchange_enabled", "value": "true", "isSecret": false }
+    ]
+  }'
+```
+
+## Next Steps
+
+- [Connect an IdP to an Application](./connect-idp-to-application) — Add this OIDC IdP to an application's authentication flow.
+- [Manage Identity Providers](./manage-identity-providers) — Update or delete identity providers.

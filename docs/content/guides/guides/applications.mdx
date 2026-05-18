@@ -162,9 +162,20 @@ Grant types control which OAuth 2.0 flows the application can use.
 | Grant Type | Description |
 |------------|-------------|
 | `authorization_code` | Standard redirect-based flow. Required for Browser Apps, Full-stack Apps, and Mobile Apps. |
-| `refresh_token` | Allows the application to get new access tokens without re-authenticating the user. |
+| `refresh_token` | Allows the application to get new access tokens without re-authenticating the user. Cannot be the sole grant type. |
 | `client_credentials` | Machine-to-machine flow. No user interaction. Used by Backend Services. |
-| `implicit` | Legacy browser-based flow. Not recommended for new applications. |
+| `urn:ietf:params:oauth:grant-type:token-exchange` | OAuth 2.0 Token Exchange ([RFC 8693](https://www.rfc-editor.org/rfc/rfc8693)). Allows trading one token for another — for example, exchanging an external IdP token for a <ProductName /> token. |
+
+### Token Endpoint Authentication Method
+
+Controls how the application authenticates at the `/oauth2/token` endpoint.
+
+| Method | Description | Use Case |
+|--------|-------------|----------|
+| `client_secret_basic` | Client credentials sent in the `Authorization` header (HTTP Basic). Default. | Full-stack Apps, Backend Services |
+| `client_secret_post` | Client credentials sent in the POST body. | Full-stack Apps, Backend Services that cannot set headers |
+| `private_key_jwt` | Client signs a JWT with its private key. Requires a certificate configured on the application. No client secret. | High-assurance confidential clients |
+| `none` | No client authentication. Public clients only. Must be combined with PKCE. | Browser Apps, Mobile Apps |
 
 ### PKCE
 
@@ -173,7 +184,7 @@ Proof Key for Code Exchange (PKCE) protects the authorization code from intercep
 | Setting | Description |
 |---------|-------------|
 | **PKCE Required** | When enabled, the application must include a `code_challenge` in every authorization request. |
-| **Public Client** | Marks the application as a public client. Public clients cannot store a client secret and must use PKCE. |
+| **Public Client** | Marks the application as a public client. Public clients cannot store a client secret and must use PKCE. Token endpoint auth method is automatically set to `none`. |
 
 ### Scopes
 
@@ -206,11 +217,18 @@ You can define custom scopes with custom claim mappings. See [Custom Scope-to-Cl
 |---------|-------------|
 | **Validity Period** | Lifetime of the ID token in seconds. Defaults to the deployment-level setting if not configured. |
 | **User Attributes** | User attributes to include in the ID token. Only attributes that are both listed here and covered by the requested scopes are included. |
+| **Response Type** | Format of the ID token: `JWT` (default, signed only), `JWE` (encrypted), or `NESTED_JWT` (signed then encrypted). |
+| **Encryption Algorithm** | Key-management algorithm for encryption. Required when Response Type is `JWE` or `NESTED_JWT`. Supported: `RSA-OAEP`, `RSA-OAEP-256`. Requires a `JWKS` or `JWKS_URI` certificate on the application. |
+| **Encryption Encoding** | Content-encryption algorithm. Required when Encryption Algorithm is set. Supported: `A128CBC-HS256`, `A256GCM`. |
 
-#### UserInfo Endpoint
+#### userinfo Endpoint
 
 | Setting | Description |
 |---------|-------------|
+| **Response Type** | Format of the userinfo response: `JSON` (default), `JWS` (signed), `JWE` (encrypted), or `NESTED_JWT` (signed then encrypted). |
+| **Signing Algorithm** | JWS algorithm when Response Type is `JWS` or `NESTED_JWT`. Supported: `RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA`. Requires a certificate on the application. |
+| **Encryption Algorithm** | Key-management algorithm when Response Type is `JWE` or `NESTED_JWT`. Supported: `RSA-OAEP`, `RSA-OAEP-256`. Requires a `JWKS` or `JWKS_URI` certificate. |
+| **Encryption Encoding** | Content-encryption algorithm. Required when Encryption Algorithm is set. Supported: `A128CBC-HS256`, `A256GCM`. |
 | **User Attributes** | Attributes returned by the `/userinfo` endpoint. If not configured, falls back to the ID token attribute list. |
 
 
@@ -229,14 +247,24 @@ Example:
 
 In this example, requesting the `employee` scope returns `emp_id` and `department` in the token. This overrides the default OIDC `profile` scope mapping.
 
+### ACR Values
+
+Authentication Context Class Reference (ACR) values let you specify the authentication strength required for sign-in. You can configure default ACR values for an application — these are applied when the authorization request does not include an `acr_values` parameter.
+
+ACR values must map to AMR (Authentication Method Reference) values defined in the deployment configuration.
+
 ### Certificate Configuration
 
-For applications that sign JWT assertions or use mutual TLS, you can attach a certificate.
+For applications that use `private_key_jwt` token endpoint auth, sign JWT assertions, or require encrypted ID tokens or userinfo responses, you can attach a certificate.
 
 | Certificate Type | Description |
 |-----------------|-------------|
 | `JWKS` | Provide the JSON Web Key Set (JWKS) inline. |
-| `JWKS_URI` | Provide the URL of the application's JWKS endpoint (for example, `https://yourapp.example.com/.well-known/jwks`). <ProductName /> fetches the public keys from this URL to verify signed requests. |
+| `JWKS_URI` | Provide the URL of the application's JWKS endpoint (for example, `https://yourapp.example.com/.well-known/jwks`). <ProductName /> fetches the public keys from this URL. Must use HTTPS. |
+
+:::note
+Encrypted ID tokens and encrypted userinfo responses both require a `JWKS` or `JWKS_URI` certificate on the application. The `private_key_jwt` token endpoint auth method also requires a certificate and cannot be combined with a client secret.
+:::
 
 ## Update an Application
 
@@ -258,4 +286,6 @@ Deleting an application is permanent. Any client using the application's Client 
 ## Next Steps
 
 - [Flows](/docs/next/guides/guides/flows/what-is-flows) — Build and assign custom authentication and registration flows
+- [Identity Providers](/docs/next/guides/guides/identity-providers/overview) — Connect external identity providers to enable social login
+- [Connect an IdP to an Application](/docs/next/guides/guides/identity-providers/connect-idp-to-application) — Wire a configured IdP into an application's sign-in flow
 - [React Quickstart](/docs/next/guides/quick-start/connect-your-application/react) — Integrate <ProductName /> with a React single-page application

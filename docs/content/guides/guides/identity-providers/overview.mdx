@@ -1,0 +1,53 @@
+---
+title: What are Identity Providers?
+sidebar_position: 0
+persona: iam
+description: Connect external identity providers to ThunderID to enable social login and federated authentication for your applications.
+---
+
+# Identity Providers
+
+An identity provider (IdP) in <ProductName /> represents an external system that authenticates users on your behalf. When you integrate an IdP, users can sign in to your applications using their existing accounts with that provider — for example, their Google or GitHub account.
+
+<ProductName /> supports four IdP types.
+
+| Type | Use Case |
+|------|----------|
+| **Google** | Sign in with Google accounts. Endpoints are pre-configured. Requires only your Google OAuth client credentials. |
+| **GitHub** | Sign in with GitHub accounts. Endpoints are pre-configured. Requires only your GitHub OAuth app credentials. |
+| **OIDC** | Connect any OpenID Connect-compliant provider (Microsoft Entra, Okta, Auth0, and others). You supply the endpoints. |
+| **OAuth** | Connect any OAuth 2.0 provider that does not support OIDC discovery. You supply all endpoint URLs. |
+
+:::note
+Identity provider management through the <ProductName /> Console is not yet available. Use the Identity Provider REST API to create and manage identity providers.
+:::
+
+## How IdPs Connect to Applications
+
+Applications in <ProductName /> do not reference IdPs directly. The connection runs through authentication flows:
+
+1. You create an IdP using the API and configure its credentials.
+2. You add a social login executor to an authentication flow and configure it with the IdP.
+3. You assign that flow to your application.
+
+When a user signs in to the application, <ProductName /> runs the assigned flow, which triggers the IdP's authorization redirect.
+
+See [Connect an IdP to an Application](./connect-idp-to-application) for the full walkthrough.
+
+## Set Up an Identity Provider
+
+Choose the guide for your provider type:
+
+- [Add a Google Identity Provider](./add-google)
+- [Add a GitHub Identity Provider](./add-github)
+- [Add an OIDC Identity Provider](./add-oidc-provider)
+- [Add an OAuth 2.0 Identity Provider](./add-oauth-provider)
+
+## Manage Identity Providers
+
+- [Manage Identity Providers](./manage-identity-providers) — Create, update, and delete identity providers using the API.
+
+## Next Steps
+
+- [Connect an IdP to an Application](./connect-idp-to-application) — Wire a configured IdP into an application's sign-in flow.
+- [Build a Sign-In Flow](../flows/build-a-flow) — Learn how to customize authentication flows in the Flow Designer.

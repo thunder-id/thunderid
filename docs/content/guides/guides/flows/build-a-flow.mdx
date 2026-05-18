@@ -110,10 +110,15 @@ For **Recovery Flow**, toggle the switch to enable password recovery before sele
 <details>
   <summary>Add social login</summary>
 
-  1. Configure a social identity provider first — go to **Integrations** → **Identity Providers** and add Google, GitHub, or another provider.
-  2. In the Flow Designer, add a **Social Login** executor from the left panel.
-  3. Wire it in parallel with or as an alternative to the **Identifier + Password** executor.
-  4. Save.
+  1. Configure a social identity provider first using the Identity Provider API. See [Identity Providers](../identity-providers/overview) for setup guides.
+  2. In the Flow Designer, locate the social login executor for your provider in the left panel under **Widgets** (**Continue with Google**, **Continue with GitHub**, or the **OAuth** or **OIDC** executor for custom providers).
+  3. Click **+** to add it to the canvas and open its configuration panel.
+  4. In the **Connection** dropdown, select the identity provider by the name you gave it when creating it.
+  5. Wire the executor in parallel with the **Identifier + Password** executor (both connected from the **Sign In** view, both success paths merging into **Auth Assertion Generator**), or as the sole sign-in method.
+  6. Connect the failure path back to the **Sign In** view.
+  7. Save the flow and assign it to your application.
+
+  For the complete walkthrough, see [Connect an IdP to an Application](../identity-providers/connect-idp-to-application).
 
 </details>
 

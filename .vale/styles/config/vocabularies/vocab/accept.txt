@@ -70,3 +70,6 @@ BCP
 Memorystore
 [Uu]pdatedAt
 [Cc]reatedAt
+Okta
+[Ww]alkthrough
+[Uu]serinfo

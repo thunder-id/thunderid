@@ -1,0 +1,107 @@
+---
+title: Add a GitHub Identity Provider
+sidebar_position: 3
+persona: iam
+description: Configure a GitHub identity provider to enable Sign in with GitHub for your applications.
+---
+
+# Add a GitHub Identity Provider
+
+This guide walks you through registering a GitHub identity provider (IdP) in <ProductName />. Once configured, you can add **Sign in with GitHub** to any application by including a GitHub social login executor in its authentication flow.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../getting-started/get-thunderid).
+- An access token with the `system` scope.
+- A GitHub account.
+
+## Step 1: Register an OAuth App in GitHub
+
+1. Sign in to [GitHub](https://github.com) and go to **Settings** → **Developer settings** → **OAuth Apps**.
+2. Click **New OAuth App**.
+3. Fill in the required fields:
+   - **Application name** — A name for your OAuth app.
+   - **Homepage URL** — The URL of your application.
+   - **Authorization callback URL** — The callback URL for your <ProductName /> deployment:
+
+     ```
+     https://<your-thunderid-host>/oauth2/callback
+     ```
+
+4. Click **Register application**.
+5. On the app page, copy the **Client ID**.
+6. Click **Generate a new client secret** and copy the **Client Secret**. GitHub shows it only once.
+
+## Step 2: Create the GitHub IdP
+
+Send a `POST` request to `/identity-providers` with your GitHub credentials:
+
+```bash
+curl -kL -X POST https://localhost:8090/identity-providers \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "GitHub",
+    "description": "GitHub social login",
+    "type": "GITHUB",
+    "properties": [
+      { "name": "client_id", "value": "<github-client-id>", "isSecret": false },
+      { "name": "client_secret", "value": "<github-client-secret>", "isSecret": true },
+      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false }
+    ]
+  }'
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "id": "660e8400-e29b-41d4-a716-446655440001",
+  "name": "GitHub",
+  "description": "GitHub social login",
+  "type": "GITHUB",
+  "properties": [
+    { "name": "client_id", "value": "<github-client-id>", "isSecret": false },
+    { "name": "client_secret", "value": "******", "isSecret": true },
+    { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
+    { "name": "authorization_endpoint", "value": "https://github.com/login/oauth/authorize", "isSecret": false },
+    { "name": "token_endpoint", "value": "https://github.com/login/oauth/access_token", "isSecret": false },
+    { "name": "userinfo_endpoint", "value": "https://api.github.com/user", "isSecret": false },
+    { "name": "user_email_endpoint", "value": "https://api.github.com/user/emails", "isSecret": false }
+  ]
+}
+```
+
+<ProductName /> automatically populates the GitHub authorization, token, userinfo, and user email endpoints. You do not need to supply them.
+
+## Optional Properties
+
+You can include the following optional properties in the request `properties` array:
+
+| Property | Description |
+|----------|-------------|
+| `scopes` | Space-separated list of OAuth scopes to request. Include `user:email` to ensure the user's email address is accessible. |
+| `prompt` | Controls GitHub's consent screen behavior. |
+
+Example with optional properties:
+
+```bash
+curl -kL -X POST https://localhost:8090/identity-providers \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "name": "GitHub",
+    "type": "GITHUB",
+    "properties": [
+      { "name": "client_id", "value": "<github-client-id>", "isSecret": false },
+      { "name": "client_secret", "value": "<github-client-secret>", "isSecret": true },
+      { "name": "redirect_uri", "value": "https://<your-thunderid-host>/oauth2/callback", "isSecret": false },
+      { "name": "scopes", "value": "user:email", "isSecret": false }
+    ]
+  }'
+```
+
+## Next Steps
+
+- [Connect an IdP to an Application](./connect-idp-to-application) — Add this GitHub IdP to an application's authentication flow.
+- [Manage Identity Providers](./manage-identity-providers) — Update or delete identity providers.

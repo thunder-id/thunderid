@@ -1,0 +1,87 @@
+---
+title: Connect an IdP to an Application
+sidebar_position: 6
+persona: iam
+description: Wire a configured identity provider into an application's authentication flow to enable social login.
+---
+
+# Connect an IdP to an Application
+
+This guide explains how to enable social login for an application by connecting a configured identity provider (IdP) through an authentication flow.
+
+## How It Works
+
+Applications in <ProductName /> do not reference IdPs directly. The connection runs through authentication flows:
+
+1. A configured IdP holds the credentials and endpoint URLs for the external provider.
+2. An authentication flow contains a social login executor that references that IdP.
+3. The application runs that flow during sign-in, which triggers the IdP's authorization redirect.
+
+## Prerequisites
+
+- You have created an identity provider using the API. See:
+  - [Add a Google Identity Provider](./add-google)
+  - [Add a GitHub Identity Provider](./add-github)
+  - [Add an OIDC Identity Provider](./add-oidc-provider)
+  - [Add an OAuth 2.0 Identity Provider](./add-oauth-provider)
+- You have created an application. See [Manage Applications](../applications/manage-applications).
+
+<Stepper stepNode="h2" as="h2">
+
+## Step 1: Open the Flow Designer
+
+1. Sign in to the <ProductName /> Console.
+2. Navigate to **Flows**.
+3. Open the authentication flow assigned to your application, or click **+ Create New Flow** to create a new one.
+
+## Step 2: Add a Social Login Executor
+
+1. In the left panel under **Widgets**, locate the social login executor for your provider:
+   - **Continue with Google** — for Google IdPs
+   - **Continue with GitHub** — for GitHub IdPs
+   - **OAuth** executor — for OAuth 2.0 IdPs
+   - **OIDC** executor — for OIDC IdPs
+2. Click **+** next to the executor to add it to the canvas.
+3. Click the executor node to open its configuration panel.
+4. In the **Connection** dropdown, select the identity provider by the name you gave it when creating it (for example, `Google` or `My OIDC Provider`).
+
+:::tip Auto-assignment
+If you have exactly one IdP of the matching type configured, <ProductName /> selects it automatically. You do not need to choose from the dropdown.
+:::
+
+## Step 3: Wire the Executor Into the Flow
+
+Connect the social login executor to the flow:
+
+- To offer social login **alongside password**: connect the **Sign In** view node to both the **Identifier + Password** executor and the social login executor. Merge both success paths into the **Auth Assertion Generator** executor.
+- To use social login **as the only sign-in method**: connect the social login executor directly between the **Sign In** view and the **Auth Assertion Generator**.
+
+:::note
+Every executor has a **red (failure) output**. Connect failure paths back to the **Sign In** view so users see an error message and can retry. Leaving a failure path unconnected stops the flow with an error.
+:::
+
+## Step 4: Save the Flow
+
+Click **Save** in the top-right corner.
+
+## Step 5: Assign the Flow to Your Application
+
+1. Navigate to **Applications** and open the application you want to configure.
+2. Open the **Flows** tab.
+3. Under **Authentication Flow**, select the flow you just saved from the dropdown.
+4. Click **Save**.
+
+## Step 6: Verify the Integration
+
+1. Start a sign-in request from your application.
+2. On the sign-in page, confirm the social login button for your provider appears.
+3. Click the button and complete the authorization flow with the external provider.
+4. Confirm you are redirected back to your application and authenticated successfully.
+
+</Stepper>
+
+## Next Steps
+
+- [Application Settings](../applications/application-settings) — Configure tokens, flows, and consent for your application.
+- [Build a Sign-In Flow](../flows/build-a-flow) — Learn more about customizing authentication flows.
+- [Manage Identity Providers](./manage-identity-providers) — Update or remove identity providers.
