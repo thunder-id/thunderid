@@ -57,6 +57,45 @@ spec:
             dbStorageSize:
               type: string
               default: "1Gi"
+        # Trusted issuer (federated-authentication) configuration.
+        # Leaving issuer empty keeps the feature disabled. When issuer is set,
+        # jwks_url and audience become required and the JWKS URL must use https
+        # (http is only allowed for localhost). See server.security.trusted_issuer
+        # in the generated deployment.yaml.
+        trustedIssuer:
+          type: object
+          properties:
+            issuer:
+              type: string
+              default: ""
+            jwksUrl:
+              type: string
+              default: ""
+            audience:
+              type: string
+              default: ""
+            discoveryUrl:
+              type: string
+              default: ""
+              description: "OIDC discovery base URL the console uses to redirect login to the trusted issuer. Falls back to `issuer` when empty — set this when `issuer` is a literal iss claim (e.g. `platform-idp`) rather than a URL."
+            consoleClientId:
+              type: string
+              default: ""
+              description: "OAuth client_id the console uses when redirecting login to the trusted issuer. Falls back to `audience` when empty — set this when the audience differs from the console's client_id (e.g. aud=tenant-public-url, client_id=FEDERATED_CONSOLE-<env>)."
+            caBundle:
+              type: string
+              default: ""
+              description: "PEM-encoded CA certificate(s) Thunder must trust to verify the jwksUrl TLS chain. Mounted into /etc/ssl/certs so Go's default cert loader picks it up; leave empty when jwksUrl's server presents a publicly-trusted cert."
+            requiredClaims:
+              type: array
+              default: []
+              items:
+                type: object
+                properties:
+                  claim:
+                    type: string
+                  value:
+                    type: string
 
   # ─── EnvironmentConfigs (infra + per-environment config set via ReleaseBinding) ─
   environmentConfigs:
@@ -71,6 +110,16 @@ spec:
           enum: [external, internal]
           default: "external"
         serverPublicUrl:
+          type: string
+          default: ""
+        # Optional external hostname for the tenant's HTTPRoute. When non-empty,
+        # the HTTPRoute listens on this host and serverPublicUrl is expected to
+        # resolve to it. When empty, the HTTPRoute falls back to the generated
+        # "<env>-<component>-<namespace>.<gateway-host>" pattern. Set by the
+        # thunder-cloud operator from ThunderInstance.spec.networking.publicHost
+        # so the console's own config.js (serverPublicUrl) and the route on the
+        # gateway stay in sync.
+        publicHost:
           type: string
           default: ""
         gateClientHostname:
@@ -122,6 +171,23 @@ spec:
             spec:
               restartPolicy: OnFailure
               initContainers:
+                # Thunder image runs as UID/GID 10001 (Dockerfile `USER thunder`).
+                # Pod-level securityContext.fsGroup would normally handle PVC
+                # ownership, but the OpenChoreo renderer strips pod-level
+                # securityContext. Workaround: a first initContainer that
+                # chowns the PVC as root (container-level runAsUser: 0).
+                # Ownership persists on the PVC so the main Deployment pod
+                # (also UID 10001) can mount rw without a second chown.
+                - name: fix-perms
+                  image: "${parameters.image}"
+                  imagePullPolicy: "${parameters.runtime.imagePullPolicy}"
+                  command: ['sh', '-c', 'chown -R 10001:10001 /data']
+                  securityContext:
+                    runAsUser: 0
+                    runAsGroup: 0
+                  volumeMounts:
+                    - name: sqlite-data
+                      mountPath: /data
                 - name: init-database
                   image: "${parameters.image}"
                   imagePullPolicy: "${parameters.runtime.imagePullPolicy}"
@@ -177,6 +243,12 @@ spec:
               public_url: "${environmentConfigs.serverPublicUrl}"
               port: ${workload.endpoints["api"].port}
               http_only: true
+              security:
+                trusted_issuer:
+                  issuer: "${parameters.trustedIssuer.issuer}"
+                  jwks_url: "${parameters.trustedIssuer.jwksUrl}"
+                  audience: "${parameters.trustedIssuer.audience}"
+                  required_claims: ${parameters.trustedIssuer.requiredClaims.map(c, {"claim": c.claim, "value": c.value})}
 
             gate_client:
               hostname: "${environmentConfigs.gateClientHostname}"
@@ -243,6 +315,12 @@ spec:
               public_url: "${environmentConfigs.serverPublicUrl}"
               port: ${workload.endpoints["api"].port}
               http_only: true
+              security:
+                trusted_issuer:
+                  issuer: "${parameters.trustedIssuer.issuer}"
+                  jwks_url: "${parameters.trustedIssuer.jwksUrl}"
+                  audience: "${parameters.trustedIssuer.audience}"
+                  required_claims: ${parameters.trustedIssuer.requiredClaims.map(c, {"claim": c.claim, "value": c.value})}
 
             gate_client:
               hostname: "${environmentConfigs.gateClientHostname}"
@@ -335,6 +413,11 @@ spec:
           name: "${metadata.componentName}-console-config"
           namespace: "${metadata.namespace}"
         data:
+          # trusted_issuer tells the console to authenticate against an external
+          # issuer (typically a CP Thunder) instead of its own backend. Emitted
+          # only when parameters.trustedIssuer.issuer is set. hostname/port/
+          # http_only are required by ConfigProvider's type but ignored at
+          # runtime when public_url is set, so we emit sentinels.
           config.js: |
             window.__THUNDERID_RUNTIME_CONFIG__ = {
               client: {
@@ -345,6 +428,7 @@ spec:
               server: {
                 public_url: "${environmentConfigs.serverPublicUrl}",
               },
+              ${has(parameters.trustedIssuer) && parameters.trustedIssuer.issuer != "" ? 'trusted_issuer: {hostname: "", port: 0, http_only: false, public_url: "' + (has(parameters.trustedIssuer.discoveryUrl) && parameters.trustedIssuer.discoveryUrl != "" ? parameters.trustedIssuer.discoveryUrl : parameters.trustedIssuer.issuer) + '", client_id: "' + (has(parameters.trustedIssuer.consoleClientId) && parameters.trustedIssuer.consoleClientId != "" ? parameters.trustedIssuer.consoleClientId : parameters.trustedIssuer.audience) + '", scopes: ["openid","profile","email","group","system","system:user","system:group","system:ou:view","system:userschema:view"]},' : ''}
             };
 
     - id: file-config
@@ -359,6 +443,21 @@ spec:
         data:
           ${config.name}: |
             ${config.value}
+
+    # ConfigMap carrying the PEM bundle Thunder trusts when the trusted-issuer
+    # JWKS URL uses TLS. Always rendered; data is empty when caBundle is blank,
+    # and the mount below resolves to a zero-byte file that Go's cert loader
+    # silently ignores.
+    - id: trust-ca
+      template:
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: "${metadata.componentName}-trust-ca"
+          namespace: "${metadata.namespace}"
+        data:
+          ca.crt: |
+            ${parameters.trustedIssuer.caBundle}
 
     - id: deployment
       template:
@@ -377,6 +476,10 @@ spec:
               labels:
                 app: "${metadata.componentName}"
             spec:
+              # Note: pod-level securityContext is stripped by the OpenChoreo
+              # renderer. The setup Job's fix-perms initContainer chowns the
+              # PVC to 10001:10001 before this pod ever mounts it, so the
+              # main thunder container (image runs as UID 10001) has rw.
               initContainers:
                 - name: wait-for-setup
                   image: "${parameters.image}"
@@ -411,17 +514,19 @@ spec:
                       memory: "${environmentConfigs.resourceLimitsMemory}"
                   volumeMounts: |
                     ${[
-                      {"name": "thunderid-config", "mountPath": "/opt/thunderid/repository/conf/deployment.yaml", "subPath": "deployment.yaml"},
-                      {"name": "gate-config", "mountPath": "/opt/thunderid/apps/gate/config.js", "subPath": "config.js"},
-                      {"name": "console-config", "mountPath": "/opt/thunderid/apps/console/config.js", "subPath": "config.js"},
-                      {"name": "sqlite-data", "mountPath": "/opt/thunderid/repository/database"}
+                      {"name": "thunder-config", "mountPath": "/opt/thunder/repository/conf/deployment.yaml", "subPath": "deployment.yaml"},
+                      {"name": "gate-config", "mountPath": "/opt/thunder/apps/gate/config.js", "subPath": "config.js"},
+                      {"name": "console-config", "mountPath": "/opt/thunder/apps/console/config.js", "subPath": "config.js"},
+                      {"name": "sqlite-data", "mountPath": "/opt/thunder/repository/database"},
+                      {"name": "trust-ca", "mountPath": "/etc/ssl/certs/thunder-cp-ca.crt", "subPath": "ca.crt"}
                     ] + configurations.toContainerVolumeMounts().map(m, {"name": m.name, "mountPath": m.mountPath, "subPath": m.subPath})}
               volumes: |
                 ${[
                   {"name": "thunderid-config", "configMap": {"name": metadata.componentName + "-config"}},
                   {"name": "gate-config", "configMap": {"name": metadata.componentName + "-gate-config"}},
                   {"name": "console-config", "configMap": {"name": metadata.componentName + "-console-config"}},
-                  {"name": "sqlite-data", "persistentVolumeClaim": {"claimName": metadata.componentName + "-sqlite"}}
+                  {"name": "sqlite-data", "persistentVolumeClaim": {"claimName": metadata.componentName + "-sqlite"}},
+                  {"name": "trust-ca", "configMap": {"name": metadata.componentName + "-trust-ca"}}
                 ] + configurations.toVolumes().map(v, {"name": v.name, "configMap": {"name": v.configMap.name}})}
 
     - id: service
@@ -456,10 +561,15 @@ spec:
           parentRefs:
             - name: ${gateway.ingress.external.name}
               namespace: ${gateway.ingress.external.namespace}
+          # When publicHost is set on the ReleaseBinding, use it verbatim so the
+          # route matches what the tenant's own server.public_url advertises.
+          # Otherwise fall back to the deterministic gateway-derived hostname.
           hostnames: |
-            ${[gateway.ingress.external.?http, gateway.ingress.external.?https]
-              .filter(g, g.hasValue()).map(g, g.value().host).distinct()
-              .map(h, metadata.environmentName + "-" + metadata.componentName + "-" + metadata.componentNamespace + "." + h)}
+            ${environmentConfigs.publicHost != ""
+              ? [environmentConfigs.publicHost]
+              : [gateway.ingress.external.?http, gateway.ingress.external.?https]
+                  .filter(g, g.hasValue()).map(g, g.value().host).distinct()
+                  .map(h, metadata.environmentName + "-" + metadata.componentName + "-" + metadata.componentNamespace + "." + h)}
           rules:
             - matches:
                 - path:

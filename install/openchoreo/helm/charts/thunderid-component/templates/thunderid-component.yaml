@@ -40,6 +40,17 @@ spec:
         scopes: {{ .Values.console.scopes | quote }}
       dbType: {{ .Values.database.type | quote }}
       dbStorageSize: {{ .Values.database.storageSize | default "1Gi" | quote }}
+    # Always emitted. CCT's CEL expressions reference parameters.trustedIssuer.*
+    # unconditionally; omitting the key causes render failure even when
+    # federation is disabled.
+    trustedIssuer:
+      issuer: {{ .Values.trustedIssuer.issuer | default "" | quote }}
+      jwksUrl: {{ .Values.trustedIssuer.jwksUrl | default "" | quote }}
+      audience: {{ .Values.trustedIssuer.audience | default "" | quote }}
+      discoveryUrl: {{ .Values.trustedIssuer.discoveryUrl | default "" | quote }}
+      consoleClientId: {{ .Values.trustedIssuer.consoleClientId | default "" | quote }}
+      caBundle: {{ .Values.trustedIssuer.caBundle | default "" | quote }}
+      requiredClaims: {{ .Values.trustedIssuer.requiredClaims | default list | toJson }}
 
 ---
 apiVersion: openchoreo.dev/v1alpha1

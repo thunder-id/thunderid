@@ -102,6 +102,25 @@ cors:
     - "https://gate.your-domain.com"
     - "https://localhost:3000"
 
+# Trusted issuer (federated authentication).
+# Leaving issuer empty keeps the feature disabled. The block is always emitted
+# into Component.parameters and ComponentRelease.componentProfile.parameters so
+# the ClusterComponentType's CEL expressions (`parameters.trustedIssuer.*`)
+# resolve cleanly; they assume the key exists even when the feature is off.
+trustedIssuer:
+  issuer: ""
+  jwksUrl: ""
+  audience: ""
+  # Optional console-side overrides. Leave empty to reuse issuer/audience (the
+  # operator convention where iss is a URL and aud equals the console client_id).
+  # Set discoveryUrl when issuer is a literal iss claim (e.g. "platform-idp")
+  # rather than a URL; set consoleClientId when aud differs from the console's
+  # OAuth client_id.
+  discoveryUrl: ""
+  consoleClientId: ""
+  caBundle: ""
+  requiredClaims: []
+
 # ── Gate and Console ──────────────────────────────────────────────────────────
 # Gate is the ThunderID API gateway frontend.
 gate:
