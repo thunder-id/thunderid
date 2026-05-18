@@ -21,6 +21,14 @@
 # Dot-source this file at the beginning of each bootstrap script
 
 $PRODUCT_NAME = "ThunderID"
+$QUIET_MODE = if ($env:SETUP_SILENT_MODE -eq "true") { $true } else { $false }
+$RESULT_COLOR_ENABLED = $false
+
+# Check if FD3 (like in bash) is available - PowerShell doesn't have file descriptors,
+# so we'll simulate by checking if we're in a TTY context
+if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+    $RESULT_COLOR_ENABLED = $true
+}
 
 # Configure TLS to use modern protocols (required for HTTPS requests on Windows)
 try {
@@ -33,28 +41,60 @@ try {
 # Logging Functions
 function Log-Info {
     param([string]$Message)
-    Write-Host "[INFO] $Message" -ForegroundColor Blue
+    if (-not $QUIET_MODE) {
+        Write-Host "[INFO] $Message" -ForegroundColor Blue
+    }
 }
 
 function Log-Success {
     param([string]$Message)
-    Write-Host "[SUCCESS] ✓ $Message" -ForegroundColor Green
+    if (-not $QUIET_MODE) {
+        Write-Host "[SUCCESS] ✓ $Message" -ForegroundColor Green
+    }
 }
 
 function Log-Warning {
     param([string]$Message)
-    Write-Host "[WARNING] ⚠ $Message" -ForegroundColor Yellow
+    if (-not $QUIET_MODE) {
+        Write-Host "[WARNING] ⚠ $Message" -ForegroundColor Yellow
+    }
 }
 
 function Log-Error {
     param([string]$Message)
-    Write-Host "[ERROR] ✗ $Message" -ForegroundColor Red
+    if (-not $QUIET_MODE) {
+        Write-Host "[ERROR] ✗ $Message" -ForegroundColor Red
+    }
 }
 
 function Log-Debug {
     param([string]$Message)
-    if ($env:DEBUG -eq "true") {
+    if ($env:DEBUG -eq "true" -and -not $QUIET_MODE) {
         Write-Host "[DEBUG] $Message" -ForegroundColor Cyan
+    }
+}
+
+function Log-Result-Success {
+    param([string]$Message)
+    if ($QUIET_MODE) {
+        if ($RESULT_COLOR_ENABLED) {
+            [Console]::WriteLine("      $($PSStyle.Foreground.Green)✓$($PSStyle.Reset) $Message")
+        }
+        else {
+            [Console]::WriteLine("      ✓ $Message")
+        }
+    }
+}
+
+function Log-Result-Failure {
+    param([string]$Message)
+    if ($QUIET_MODE) {
+        if ($RESULT_COLOR_ENABLED) {
+            [Console]::WriteLine("      $($PSStyle.Foreground.Red)✗$($PSStyle.Reset) $Message")
+        }
+        else {
+            [Console]::WriteLine("      ✗ $Message")
+        }
     }
 }
 

@@ -82,9 +82,11 @@ if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
     $DEFAULT_OU_ID = $body.id
     if ($DEFAULT_OU_ID) {
         Log-Info "Default OU ID: $DEFAULT_OU_ID"
+        Log-Result-Success "Created default organization unit"
     }
     else {
         Log-Error "Could not extract OU ID from response"
+        Log-Result-Failure "Failed to create default organization unit"
         exit 1
     }
 }
@@ -98,20 +100,24 @@ elseif ($response.StatusCode -eq 409) {
         $DEFAULT_OU_ID = $body.id
         if ($DEFAULT_OU_ID) {
             Log-Success "Found OU ID: $DEFAULT_OU_ID"
+            Log-Result-Success "Created default organization unit"
         }
         else {
             Log-Error "Could not find OU ID in response"
+            Log-Result-Failure "Failed to create default organization unit"
             exit 1
         }
     }
     else {
         Log-Error "Failed to fetch organization unit by handle 'default' (HTTP $($response.StatusCode))"
+        Log-Result-Failure "Failed to create default organization unit"
         exit 1
     }
 }
 else {
     Log-Error "Failed to create organization unit (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
+    Log-Result-Failure "Failed to create default organization unit"
     exit 1
 }
 
@@ -197,8 +203,11 @@ elseif ($response.StatusCode -eq 409) {
 }
 else {
     Log-Error "Failed to create user type (HTTP $($response.StatusCode))"
+    Log-Result-Failure "Failed to create default user type (Person)"
     exit 1
 }
+
+Log-Result-Success "Created default user type (Person)"
 
 Write-Host ""
 
@@ -241,8 +250,11 @@ elseif ($response.StatusCode -eq 409) {
 }
 else {
     Log-Error "Failed to create agent type (HTTP $($response.StatusCode))"
+    Log-Result-Failure "Failed to create default agent type"
     exit 1
 }
+
+Log-Result-Success "Created default agent type"
 
 Write-Host ""
 
@@ -302,19 +314,24 @@ elseif ($response.StatusCode -eq 409) {
         }
         else {
             Log-Error "Could not find admin user in response"
+            Log-Result-Failure "Failed to create admin user"
             exit 1
         }
     }
     else {
         Log-Error "Failed to fetch users (HTTP $($response.StatusCode))"
+        Log-Result-Failure "Failed to create admin user"
         exit 1
     }
 }
 else {
     Log-Error "Failed to create admin user (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
+    Log-Result-Failure "Failed to create admin user"
     exit 1
 }
+
+Log-Result-Success "Created admin user"
 
 Write-Host ""
 
@@ -326,6 +343,7 @@ Log-Info "Creating system resource server..."
 
 if (-not $DEFAULT_OU_ID) {
     Log-Error "Default OU ID is not available. Cannot create resource server."
+    Log-Result-Failure "Failed to create system resource server"
     exit 1
 }
 
@@ -345,9 +363,11 @@ if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
     $SYSTEM_RS_ID = $body.id
     if ($SYSTEM_RS_ID) {
         Log-Info "System resource server ID: $SYSTEM_RS_ID"
+        Log-Result-Success "Created system resource server"
     }
     else {
         Log-Error "Could not extract resource server ID from response"
+        Log-Result-Failure "Failed to create system resource server"
         exit 1
     }
 }
@@ -367,22 +387,27 @@ elseif ($response.StatusCode -eq 409) {
             $existingIdentifier = if ($systemRS.identifier) { $systemRS.identifier } else { "" }
             if ($existingHandle -ne $SYSTEM_RS_HANDLE -or $existingIdentifier -ne $SYSTEM_RS_IDENTIFIER) {
                 Log-Error "Existing system resource server has mismatched configuration. Expected handle='${SYSTEM_RS_HANDLE}', identifier='${SYSTEM_RS_IDENTIFIER}' but found handle='${existingHandle}', identifier='${existingIdentifier}'. Manual migration required."
+                Log-Result-Failure "Failed to create system resource server"
                 exit 1
             }
+            Log-Result-Success "Created system resource server"
         }
         else {
             Log-Error "Could not find resource server ID in response"
+            Log-Result-Failure "Failed to create system resource server"
             exit 1
         }
     }
     else {
         Log-Error "Failed to fetch resource servers (HTTP $($response.StatusCode))"
+        Log-Result-Failure "Failed to create system resource server"
         exit 1
     }
 }
 else {
     Log-Error "Failed to create resource server (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
+    Log-Result-Failure "Failed to create system resource server"
     exit 1
 }
 
@@ -405,11 +430,16 @@ Write-Host ""
 #           └── Action handle "view"       → permission "system:usertype:view"
 # ============================================================================
 
+function System-Permissions-Failed {
+    Log-Result-Failure "Failed to create system permissions"
+    exit 1
+}
+
 Log-Info "Creating 'system' resource under the system resource server..."
 
 if (-not $SYSTEM_RS_ID) {
     Log-Error "System resource server ID is not available. Cannot create system resource."
-    exit 1
+    System-Permissions-Failed
 }
 
 $systemResourceData = @{
@@ -429,7 +459,7 @@ if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
     }
     else {
         Log-Error "Could not extract system resource ID from response"
-        exit 1
+        System-Permissions-Failed
     }
 }
 elseif ($response.StatusCode -eq 409) {
@@ -446,25 +476,25 @@ elseif ($response.StatusCode -eq 409) {
         }
         else {
             Log-Error "Could not find system resource in response"
-            exit 1
+            System-Permissions-Failed
         }
     }
     else {
         Log-Error "Failed to fetch resources (HTTP $($response.StatusCode))"
-        exit 1
+        System-Permissions-Failed
     }
 }
 else {
     Log-Error "Failed to create system resource (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
-    exit 1
+    System-Permissions-Failed
 }
 
 Log-Info "Creating 'ou' sub-resource under the 'system' resource..."
 
 if (-not $SYSTEM_RESOURCE_ID) {
     Log-Error "System resource ID is not available. Cannot create OU resource."
-    exit 1
+    System-Permissions-Failed
 }
 
 $ouResourceData = @{
@@ -485,7 +515,7 @@ if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
     }
     else {
         Log-Error "Could not extract OU resource ID from response"
-        exit 1
+        System-Permissions-Failed
     }
 }
 elseif ($response.StatusCode -eq 409) {
@@ -502,18 +532,18 @@ elseif ($response.StatusCode -eq 409) {
         }
         else {
             Log-Error "Could not find OU resource in response"
-            exit 1
+            System-Permissions-Failed
         }
     }
     else {
         Log-Error "Failed to fetch resources (HTTP $($response.StatusCode))"
-        exit 1
+        System-Permissions-Failed
     }
 }
 else {
     Log-Error "Failed to create OU resource (HTTP $($response.StatusCode))"
     Log-Error "Response: $($response.Body)"
-    exit 1
+    System-Permissions-Failed
 }
 
 Log-Info "Creating 'view' action under the 'ou' resource..."
@@ -535,14 +565,14 @@ elseif ($response.StatusCode -eq 409) {
 else {
     Log-Error "Failed to create OU view action (HTTP $($response.StatusCode))"
     Log-Error "Response: $($response.Body)"
-    exit 1
+    System-Permissions-Failed
 }
 
 Log-Info "Creating 'user' sub-resource under the 'system' resource..."
 
 if (-not $SYSTEM_RESOURCE_ID) {
     Log-Error "System resource ID is not available. Cannot create user resource."
-    exit 1
+    System-Permissions-Failed
 }
 
 $userResourceData = @{
@@ -563,7 +593,7 @@ if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
     }
     else {
         Log-Error "Could not extract user resource ID from response"
-        exit 1
+        System-Permissions-Failed
     }
 }
 elseif ($response.StatusCode -eq 409) {
@@ -580,18 +610,18 @@ elseif ($response.StatusCode -eq 409) {
         }
         else {
             Log-Error "Could not find user resource in response"
-            exit 1
+            System-Permissions-Failed
         }
     }
     else {
         Log-Error "Failed to fetch resources (HTTP $($response.StatusCode))"
-        exit 1
+        System-Permissions-Failed
     }
 }
 else {
     Log-Error "Failed to create user resource (HTTP $($response.StatusCode))"
     Log-Error "Response: $($response.Body)"
-    exit 1
+    System-Permissions-Failed
 }
 
 Log-Info "Creating 'view' action under the 'user' resource..."
@@ -613,14 +643,14 @@ elseif ($response.StatusCode -eq 409) {
 else {
     Log-Error "Failed to create user view action (HTTP $($response.StatusCode))"
     Log-Error "Response: $($response.Body)"
-    exit 1
+    System-Permissions-Failed
 }
 
 Log-Info "Creating 'usertype' sub-resource under the 'system' resource..."
 
 if (-not $SYSTEM_RESOURCE_ID) {
     Log-Error "System resource ID is not available. Cannot create user type resource."
-    exit 1
+    System-Permissions-Failed
 }
 
 $userTypeResourceData = @{
@@ -641,7 +671,7 @@ if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
     }
     else {
         Log-Error "Could not extract user type resource ID from response"
-        exit 1
+        System-Permissions-Failed
     }
 }
 elseif ($response.StatusCode -eq 409) {
@@ -658,18 +688,18 @@ elseif ($response.StatusCode -eq 409) {
         }
         else {
             Log-Error "Could not find user type resource in response"
-            exit 1
+            System-Permissions-Failed
         }
     }
     else {
         Log-Error "Failed to fetch resources (HTTP $($response.StatusCode))"
-        exit 1
+        System-Permissions-Failed
     }
 }
 else {
     Log-Error "Failed to create user type resource (HTTP $($response.StatusCode))"
     Log-Error "Response: $($response.Body)"
-    exit 1
+    System-Permissions-Failed
 }
 
 Log-Info "Creating 'view' action under the 'usertype' resource..."
@@ -691,7 +721,7 @@ elseif ($response.StatusCode -eq 409) {
 else {
     Log-Error "Failed to create user type view action (HTTP $($response.StatusCode))"
     Log-Error "Response: $($response.Body)"
-    exit 1
+    System-Permissions-Failed
 }
 
 Write-Host ""
@@ -700,7 +730,7 @@ Log-Info "Creating 'group' sub-resource under the 'system' resource..."
 
 if (-not $SYSTEM_RESOURCE_ID) {
     Log-Error "System resource ID is not available. Cannot create group resource."
-    exit 1
+    System-Permissions-Failed
 }
 
 $groupResourceData = @{
@@ -721,7 +751,7 @@ if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
     }
     else {
         Log-Error "Could not extract group resource ID from response"
-        exit 1
+        System-Permissions-Failed
     }
 }
 elseif ($response.StatusCode -eq 409) {
@@ -738,18 +768,18 @@ elseif ($response.StatusCode -eq 409) {
         }
         else {
             Log-Error "Could not find group resource in response"
-            exit 1
+            System-Permissions-Failed
         }
     }
     else {
         Log-Error "Failed to fetch resources (HTTP $($response.StatusCode))"
-        exit 1
+        System-Permissions-Failed
     }
 }
 else {
     Log-Error "Failed to create group resource (HTTP $($response.StatusCode))"
     Log-Error "Response: $($response.Body)"
-    exit 1
+    System-Permissions-Failed
 }
 
 Log-Info "Creating 'view' action under the 'group' resource..."
@@ -771,8 +801,10 @@ elseif ($response.StatusCode -eq 409) {
 else {
     Log-Error "Failed to create group view action (HTTP $($response.StatusCode))"
     Log-Error "Response: $($response.Body)"
-    exit 1
+    System-Permissions-Failed
 }
+
+Log-Result-Success "Created system permissions"
 
 Write-Host ""
 
@@ -784,11 +816,13 @@ Log-Info "Creating administrator group..."
 
 if (-not $DEFAULT_OU_ID) {
     Log-Error "Default OU ID is not available. Cannot create administrator group."
+    Log-Result-Failure "Failed to create Administrators group"
     exit 1
 }
 
 if (-not $ADMIN_USER_ID) {
     Log-Error "Admin user ID is not available. Cannot create administrator group with user membership."
+    Log-Result-Failure "Failed to create Administrators group"
     exit 1
 }
 
@@ -812,9 +846,11 @@ if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
     $ADMIN_GROUP_ID = $body.id
     if ($ADMIN_GROUP_ID) {
         Log-Info "Administrator group ID: $ADMIN_GROUP_ID"
+        Log-Result-Success "Created Administrators group"
     }
     else {
         Log-Error "Could not extract administrator group ID from response"
+        Log-Result-Failure "Failed to create Administrators group"
         exit 1
     }
 }
@@ -829,20 +865,24 @@ elseif ($response.StatusCode -eq 409) {
         if ($adminGroup) {
             $ADMIN_GROUP_ID = $adminGroup.id
             Log-Success "Found administrator group ID: $ADMIN_GROUP_ID"
+            Log-Result-Success "Created Administrators group"
         }
         else {
             Log-Error "Could not find administrator group in response"
+            Log-Result-Failure "Failed to create Administrators group"
             exit 1
         }
     }
     else {
         Log-Error "Failed to fetch groups under default OU (HTTP $($response.StatusCode))"
+        Log-Result-Failure "Failed to create Administrators group"
         exit 1
     }
 }
 else {
     Log-Error "Failed to create administrator group (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
+    Log-Result-Failure "Failed to create Administrators group"
     exit 1
 }
 
@@ -856,16 +896,19 @@ Log-Info "Creating admin role with '$SYSTEM_PERMISSION' permission..."
 
 if (-not $ADMIN_GROUP_ID) {
     Log-Error "Administrator group ID is not available. Cannot create role."
+    Log-Result-Failure "Failed to create Administrator role"
     exit 1
 }
 
 if (-not $DEFAULT_OU_ID) {
     Log-Error "Default OU ID is not available. Cannot create role."
+    Log-Result-Failure "Failed to create Administrator role"
     exit 1
 }
 
 if (-not $SYSTEM_RS_ID) {
     Log-Error "System resource server ID is not available. Cannot create role."
+    Log-Result-Failure "Failed to create Administrator role"
     exit 1
 }
 
@@ -903,8 +946,11 @@ elseif ($response.StatusCode -eq 409) {
 else {
     Log-Error "Failed to create admin role (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
+    Log-Result-Failure "Failed to create Administrator role"
     exit 1
 }
+
+Log-Result-Success "Created Administrator role"
 
 Write-Host ""
 
@@ -1315,6 +1361,8 @@ else {
     Log-Warning "Application flows directory not found at $APPS_FLOWS_DIR"
 }
 
+Log-Result-Success "Created default flows"
+
 Write-Host ""
 
 # ============================================================================
@@ -1338,11 +1386,13 @@ if ($APP_FLOW_IDS.ContainsKey("console")) {
 if (-not $CONSOLE_AUTH_FLOW_ID) {
     Log-Error "Console authentication flow ID not found, cannot create Console application"
     Log-Error "Make sure flows/apps/console/auth_flow_console.json exists"
+    Log-Result-Failure "Failed to create Console application"
     exit 1
 }
 if (-not $CONSOLE_REG_FLOW_ID) {
     Log-Error "Console registration flow ID not found, cannot create Console application"
     Log-Error "Make sure flows/apps/console/registration_flow_console.json exists"
+    Log-Result-Failure "Failed to create Console application"
     exit 1
 }
 if (-not $CONSOLE_RECOVERY_FLOW_ID) {
@@ -1427,8 +1477,11 @@ elseif ($response.StatusCode -eq 400 -and ($response.Body -match "Application al
 else {
     Log-Error "Failed to create Console application (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
+    Log-Result-Failure "Failed to create Console application"
     exit 1
 }
+
+Log-Result-Success "Created Console application"
 
 Write-Host ""
 
@@ -1497,12 +1550,14 @@ else {
                 else {
                     Log-Error "Failed to update theme '$themeName' (HTTP $($response.StatusCode))"
                     Write-Host "Response: $($response.Body)"
+                    Log-Result-Failure "Failed to create themes"
                     exit 1
                 }
             }
             else {
                 Log-Error "Failed to create theme '$themeName' (HTTP $($response.StatusCode))"
                 Write-Host "Response: $($response.Body)"
+                Log-Result-Failure "Failed to create themes"
                 exit 1
             }
         }
@@ -1514,6 +1569,8 @@ else {
         Log-Warning "No theme files found in $themesDir"
     }
 }
+
+Log-Result-Success "Created themes"
 
 Write-Host ""
 
@@ -1556,6 +1613,7 @@ else {
             else {
                 Log-Error "Failed to seed translations for '$language' (HTTP $($response.StatusCode))"
                 Write-Host "Response: $($response.Body)"
+                Log-Result-Failure "Failed to seed i18n translations"
                 exit 1
             }
         }
@@ -1568,6 +1626,8 @@ else {
     }
 }
 
+Log-Result-Success "Seeded i18n translations"
+
 Write-Host ""
 
 # ============================================================================
@@ -1575,9 +1635,5 @@ Write-Host ""
 # ============================================================================
 
 Log-Success "Default resources setup completed successfully!"
-Write-Host ""
-Log-Info "👤 Admin credentials:"
-Log-Info "   Username: admin"
-Log-Info "   Password: admin"
-Log-Info "   Role: Administrator ($SYSTEM_PERMISSION permission via Administrators group)"
+Log-Result-Success "Created default resources"
 Write-Host ""

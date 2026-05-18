@@ -79,21 +79,25 @@ elseif ($response.StatusCode -eq 409) {
     else {
         Log-Error "Failed to fetch organization unit by handle '$customerOuHandle' (HTTP $($response.StatusCode))"
         Write-Host "Response: $($response.Body)"
+        Log-Result-Failure "Failed to create Customers organization unit"
         exit 1
     }
 }
 else {
     Log-Error "Failed to create Customers organization unit (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
+    Log-Result-Failure "Failed to create Customers organization unit"
     exit 1
 }
 
 if (-not $CUSTOMER_OU_ID) {
     Log-Error "Could not determine Customers organization unit ID"
+    Log-Result-Failure "Failed to create Customers organization unit"
     exit 1
 }
 
 Log-Info "Customers OU ID: $CUSTOMER_OU_ID"
+Log-Result-Success "Created Customers organization unit"
 
 Write-Host ""
 
@@ -164,8 +168,11 @@ elseif ($response.StatusCode -eq 409) {
 else {
     Log-Error "Failed to create Customer user type (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
+    Log-Result-Failure "Failed to create Customer user type"
     exit 1
 }
+
+Log-Result-Success "Created Customer user type"
 
 Write-Host ""
 
@@ -242,8 +249,11 @@ elseif ($response.StatusCode -eq 400 -and ($response.Body -match "Application al
 else {
     Log-Error "Failed to create Sample App (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
+    Log-Result-Failure "Failed to create Sample App"
     exit 1
 }
+
+Log-Result-Success "Created Sample App"
 
 Write-Host ""
 
@@ -324,8 +334,11 @@ elseif ($response.StatusCode -eq 400 -and ($response.Body -match "Application al
 else {
     Log-Error "Failed to create React SDK Sample App (HTTP $($response.StatusCode))"
     Write-Host "Response: $($response.Body)"
+    Log-Result-Failure "Failed to create React SDK Sample App"
     exit 1
 }
+
+Log-Result-Success "Created React SDK Sample App"
 
 Write-Host ""
 
@@ -334,4 +347,5 @@ Write-Host ""
 # ============================================================================
 
 Log-Success "Sample resources setup completed successfully!"
+Log-Result-Success "Created sample resources"
 Write-Host ""

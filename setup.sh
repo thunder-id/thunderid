@@ -43,6 +43,8 @@ PRODUCT_NAME_LOWERCASE="$(echo "$PRODUCT_NAME" | tr '[:upper:]' '[:lower:]')"
 BINARY_NAME="${PRODUCT_NAME_LOWERCASE}"
 DEBUG_PORT=${DEBUG_PORT:-2345}
 DEBUG_MODE=${DEBUG_MODE:-false}
+VERBOSE_MODE=${VERBOSE_MODE:-false}
+SILENT_MODE=true
 BOOTSTRAP_FAIL_FAST=${BOOTSTRAP_FAIL_FAST:-true}
 BOOTSTRAP_SKIP_PATTERN="${BOOTSTRAP_SKIP_PATTERN:-}"
 BOOTSTRAP_ONLY_PATTERN="${BOOTSTRAP_ONLY_PATTERN:-}"
@@ -62,15 +64,21 @@ NC='\033[0m'
 # ============================================================================
 
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    if [ "$VERBOSE_MODE" = "true" ]; then
+        echo -e "${BLUE}[INFO]${NC} $1"
+    fi
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} ✓ $1"
+    if [ "$VERBOSE_MODE" = "true" ]; then
+        echo -e "${GREEN}[SUCCESS]${NC} ✓ $1"
+    fi
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} ⚠ $1"
+    if [ "$VERBOSE_MODE" = "true" ]; then
+        echo -e "${YELLOW}[WARNING]${NC} ⚠ $1"
+    fi
 }
 
 log_error() {
@@ -78,7 +86,7 @@ log_error() {
 }
 
 log_debug() {
-    if [ "${DEBUG:-false}" = "true" ]; then
+    if [ "${DEBUG:-false}" = "true" ] && [ "$VERBOSE_MODE" = "true" ]; then
         echo -e "${CYAN}[DEBUG]${NC} $1"
     fi
 }
@@ -119,6 +127,7 @@ print_help() {
     echo "Usage: $0 [options]"
     echo ""
     echo "Options:"
+    echo "  --verbose                Enable detailed setup output"
     echo "  --debug                  Enable debug mode with remote debugging"
     echo "  --debug-port PORT        Set debug port (default: 2345)"
     echo "  --without-consent        Disable the bundled consent server"
@@ -142,6 +151,11 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --debug)
             DEBUG_MODE=true
+            shift
+            ;;
+        --verbose)
+            VERBOSE_MODE=true
+            SILENT_MODE=false
             shift
             ;;
         --debug-port)
@@ -249,12 +263,14 @@ echo "========================================="
 echo "   ${PRODUCT_NAME} Setup"
 echo "========================================="
 echo ""
-echo -e "${BLUE}Server URL:${NC} $BASE_URL"
-echo -e "${BLUE}Public URL:${NC} $PUBLIC_URL"
-if [ "$DEBUG_MODE" = "true" ]; then
-    echo -e "${BLUE}Debug:${NC} Enabled (port $DEBUG_PORT)"
+if [ "$VERBOSE_MODE" = "true" ]; then
+    echo -e "${BLUE}Server URL:${NC} $BASE_URL"
+    echo -e "${BLUE}Public URL:${NC} $PUBLIC_URL"
+    if [ "$DEBUG_MODE" = "true" ]; then
+        echo -e "${BLUE}Debug:${NC} Enabled (port $DEBUG_PORT)"
+    fi
+    echo ""
 fi
-echo ""
 
 # ============================================================================
 # Check for Port Conflicts
@@ -302,8 +318,10 @@ SERVER_PID=""
 
 # Cleanup function
 cleanup() {
-    echo ""
-    echo -e "${CYAN}🛑 Stopping temporary server...${NC}"
+    if [ "$VERBOSE_MODE" = "true" ]; then
+        echo ""
+        echo -e "${CYAN}🛑 Stopping temporary server...${NC}"
+    fi
     if [ -n "$SERVER_PID" ]; then
         kill $SERVER_PID 2>/dev/null || true
         wait $SERVER_PID 2>/dev/null || true
@@ -322,8 +340,12 @@ if [ "$WITH_CONSENT" = "true" ]; then
         log_error "Consent server is enabled but consent/start.sh is missing or not executable"
         exit 1
     fi
-    echo -e "${CYAN}Starting Consent Server...${NC}"
-    (cd "$(dirname "$0")/consent" && ./start.sh) &
+    if [ "$VERBOSE_MODE" = "true" ]; then
+        echo -e "${CYAN}Starting Consent Server...${NC}"
+        (cd "$(dirname "$0")/consent" && ./start.sh) &
+    else
+        (cd "$(dirname "$0")/consent" && ./start.sh >/dev/null 2>&1) &
+    fi
     CONSENT_PID=$!
     CONSENT_TIMEOUT=30
     CONSENT_ELAPSED=0
@@ -333,7 +355,9 @@ if [ "$WITH_CONSENT" = "true" ]; then
             exit 1
         fi
         if curl -s -f "http://localhost:${CONSENT_SERVER_PORT}/health/readiness" > /dev/null 2>&1; then
-            echo -e "${GREEN}✓ Consent server is ready${NC}"
+            if [ "$VERBOSE_MODE" = "true" ]; then
+                echo -e "${GREEN}✓ Consent server is ready${NC}"
+            fi
             break
         fi
         sleep 1
@@ -349,17 +373,27 @@ fi
 # Start the Server with Security Disabled
 # ============================================================================
 
-echo -e "${YELLOW}⚠️  Starting temporary server with security disabled...${NC}"
-echo ""
+if [ "$VERBOSE_MODE" = "true" ]; then
+    echo -e "${YELLOW}⚠️  Starting temporary server with security disabled...${NC}"
+    echo ""
+fi
 
 # Export environment variable to skip security
 export SKIP_SECURITY=true
 
 if [ "$DEBUG_MODE" = "true" ]; then
-    dlv exec --listen=:$DEBUG_PORT --headless=true --api-version=2 --accept-multiclient --continue ./${BINARY_NAME} &
+    if [ "$VERBOSE_MODE" = "true" ]; then
+        dlv exec --listen=:$DEBUG_PORT --headless=true --api-version=2 --accept-multiclient --continue ./${BINARY_NAME} &
+    else
+        dlv exec --listen=:$DEBUG_PORT --headless=true --api-version=2 --accept-multiclient --continue ./${BINARY_NAME} >/dev/null 2>&1 &
+    fi
     SERVER_PID=$!
 else
-    ./${BINARY_NAME} &
+    if [ "$VERBOSE_MODE" = "true" ]; then
+        ./${BINARY_NAME} &
+    else
+        ./${BINARY_NAME} >/dev/null 2>&1 &
+    fi
     SERVER_PID=$!
 fi
 
@@ -367,20 +401,26 @@ fi
 # Wait for Server to be Ready
 # ============================================================================
 
-echo -e "${BLUE}⏳ Waiting for server to be ready...${NC}"
+if [ "$VERBOSE_MODE" = "true" ]; then
+    echo -e "${BLUE}⏳ Waiting for server to be ready...${NC}"
+fi
 TIMEOUT=60
 ELAPSED=0
 RETRY_DELAY=2
 
 while [ $ELAPSED -lt $TIMEOUT ]; do
     if curl -k -s "${BASE_URL}/health/readiness" > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ Server is ready${NC}"
-        echo ""
+        if [ "$VERBOSE_MODE" = "true" ]; then
+            echo -e "${GREEN}✓ Server is ready${NC}"
+            echo ""
+        fi
         break
     fi
     sleep $RETRY_DELAY
     ELAPSED=$((ELAPSED + RETRY_DELAY))
-    printf "."
+    if [ "$VERBOSE_MODE" = "true" ]; then
+        printf "."
+    fi
 done
 
 if [ $ELAPSED -ge $TIMEOUT ]; then
@@ -399,6 +439,12 @@ export API_BASE="${BASE_URL}"
 export PUBLIC_URL="${PUBLIC_URL}"
 export SYSTEM_RS_HANDLE="${SYSTEM_RS_HANDLE}"
 export SYSTEM_RS_IDENTIFIER="${SYSTEM_RS_IDENTIFIER}"
+export SETUP_SILENT_MODE="${SILENT_MODE}"
+
+# FD3 always points to the real terminal stdout.
+# Quiet-mode result markers write to FD3 so they reach the terminal even
+# when FD1 (normal stdout) is suppressed inside the bootstrap subshell.
+exec 3>&1
 
 # Check if bootstrap directory exists
 if [ ! -d "$BOOTSTRAP_DIR" ]; then
@@ -446,6 +492,16 @@ else
         for script in "${SORTED_SCRIPTS[@]}"; do
             script_name=$(basename "$script")
 
+            if [ "$SILENT_MODE" = "true" ]; then
+                if [ "$script_name" = "01-default-resources.sh" ]; then
+                    echo ""
+                    echo "  Default resources"
+                elif [ "$script_name" = "02-sample-resources.sh" ]; then
+                    echo ""
+                    echo "  Sample resources"
+                fi
+            fi
+
             # Skip if matches skip pattern
             if [ -n "$BOOTSTRAP_SKIP_PATTERN" ] && [[ "$script_name" =~ $BOOTSTRAP_SKIP_PATTERN ]]; then
                 log_info "⊘ Skipping $script_name (matches skip pattern)"
@@ -482,6 +538,11 @@ else
             set +e  # Temporarily disable exit on error to catch errors
             (
                 set -e  # Re-enable in subshell to catch script errors
+                # In quiet mode suppress all ordinary stdout so only explicit
+                # FD3 writes (log_result_success/failure) reach the terminal.
+                if [ "$SILENT_MODE" = "true" ]; then
+                    exec 1>/dev/null
+                fi
                 source "$script"
             )
             EXIT_CODE=$?
@@ -494,12 +555,23 @@ else
                 log_success "$script_name completed (${DURATION}s)"
                 SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
             else
-                log_error "$script_name failed with exit code $EXIT_CODE (${DURATION}s)"
+                if [ "$VERBOSE_MODE" = "true" ]; then
+                    log_error "$script_name failed with exit code $EXIT_CODE (${DURATION}s)"
+                fi
                 FAILED_COUNT=$((FAILED_COUNT + 1))
 
                 # Check if we should fail fast
                 if [ "$BOOTSTRAP_FAIL_FAST" = "true" ]; then
-                    log_error "Stopping bootstrap (BOOTSTRAP_FAIL_FAST=true)"
+                    if [ "$VERBOSE_MODE" = "true" ]; then
+                        log_error "Stopping bootstrap (BOOTSTRAP_FAIL_FAST=true)"
+                    fi
+                    if [ "$SILENT_MODE" = "true" ]; then
+                        echo ""
+                        echo "========================================="
+                        echo "❌ Setup failed."
+                        echo "========================================="
+                        echo ""
+                    fi
                     exit 1
                 fi
             fi
@@ -515,7 +587,7 @@ else
         log_info "Executed: $SCRIPT_COUNT"
         log_success "Successful: $SUCCESS_COUNT"
 
-        if [ $FAILED_COUNT -gt 0 ]; then
+        if [ $FAILED_COUNT -gt 0 ] && [ "$VERBOSE_MODE" = "true" ]; then
             log_error "Failed: $FAILED_COUNT"
         fi
 
@@ -539,10 +611,25 @@ fi
 # ============================================================================
 
 echo ""
-echo "========================================="
-echo -e "${GREEN}✅ Setup completed successfully!${NC}"
-echo "========================================="
 echo ""
+if [ "$SILENT_MODE" = "true" ]; then
+    echo "========================================="
+    echo "✅ Setup completed successfully!"
+    echo "========================================="
+    echo ""
+    echo "Admin credentials:"
+    echo "  URL:      ${PUBLIC_URL}/console"
+    echo "  Username: admin"
+    echo "  Password: admin"
+    echo ""
+    echo "Run ./start.sh to start ${PRODUCT_NAME}."
+    echo ""
+else
+    echo "========================================="
+    echo -e "${GREEN}✅ Setup completed successfully!${NC}"
+    echo "========================================="
+    echo ""
+fi
 
 # Cleanup will be called automatically via trap
 exit 0

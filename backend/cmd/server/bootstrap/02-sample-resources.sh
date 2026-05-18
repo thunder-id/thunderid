@@ -70,15 +70,18 @@ elif [[ "$HTTP_CODE" == "409" ]]; then
 else
     log_error "Failed to create Customers organization unit (HTTP $HTTP_CODE)"
     echo "Response: $BODY"
+  log_result_failure "Failed to create Customers organization unit"
     exit 1
 fi
 
 if [[ -z "$CUSTOMER_OU_ID" ]]; then
     log_error "Could not determine Customers organization unit ID"
+  log_result_failure "Failed to create Customers organization unit"
     exit 1
 fi
 
 log_info "Customers OU ID: $CUSTOMER_OU_ID"
+log_result_success "Created Customers organization unit"
 
 echo ""
 
@@ -149,8 +152,10 @@ elif [[ "$HTTP_CODE" == "409" ]]; then
     log_warning "Customer user type already exists, skipping"
 else
     log_error "Failed to create Customer user type (HTTP $HTTP_CODE)"
+  log_result_failure "Failed to create Customer user type"
     exit 1
 fi
+log_result_success "Created Customer user type"
 
 echo ""
 
@@ -224,8 +229,10 @@ elif [[ "$HTTP_CODE" == "400" ]] && [[ "$BODY" =~ (Application already exists|AP
 else
     log_error "Failed to create Sample App (HTTP $HTTP_CODE)"
     echo "Response: $BODY"
+  log_result_failure "Failed to create Sample App"
     exit 1
 fi
+log_result_success "Created Sample App"
 
 echo ""
 
@@ -303,8 +310,10 @@ elif [[ "$HTTP_CODE" == "400" ]] && [[ "$BODY" =~ (Application already exists|AP
 else
     log_error "Failed to create React SDK Sample App (HTTP $HTTP_CODE)"
     echo "Response: $BODY"
+  log_result_failure "Failed to create React SDK Sample App"
     exit 1
 fi
+log_result_success "Created React SDK Sample App"
 
 echo ""
 

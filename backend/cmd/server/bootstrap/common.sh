@@ -21,6 +21,12 @@
 # Source this file at the beginning of each bootstrap script
 
 PRODUCT_NAME="ThunderID"
+QUIET_MODE="${SETUP_SILENT_MODE:-false}"
+RESULT_COLOR_ENABLED=false
+
+if [ -t 3 ] && [ -z "${NO_COLOR:-}" ]; then
+    RESULT_COLOR_ENABLED=true
+fi
 
 # Color codes
 RED='\033[0;31m'
@@ -32,24 +38,52 @@ NC='\033[0m'
 
 # Logging Functions
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1" >&2
+    if [[ "$QUIET_MODE" != "true" ]]; then
+        echo -e "${BLUE}[INFO]${NC} $1" >&2
+    fi
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} ✓ $1" >&2
+    if [[ "$QUIET_MODE" != "true" ]]; then
+        echo -e "${GREEN}[SUCCESS]${NC} ✓ $1" >&2
+    fi
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} ⚠ $1" >&2
+    if [[ "$QUIET_MODE" != "true" ]]; then
+        echo -e "${YELLOW}[WARNING]${NC} ⚠ $1" >&2
+    fi
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} ✗ $1" >&2
+    if [[ "$QUIET_MODE" != "true" ]]; then
+        echo -e "${RED}[ERROR]${NC} ✗ $1" >&2
+    fi
 }
 
 log_debug() {
-    if [ "${DEBUG:-false}" = "true" ]; then
+    if [ "${DEBUG:-false}" = "true" ] && [[ "$QUIET_MODE" != "true" ]]; then
         echo -e "${CYAN}[DEBUG]${NC} $1" >&2
+    fi
+}
+
+log_result_success() {
+    if [[ "$QUIET_MODE" == "true" ]]; then
+        if [[ "$RESULT_COLOR_ENABLED" == "true" ]]; then
+            echo -e "      ${GREEN}✓${NC} $1" >&3
+        else
+            echo "      ✓ $1" >&3
+        fi
+    fi
+}
+
+log_result_failure() {
+    if [[ "$QUIET_MODE" == "true" ]]; then
+        if [[ "$RESULT_COLOR_ENABLED" == "true" ]]; then
+            echo -e "      ${RED}✗${NC} $1" >&3
+        else
+            echo "      ✗ $1" >&3
+        fi
     fi
 }
 

@@ -50,6 +50,8 @@ $ErrorActionPreference = 'Stop'
 # Default settings
 $DEBUG_PORT = if ($env:DEBUG_PORT) { [int]$env:DEBUG_PORT } else { 2345 }
 $DEBUG_MODE = if ($env:DEBUG_MODE -eq "true") { $true } else { $false }
+$VERBOSE_MODE = $false
+$SILENT_MODE = $true
 $BOOTSTRAP_FAIL_FAST = if ($env:BOOTSTRAP_FAIL_FAST -eq "false") { $false } else { $true }
 $BOOTSTRAP_SKIP_PATTERN = if ($env:BOOTSTRAP_SKIP_PATTERN) { $env:BOOTSTRAP_SKIP_PATTERN } else { "" }
 $BOOTSTRAP_ONLY_PATTERN = if ($env:BOOTSTRAP_ONLY_PATTERN) { $env:BOOTSTRAP_ONLY_PATTERN } else { "" }
@@ -62,16 +64,25 @@ $WITH_CONSENT = if ($env:WITH_CONSENT -eq 'false') { $false } else { $true }
 
 function Log-Info {
     param([string]$Message)
+    if (-not $VERBOSE_MODE) {
+        return
+    }
     Write-Host "[INFO] $Message" -ForegroundColor Blue
 }
 
 function Log-Success {
     param([string]$Message)
+    if (-not $VERBOSE_MODE) {
+        return
+    }
     Write-Host "[SUCCESS] [OK] $Message" -ForegroundColor Green
 }
 
 function Log-Warning {
     param([string]$Message)
+    if (-not $VERBOSE_MODE) {
+        return
+    }
     Write-Host "[WARNING] ! $Message" -ForegroundColor Yellow
 }
 
@@ -82,7 +93,7 @@ function Log-Error {
 
 function Log-Debug {
     param([string]$Message)
-    if ($env:DEBUG -eq "true") {
+    if ($env:DEBUG -eq "true" -and $VERBOSE_MODE) {
         Write-Host "[DEBUG] $Message" -ForegroundColor Cyan
     }
 }
@@ -213,6 +224,7 @@ function Show-Help {
     Write-Host "Usage: .\setup.ps1 [options]"
     Write-Host ""
     Write-Host "Options:"
+    Write-Host "  --verbose                Enable detailed setup output"
     Write-Host "  --debug                  Enable debug mode with remote debugging"
     Write-Host "  --debug-port PORT        Set debug port (default: 2345)"
     Write-Host "  --without-consent        Disable the bundled consent server"
@@ -235,6 +247,12 @@ function Show-Help {
 $i = 0
 while ($i -lt $args.Count) {
     switch ($args[$i]) {
+        '--verbose' {
+            $VERBOSE_MODE = $true
+            $SILENT_MODE = $false
+            $i++
+            break
+        }
         '--debug' {
             $DEBUG_MODE = $true
             $i++
@@ -393,17 +411,14 @@ Write-Host "========================================="
 Write-Host "   $PRODUCT_NAME Setup"
 Write-Host "========================================="
 Write-Host ""
-Write-Host "Server URL: $BASE_URL" -ForegroundColor Blue
-Write-Host "Public URL: $PUBLIC_URL" -ForegroundColor Blue
-if ($DEBUG_MODE) {
-    Write-Host "Debug: Enabled (port $DEBUG_PORT)" -ForegroundColor Blue
+if ($VERBOSE_MODE) {
+    Write-Host "Server URL: $BASE_URL" -ForegroundColor Blue
+    Write-Host "Public URL: $PUBLIC_URL" -ForegroundColor Blue
+    if ($DEBUG_MODE) {
+        Write-Host "Debug: Enabled (port $DEBUG_PORT)" -ForegroundColor Blue
+    }
+    Write-Host ""
 }
-Write-Host ""
-
-# Log PowerShell version for debugging
-Log-Debug "PowerShell Version: $($PSVersionTable.PSVersion)"
-Log-Debug "PowerShell Edition: $($PSVersionTable.PSEdition)"
-Log-Debug "OS: $($PSVersionTable.OS)"
 Log-Debug "Platform: $($PSVersionTable.Platform)"
 
 # ============================================================================
@@ -467,8 +482,10 @@ if ($DEBUG_MODE -and -not (Get-Command dlv -ErrorAction SilentlyContinue)) {
 # Start the Server with Security Disabled
 # ============================================================================
 
-Write-Host "[WARN] Starting temporary server with security disabled..." -ForegroundColor Yellow
-Write-Host ""
+if ($VERBOSE_MODE) {
+    Write-Host "[WARN] Starting temporary server with security disabled..." -ForegroundColor Yellow
+    Write-Host ""
+}
 
 # Export environment variable to skip security
 $hadSkipSecurity = Test-Path Env:SKIP_SECURITY
@@ -494,7 +511,9 @@ if ($WITH_CONSENT) {
         Log-Error "Consent server is enabled but consent directory not found: $consentDir"
         exit 1
     }
-    Write-Host "[INFO] Starting Consent Server..." -ForegroundColor Cyan
+    if ($VERBOSE_MODE) {
+        Write-Host "[INFO] Starting Consent Server..." -ForegroundColor Cyan
+    }
     $consentPort = if ($env:CONSENT_SERVER_PORT) { $env:CONSENT_SERVER_PORT } else { "9090" }
     $consentBinary = @(
         (Join-Path $consentDir 'consent-server.exe'),
@@ -515,7 +534,9 @@ if ($WITH_CONSENT) {
         try {
             $resp = Invoke-WebRequest -Uri "http://localhost:${consentPort}/health/readiness" -UseBasicParsing -ErrorAction Stop
             if ($resp.StatusCode -eq 200) {
-                Write-Host "[INFO] Consent server is ready" -ForegroundColor Cyan
+                if ($VERBOSE_MODE) {
+                    Write-Host "[INFO] Consent server is ready" -ForegroundColor Cyan
+                }
                 break
             }
         } catch { }
@@ -550,8 +571,10 @@ try {
 
     # Cleanup function
     $cleanup = {
-        Write-Host ""
-        Write-Host "[STOP] Stopping temporary server..." -ForegroundColor Cyan
+        if ($VERBOSE_MODE) {
+            Write-Host ""
+            Write-Host "[STOP] Stopping temporary server..." -ForegroundColor Cyan
+        }
         if ($proc -and -not $proc.HasExited) {
             try {
                 Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
@@ -571,8 +594,10 @@ try {
     # Wait for Server to be Ready
     # ============================================================================
 
-    Write-Host "[WAIT] Waiting for server to be ready..." -ForegroundColor Blue
-    Write-Host "   Server URL: $BASE_URL" -ForegroundColor Blue
+    if ($VERBOSE_MODE) {
+        Write-Host "[WAIT] Waiting for server to be ready..." -ForegroundColor Blue
+        Write-Host "   Server URL: $BASE_URL" -ForegroundColor Blue
+    }
 
     $TIMEOUT = 60
     $ELAPSED = 0
@@ -592,10 +617,12 @@ try {
         Log-Debug "Request completed in $([math]::Round($requestDuration.TotalSeconds, 2))s with status: $statusCode"
 
         if ($statusCode -eq "200") {
-            Write-Host ""
-            Write-Host "[OK] Server is ready" -ForegroundColor Green
-            Log-Debug "Health check response: $body"
-            Write-Host ""
+            if ($VERBOSE_MODE) {
+                Write-Host ""
+                Write-Host "[OK] Server is ready" -ForegroundColor Green
+                Log-Debug "Health check response: $body"
+                Write-Host ""
+            }
             break
         }
         else {
@@ -635,6 +662,9 @@ try {
     # ============================================================================
     # Run Bootstrap Scripts
     # ============================================================================
+
+    # Export environment variable for bootstrap scripts
+    $env:SETUP_SILENT_MODE = if ($SILENT_MODE) { "true" } else { "false" }
 
     # Check if bootstrap directory exists
     if (-not (Test-Path $BOOTSTRAP_DIR)) {
@@ -687,6 +717,17 @@ try {
             foreach ($bootstrapScript in $sortedScripts) {
                 $scriptName = $bootstrapScript.Name
 
+                if ($SILENT_MODE) {
+                    if ($scriptName -eq "01-default-resources.ps1" -or $scriptName -eq "01-default-resources.sh") {
+                        Write-Host ""
+                        Write-Host "  Default resources"
+                    }
+                    elseif ($scriptName -eq "02-sample-resources.ps1" -or $scriptName -eq "02-sample-resources.sh") {
+                        Write-Host ""
+                        Write-Host "  Sample resources"
+                    }
+                }
+
                 # Skip if matches skip pattern
                 if ($BOOTSTRAP_SKIP_PATTERN -and ($scriptName -match $BOOTSTRAP_SKIP_PATTERN)) {
                     Log-Info "[SKIP] Skipping $scriptName (matches skip pattern regex: $BOOTSTRAP_SKIP_PATTERN)"
@@ -708,7 +749,12 @@ try {
                 $startTime = Get-Date
 
                 try {
-                    & $bootstrapScript.FullName
+                    if ($SILENT_MODE) {
+                        & $bootstrapScript.FullName *> $null
+                    }
+                    else {
+                        & $bootstrapScript.FullName
+                    }
                     $exitCode = $LASTEXITCODE
 
                     $endTime = Get-Date
@@ -777,22 +823,40 @@ try {
     # ============================================================================
 
     Write-Host ""
-    Write-Host "========================================="
-    Write-Host "[OK] Setup completed successfully!" -ForegroundColor Green
-    Write-Host "========================================="
     Write-Host ""
-    Write-Host "[INFO] Next steps:"
-    Write-Host "   1. Start the server: .\start.ps1" -ForegroundColor Cyan
-    Write-Host "   2. Access $PRODUCT_NAME at: $BASE_URL" -ForegroundColor Cyan
-    Write-Host "   3. Login with admin credentials:"
-    Write-Host "      Username: admin" -ForegroundColor Cyan
-    Write-Host "      Password: admin" -ForegroundColor Cyan
-    Write-Host ""
+    if ($SILENT_MODE) {
+        Write-Host "========================================="
+        Write-Host "✅ Setup completed successfully!"
+        Write-Host "========================================="
+        Write-Host ""
+        Write-Host "Admin credentials:"
+        Write-Host "  URL:      ${PUBLIC_URL}/console"
+        Write-Host "  Username: admin"
+        Write-Host "  Password: admin"
+        Write-Host ""
+        Write-Host "Run .\start.ps1 to start ${PRODUCT_NAME}."
+        Write-Host ""
+    }
+    else {
+        Write-Host "========================================="
+        Write-Host "[OK] Setup completed successfully!" -ForegroundColor Green
+        Write-Host "========================================="
+        Write-Host ""
+        Write-Host "[INFO] Next steps:"
+        Write-Host "   1. Start the server: .\start.ps1" -ForegroundColor Cyan
+        Write-Host "   2. Access $PRODUCT_NAME at: $BASE_URL" -ForegroundColor Cyan
+        Write-Host "   3. Login with admin credentials:"
+        Write-Host "      Username: admin" -ForegroundColor Cyan
+        Write-Host "      Password: admin" -ForegroundColor Cyan
+        Write-Host ""
+    }
 }
 finally {
     # Cleanup
-    Write-Host ""
-    Write-Host "[STOP] Stopping temporary server..." -ForegroundColor Cyan
+    if ($VERBOSE_MODE) {
+        Write-Host ""
+        Write-Host "[STOP] Stopping temporary server..." -ForegroundColor Cyan
+    }
     if ($proc -and -not $proc.HasExited) {
         try {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
