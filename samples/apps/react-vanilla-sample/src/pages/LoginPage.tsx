@@ -793,7 +793,7 @@ const LoginPage = () => {
             const inputId = input.identifier || `input-${index}`;
             const isPassword = input.type === "password" || input.type === "PASSWORD_INPUT" || input.identifier === "password";
             const isOTP = input.type === "otp" || input.type === "OTP_INPUT" || input.identifier === "otp";
-            const isDropdown = input.type === "dropdown" || input.type === "DROPDOWN";
+            const isDropdown = input.type === "SELECT" || input.type === "dropdown" || input.type === "DROPDOWN";
             const isRequired = input.required;
             
             // Determine appropriate label
