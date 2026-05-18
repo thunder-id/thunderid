@@ -23,6 +23,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"os"
 	"testing"
 
@@ -31,9 +32,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
-	"github.com/thunder-id/thunderid/tests/mocks/crypto/pki/pkimock"
+	"github.com/thunder-id/thunderid/internal/system/cryptolab"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider"
+	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 )
 
 type InitTestSuite struct {
@@ -94,100 +95,76 @@ func (suite *InitTestSuite) SetupTest() {
 }
 
 func (suite *InitTestSuite) TestInitialize_Success() {
-	// Setup test configuration
 	testConfig := &config.Config{
 		JWT: config.JWTConfig{
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600,
 			PreferredKeyID: "test-kid",
 		},
-		Crypto: config.CryptoConfig{
-			Keys: []config.KeyConfig{
-				{
-					ID:       "test-kid",
-					CertFile: suite.testKeyPath,
-					KeyFile:  suite.testKeyPath,
-				},
-			},
-		},
 	}
 	err := config.InitializeServerRuntime("", testConfig)
 	assert.NoError(suite.T(), err)
 
-	// Create mock PKI service
-	pkiMock := pkimock.NewPKIServiceInterfaceMock(suite.T())
-	pkiMock.EXPECT().GetPrivateKey(mock.Anything).Return(suite.testPrivateKey, nil)
-	pkiMock.EXPECT().GetCertThumbprint(mock.Anything).Return("test-kid")
+	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	cryptoMock.EXPECT().
+		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: "test-kid"}).
+		Return([]kmprovider.PublicKeyInfo{{
+			KeyID:      "test-kid",
+			Algorithm:  cryptolab.AlgorithmRS256,
+			PublicKey:  &suite.testPrivateKey.PublicKey,
+			Thumbprint: "test-kid",
+		}}, nil)
 
-	// Initialize JWT service
-	jwtService, err := Initialize(pkiMock)
+	jwtService, err := Initialize(cryptoMock)
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), jwtService)
 	assert.Implements(suite.T(), (*JWTServiceInterface)(nil), jwtService)
 }
 
-func (suite *InitTestSuite) TestInitialize_PrivateKeyRetrievalError() {
-	// Setup test configuration
+func (suite *InitTestSuite) TestInitialize_PublicKeyRetrievalError() {
 	testConfig := &config.Config{
 		JWT: config.JWTConfig{
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600,
 			PreferredKeyID: "test-kid",
 		},
-		Crypto: config.CryptoConfig{
-			Keys: []config.KeyConfig{
-				{
-					ID:       "test-kid",
-					CertFile: suite.testKeyPath,
-					KeyFile:  suite.testKeyPath,
-				},
-			},
-		},
 	}
 	err := config.InitializeServerRuntime("", testConfig)
 	assert.NoError(suite.T(), err)
 
-	pkiMock := pkimock.NewPKIServiceInterfaceMock(suite.T())
-	testErr := serviceerror.CustomServiceError(serviceerror.InternalServerError, core.I18nMessage{
-		Key:          "error.test.jwt_init",
-		DefaultValue: "test error",
-	})
-	pkiMock.EXPECT().GetPrivateKey(mock.Anything).Return(nil, testErr)
+	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	cryptoMock.EXPECT().
+		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: "test-kid"}).
+		Return(nil, errors.New("provider unavailable"))
 
-	// Initialize JWT service should fail
-	jwtService, err := Initialize(pkiMock)
+	jwtService, err := Initialize(cryptoMock)
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), jwtService)
+	assert.Contains(suite.T(), err.Error(), "failed to retrieve public key")
 }
 
 func (suite *InitTestSuite) TestInitialize_WithoutPreferredKeyID() {
-	// Setup test configuration without PreferredKeyID
 	testConfig := &config.Config{
 		JWT: config.JWTConfig{
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600,
 			// PreferredKeyID is empty
 		},
-		Crypto: config.CryptoConfig{
-			Keys: []config.KeyConfig{
-				{
-					ID:       "",
-					CertFile: suite.testKeyPath,
-					KeyFile:  suite.testKeyPath,
-				},
-			},
-		},
 	}
 	err := config.InitializeServerRuntime("", testConfig)
 	assert.NoError(suite.T(), err)
 
-	// Create mock PKI service
-	pkiMock := pkimock.NewPKIServiceInterfaceMock(suite.T())
-	pkiMock.EXPECT().GetPrivateKey("").Return(suite.testPrivateKey, nil)
-	pkiMock.EXPECT().GetCertThumbprint("").Return("test-kid")
+	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
+	cryptoMock.EXPECT().
+		GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{KeyID: ""}).
+		Return([]kmprovider.PublicKeyInfo{{
+			KeyID:      "",
+			Algorithm:  cryptolab.AlgorithmRS256,
+			PublicKey:  &suite.testPrivateKey.PublicKey,
+			Thumbprint: "test-kid",
+		}}, nil)
 
-	// Initialize JWT service
-	jwtService, err := Initialize(pkiMock)
+	jwtService, err := Initialize(cryptoMock)
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), jwtService)
 }

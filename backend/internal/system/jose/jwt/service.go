@@ -22,9 +22,6 @@ package jwt
 import (
 	"context"
 	"crypto"
-	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -40,7 +37,6 @@ import (
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jws"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
-	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pkiservice"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -68,7 +64,6 @@ type jwksCacheEntry struct {
 type jwtService struct {
 	cryptoProvider kmprovider.RuntimeCryptoProvider
 	keyRef         kmprovider.KeyRef
-	publicKey      crypto.PublicKey
 	signAlg        cryptolab.SignAlgorithm
 	jwsAlg         jws.Algorithm
 	kid            string
@@ -79,87 +74,35 @@ type jwtService struct {
 
 // newJWTService creates a new JWT service instance.
 func newJWTService(
-	pkiService pkiservice.PKIServiceInterface,
 	httpClient httpservice.HTTPClientInterface, cryptoProvider kmprovider.RuntimeCryptoProvider,
 ) (JWTServiceInterface, error) {
 	preferredKid := config.GetServerRuntime().Config.JWT.PreferredKeyID
-
-	privateKey, err := pkiService.GetPrivateKey(preferredKid)
-	if err != nil {
-		return nil, errors.New("failed to retrieve private key for the key id: " + preferredKid)
-	}
-
-	kid := pkiService.GetCertThumbprint(preferredKid)
 	keyRef := kmprovider.KeyRef{KeyID: preferredKid}
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "JWTService"))
 
-	// Get algorithm based on the type of private key
-	switch k := privateKey.(type) {
-	case *rsa.PrivateKey:
-		return &jwtService{
-			cryptoProvider: cryptoProvider,
-			keyRef:         keyRef,
-			publicKey:      &k.PublicKey,
-			signAlg:        cryptolab.RSASHA256,
-			jwsAlg:         jws.RS256,
-			kid:            kid,
-			logger:         logger,
-			httpClient:     httpClient,
-		}, nil
-	case *ecdsa.PrivateKey:
-		// Determine ECDSA algorithm based on curve
-		crvName := k.Curve.Params().Name
-		switch crvName {
-		case jws.P256:
-			return &jwtService{
-				cryptoProvider: cryptoProvider,
-				keyRef:         keyRef,
-				publicKey:      &k.PublicKey,
-				signAlg:        cryptolab.ECDSASHA256,
-				jwsAlg:         jws.ES256,
-				kid:            kid,
-				logger:         logger,
-				httpClient:     httpClient,
-			}, nil
-		case jws.P384:
-			return &jwtService{
-				cryptoProvider: cryptoProvider,
-				keyRef:         keyRef,
-				publicKey:      &k.PublicKey,
-				signAlg:        cryptolab.ECDSASHA384,
-				jwsAlg:         jws.ES384,
-				kid:            kid,
-				logger:         logger,
-				httpClient:     httpClient,
-			}, nil
-		case jws.P521:
-			return &jwtService{
-				cryptoProvider: cryptoProvider,
-				keyRef:         keyRef,
-				publicKey:      &k.PublicKey,
-				signAlg:        cryptolab.ECDSASHA512,
-				jwsAlg:         jws.ES512,
-				kid:            kid,
-				logger:         logger,
-				httpClient:     httpClient,
-			}, nil
-		default:
-			return nil, errors.New("unsupported EC curve: " + crvName + " only P-256, P-384 and P-521 are supported")
-		}
-	case ed25519.PrivateKey:
-		return &jwtService{
-			cryptoProvider: cryptoProvider,
-			keyRef:         keyRef,
-			publicKey:      k.Public(),
-			signAlg:        cryptolab.ED25519,
-			jwsAlg:         jws.EdDSA,
-			kid:            kid,
-			logger:         logger,
-			httpClient:     httpClient,
-		}, nil
-	default:
-		return nil, errors.New("unsupported private key type")
+	keys, err := cryptoProvider.GetPublicKeys(context.Background(), kmprovider.PublicKeyFilter{KeyID: preferredKid})
+	if err != nil {
+		return nil, errors.New("failed to retrieve public key for the key id: " + preferredKid)
 	}
+	if len(keys) == 0 {
+		return nil, errors.New("no public key found for the key id: " + preferredKid)
+	}
+	key := keys[0]
+
+	signAlg, err := jws.MapAlgorithmToSignAlg(jws.Algorithm(key.Algorithm))
+	if err != nil {
+		return nil, errors.New("unsupported algorithm for key id: " + preferredKid)
+	}
+
+	return &jwtService{
+		cryptoProvider: cryptoProvider,
+		keyRef:         keyRef,
+		signAlg:        signAlg,
+		jwsAlg:         jws.Algorithm(key.Algorithm),
+		kid:            key.Thumbprint,
+		logger:         logger,
+		httpClient:     httpClient,
+	}, nil
 }
 
 // GenerateJWT generates a JWT signed with the server's private key.
@@ -282,8 +225,8 @@ func (js *jwtService) GenerateJWT(
 
 // VerifyJWT verifies the JWT token using the server's public key.
 func (js *jwtService) VerifyJWT(jwtToken string, expectedAud, expectedIss string) *serviceerror.ServiceError {
-	if js.publicKey == nil {
-		js.logger.Error("Public key not found for JWT verification")
+	if js.cryptoProvider == nil {
+		js.logger.Error("Crypto provider not initialized for JWT verification")
 		return &serviceerror.InternalServerError
 	}
 
@@ -328,6 +271,10 @@ func (js *jwtService) VerifyJWTWithJWKS(
 
 // VerifyJWTSignature verifies the signature of a JWT token using the server's public key.
 func (js *jwtService) VerifyJWTSignature(jwtToken string) *serviceerror.ServiceError {
+	if js.cryptoProvider == nil {
+		js.logger.Error("Crypto provider not initialized for JWT verification")
+		return &serviceerror.InternalServerError
+	}
 	parts := strings.Split(jwtToken, ".")
 	if len(parts) != 3 {
 		return &ErrorInvalidJWTFormat
@@ -342,9 +289,37 @@ func (js *jwtService) VerifyJWTSignature(jwtToken string) *serviceerror.ServiceE
 	// Create the signing input
 	signingInput := parts[0] + "." + parts[1]
 
-	// Verify the signature using the configured algorithm
-	err = cryptolab.Verify([]byte(signingInput), signature, js.signAlg, js.publicKey)
+	// Determine kid and algorithm from JWT header
+	header, err := DecodeJWTHeader(jwtToken)
 	if err != nil {
+		return &ErrorDecodingJWTHeader
+	}
+	kid, _ := header["kid"].(string)
+	algStr, _ := header["alg"].(string)
+	signAlg, err := jws.MapAlgorithmToSignAlg(jws.Algorithm(algStr))
+	if err != nil {
+		return &ErrorUnsupportedJWSAlgorithm
+	}
+
+	// Retrieve all public keys from the provider and match by thumbprint
+	keys, providerErr := js.cryptoProvider.GetPublicKeys(context.Background(), kmprovider.PublicKeyFilter{})
+	if providerErr != nil {
+		js.logger.Error("Failed to retrieve public keys for JWT verification: " + providerErr.Error())
+		return &serviceerror.InternalServerError
+	}
+	var matchedKey *kmprovider.PublicKeyInfo
+	for i := range keys {
+		if keys[i].Thumbprint == kid {
+			matchedKey = &keys[i]
+			break
+		}
+	}
+	if matchedKey == nil {
+		return &ErrorNoMatchingJWKFound
+	}
+
+	// Verify the signature using the matched public key
+	if err = cryptolab.Verify([]byte(signingInput), signature, signAlg, matchedKey.PublicKey); err != nil {
 		return &ErrorInvalidTokenSignature
 	}
 	return nil

@@ -23,13 +23,11 @@ import (
 	"time"
 
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
-	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
-	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pkiservice"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 )
 
 // Initialize initializes the JWT service.
-func Initialize(pkiSvc pkiservice.PKIServiceInterface) (JWTServiceInterface, error) {
+func Initialize(runtimeProvider kmprovider.RuntimeCryptoProvider) (JWTServiceInterface, error) {
 	httpClient := httpservice.NewHTTPClientWithTimeout(10 * time.Second)
-	runtimeSvc := defaultkm.NewRuntimeCryptoService(pkiSvc, nil)
-	return newJWTService(pkiSvc, httpClient, runtimeSvc)
+	return newJWTService(httpClient, runtimeProvider)
 }
