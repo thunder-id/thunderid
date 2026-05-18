@@ -61,7 +61,7 @@ export default function AuthCardLayout({
           className={variant ? cn(`${variant}--logo`) : undefined}
           src={logo.src}
           alt={logo.alt ?? {light: 'Logo (Light)', dark: 'Logo (Dark)'}}
-          height={30}
+          height={40}
           width="auto"
           sx={{display: logoDisplay}}
         />

@@ -73,6 +73,7 @@
     "jsdom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
+    "vite-plugin-svgr": "catalog:",
     "vitest": "catalog:"
   }
 }

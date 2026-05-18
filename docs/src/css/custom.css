@@ -121,9 +121,13 @@
 /*                        Overrides and Additions                       */
 /* -------------------------------------------------------------------- */
 
+/* Let docs and blog backgrounds move with page content instead of staying pinned to the viewport. */
+html {
+  --site-background-attachment: fixed;
+}
+
 /* Manually inject the radial background since `@wso2/oxygen-ui` adds it to the body. */
-html[data-page^='thunder-docs-'] #__docusaurus,
-html[data-page='home'] #__docusaurus {
+html #__docusaurus {
     background-color: var(--oxygen-palette-background-default);
     background-attachment: var(--site-background-attachment);
     background-image: var(--site-background);
@@ -332,6 +336,10 @@ html[data-page^='thunder-docs-'] .navbar.navbar--fixed-top {
   border-bottom: none;
   box-shadow: none;
   background: transparent !important;
+}
+
+.navbar__logo img {
+  height: 90%;
 }
 
 /* Softer border in dark mode */
@@ -764,6 +772,13 @@ aside.theme-doc-sidebar-container {
 /* Add bottom margin to the items list so space appears below last item too */
 .sidebar-section {
   margin-bottom: 0.5rem !important;
+}
+
+/* Divider line between sections */
+.sidebar-section + .sidebar-html-section-header {
+  border-top: 1px solid var(--ifm-toc-border-color);
+  margin-top: 1rem;
+  padding-top: 0.5rem;
 }
 
 /* No dividers between sections */

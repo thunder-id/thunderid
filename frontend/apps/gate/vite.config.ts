@@ -20,6 +20,7 @@ import {resolve, dirname} from 'path';
 import {fileURLToPath} from 'url';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import react from '@vitejs/plugin-react';
+import svgr from 'vite-plugin-svgr';
 import {defineConfig} from 'vitest/config';
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,7 @@ export default defineConfig({
   },
   plugins: [
     basicSsl(),
+    svgr(),
     react({
       babel: {
         plugins: [['babel-plugin-react-compiler']],

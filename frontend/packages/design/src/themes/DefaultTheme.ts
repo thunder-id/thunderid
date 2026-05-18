@@ -28,7 +28,7 @@ export const DefaultThemeConfig = {
     light: {
       palette: {
         primary: {
-          main: '#3a87ed',
+          main: '#3688FF',
           dark: '#2d78e0',
           light: '#6ba8f5',
           contrastText: '#ffffff',
@@ -69,9 +69,9 @@ export const DefaultThemeConfig = {
     dark: {
       palette: {
         primary: {
-          main: '#4d9ef7',
-          dark: '#3a87ed',
-          light: '#8bf9fa',
+          main: '#3688FF',
+          dark: '#2d78e0',
+          light: '#6ba8f5',
           contrastText: '#ffffff',
         },
         secondary: {
@@ -118,8 +118,8 @@ export const DefaultThemeConfig = {
     heavy: 'blur(24px)',
   },
   gradient: {
-    primary: 'linear-gradient(90deg, #3a8cf8 0%, #1d5eb4 100%)',
-    secondary: 'linear-gradient(90deg, #00b8d9 0%, #6deeff 100%)',
+    primary: 'linear-gradient(90deg, #3688FF 0%, #1d5eb4 100%)',
+    secondary: 'linear-gradient(90deg, #3688FF 0%, #1d5eb4 100%)',
   },
   components: {
     MuiCssBaseline: {
@@ -163,9 +163,9 @@ export const DefaultThemeConfig = {
 
           return {
             color: '#ffffff',
-            background: 'linear-gradient(90deg, #3a87ed 0%, #6b85a8 100%)',
+            background: 'linear-gradient(90deg, #3688FF 0%, #6b85a8 100%)',
             '&:hover': {
-              background: 'linear-gradient(90deg, #3a87ed 0%, #6b85a8 100%)',
+              background: 'linear-gradient(90deg, #3688FF 0%, #6b85a8 100%)',
             },
           };
         },

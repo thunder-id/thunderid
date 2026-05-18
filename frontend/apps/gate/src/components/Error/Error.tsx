@@ -56,7 +56,7 @@ export default function Error(): JSX.Element {
             dark: `${import.meta.env.BASE_URL}/assets/images/logo-inverted.svg`,
           }}
           alt={{light: 'Logo (Light)', dark: 'Logo (Dark)'}}
-          height={30}
+          height={40}
           width="auto"
         />
         <ColorSchemeImage
