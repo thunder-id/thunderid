@@ -20,6 +20,8 @@ package role
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -330,13 +332,29 @@ func (c *compositeRoleStore) CheckRoleNameExistsExcludingID(
 	)
 }
 
-// GetAuthorizedPermissions retrieves authorized permissions from both stores.
+// GetAuthorizedPermissions retrieves authorized permissions assembled from three sources:
+//
+//  1. dbStore — DB-managed roles, where both ROLE_PERMISSION and ROLE_ASSIGNMENT rows exist.
+//     The single SQL INNER JOIN resolves these.
+//  2. fileStore (static) — declarative roles whose YAML carries an explicit `assignments:`
+//     list for the entity/group. Returned by fileStore.GetAuthorizedPermissions.
+//  3. Cross-store (file/db) — declarative roles whose definition lives in the file store
+//     but whose assignment was added at runtime via the role assignments API and therefore
+//     lives in the DB. Neither store can answer this alone: dbStore drops the row in its
+//     INNER JOIN against the (absent) ROLE_PERMISSION rows, and fileStore's matching only
+//     consults the YAML-declared assignments. The composite resolves it by reading the
+//     DB-stored role IDs for the entity, looking each role up in the file store, and
+//     intersecting its permissions with the requested set.
 func (c *compositeRoleStore) GetAuthorizedPermissions(
 	ctx context.Context,
 	entityID string,
 	groupIDs []string,
 	requestPermissions []string,
 ) ([]string, error) {
+	if len(requestPermissions) == 0 {
+		return []string{}, nil
+	}
+
 	dbPerms, err := c.dbStore.GetAuthorizedPermissions(ctx, entityID, groupIDs, requestPermissions)
 	if err != nil {
 		return nil, err
@@ -347,8 +365,91 @@ func (c *compositeRoleStore) GetAuthorizedPermissions(
 		return nil, err
 	}
 
-	// Merge permissions from both stores and deduplicate
-	return mergePermissions(dbPerms, filePerms), nil
+	crossStorePerms, err := c.crossStoreAuthorizedPermissions(ctx, entityID, groupIDs, requestPermissions)
+	if err != nil {
+		return nil, err
+	}
+
+	return mergePermissions(mergePermissions(dbPerms, filePerms), crossStorePerms), nil
+}
+
+// crossStoreAuthorizedPermissions resolves permissions for the (declarative role definition
+// in file store) + (runtime assignment row in DB) case. It is intentionally narrow: it skips
+// any role ID that does not exist in the file store, because such roles are entirely DB-backed
+// and were already covered by dbStore.GetAuthorizedPermissions.
+func (c *compositeRoleStore) crossStoreAuthorizedPermissions(
+	ctx context.Context,
+	entityID string,
+	groupIDs []string,
+	requestPermissions []string,
+) ([]string, error) {
+	if entityID == "" && len(groupIDs) == 0 {
+		return []string{}, nil
+	}
+
+	roleIDs, err := c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+	if len(roleIDs) == 0 {
+		return []string{}, nil
+	}
+
+	requestedSet := make(map[string]bool, len(requestPermissions))
+	for _, p := range requestPermissions {
+		requestedSet[p] = true
+	}
+
+	granted := make(map[string]bool)
+	for _, id := range roleIDs {
+		exists, err := c.fileStore.IsRoleExist(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if !exists {
+			// Role is DB-only; permissions already covered by dbStore.GetAuthorizedPermissions.
+			continue
+		}
+		role, err := c.fileStore.GetRole(ctx, id)
+		if err != nil {
+			// Benign cases — skip silently:
+			//   * ErrRoleNotFound: YAML was removed between assignment-time and lookup-time.
+			//   * ErrRoleDataCorrupted: parse/type-assertion failure, already logged by fileStore.
+			// Anything else is an actionable storage/IO error and must not be dropped:
+			// authorization decisions made on a silently-empty permission set could
+			// over- or under-authorize, so propagate with context.
+			if errors.Is(err, ErrRoleNotFound) || errors.Is(err, ErrRoleDataCorrupted) {
+				continue
+			}
+			log.GetLogger().Error("Failed to load declarative role for cross-store permission resolution",
+				log.String("roleID", id), log.Error(err))
+			return nil, fmt.Errorf("composite role store: load declarative role %q: %w", id, err)
+		}
+		for _, rp := range role.Permissions {
+			for _, perm := range rp.Permissions {
+				if requestedSet[perm] {
+					granted[perm] = true
+				}
+			}
+		}
+	}
+
+	result := make([]string, 0, len(granted))
+	for _, perm := range requestPermissions {
+		if granted[perm] {
+			result = append(result, perm)
+		}
+	}
+	return result, nil
+}
+
+// GetEntityRoleIDs returns the IDs of roles assigned to an entity (directly or via groups).
+// Delegates to the database store since assignments are persisted there even for declarative
+// roles. The file store has no independent record of API-added assignments.
+func (c *compositeRoleStore) GetEntityRoleIDs(
+	ctx context.Context, entityID string, groupIDs []string,
+) ([]string, error) {
+	return c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs)
 }
 
 // GetUserRoles retrieves role names assigned to an entity from both stores.

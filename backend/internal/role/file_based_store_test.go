@@ -310,3 +310,36 @@ func (suite *RoleFileBasedStoreTestSuite) TestCreate_SetsIDFromParameter() {
 	suite.NoError(err)
 	suite.Equal("param-role-id", retrievedRole.ID)
 }
+
+// GetEntityRoleIDs on the file-based store is a deliberate no-op: API-added role
+// assignments are persisted in the DB, never in YAML, so the file store has no record
+// to surface. Composite callers rely on this returning an empty (non-nil) slice so
+// the union of (db, file) sources stays correct.
+func (suite *RoleFileBasedStoreTestSuite) TestGetEntityRoleIDs_AlwaysEmpty() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "r1", Name: "R1", OUID: "ou1",
+		Assignments: []RoleAssignment{
+			{ID: "user-x", Type: assigneeTypeEntity},
+			{ID: "group-y", Type: AssigneeTypeGroup},
+		},
+	})
+
+	cases := []struct {
+		name     string
+		entityID string
+		groupIDs []string
+	}{
+		{"populated entity matches YAML", "user-x", []string{"group-y"}},
+		{"populated entity no match", "user-z", []string{"group-z"}},
+		{"empty entity, populated groups", "", []string{"group-y"}},
+		{"empty both", "", nil},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), tc.entityID, tc.groupIDs)
+			suite.NoError(err)
+			suite.Empty(roleIDs)
+			suite.NotNil(roleIDs, "must return [] not nil for safe composite union")
+		})
+	}
+}

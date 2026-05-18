@@ -55,6 +55,12 @@ type roleStoreInterface interface {
 	GetAuthorizedPermissions(
 		ctx context.Context, entityID string, groupIDs []string, requestedPermissions []string) ([]string, error)
 	GetUserRoles(ctx context.Context, entityID string, groupIDs []string) ([]string, error)
+	// GetEntityRoleIDs returns the set of role IDs assigned to the entity directly or via
+	// group membership. Unlike GetUserRoles this does not require the role to exist in the
+	// underlying store; it returns raw assignee->role bindings. Used by the composite store
+	// to resolve permissions for declarative roles whose definitions live in the file store
+	// while their assignments live in the DB.
+	GetEntityRoleIDs(ctx context.Context, entityID string, groupIDs []string) ([]string, error)
 	IsRoleDeclarative(ctx context.Context, roleID string) (bool, error)
 }
 
@@ -596,6 +602,44 @@ func (s *roleStore) GetUserRoles(
 	}
 
 	return roles, nil
+}
+
+// GetEntityRoleIDs retrieves the IDs of roles assigned to an entity directly and/or via
+// group membership, without joining the ROLE table. This surfaces assignments to roles
+// whose definitions live only in the file-based declarative store. Callers (notably the
+// composite store) use this to resolve permissions for declarative roles whose permission
+// rows are absent from the DB.
+func (s *roleStore) GetEntityRoleIDs(
+	ctx context.Context, entityID string, groupIDs []string,
+) ([]string, error) {
+	if groupIDs == nil {
+		groupIDs = []string{}
+	}
+	// Short-circuit before touching the DB when there's nothing to look up.
+	if entityID == "" && len(groupIDs) == 0 {
+		return []string{}, nil
+	}
+
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	query, args := buildEntityRoleIDsQuery(entityID, groupIDs, s.deploymentID)
+
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get entity role IDs: %w", err)
+	}
+
+	roleIDs := make([]string, 0, len(results))
+	for _, row := range results {
+		if id, ok := row["role_id"].(string); ok {
+			roleIDs = append(roleIDs, id)
+		}
+	}
+
+	return roleIDs, nil
 }
 
 // IsRoleDeclarative checks if a role is defined in declarative configuration.

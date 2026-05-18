@@ -290,6 +290,12 @@ var (
 	// ErrRoleNotFound is returned when the role is not found in the system.
 	ErrRoleNotFound = errors.New("role not found")
 
+	// ErrRoleDataCorrupted is returned by the file-based store when a stored entry cannot
+	// be converted into a role (type assertion / parse failure). Exposed as a sentinel so
+	// callers can use errors.Is to skip these benign cases without conflating them with
+	// actionable I/O errors. The originating site already logs the underlying details.
+	ErrRoleDataCorrupted = errors.New("role data corrupted")
+
 	// errResultLimitExceededInCompositeMode is the internal sentinel error for composite mode limit exceeded.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 )

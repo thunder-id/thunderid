@@ -44,7 +44,7 @@ func newFileBasedStore() (roleStoreInterface, transaction.Transactioner) {
 func (f *fileBasedStore) Create(id string, data interface{}) error {
 	role, ok := data.(*RoleWithPermissionsAndAssignments)
 	if !ok {
-		return errors.New("role data corrupted")
+		return ErrRoleDataCorrupted
 	}
 	if role.ID == "" {
 		role.ID = id
@@ -416,6 +416,16 @@ func (f *fileBasedStore) GetUserRoles(
 	return roleNames, nil
 }
 
+// GetEntityRoleIDs is a no-op for the file-based store. Role assignments are persisted in the
+// database store and queried from there by the composite store; the file store has no
+// independent record of API-added assignments. Returning an empty slice keeps the composite
+// merge correct (callers union the result with the DB store's output).
+func (f *fileBasedStore) GetEntityRoleIDs(
+	ctx context.Context, entityID string, groupIDs []string,
+) ([]string, error) {
+	return []string{}, nil
+}
+
 // IsRoleDeclarative returns true for roles in the file-based store because they are declarative.
 func (f *fileBasedStore) IsRoleDeclarative(ctx context.Context, roleID string) (bool, error) {
 	exists, err := f.IsRoleExist(ctx, roleID)
@@ -430,7 +440,7 @@ func roleFromDeclarativeData(id string, data interface{}) (RoleWithPermissionsAn
 	role, ok := data.(*RoleWithPermissionsAndAssignments)
 	if !ok || role == nil {
 		declarativeresource.LogTypeAssertionError("role", id)
-		return RoleWithPermissionsAndAssignments{}, errors.New("role data corrupted")
+		return RoleWithPermissionsAndAssignments{}, ErrRoleDataCorrupted
 	}
 
 	return *role, nil

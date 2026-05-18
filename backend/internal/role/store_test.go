@@ -1802,3 +1802,106 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignmentsCount_DBClientError() {
 	suite.Error(err)
 	suite.Equal(0, count)
 }
+
+// --- GetEntityRoleIDs ---
+
+func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_Success() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On(
+		"QueryContext", mock.Anything, mock.Anything,
+		testDeploymentID, testUserID1, "group1",
+	).Return(
+		[]map[string]interface{}{
+			{"role_id": "role-a"},
+			{"role_id": "role-b"},
+		}, nil)
+
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, []string{"group1"})
+
+	suite.NoError(err)
+	suite.Equal([]string{"role-a", "role-b"}, roleIDs)
+}
+
+func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_EntityOnly() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On(
+		"QueryContext", mock.Anything, mock.Anything, testDeploymentID, testUserID1,
+	).Return(
+		[]map[string]interface{}{{"role_id": "role-a"}},
+		nil,
+	)
+
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil)
+
+	suite.NoError(err)
+	suite.Equal([]string{"role-a"}, roleIDs)
+}
+
+func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_GroupsOnly() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On(
+		"QueryContext", mock.Anything, mock.Anything, testDeploymentID, "group1", "group2",
+	).Return(
+		[]map[string]interface{}{{"role_id": "role-c"}},
+		nil,
+	)
+
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), "", []string{"group1", "group2"})
+
+	suite.NoError(err)
+	suite.Equal([]string{"role-c"}, roleIDs)
+}
+
+func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_EmptyEntityAndGroups_ReturnsEmpty() {
+	// Neither entity nor groups → short-circuits without hitting the DB.
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), "", nil)
+
+	suite.NoError(err)
+	suite.Empty(roleIDs)
+	suite.mockDBProvider.AssertNotCalled(suite.T(), "GetConfigDBClient")
+}
+
+func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_QueryError() {
+	queryError := errors.New("query failed")
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On(
+		"QueryContext", mock.Anything, mock.Anything, testDeploymentID, testUserID1,
+	).Return(nil, queryError)
+
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil)
+
+	suite.Error(err)
+	suite.Nil(roleIDs)
+	suite.Contains(err.Error(), "failed to get entity role IDs")
+}
+
+func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_DBClientError() {
+	dbError := errors.New("db client error")
+	suite.mockDBProvider.On("GetConfigDBClient").Return(nil, dbError)
+
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil)
+
+	suite.Error(err)
+	suite.Nil(roleIDs)
+}
+
+func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_IgnoresMalformedRows() {
+	// Rows whose role_id is not a string are skipped silently — defensive, mirrors
+	// GetUserRoles' behavior for malformed column values.
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On(
+		"QueryContext", mock.Anything, mock.Anything, testDeploymentID, testUserID1,
+	).Return(
+		[]map[string]interface{}{
+			{"role_id": "role-a"},
+			{"role_id": 123},           // wrong type
+			{"other_column": "role-b"}, // wrong column
+			{"role_id": "role-c"},
+		}, nil,
+	)
+
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), testUserID1, nil)
+
+	suite.NoError(err)
+	suite.Equal([]string{"role-a", "role-c"}, roleIDs)
+}
