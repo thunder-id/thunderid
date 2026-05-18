@@ -19,31 +19,17 @@
 import { Route, BrowserRouter as Router, Routes, useLocation } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
-import RedirectLoginPage from './pages/RedirectLoginPage';
 import AuthProvider from './contexts/AuthProvider';
 import useAuth from './hooks/useAuth';
-import config from './config';
 import './App.css';
 
 const App = () => {
   const { token } = useAuth();
-  const location = useLocation(); // Get the current location
-
-  const renderContent = () => {
-    if (token) {
-      return <HomePage />;
-    } else {
-      if (config.redirectBasedLogin) {
-        return <RedirectLoginPage />;
-      } else {
-        return <LoginPage />;
-      }
-    }
-  };
+  const location = useLocation();
 
   return (
     <Routes>
-      <Route path="/" element={renderContent()} key={location.key} />
+      <Route path="/" element={token ? <HomePage /> : <LoginPage />} key={location.key} />
     </Routes>
   );
 };

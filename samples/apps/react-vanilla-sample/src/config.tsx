@@ -19,23 +19,10 @@
 const response = await fetch('/runtime.json');
 const runtimeConfig = await response.json();
 
-// Helper to parse boolean values that can be either boolean or string (from env or runtime.json)
-const parseBoolean = (value: boolean | string | undefined, defaultValue: boolean): boolean => {
-    if (value === undefined || value === '') return defaultValue;
-    if (typeof value === 'boolean') return value;
-    return value.toLowerCase() === 'true';
-};
-
 const config = {
     applicationID: runtimeConfig.applicationID || import.meta.env.VITE_REACT_APP_AUTH_APP_ID,
     applicationsEndpoint: runtimeConfig.applicationsEndpoint || import.meta.env.VITE_REACT_APPLICATIONS_ENDPOINT,
     flowEndpoint: runtimeConfig.flowEndpoint || import.meta.env.VITE_REACT_APP_SERVER_FLOW_ENDPOINT,
-    redirectBasedLogin: parseBoolean(runtimeConfig.redirectBasedLogin ?? import.meta.env.VITE_REACT_APP_REDIRECT_BASED_LOGIN, false),
-    authorizationEndpoint: runtimeConfig.authorizationEndpoint || import.meta.env.VITE_REACT_APP_SERVER_AUTHORIZATION_ENDPOINT,
-    tokenEndpoint: runtimeConfig.tokenEndpoint || import.meta.env.VITE_REACT_APP_SERVER_TOKEN_ENDPOINT,
-    clientId: runtimeConfig.clientId || import.meta.env.VITE_REACT_APP_CLIENT_ID,
-    redirectUri: runtimeConfig.redirectUri || import.meta.env.VITE_REACT_APP_REDIRECT_URI,
-    scope: runtimeConfig.scope || import.meta.env.VITE_REACT_APP_SCOPE
 };
 
 export default config;
