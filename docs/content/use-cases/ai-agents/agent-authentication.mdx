@@ -66,9 +66,24 @@ ThunderID enables secure, auditable access for AI agents—whether calling APIs,
 	</article>
 	<article className="uc-cap-card">
 		<h3>Automation APIs</h3>
-		<p>Automate application registration and token lifecycle tasks through REST APIs.</p>
+		<p>Automate agent registration and token lifecycle tasks through the [Agents REST API](/docs/next/apis).</p>
 	</article>
 </div>
+
+## Common Agentic Patterns
+
+| Pattern | ThunderID Approach |
+|---|---|
+| AI agent calls a protected backend API | Register an agent, use client credentials to get a token, present the token to the API. |
+| CI/CD pipeline authenticates to deployment APIs | Register the pipeline as an agent with `client_credentials`; rotate the secret on each deployment key rotation. |
+| Agent acts on behalf of a user | Use the authorization code flow — the user consents, and the agent receives a token scoped to that user's permissions. |
+| Agent spawns sub-agents | Use the ownership model — parent agent owns child agents; child agents authenticate independently with their own credentials. |
+
+## Implementation Guides
+
+- [Manage Agents](/docs/next/guides/guides/agents/manage-agents) — Create, configure, and delete agents; manage OAuth credentials and group membership.
+- [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication) — Obtain access tokens using the client credentials flow and call protected APIs.
+- [MCP Server](/docs/next/guides/working-with-ai/mcp-server) — Use the <ProductName /> MCP server for AI-assisted identity management.
 
 ## Key Considerations
 
