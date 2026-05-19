@@ -21,4 +21,4 @@ description: |
   Install this once per cluster (or namespace) to register the thunderid
   component type. The thunderid-component chart depends on this type being present.
 type: application
-version: 0.36.0
+version: 0.37.0

@@ -23,454 +23,668 @@ metadata:
     openchoreo.dev/description: "ThunderID ComponentType"
     openchoreo.dev/display-name: "ThunderID"
 spec:
-  workloadType: deployment
-
-  # ─── Parameters (application configuration set at component creation) ────────
-  parameters:
-    openAPIV3Schema:
-      type: object
-      properties:
-        image:
-          type: string
-          default: "ghcr.io/asgardeo/thunder:latest"
-        runtime:
-          type: object
-          properties:
-            imagePullPolicy:
-              type: string
-              enum: [Always, IfNotPresent, Never]
-              default: "Always"
-            gate:
-              type: object
-              properties:
-                clientBase: { type: string, default: "/gate" }
-            console:
-              type: object
-              properties:
-                clientBase: { type: string, default: "/console" }
-                clientId: { type: string, default: "CONSOLE" }
-                scopes: { type: string, default: "[\"openid\", \"profile\", \"email\"]" }
-            dbType:
-              type: string
-              enum: [sqlite, postgres]
-              default: "sqlite"
-            dbStorageSize:
-              type: string
-              default: "1Gi"
-
-  # ─── EnvironmentConfigs (infra + per-environment config set via ReleaseBinding) ─
   environmentConfigs:
     openAPIV3Schema:
-      type: object
       properties:
-        replicas:
-          type: integer
-          default: 1
         endpointVisibility:
+          default: external
+          enum:
+          - external
+          - internal
           type: string
-          enum: [external, internal]
-          default: "external"
-        serverPublicUrl:
-          type: string
-          default: ""
         gateClientHostname:
-          type: string
           default: ""
-        # Infra resource configuration for the ThunderID deployment container.
-        resourceRequestsCpu:
           type: string
-          default: "100m"
-        resourceRequestsMemory:
+        publicHost:
+          default: ""
           type: string
-          default: "128Mi"
+        replicas:
+          default: 1
+          type: integer
         resourceLimitsCpu:
+          default: 500m
           type: string
-          default: "500m"
         resourceLimitsMemory:
+          default: 512Mi
           type: string
-          default: "512Mi"
-
-  # ─── Resources (Kubernetes objects rendered by the OpenChoreo controller) ─────
+        resourceRequestsCpu:
+          default: 100m
+          type: string
+        resourceRequestsMemory:
+          default: 128Mi
+          type: string
+        serverPublicUrl:
+          default: ""
+          type: string
+      type: object
+  parameters:
+    openAPIV3Schema:
+      properties:
+        image:
+          default: ghcr.io/asgardeo/thunder:latest
+          type: string
+        runtime:
+          properties:
+            console:
+              properties:
+                clientBase:
+                  default: /console
+                  type: string
+                clientId:
+                  default: CONSOLE
+                  type: string
+                scopes:
+                  default: '["openid", "profile", "email"]'
+                  type: string
+              type: object
+            dbStorageSize:
+              default: 1Gi
+              type: string
+            dbType:
+              default: sqlite
+              enum:
+              - sqlite
+              - postgres
+              type: string
+            gate:
+              properties:
+                clientBase:
+                  default: /gate
+                  type: string
+              type: object
+            imagePullPolicy:
+              default: Always
+              enum:
+              - Always
+              - IfNotPresent
+              - Never
+              type: string
+          type: object
+        trustedIssuer:
+          properties:
+            audience:
+              default: ""
+              type: string
+            caBundle:
+              default: ""
+              description: PEM-encoded CA certificate(s) Thunder must trust to verify
+                the jwksUrl TLS chain. Mounted into /etc/ssl/certs so Go's default
+                cert loader picks it up; leave empty when jwksUrl's server presents
+                a publicly-trusted cert.
+              type: string
+            consoleClientId:
+              default: ""
+              description: OAuth client_id the console uses when redirecting login
+                to the trusted issuer. Falls back to `audience` when empty — set this
+                when the audience differs from the console's client_id (e.g. aud=tenant-public-url,
+                client_id=FEDERATED_CONSOLE-<env>).
+              type: string
+            discoveryUrl:
+              default: ""
+              description: OIDC discovery base URL the console uses to redirect login
+                to the trusted issuer. Falls back to `issuer` when empty — set this
+                when `issuer` is a literal iss claim (e.g. `platform-idp`) rather
+                than a URL.
+              type: string
+            issuer:
+              default: ""
+              type: string
+            jwksUrl:
+              default: ""
+              type: string
+            requiredClaims:
+              default: []
+              items:
+                properties:
+                  claim:
+                    type: string
+                  value:
+                    type: string
+                type: object
+              type: array
+          type: object
+      type: object
   resources:
-    # PVC for SQLite database files — shared between the setup job and the deployment.
-    # Always created; for postgres deployments the mount is present but unused.
-    - id: sqlite-pvc
-      template:
-        apiVersion: v1
-        kind: PersistentVolumeClaim
-        metadata:
-          name: "${metadata.componentName}-sqlite"
-          namespace: "${metadata.namespace}"
-        spec:
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: "${parameters.runtime.dbStorageSize}"
+  - id: sqlite-pvc
+    includeWhen: ${parameters.runtime.dbType == 'sqlite'}
+    targetPlane: dataplane
+    template:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: ${metadata.componentName}-sqlite
+        namespace: ${metadata.namespace}
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: ${parameters.runtime.dbStorageSize}
+  - id: setup-job
+    includeWhen: ${parameters.runtime.dbType == 'sqlite'}
+    targetPlane: dataplane
+    template:
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: ${metadata.componentName}-setup
+        namespace: ${metadata.namespace}
+      spec:
+        backoffLimit: 3
+        template:
+          spec:
+            containers:
+            - command:
+              - sh
+              - -c
+              - ./setup.sh && touch /opt/thunderid/repository/database/.setup-complete
+              env: |
+                ${configurations.configs.envs.map(e, {"name": e.name, "value": e.value}) + [
+                  {"name": "WITH_CONSENT", "value": "false"}
+                ]}
+              image: ${parameters.image}
+              imagePullPolicy: ${parameters.runtime.imagePullPolicy}
+              name: setup
+              volumeMounts:
+              - mountPath: /opt/thunderid/repository/conf/deployment.yaml
+                name: thunderid-config
+                subPath: deployment.yaml
+              - mountPath: /opt/thunderid/repository/database
+                name: sqlite-data
+            initContainers:
+            - command:
+              - sh
+              - -c
+              - chown -R 10001:10001 /data
+              image: ${parameters.image}
+              imagePullPolicy: ${parameters.runtime.imagePullPolicy}
+              name: fix-perms
+              securityContext:
+                runAsGroup: 0
+                runAsUser: 0
+              volumeMounts:
+              - mountPath: /data
+                name: sqlite-data
+            - args:
+              - |
+                if [ ! -f /data/.initialized ]; then
+                  echo "Copying database directory from image..."
+                  cp -r /opt/thunderid/repository/database/* /data/
+                  touch /data/.initialized
+                  echo "Database initialization complete"
+                else
+                  echo "Database already initialized"
+                fi
+              command:
+              - sh
+              - -c
+              image: ${parameters.image}
+              imagePullPolicy: ${parameters.runtime.imagePullPolicy}
+              name: init-database
+              volumeMounts:
+              - mountPath: /data
+                name: sqlite-data
+            restartPolicy: OnFailure
+            volumes:
+            - configMap:
+                name: ${metadata.componentName}-config
+              name: thunderid-config
+            - name: sqlite-data
+              persistentVolumeClaim:
+                claimName: ${metadata.componentName}-sqlite
+        ttlSecondsAfterFinished: 300
+  - id: setup-job-postgres
+    # Postgres tenants are seeded (default OU, admin user, CONSOLE app, sample
+    # apps, themes) by Thunder's setup.sh exactly like sqlite tenants — but
+    # against the shared CNPG cluster. Rendering this Job via the CCT keeps
+    # the cross-cluster work in OpenChoreo's release controller (same path the
+    # main Deployment uses); the thunder-operator stays single-cluster and
+    # doesn't need to reach into the data-plane to look up the runtime pod.
+    includeWhen: ${parameters.runtime.dbType == 'postgres'}
+    targetPlane: dataplane
+    template:
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: ${metadata.componentName}-setup
+        namespace: ${metadata.namespace}
+      spec:
+        backoffLimit: 3
+        ttlSecondsAfterFinished: 3600
+        template:
+          spec:
+            containers:
+            - command:
+              - sh
+              - -c
+              - cd /opt/thunderid && ./setup.sh --without-consent
+              env: |
+                ${configurations.configs.envs.map(e, {"name": e.name, "value": e.value}) + [
+                  {"name": "WITH_CONSENT", "value": "false"},
+                  {"name": "DB_CONFIG_PASSWORD",  "valueFrom": {"secretKeyRef": {"name": metadata.componentName + "-db-secret", "key": "POSTGRES_DB_PASSWORD"}}},
+                  {"name": "DB_RUNTIME_PASSWORD", "valueFrom": {"secretKeyRef": {"name": metadata.componentName + "-db-secret", "key": "POSTGRES_DB_PASSWORD"}}},
+                  {"name": "DB_USER_PASSWORD",    "valueFrom": {"secretKeyRef": {"name": metadata.componentName + "-db-secret", "key": "POSTGRES_DB_PASSWORD"}}}
+                ]}
+              image: ${parameters.image}
+              imagePullPolicy: ${parameters.runtime.imagePullPolicy}
+              name: setup
+              volumeMounts:
+              - mountPath: /opt/thunderid/repository/conf/deployment.yaml
+                name: thunderid-config
+                subPath: deployment.yaml
+              - mountPath: /etc/ssl/certs/thunder-cp-ca.crt
+                name: trust-ca
+                subPath: ca.crt
+            restartPolicy: OnFailure
+            volumes:
+            - configMap:
+                name: ${metadata.componentName}-config
+              name: thunderid-config
+            - configMap:
+                name: ${metadata.componentName}-trust-ca
+              name: trust-ca
+  - id: thunderid-config
+    includeWhen: ${parameters.runtime.dbType == 'sqlite'}
+    targetPlane: dataplane
+    template:
+      apiVersion: v1
+      data:
+        deployment.yaml: |
+          server:
+            hostname: "0.0.0.0"
+            public_url: "${environmentConfigs.serverPublicUrl}"
+            port: ${workload.endpoints["api"].port}
+            http_only: true
+            identifier: "${metadata.componentName}"
+            security:
+              trusted_issuer:
+                issuer: "${parameters.trustedIssuer.issuer}"
+                jwks_url: "${parameters.trustedIssuer.jwksUrl}"
+                audience: "${parameters.trustedIssuer.audience}"
+                required_claims: ${parameters.trustedIssuer.requiredClaims.map(c, {"claim": c.claim, "value": c.value})}
 
-    - id: setup-job
-      template:
-        apiVersion: batch/v1
-        kind: Job
-        metadata:
-          name: "${metadata.componentName}-setup"
-          namespace: "${metadata.namespace}"
-        spec:
-          backoffLimit: 3
-          ttlSecondsAfterFinished: 300
-          template:
-            spec:
-              restartPolicy: OnFailure
-              initContainers:
-                - name: init-database
-                  image: "${parameters.image}"
-                  imagePullPolicy: "${parameters.runtime.imagePullPolicy}"
-                  command: ['sh', '-c']
-                  args:
-                    - |
-                      if [ ! -f /data/.initialized ]; then
-                        echo "Copying database directory from image..."
-                        cp -r /opt/thunderid/repository/database/* /data/
-                        touch /data/.initialized
-                        echo "Database initialization complete"
-                      else
-                        echo "Database already initialized"
-                      fi
-                  volumeMounts:
-                    - name: sqlite-data
-                      mountPath: /data
-              containers:
-                - name: setup
-                  image: "${parameters.image}"
-                  imagePullPolicy: "${parameters.runtime.imagePullPolicy}"
-                  command: ["sh", "-c", "./setup.sh && touch /opt/thunderid/repository/database/.setup-complete"]
-                  env: |
-                    ${configurations.configs.envs.map(e, {"name": e.name, "value": e.value}) + [
-                      {"name": "WITH_CONSENT", "value": "false"}
-                    ]}
-                  volumeMounts:
-                    - name: thunderid-config
-                      mountPath: /opt/thunderid/repository/conf/deployment.yaml
-                      subPath: deployment.yaml
-                    - name: sqlite-data
-                      mountPath: /opt/thunderid/repository/database
-              volumes:
-                - name: thunderid-config
-                  configMap:
-                    name: "${metadata.componentName}-config"
-                - name: sqlite-data
-                  persistentVolumeClaim:
-                    claimName: "${metadata.componentName}-sqlite"
+          # Tenant-Thunder permission namespace. Runtime expects scope "tenant_instance:system"
+          # for HasSystemPermission() checks — distinct from CP Thunder's own "system" so
+          # tokens issued for one boundary can't satisfy the other.
+          resource:
+            system_resource_server:
+              handle: "tenant_instance"
+              identifier: "tenant_instance"
 
-    - id: thunderid-config
-      includeWhen: "${parameters.runtime.dbType == 'sqlite'}"
-      template:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: "${metadata.componentName}-config"
-          namespace: "${metadata.namespace}"
-        data:
-          deployment.yaml: |
-            server:
-              hostname: "0.0.0.0"
-              public_url: "${environmentConfigs.serverPublicUrl}"
-              port: ${workload.endpoints["api"].port}
-              http_only: true
+          gate_client:
+            hostname: "${environmentConfigs.gateClientHostname}"
+            port: {{ "{{.GATE_CLIENT_PORT}}" }}
+            scheme: "{{ "{{.GATE_CLIENT_SCHEME}}" }}"
 
-            gate_client:
-              hostname: "${environmentConfigs.gateClientHostname}"
-              port: {{ "{{.GATE_CLIENT_PORT}}" }}
-              scheme: "{{ "{{.GATE_CLIENT_SCHEME}}" }}"
+          crypto:
+            encryption:
+              key: "{{ "{{.CRYPTO_ENCRYPTION_KEY}}" }}"
 
-            crypto:
-              encryption:
-                key: "{{ "{{.CRYPTO_ENCRYPTION_KEY}}" }}"
+          database:
+            config:
+              type: "sqlite"
+              sqlite:
+                path: "{{ "{{.DB_CONFIG_PATH}}" }}"
+            runtime:
+              type: "sqlite"
+              sqlite:
+                path: "{{ "{{.DB_RUNTIME_PATH}}" }}"
+            user:
+              type: "sqlite"
+              sqlite:
+                path: "{{ "{{.DB_USER_PATH}}" }}"
 
-            database:
-              config:
-                type: "sqlite"
-                sqlite:
-                  path: "{{ "{{.DB_CONFIG_PATH}}" }}"
-              runtime:
-                type: "sqlite"
-                sqlite:
-                  path: "{{ "{{.DB_RUNTIME_PATH}}" }}"
-              user:
-                type: "sqlite"
-                sqlite:
-                  path: "{{ "{{.DB_USER_PATH}}" }}"
+          cache:
+            disabled: false
+            type: "inmemory"
+            size: {{ "{{.CACHE_SIZE}}" }}
+            ttl: {{ "{{.CACHE_TTL}}" }}
+            eviction_policy: "LRU"
+            cleanup_interval: 600
 
-            cache:
-              disabled: false
-              type: "inmemory"
-              size: {{ "{{.CACHE_SIZE}}" }}
-              ttl: {{ "{{.CACHE_TTL}}" }}
-              eviction_policy: "LRU"
-              cleanup_interval: 600
+          jwt:
+            validity_period: {{ "{{.JWT_VALIDITY}}" }}
 
-            jwt:
-              validity_period: {{ "{{.JWT_VALIDITY}}" }}
+          oauth:
+            refresh_token:
+              renew_on_grant: true
+              validity_period: {{ "{{.OAUTH_REFRESH_TOKEN_VALIDITY}}" }}
 
-            oauth:
-              refresh_token:
-                renew_on_grant: true
-                validity_period: {{ "{{.OAUTH_REFRESH_TOKEN_VALIDITY}}" }}
+          flow:
+            max_version_history: 3
+            auto_infer_registration: true
 
-            flow:
-              max_version_history: 3
-              auto_infer_registration: true
+          cors:
+            allowed_origins: {{ "{{.CORS_ALLOWED_ORIGINS}}" }}
 
-            cors:
-              allowed_origins: {{ "{{.CORS_ALLOWED_ORIGINS}}" }}
+          consent:
+            enabled: {{ "{{.CONSENT_ENABLED}}" }}
+            base_url: "{{ "{{.CONSENT_BASE_URL}}" }}"
+      kind: ConfigMap
+      metadata:
+        name: ${metadata.componentName}-config
+        namespace: ${metadata.namespace}
+  - id: thunderid-config-pg
+    includeWhen: ${parameters.runtime.dbType == 'postgres'}
+    targetPlane: dataplane
+    template:
+      apiVersion: v1
+      data:
+        deployment.yaml: |
+          server:
+            hostname: "0.0.0.0"
+            public_url: "${environmentConfigs.serverPublicUrl}"
+            port: ${workload.endpoints["api"].port}
+            http_only: true
+            identifier: "${metadata.componentName}"
+            security:
+              trusted_issuer:
+                issuer: "${parameters.trustedIssuer.issuer}"
+                jwks_url: "${parameters.trustedIssuer.jwksUrl}"
+                audience: "${parameters.trustedIssuer.audience}"
+                required_claims: ${parameters.trustedIssuer.requiredClaims.map(c, {"claim": c.claim, "value": c.value})}
 
-            consent:
-              enabled: {{ "{{.CONSENT_ENABLED}}" }}
-              base_url: "{{ "{{.CONSENT_BASE_URL}}" }}"
+          # Tenant-Thunder permission namespace. See sqlite variant above for rationale.
+          resource:
+            system_resource_server:
+              handle: "tenant_instance"
+              identifier: "tenant_instance"
 
-    - id: thunderid-config-pg
-      includeWhen: "${parameters.runtime.dbType == 'postgres'}"
-      template:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: "${metadata.componentName}-config"
-          namespace: "${metadata.namespace}"
-        data:
-          deployment.yaml: |
-            server:
-              hostname: "0.0.0.0"
-              public_url: "${environmentConfigs.serverPublicUrl}"
-              port: ${workload.endpoints["api"].port}
-              http_only: true
+          gate_client:
+            hostname: "${environmentConfigs.gateClientHostname}"
+            port: {{ "{{.GATE_CLIENT_PORT}}" }}
+            scheme: "{{ "{{.GATE_CLIENT_SCHEME}}" }}"
 
-            gate_client:
-              hostname: "${environmentConfigs.gateClientHostname}"
-              port: {{ "{{.GATE_CLIENT_PORT}}" }}
-              scheme: "{{ "{{.GATE_CLIENT_SCHEME}}" }}"
+          crypto:
+            encryption:
+              key: "{{ "{{.CRYPTO_ENCRYPTION_KEY}}" }}"
 
-            crypto:
-              encryption:
-                key: "{{ "{{.CRYPTO_ENCRYPTION_KEY}}" }}"
+          database:
+            config:
+              type: "postgres"
+              postgres:
+                hostname: "{{ "{{.DB_CONFIG_HOSTNAME}}" }}"
+                port: {{ "{{.DB_PORT}}" }}
+                name: "{{ "{{.DB_CONFIG_NAME}}" }}"
+                username: "{{ "{{.DB_CONFIG_USERNAME}}" }}"
+                password: "{{ "{{.DB_CONFIG_PASSWORD}}" }}"
+                sslmode: "{{ "{{.DB_CONFIG_SSLMODE}}" }}"
+            runtime:
+              type: "postgres"
+              postgres:
+                hostname: "{{ "{{.DB_RUNTIME_HOSTNAME}}" }}"
+                port: {{ "{{.DB_PORT}}" }}
+                name: "{{ "{{.DB_RUNTIME_NAME}}" }}"
+                username: "{{ "{{.DB_RUNTIME_USERNAME}}" }}"
+                password: "{{ "{{.DB_RUNTIME_PASSWORD}}" }}"
+                sslmode: "{{ "{{.DB_RUNTIME_SSLMODE}}" }}"
+            user:
+              type: "postgres"
+              postgres:
+                hostname: "{{ "{{.DB_USER_HOSTNAME}}" }}"
+                port: {{ "{{.DB_PORT}}" }}
+                name: "{{ "{{.DB_USER_NAME}}" }}"
+                username: "{{ "{{.DB_USER_USERNAME}}" }}"
+                password: "{{ "{{.DB_USER_PASSWORD}}" }}"
+                sslmode: "{{ "{{.DB_USER_SSLMODE}}" }}"
 
-            database:
-              config:
-                type: "postgres"
-                postgres:
-                  hostname: "{{ "{{.DB_CONFIG_HOSTNAME}}" }}"
-                  port: {{ "{{.DB_PORT}}" }}
-                  name: "{{ "{{.DB_CONFIG_NAME}}" }}"
-                  username: "{{ "{{.DB_CONFIG_USERNAME}}" }}"
-                  password: "{{ "{{.DB_CONFIG_PASSWORD}}" }}"
-                  sslmode: "{{ "{{.DB_CONFIG_SSLMODE}}" }}"
-              runtime:
-                type: "postgres"
-                postgres:
-                  hostname: "{{ "{{.DB_RUNTIME_HOSTNAME}}" }}"
-                  port: {{ "{{.DB_PORT}}" }}
-                  name: "{{ "{{.DB_RUNTIME_NAME}}" }}"
-                  username: "{{ "{{.DB_RUNTIME_USERNAME}}" }}"
-                  password: "{{ "{{.DB_RUNTIME_PASSWORD}}" }}"
-                  sslmode: "{{ "{{.DB_RUNTIME_SSLMODE}}" }}"
-              user:
-                type: "postgres"
-                postgres:
-                  hostname: "{{ "{{.DB_USER_HOSTNAME}}" }}"
-                  port: {{ "{{.DB_PORT}}" }}
-                  name: "{{ "{{.DB_USER_NAME}}" }}"
-                  username: "{{ "{{.DB_USER_USERNAME}}" }}"
-                  password: "{{ "{{.DB_USER_PASSWORD}}" }}"
-                  sslmode: "{{ "{{.DB_USER_SSLMODE}}" }}"
+          cache:
+            disabled: false
+            type: "inmemory"
+            size: {{ "{{.CACHE_SIZE}}" }}
+            ttl: {{ "{{.CACHE_TTL}}" }}
+            eviction_policy: "LRU"
+            cleanup_interval: 600
 
-            cache:
-              disabled: false
-              type: "inmemory"
-              size: {{ "{{.CACHE_SIZE}}" }}
-              ttl: {{ "{{.CACHE_TTL}}" }}
-              eviction_policy: "LRU"
-              cleanup_interval: 600
+          jwt:
+            validity_period: {{ "{{.JWT_VALIDITY}}" }}
 
-            jwt:
-              validity_period: {{ "{{.JWT_VALIDITY}}" }}
+          oauth:
+            refresh_token:
+              renew_on_grant: true
+              validity_period: {{ "{{.OAUTH_REFRESH_TOKEN_VALIDITY}}" }}
 
-            oauth:
-              refresh_token:
-                renew_on_grant: true
-                validity_period: {{ "{{.OAUTH_REFRESH_TOKEN_VALIDITY}}" }}
+          flow:
+            max_version_history: 3
+            auto_infer_registration: true
 
-            flow:
-              max_version_history: 3
-              auto_infer_registration: true
+          cors:
+            allowed_origins: {{ "{{.CORS_ALLOWED_ORIGINS}}" }}
 
-            cors:
-              allowed_origins: {{ "{{.CORS_ALLOWED_ORIGINS}}" }}
-
-            consent:
-              enabled: {{ "{{.CONSENT_ENABLED}}" }}
-              base_url: "{{ "{{.CONSENT_BASE_URL}}" }}"
-
-    - id: gate-config
-      template:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: "${metadata.componentName}-gate-config"
-          namespace: "${metadata.namespace}"
-        data:
-          config.js: |
-            window.__THUNDERID_RUNTIME_CONFIG__ = {
-              client: {
-                base: "${parameters.runtime.gate.clientBase}",
+          consent:
+            enabled: {{ "{{.CONSENT_ENABLED}}" }}
+            base_url: "{{ "{{.CONSENT_BASE_URL}}" }}"
+      kind: ConfigMap
+      metadata:
+        name: ${metadata.componentName}-config
+        namespace: ${metadata.namespace}
+  - id: gate-config
+    targetPlane: dataplane
+    template:
+      apiVersion: v1
+      data:
+        config.js: |
+          window.__THUNDERID_RUNTIME_CONFIG__ = {
+            brand: {
+              product_name: "ThunderID",
+              favicon: {
+                light: "assets/images/favicon.ico",
+                dark: "assets/images/favicon-inverted.ico",
               },
-              server: {
-                public_url: "${environmentConfigs.serverPublicUrl}",
+            },
+            client: {
+              base: "${parameters.runtime.gate.clientBase}",
+            },
+            server: {
+              public_url: "${environmentConfigs.serverPublicUrl}",
+            },
+          };
+      kind: ConfigMap
+      metadata:
+        name: ${metadata.componentName}-gate-config
+        namespace: ${metadata.namespace}
+  - id: console-config
+    targetPlane: dataplane
+    template:
+      apiVersion: v1
+      data:
+        config.js: |
+          window.__THUNDERID_RUNTIME_CONFIG__ = {
+            brand: {
+              product_name: "ThunderID",
+              favicon: {
+                light: "assets/images/favicon.ico",
+                dark: "assets/images/favicon-inverted.ico",
               },
-            };
-
-    - id: console-config
-      template:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: "${metadata.componentName}-console-config"
-          namespace: "${metadata.namespace}"
+            },
+            client: {
+              base: "${parameters.runtime.console.clientBase}",
+              client_id: "${parameters.runtime.console.clientId}",
+              scopes: ${parameters.runtime.console.scopes},
+            },
+            server: {
+              public_url: "${environmentConfigs.serverPublicUrl}",
+            },
+            ${has(parameters.trustedIssuer) && parameters.trustedIssuer.issuer != "" ? 'trusted_issuer: {hostname: "", port: 0, http_only: false, type: "generic", public_url: "' + (has(parameters.trustedIssuer.discoveryUrl) && parameters.trustedIssuer.discoveryUrl != "" ? parameters.trustedIssuer.discoveryUrl : parameters.trustedIssuer.issuer) + '", client_id: "' + (has(parameters.trustedIssuer.consoleClientId) && parameters.trustedIssuer.consoleClientId != "" ? parameters.trustedIssuer.consoleClientId : parameters.trustedIssuer.audience) + '", scopes: ["openid","profile","email","tenant_instance:system"]},' : ''}
+          };
+      kind: ConfigMap
+      metadata:
+        name: ${metadata.componentName}-console-config
+        namespace: ${metadata.namespace}
+  - forEach: ${configurations.toConfigFileList()}
+    id: file-config
+    targetPlane: dataplane
+    template:
+      apiVersion: v1
+      data:
+        ${config.name}: |
+          ${config.value}
+      kind: ConfigMap
+      metadata:
+        name: ${config.resourceName}
+        namespace: ${metadata.namespace}
+    var: config
+  - id: trust-ca
+    targetPlane: dataplane
+    template:
+      apiVersion: v1
+      data:
+        ca.crt: |
+          ${parameters.trustedIssuer.caBundle}
+      kind: ConfigMap
+      metadata:
+        name: ${metadata.componentName}-trust-ca
+        namespace: ${metadata.namespace}
+  - id: thunder-db-externalsecret
+    includeWhen: ${parameters.runtime.dbType == 'postgres'}
+    targetPlane: dataplane
+    template:
+      apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+        name: ${metadata.componentName}-db-es
+        namespace: ${metadata.namespace}
+      spec:
         data:
-          config.js: |
-            window.__THUNDERID_RUNTIME_CONFIG__ = {
-              client: {
-                base: "${parameters.runtime.console.clientBase}",
-                client_id: "${parameters.runtime.console.clientId}",
-                scopes: ${parameters.runtime.console.scopes},
-              },
-              server: {
-                public_url: "${environmentConfigs.serverPublicUrl}",
-              },
-            };
-
-    - id: file-config
-      forEach: ${configurations.toConfigFileList()}
-      var: config
-      template:
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          name: ${config.resourceName}
-          namespace: ${metadata.namespace}
-        data:
-          ${config.name}: |
-            ${config.value}
-
-    - id: deployment
-      template:
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: "${metadata.componentName}"
-          namespace: "${metadata.namespace}"
-        spec:
-          replicas: ${environmentConfigs.replicas}
-          selector:
-            matchLabels:
-              app: "${metadata.componentName}"
-          template:
-            metadata:
-              labels:
-                app: "${metadata.componentName}"
-            spec:
-              initContainers:
-                - name: wait-for-setup
-                  image: "${parameters.image}"
-                  imagePullPolicy: "${parameters.runtime.imagePullPolicy}"
-                  command: ['sh', '-c']
-                  args:
-                    - |
-                      until [ -f /opt/thunderid/repository/database/.setup-complete ]; do
-                        echo "Waiting for setup job to complete..."
-                        sleep 2
-                      done
-                      echo "Setup complete, starting ThunderID..."
-                  volumeMounts:
-                    - name: sqlite-data
-                      mountPath: /opt/thunderid/repository/database
-              containers:
-                - name: thunderid
-                  image: "${parameters.image}"
-                  imagePullPolicy: "${parameters.runtime.imagePullPolicy}"
-                  command:
-                    - /opt/thunderid/thunder
-                  ports:
-                    - containerPort: ${workload.endpoints["api"].port}
-                  env: |
-                    ${configurations.configs.envs.map(e, {"name": e.name, "value": e.value})}
-                  resources:
-                    requests:
-                      cpu: "${environmentConfigs.resourceRequestsCpu}"
-                      memory: "${environmentConfigs.resourceRequestsMemory}"
-                    limits:
-                      cpu: "${environmentConfigs.resourceLimitsCpu}"
-                      memory: "${environmentConfigs.resourceLimitsMemory}"
-                  volumeMounts: |
-                    ${[
-                      {"name": "thunderid-config", "mountPath": "/opt/thunderid/repository/conf/deployment.yaml", "subPath": "deployment.yaml"},
-                      {"name": "gate-config", "mountPath": "/opt/thunderid/apps/gate/config.js", "subPath": "config.js"},
-                      {"name": "console-config", "mountPath": "/opt/thunderid/apps/console/config.js", "subPath": "config.js"},
-                      {"name": "sqlite-data", "mountPath": "/opt/thunderid/repository/database"}
-                    ] + configurations.toContainerVolumeMounts().map(m, {"name": m.name, "mountPath": m.mountPath, "subPath": m.subPath})}
-              volumes: |
+        - remoteRef:
+            key: thunder-postgres-app
+            property: password
+          secretKey: POSTGRES_DB_PASSWORD
+        refreshInterval: 15s
+        secretStoreRef:
+          kind: ClusterSecretStore
+          name: thunder-postgres-store
+        target:
+          creationPolicy: Owner
+          name: ${metadata.componentName}-db-secret
+  - id: deployment
+    targetPlane: dataplane
+    template:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: ${metadata.componentName}
+        namespace: ${metadata.namespace}
+      spec:
+        replicas: ${environmentConfigs.replicas}
+        selector:
+          matchLabels:
+            app: ${metadata.componentName}
+        template:
+          metadata:
+            labels:
+              app: ${metadata.componentName}
+          spec:
+            containers:
+            - command:
+              - /opt/thunderid/thunderid
+              env: |
+                ${configurations.configs.envs.map(e, {"name": e.name, "value": e.value}) +
+                  (parameters.runtime.dbType == 'postgres' ? [
+                    {"name": "DB_CONFIG_PASSWORD",  "valueFrom": {"secretKeyRef": {"name": metadata.componentName + "-db-secret", "key": "POSTGRES_DB_PASSWORD"}}},
+                    {"name": "DB_RUNTIME_PASSWORD", "valueFrom": {"secretKeyRef": {"name": metadata.componentName + "-db-secret", "key": "POSTGRES_DB_PASSWORD"}}},
+                    {"name": "DB_USER_PASSWORD",    "valueFrom": {"secretKeyRef": {"name": metadata.componentName + "-db-secret", "key": "POSTGRES_DB_PASSWORD"}}}
+                  ] : [])}
+              image: ${parameters.image}
+              imagePullPolicy: ${parameters.runtime.imagePullPolicy}
+              name: thunderid
+              ports:
+              - containerPort: ${workload.endpoints["api"].port}
+              resources:
+                limits:
+                  cpu: ${environmentConfigs.resourceLimitsCpu}
+                  memory: ${environmentConfigs.resourceLimitsMemory}
+                requests:
+                  cpu: ${environmentConfigs.resourceRequestsCpu}
+                  memory: ${environmentConfigs.resourceRequestsMemory}
+              volumeMounts: |
                 ${[
-                  {"name": "thunderid-config", "configMap": {"name": metadata.componentName + "-config"}},
-                  {"name": "gate-config", "configMap": {"name": metadata.componentName + "-gate-config"}},
-                  {"name": "console-config", "configMap": {"name": metadata.componentName + "-console-config"}},
-                  {"name": "sqlite-data", "persistentVolumeClaim": {"claimName": metadata.componentName + "-sqlite"}}
-                ] + configurations.toVolumes().map(v, {"name": v.name, "configMap": {"name": v.configMap.name}})}
-
-    - id: service
-      template:
-        apiVersion: v1
-        kind: Service
-        metadata:
-          name: "${metadata.componentName}"
-          namespace: "${metadata.namespace}"
-        spec:
-          type: ClusterIP
-          selector:
-            app: "${metadata.componentName}"
-          ports:
-            - port: ${workload.endpoints["api"].port}
-              targetPort: ${workload.endpoints["api"].port}
-              protocol: TCP
-              name: http
-
-    - id: httproute-external
-      includeWhen: "${environmentConfigs.endpointVisibility == 'external'}"
-      forEach: '${workload.endpoints.transformMap(name, ep, ep.type in ["HTTP", "GraphQL", "Websocket"], ep)}'
-      var: endpoint
-      template:
-        apiVersion: gateway.networking.k8s.io/v1
-        kind: HTTPRoute
-        metadata:
-          name: ${oc_generate_name(metadata.componentName, endpoint.key)}
-          namespace: ${metadata.namespace}
-          labels: '${oc_merge(metadata.labels, {"openchoreo.dev/endpoint-name": endpoint.key, "openchoreo.dev/endpoint-visibility": "external"})}'
-        spec:
-          parentRefs:
-            - name: ${gateway.ingress.external.name}
-              namespace: ${gateway.ingress.external.namespace}
-          hostnames: |
-            ${[gateway.ingress.external.?http, gateway.ingress.external.?https]
-              .filter(g, g.hasValue()).map(g, g.value().host).distinct()
-              .map(h, metadata.environmentName + "-" + metadata.componentName + "-" + metadata.componentNamespace + "." + h)}
-          rules:
-            - matches:
-                - path:
-                    type: PathPrefix
-                    value: /
-              filters:
-                - type: URLRewrite
-                  urlRewrite:
-                    path:
-                      type: ReplacePrefixMatch
-                      replacePrefixMatch: '${endpoint.value.?basePath.orValue("/")}'
-              backendRefs:
-                - name: ${metadata.componentName}
-                  port: ${endpoint.value.port}
+                  {"name": "thunderid-config", "mountPath": "/opt/thunderid/repository/conf/deployment.yaml", "subPath": "deployment.yaml"},
+                  {"name": "gate-config", "mountPath": "/opt/thunderid/apps/gate/config.js", "subPath": "config.js"},
+                  {"name": "console-config", "mountPath": "/opt/thunderid/apps/console/config.js", "subPath": "config.js"},
+                  {"name": "trust-ca", "mountPath": "/etc/ssl/certs/thunder-cp-ca.crt", "subPath": "ca.crt"}
+                ] + (parameters.runtime.dbType == 'sqlite' ? [
+                  {"name": "sqlite-data", "mountPath": "/opt/thunderid/repository/database"}
+                ] : []) + configurations.toContainerVolumeMounts().map(m, {"name": m.name, "mountPath": m.mountPath, "subPath": m.subPath})}
+            initContainers: |
+              ${(parameters.runtime.dbType == 'sqlite' ? [{
+                "name": "wait-for-setup",
+                "image": parameters.image,
+                "imagePullPolicy": parameters.runtime.imagePullPolicy,
+                "command": ["sh", "-c"],
+                "args": ["i=0; until [ -f /opt/thunderid/repository/database/.setup-complete ]; do i=$((i+1)); if [ $i -gt 300 ]; then echo 'ERROR: thunder setup-job did not complete within 600s; failing init so the issue is surfaced' >&2; exit 1; fi; echo 'Waiting for setup job...'; sleep 2; done; echo 'Setup complete.'"],
+                "volumeMounts": [{"name": "sqlite-data", "mountPath": "/opt/thunderid/repository/database"}]
+              }] : [])}
+            volumes: |
+              ${[
+                {"name": "thunderid-config", "configMap": {"name": metadata.componentName + "-config"}},
+                {"name": "gate-config", "configMap": {"name": metadata.componentName + "-gate-config"}},
+                {"name": "console-config", "configMap": {"name": metadata.componentName + "-console-config"}},
+                {"name": "trust-ca", "configMap": {"name": metadata.componentName + "-trust-ca"}}
+              ] + (parameters.runtime.dbType == 'sqlite' ? [
+                {"name": "sqlite-data", "persistentVolumeClaim": {"claimName": metadata.componentName + "-sqlite"}}
+              ] : []) + configurations.toVolumes().map(v, {"name": v.name, "configMap": {"name": v.configMap.name}})}
+  - id: service
+    targetPlane: dataplane
+    template:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: ${metadata.componentName}
+        namespace: ${metadata.namespace}
+      spec:
+        ports:
+        - name: http
+          port: ${workload.endpoints["api"].port}
+          protocol: TCP
+          targetPort: ${workload.endpoints["api"].port}
+        selector:
+          app: ${metadata.componentName}
+        type: ClusterIP
+  - forEach: ${workload.endpoints.transformMap(name, ep, ep.type in ["HTTP", "GraphQL",
+      "Websocket"], ep)}
+    id: httproute-external
+    includeWhen: ${environmentConfigs.endpointVisibility == 'external'}
+    targetPlane: dataplane
+    template:
+      apiVersion: gateway.networking.k8s.io/v1
+      kind: HTTPRoute
+      metadata:
+        labels: '${oc_merge(metadata.labels, {"openchoreo.dev/endpoint-name": endpoint.key,
+          "openchoreo.dev/endpoint-visibility": "external"})}'
+        name: ${oc_generate_name(metadata.componentName, endpoint.key)}
+        namespace: ${metadata.namespace}
+      spec:
+        hostnames: |
+          ${environmentConfigs.publicHost != ""
+            ? [environmentConfigs.publicHost]
+            : [gateway.ingress.external.?http, gateway.ingress.external.?https]
+                .filter(g, g.hasValue()).map(g, g.value().host).distinct()
+                .map(h, metadata.environmentName + "-" + metadata.componentName + "-" + metadata.componentNamespace + "." + h)}
+        parentRefs:
+        - name: ${gateway.ingress.external.name}
+          namespace: ${gateway.ingress.external.namespace}
+        rules:
+        - backendRefs:
+          - name: ${metadata.componentName}
+            port: ${endpoint.value.port}
+          filters:
+          - type: URLRewrite
+            urlRewrite:
+              path:
+                replacePrefixMatch: ${endpoint.value.?basePath.orValue("/")}
+                type: ReplacePrefixMatch
+          matches:
+          - path:
+              type: PathPrefix
+              value: /
+          # The console SPA's main bundle is ~7.5 MB. Envoy's default route
+          # timeout is 15s, which is too short for the bundle to stream
+          # through a cross-cluster gateway path — the response gets cut
+          # mid-stream and the browser sees a blank console. 5m is a
+          # generous upper bound that still terminates genuinely-hung
+          # requests; bump higher if the bundle ever grows significantly.
+          timeouts:
+            request: "5m"
+    var: endpoint
+  workloadType: deployment
