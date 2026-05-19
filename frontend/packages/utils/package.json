@@ -54,11 +54,12 @@
     "human-id": "4.1.2"
   },
   "devDependencies": {
-    "@thunderid/types": "workspace:^",
     "@thunderid/eslint-plugin": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
     "@thunderid/test-utils": "workspace:^",
+    "@thunderid/types": "workspace:^",
     "@types/node": "catalog:",
+    "@vitest/coverage-istanbul": "catalog:",
     "eslint": "catalog:",
     "prettier": "catalog:",
     "rimraf": "catalog:",

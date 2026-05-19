@@ -21,23 +21,6 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {OrganizationUnit} from '../../../../models/organization-unit';
 import QuickCopySection from '../QuickCopySection';
 
-// Mock translations
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const translations: Record<string, string> = {
-        'organizationUnits:edit.general.sections.quickCopy.title': 'Quick Copy',
-        'organizationUnits:edit.general.sections.quickCopy.description': 'Copy organization unit identifiers',
-        'organizationUnits:edit.general.handle.label': 'Handle',
-        'organizationUnits:edit.general.ou.id.label': 'Organization Unit ID',
-        'common:actions.copy': 'Copy',
-        'common:actions.copied': 'Copied',
-      };
-      return translations[key] ?? key;
-    },
-  }),
-}));
-
 describe('QuickCopySection', () => {
   const mockOrganizationUnit: OrganizationUnit = {
     id: 'ou-123',
@@ -63,7 +46,7 @@ describe('QuickCopySection', () => {
     );
 
     expect(screen.getByText('Quick Copy')).toBeInTheDocument();
-    expect(screen.getByText('Copy organization unit identifiers')).toBeInTheDocument();
+    expect(screen.getByText('Copy organization unit identifiers for quick reference.')).toBeInTheDocument();
   });
 
   it('should render handle field with correct value', () => {
@@ -137,7 +120,7 @@ describe('QuickCopySection', () => {
       />,
     );
 
-    const copiedButton = screen.getByLabelText('Copied');
+    const copiedButton = screen.getByLabelText('Copied!');
     expect(copiedButton).toBeInTheDocument();
   });
 
@@ -150,7 +133,7 @@ describe('QuickCopySection', () => {
       />,
     );
 
-    const copiedButton = screen.getByLabelText('Copied');
+    const copiedButton = screen.getByLabelText('Copied!');
     expect(copiedButton).toBeInTheDocument();
   });
 

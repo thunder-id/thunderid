@@ -21,14 +21,6 @@ import {render, screen, fireEvent} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import InitializeLanguage from '@/components/create-translation/InitializeLanguage';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 const defaultProps = {
   populateFromEnglish: true,
   onPopulateChange: vi.fn(),
@@ -45,22 +37,30 @@ describe('InitializeLanguage', () => {
     it('renders the step title and subtitle', () => {
       render(<InitializeLanguage {...defaultProps} />);
 
-      expect(screen.getByText('language.create.initialize.title')).toBeInTheDocument();
-      expect(screen.getByText('language.create.initialize.subtitle')).toBeInTheDocument();
+      expect(screen.getByText('Initialize Translations')).toBeInTheDocument();
+      expect(screen.getByText('Choose how to populate the translation keys for this language.')).toBeInTheDocument();
     });
 
     it('renders both strategy card labels', () => {
       render(<InitializeLanguage {...defaultProps} />);
 
-      expect(screen.getByText('language.create.initialize.copyFromEnglish.label')).toBeInTheDocument();
-      expect(screen.getByText('language.create.initialize.startEmpty.label')).toBeInTheDocument();
+      expect(screen.getByText('Copy from English')).toBeInTheDocument();
+      expect(screen.getByText('Start empty')).toBeInTheDocument();
     });
 
     it('renders both strategy card descriptions', () => {
       render(<InitializeLanguage {...defaultProps} />);
 
-      expect(screen.getByText('language.create.initialize.copyFromEnglish.description')).toBeInTheDocument();
-      expect(screen.getByText('language.create.initialize.startEmpty.description')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'All keys will be pre-filled with English (en-US) text as a starting point. You can edit them afterwards.',
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'All keys will be created with empty values. Useful when you have your own translations ready to paste in.',
+        ),
+      ).toBeInTheDocument();
     });
   });
 
@@ -92,7 +92,7 @@ describe('InitializeLanguage', () => {
 
       render(<InitializeLanguage {...defaultProps} populateFromEnglish={false} onPopulateChange={onPopulateChange} />);
 
-      await user.click(screen.getByText('language.create.initialize.copyFromEnglish.label'));
+      await user.click(screen.getByText('Copy from English'));
 
       expect(onPopulateChange).toHaveBeenCalledWith(true);
     });
@@ -103,7 +103,7 @@ describe('InitializeLanguage', () => {
 
       render(<InitializeLanguage {...defaultProps} populateFromEnglish onPopulateChange={onPopulateChange} />);
 
-      await user.click(screen.getByText('language.create.initialize.startEmpty.label'));
+      await user.click(screen.getByText('Start empty'));
 
       expect(onPopulateChange).toHaveBeenCalledWith(false);
     });
@@ -115,7 +115,7 @@ describe('InitializeLanguage', () => {
 
       // CardActionArea has pointer-events:none when disabled, so use fireEvent to
       // dispatch a native click that still bubbles to the Card's onClick handler.
-      fireEvent.click(screen.getByText('language.create.initialize.startEmpty.label'));
+      fireEvent.click(screen.getByText('Start empty'));
 
       expect(onPopulateChange).not.toHaveBeenCalled();
     });

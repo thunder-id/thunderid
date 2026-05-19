@@ -97,33 +97,6 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
-// Mock translations — stable reference to avoid useCallback churn
-const listTranslations: Record<string, string> = {
-  'organizationUnits:listing.title': 'Organization Units',
-  'organizationUnits:listing.subtitle': 'Manage your organization units',
-  'organizationUnits:listing.addRootOrganizationUnit': 'Add Root Organization Unit',
-  'organizationUnits:listing.error.title': 'Error loading organization units',
-  'organizationUnits:listing.error.unknown': 'An unknown error occurred',
-  'organizationUnits:listing.treeView.empty': 'No organization units found',
-  'organizationUnits:listing.treeView.noChildren': 'No child organization units',
-  'organizationUnits:listing.treeView.loadError': 'Failed to load child organization units',
-  'organizationUnits:listing.treeView.addChild': 'Add child organization unit',
-  'organizationUnits:listing.treeView.addChildOrganizationUnit': 'Add Child Organization Unit',
-  'organizationUnits:delete.dialog.title': 'Delete Organization Unit',
-  'organizationUnits:delete.dialog.message':
-    'Are you sure you want to delete this organization unit? This action cannot be undone.',
-  'organizationUnits:delete.dialog.disclaimer':
-    'Warning: All associated data, configurations, and user assignments will be permanently removed.',
-  'common:actions.edit': 'Edit',
-  'common:actions.delete': 'Delete',
-  'common:actions.cancel': 'Cancel',
-};
-const stableListT = (key: string): string => listTranslations[key] ?? key;
-const stableListTranslation = {t: stableListT};
-vi.mock('react-i18next', () => ({
-  useTranslation: () => stableListTranslation,
-}));
-
 describe('OrganizationUnitsListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -133,13 +106,13 @@ describe('OrganizationUnitsListPage', () => {
   it('should render page title', () => {
     renderWithProviders(<OrganizationUnitsListPage />);
 
-    expect(screen.getByText('Organization Units')).toBeInTheDocument();
+    expect(screen.getByText('Organization Units (OU)')).toBeInTheDocument();
   });
 
   it('should render page subtitle', () => {
     renderWithProviders(<OrganizationUnitsListPage />);
 
-    expect(screen.getByText('Manage your organization units')).toBeInTheDocument();
+    expect(screen.getByText('Manage organization units and hierarchies')).toBeInTheDocument();
   });
 
   it('should render tree view with organization units', async () => {

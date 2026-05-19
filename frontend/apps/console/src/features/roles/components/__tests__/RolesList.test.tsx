@@ -183,7 +183,7 @@ describe('RolesList', () => {
 
     renderComponent();
 
-    expect(screen.getByText('Failed to load roles')).toBeInTheDocument();
+    expect(screen.getByRole('heading', {name: 'Failed to load roles'})).toBeInTheDocument();
   });
 
   it('should render roles list successfully', () => {

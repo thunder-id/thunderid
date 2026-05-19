@@ -429,7 +429,7 @@ describe('DecoratedVisualFlow', () => {
     it('should render save button in top bar', () => {
       renderComponent(<DecoratedVisualFlow {...defaultProps} onSave={vi.fn()} />);
 
-      expect(screen.getByText('core.headerPanel.save')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /save/i})).toBeInTheDocument();
     });
 
     it('should render canvas toolbar', () => {
@@ -448,7 +448,7 @@ describe('DecoratedVisualFlow', () => {
 
       renderComponent(<DecoratedVisualFlow {...defaultProps} onSave={mockOnSave} />);
 
-      const saveButton = screen.getByText('core.headerPanel.save');
+      const saveButton = screen.getByRole('button', {name: /save/i});
       fireEvent.click(saveButton);
 
       expect(mockOnSave).toHaveBeenCalledWith({
@@ -461,7 +461,7 @@ describe('DecoratedVisualFlow', () => {
     it('should not throw when onSave is not provided', () => {
       renderComponent(<DecoratedVisualFlow {...defaultProps} onSave={undefined} />);
 
-      const saveButton = screen.getByText('core.headerPanel.save');
+      const saveButton = screen.getByRole('button', {name: /save/i});
       expect(() => fireEvent.click(saveButton)).not.toThrow();
     });
   });

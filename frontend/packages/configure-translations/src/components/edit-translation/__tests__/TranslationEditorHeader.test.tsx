@@ -21,14 +21,6 @@ import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import TranslationEditorHeader from '@/components/edit-translation/TranslationEditorHeader';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 vi.mock('@thunderid/i18n', () => ({
   getDisplayNameForCode: (code: string) => `Language(${code})`,
   toFlagEmoji: (code: string) => `Flag(${code})`,
@@ -56,7 +48,7 @@ describe('TranslationEditorHeader', () => {
     it('shows page title key when no language is selected', () => {
       render(<TranslationEditorHeader {...defaultProps} selectedLanguage={null} />);
 
-      expect(screen.getByText('page.title')).toBeInTheDocument();
+      expect(screen.getByText('Translations')).toBeInTheDocument();
     });
 
     it('shows flag and display name when a language is selected', () => {
@@ -69,21 +61,21 @@ describe('TranslationEditorHeader', () => {
     it('renders discard, save, and reset-to-default action buttons', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage={false} />);
 
-      expect(screen.getByText('actions.discardChanges')).toBeInTheDocument();
-      expect(screen.getByText('actions.resetToDefault')).toBeInTheDocument();
-      expect(screen.getByText('actions.saveChanges')).toBeInTheDocument();
+      expect(screen.getByText('Discard Changes')).toBeInTheDocument();
+      expect(screen.getByText('Reset to Default')).toBeInTheDocument();
+      expect(screen.getByText('Save Changes')).toBeInTheDocument();
     });
 
     it('hides Reset to Default button when isFallbackLanguage is true', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage />);
 
-      expect(screen.queryByText('actions.resetToDefault')).not.toBeInTheDocument();
+      expect(screen.queryByText('Reset to Default')).not.toBeInTheDocument();
     });
 
     it('shows Reset to Default button when isFallbackLanguage is false', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage={false} />);
 
-      expect(screen.getByText('actions.resetToDefault')).toBeInTheDocument();
+      expect(screen.getByText('Reset to Default')).toBeInTheDocument();
     });
   });
 
@@ -91,13 +83,13 @@ describe('TranslationEditorHeader', () => {
     it('does not show unsaved count when there are no dirty changes', () => {
       render(<TranslationEditorHeader {...defaultProps} hasDirtyChanges={false} dirtyCount={0} />);
 
-      expect(screen.queryByText('editor.unsavedCount')).not.toBeInTheDocument();
+      expect(screen.queryByText(/unsaved change/)).not.toBeInTheDocument();
     });
 
     it('shows unsaved count label when there are dirty changes', () => {
       render(<TranslationEditorHeader {...defaultProps} hasDirtyChanges dirtyCount={3} />);
 
-      expect(screen.getByText('editor.unsavedCount')).toBeInTheDocument();
+      expect(screen.getByText('3 unsaved change')).toBeInTheDocument();
     });
   });
 
@@ -105,44 +97,44 @@ describe('TranslationEditorHeader', () => {
     it('disables Discard when no dirty changes', () => {
       render(<TranslationEditorHeader {...defaultProps} hasDirtyChanges={false} />);
 
-      expect(screen.getByText('actions.discardChanges').closest('button')).toBeDisabled();
+      expect(screen.getByText('Discard Changes').closest('button')).toBeDisabled();
     });
 
     it('enables Discard when dirty changes exist', () => {
       render(<TranslationEditorHeader {...defaultProps} hasDirtyChanges dirtyCount={1} />);
 
-      expect(screen.getByText('actions.discardChanges').closest('button')).not.toBeDisabled();
+      expect(screen.getByText('Discard Changes').closest('button')).not.toBeDisabled();
     });
 
     it('disables Save when no dirty changes', () => {
       render(<TranslationEditorHeader {...defaultProps} hasDirtyChanges={false} />);
 
-      expect(screen.getByText('actions.saveChanges').closest('button')).toBeDisabled();
+      expect(screen.getByText('Save Changes').closest('button')).toBeDisabled();
     });
 
     it('enables Save when dirty changes exist', () => {
       render(<TranslationEditorHeader {...defaultProps} hasDirtyChanges dirtyCount={2} />);
 
-      expect(screen.getByText('actions.saveChanges').closest('button')).not.toBeDisabled();
+      expect(screen.getByText('Save Changes').closest('button')).not.toBeDisabled();
     });
 
     it('disables all action buttons while saving', () => {
       render(<TranslationEditorHeader {...defaultProps} hasDirtyChanges dirtyCount={1} isSaving />);
 
-      expect(screen.getByText('actions.discardChanges').closest('button')).toBeDisabled();
-      expect(screen.getByText('actions.saveChanges').closest('button')).toBeDisabled();
+      expect(screen.getByText('Discard Changes').closest('button')).toBeDisabled();
+      expect(screen.getByText('Save Changes').closest('button')).toBeDisabled();
     });
 
     it('disables Reset to Default when hasNamespace is false', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage={false} hasNamespace={false} />);
 
-      expect(screen.getByText('actions.resetToDefault').closest('button')).toBeDisabled();
+      expect(screen.getByText('Reset to Default').closest('button')).toBeDisabled();
     });
 
     it('enables Reset to Default when hasNamespace is true and not saving', () => {
       render(<TranslationEditorHeader {...defaultProps} isFallbackLanguage={false} hasNamespace isSaving={false} />);
 
-      expect(screen.getByText('actions.resetToDefault').closest('button')).not.toBeDisabled();
+      expect(screen.getByText('Reset to Default').closest('button')).not.toBeDisabled();
     });
   });
 
@@ -165,7 +157,7 @@ describe('TranslationEditorHeader', () => {
 
       render(<TranslationEditorHeader {...defaultProps} hasDirtyChanges dirtyCount={1} onDiscard={onDiscard} />);
 
-      await user.click(screen.getByText('actions.discardChanges'));
+      await user.click(screen.getByText('Discard Changes'));
 
       expect(onDiscard).toHaveBeenCalledTimes(1);
     });
@@ -176,7 +168,7 @@ describe('TranslationEditorHeader', () => {
 
       render(<TranslationEditorHeader {...defaultProps} hasDirtyChanges dirtyCount={1} onSave={onSave} />);
 
-      await user.click(screen.getByText('actions.saveChanges'));
+      await user.click(screen.getByText('Save Changes'));
 
       expect(onSave).toHaveBeenCalledTimes(1);
     });
@@ -194,7 +186,7 @@ describe('TranslationEditorHeader', () => {
         />,
       );
 
-      await user.click(screen.getByText('actions.resetToDefault'));
+      await user.click(screen.getByText('Reset to Default'));
 
       expect(onResetToDefault).toHaveBeenCalledTimes(1);
     });

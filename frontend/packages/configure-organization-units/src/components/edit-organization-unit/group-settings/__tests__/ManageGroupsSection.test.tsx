@@ -33,21 +33,6 @@ vi.mock('@thunderid/hooks', async (importOriginal) => {
   return {...(actual as object), useDataGridLocaleText: () => ({})};
 });
 
-// Mock translations
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const translations: Record<string, string> = {
-        'organizationUnits:edit.groups.sections.manage.title': 'Manage Groups',
-        'organizationUnits:edit.groups.sections.manage.description': 'View and manage groups in this organization unit',
-        'organizationUnits:edit.groups.sections.manage.listing.columns.name': 'Group Name',
-        'organizationUnits:edit.groups.sections.manage.listing.columns.id': 'Group ID',
-      };
-      return translations[key] ?? key;
-    },
-  }),
-}));
-
 describe('ManageGroupsSection', () => {
   const mockGroups: Group[] = [
     {id: 'group-1', name: 'Developers', ouId: 'ou-123'},
@@ -67,8 +52,8 @@ describe('ManageGroupsSection', () => {
 
     renderWithProviders(<ManageGroupsSection organizationUnitId="ou-123" />);
 
-    expect(screen.getByText('Manage Groups')).toBeInTheDocument();
-    expect(screen.getByText('View and manage groups in this organization unit')).toBeInTheDocument();
+    expect(screen.getByText('Groups')).toBeInTheDocument();
+    expect(screen.getByText('View groups belonging to this organization unit')).toBeInTheDocument();
   });
 
   it('should render data grid with groups', () => {

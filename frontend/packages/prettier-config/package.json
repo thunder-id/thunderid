@@ -58,6 +58,7 @@
   "devDependencies": {
     "@thunderid/eslint-plugin": "workspace:^",
     "@types/node": "catalog:",
+    "@vitest/coverage-istanbul": "catalog:",
     "eslint": "catalog:",
     "prettier": "catalog:",
     "rimraf": "catalog:",

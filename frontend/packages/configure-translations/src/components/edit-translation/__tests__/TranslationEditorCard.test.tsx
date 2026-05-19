@@ -21,14 +21,6 @@ import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import TranslationEditorCard from '@/components/edit-translation/TranslationEditorCard';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 vi.mock('@/components/edit-translation/TranslationFieldsView', () => ({
   default: () => <div data-testid="fields-view" />,
 }));
@@ -63,7 +55,7 @@ describe('TranslationEditorCard', () => {
       render(<TranslationEditorCard {...defaultProps} isLoading />);
 
       expect(screen.getByRole('progressbar')).toBeInTheDocument();
-      expect(screen.getByText('editor.loading')).toBeInTheDocument();
+      expect(screen.getByText('Loading translations...')).toBeInTheDocument();
     });
 
     it('hides the spinner once loading is complete', () => {
@@ -77,8 +69,8 @@ describe('TranslationEditorCard', () => {
     it('renders the Fields and Raw JSON tabs', () => {
       render(<TranslationEditorCard {...defaultProps} />);
 
-      expect(screen.getByRole('tab', {name: 'editor.textFields'})).toBeInTheDocument();
-      expect(screen.getByRole('tab', {name: 'editor.rawJson'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Fields'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Raw JSON'})).toBeInTheDocument();
     });
 
     it('calls onTabChange when a tab is clicked', async () => {
@@ -87,7 +79,7 @@ describe('TranslationEditorCard', () => {
 
       render(<TranslationEditorCard {...defaultProps} onTabChange={onTabChange} />);
 
-      await user.click(screen.getByRole('tab', {name: 'editor.rawJson'}));
+      await user.click(screen.getByRole('tab', {name: 'Raw JSON'}));
 
       expect(onTabChange).toHaveBeenCalledTimes(1);
     });
@@ -103,7 +95,7 @@ describe('TranslationEditorCard', () => {
     it('renders the search input in fields view', () => {
       render(<TranslationEditorCard {...defaultProps} editView="fields" />);
 
-      expect(screen.getByPlaceholderText('editor.searchPlaceholder')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search by key or value...')).toBeInTheDocument();
     });
 
     it('calls onSearchChange when text is typed in the search input', async () => {
@@ -114,7 +106,7 @@ describe('TranslationEditorCard', () => {
 
       // The search input is controlled (value={search} prop stays ''), so
       // each keystroke fires onSearchChange with just that character.
-      await user.type(screen.getByPlaceholderText('editor.searchPlaceholder'), 's');
+      await user.type(screen.getByPlaceholderText('Search by key or value...'), 's');
 
       expect(onSearchChange).toHaveBeenCalledWith('s');
     });
@@ -142,7 +134,7 @@ describe('TranslationEditorCard', () => {
     it('does not render the search input in JSON view', () => {
       render(<TranslationEditorCard {...defaultProps} editView="json" />);
 
-      expect(screen.queryByPlaceholderText('editor.searchPlaceholder')).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('Search by key or value...')).not.toBeInTheDocument();
     });
   });
 

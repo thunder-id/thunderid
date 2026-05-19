@@ -126,6 +126,13 @@ vi.mock('@thunderid/hooks', async (importOriginal) => {
 vi.mock('@thunderid/components', async () => {
   const React = await import('react');
   return {
+    getInitials: (name?: string) => {
+      const normalized = name?.trim();
+      if (!normalized) return '?';
+      const parts = normalized.split(/\s+/);
+      if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+      return normalized.slice(0, 2).toUpperCase();
+    },
     EmojiPicker: vi.fn(() => null),
     ResourceLogoDialog: vi.fn(
       ({open, onClose, onSelect}: {open: boolean; onClose: () => void; onSelect: (value: string) => void}) => (
@@ -215,55 +222,6 @@ vi.mock('@thunderid/components', async () => {
   };
 });
 
-// Mock translations
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const translations: Record<string, string> = {
-        'organizationUnits:edit.page.back': 'Back',
-        'organizationUnits:edit.page.backToOU': 'Back to Parent OU',
-        'organizationUnits:edit.page.error': 'Failed to load organization unit',
-        'organizationUnits:edit.page.notFound': 'Organization unit not found',
-        'organizationUnits:edit.page.tabs.general': 'General',
-        'organizationUnits:edit.page.tabs.childOUs': 'Child OUs',
-        'organizationUnits:edit.page.tabs.users': 'Users',
-        'organizationUnits:edit.page.tabs.groups': 'Groups',
-        'organizationUnits:edit.page.tabs.customization': 'Customization',
-        'organizationUnits:edit.customization.labels.theme': 'Theme',
-        'organizationUnits:edit.actions.unsavedChanges.label': 'You have unsaved changes',
-        'organizationUnits:edit.actions.reset.label': 'Reset',
-        'organizationUnits:edit.actions.save.label': 'Save',
-        'organizationUnits:edit.actions.saving.label': 'Saving...',
-        'organizationUnits:edit.page.description.placeholder': 'Add a description',
-        'organizationUnits:edit.page.description.empty': 'No description',
-        'organizationUnits:edit.general.handle.label': 'Handle',
-        'organizationUnits:edit.general.ou.id.label': 'Organization Unit ID',
-        'organizationUnits:edit.users.sections.manage.listing.columns.id': 'User ID',
-        'organizationUnits:edit.users.sections.manage.listing.columns.type': 'User Type',
-        'organizationUnits:view.groups.title': 'Groups',
-        'organizationUnits:view.groups.subtitle': 'Groups in this OU',
-        'organizationUnits:edit.users.sections.manage.listing.columns.name': 'Name',
-        'organizationUnits:edit.groups.sections.manage.listing.columns.id': 'ID',
-        'organizationUnits:edit.general.dangerZone.delete.button.label': 'Delete Organization Unit',
-        'organizationUnits:edit.general.dangerZone.delete.title': 'Delete Organization Unit',
-        'organizationUnits:edit.general.dangerZone.delete.message':
-          'Are you sure you want to delete this organization unit? This action cannot be undone.',
-        'organizationUnits:delete.dialog.title': 'Delete Organization Unit',
-        'organizationUnits:delete.dialog.message':
-          'Are you sure you want to delete this organization unit? This action cannot be undone.',
-        'organizationUnits:delete.dialog.disclaimer': 'This action is permanent and cannot be undone.',
-        'common:actions.cancel': 'Cancel',
-        'common:actions.delete': 'Delete',
-        'common:status.deleting': 'Deleting...',
-        'organizationUnits:listing.columns.name': 'Name',
-        'organizationUnits:listing.columns.handle': 'Handle',
-        'organizationUnits:listing.columns.description': 'Description',
-      };
-      return translations[key] ?? key;
-    },
-  }),
-}));
-
 describe('OrganizationUnitEditPage', () => {
   const mockOrganizationUnit: OrganizationUnit = {
     id: 'ou-123',
@@ -314,14 +272,14 @@ describe('OrganizationUnitEditPage', () => {
     renderWithProviders(<OrganizationUnitEditPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('Back')).toBeInTheDocument();
+      expect(screen.getByText(/Back to Organization Units/)).toBeInTheDocument();
     });
   });
 
   it('should navigate back when back button is clicked', async () => {
     renderWithProviders(<OrganizationUnitEditPage />);
 
-    fireEvent.click(screen.getByText('Back'));
+    fireEvent.click(screen.getByText('Back to Organization Units'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/organization-units');
@@ -652,7 +610,7 @@ describe('OrganizationUnitEditPage', () => {
     });
 
     // Click save
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByText('Save Changes'));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
@@ -693,7 +651,7 @@ describe('OrganizationUnitEditPage', () => {
     });
 
     // Click save - should not throw
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByText('Save Changes'));
   });
 
   it('should not save empty name on blur', async () => {
@@ -736,7 +694,7 @@ describe('OrganizationUnitEditPage', () => {
     });
 
     // Click back button
-    fireEvent.click(screen.getByText('Back'));
+    fireEvent.click(screen.getByText('Back to Organization Units'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/organization-units');
@@ -758,7 +716,7 @@ describe('OrganizationUnitEditPage', () => {
     });
 
     // Click back button
-    fireEvent.click(screen.getByText('Back'));
+    fireEvent.click(screen.getByText('Back to Organization Units'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/organization-units');
@@ -852,7 +810,7 @@ describe('OrganizationUnitEditPage', () => {
     });
 
     // Click back button - should not throw
-    fireEvent.click(screen.getByText('Back'));
+    fireEvent.click(screen.getByText('Back to Organization Units'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/organization-units');
@@ -875,7 +833,7 @@ describe('OrganizationUnitEditPage', () => {
     });
 
     // Click back button - should not throw
-    fireEvent.click(screen.getByText('Back'));
+    fireEvent.click(screen.getByText('Back to Organization Units'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/organization-units');
@@ -892,7 +850,7 @@ describe('OrganizationUnitEditPage', () => {
     });
 
     // Click back button - should not throw
-    fireEvent.click(screen.getByText('Back'));
+    fireEvent.click(screen.getByText('Back to Organization Units'));
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/organization-units');
@@ -909,10 +867,10 @@ describe('OrganizationUnitEditPage', () => {
 
     // Open delete dialog
     await waitFor(() => {
-      expect(screen.getByText('Delete Organization Unit')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /delete organization unit/i})).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Delete Organization Unit'));
+    fireEvent.click(screen.getByRole('button', {name: /delete organization unit/i}));
 
     await waitFor(() => {
       expect(
@@ -941,11 +899,11 @@ describe('OrganizationUnitEditPage', () => {
     renderWithProviders(<OrganizationUnitEditPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('Delete Organization Unit')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /delete organization unit/i})).toBeInTheDocument();
     });
 
     // Open delete dialog
-    fireEvent.click(screen.getByText('Delete Organization Unit'));
+    fireEvent.click(screen.getByRole('button', {name: /delete organization unit/i}));
 
     await waitFor(() => {
       expect(
@@ -1041,7 +999,7 @@ describe('OrganizationUnitEditPage', () => {
 
       renderWithProviders(<OrganizationUnitEditPage />);
 
-      const logoEditButton = await screen.findByLabelText('organizationUnits:edit.page.logoUpdate.label');
+      const logoEditButton = await screen.findByLabelText('Update Logo');
       fireEvent.click(logoEditButton);
 
       await waitFor(() => {
@@ -1064,7 +1022,7 @@ describe('OrganizationUnitEditPage', () => {
       renderWithProviders(<OrganizationUnitEditPage />);
 
       // Open the modal via logo edit icon button
-      const logoEditButton = await screen.findByLabelText('organizationUnits:edit.page.logoUpdate.label');
+      const logoEditButton = await screen.findByLabelText('Update Logo');
       fireEvent.click(logoEditButton);
 
       await waitFor(() => {
@@ -1093,7 +1051,7 @@ describe('OrganizationUnitEditPage', () => {
       renderWithProviders(<OrganizationUnitEditPage />);
 
       // Open the modal
-      const logoEditButton = await screen.findByLabelText('organizationUnits:edit.page.logoUpdate.label');
+      const logoEditButton = await screen.findByLabelText('Update Logo');
       fireEvent.click(logoEditButton);
 
       await waitFor(() => {
@@ -1123,11 +1081,11 @@ describe('OrganizationUnitEditPage', () => {
       renderWithProviders(<OrganizationUnitEditPage />);
 
       await waitFor(() => {
-        expect(screen.getByText('Delete Organization Unit')).toBeInTheDocument();
+        expect(screen.getByRole('button', {name: /delete organization unit/i})).toBeInTheDocument();
       });
 
       // Open delete dialog
-      fireEvent.click(screen.getByText('Delete Organization Unit'));
+      fireEvent.click(screen.getByRole('button', {name: /delete organization unit/i}));
 
       await waitFor(() => {
         expect(
@@ -1314,7 +1272,7 @@ describe('OrganizationUnitEditPage', () => {
       });
 
       // Click save
-      fireEvent.click(screen.getByText('Save'));
+      fireEvent.click(screen.getByText('Save Changes'));
 
       await waitFor(() => {
         expect(mockMutateAsync).toHaveBeenCalledWith(
