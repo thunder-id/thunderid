@@ -67,8 +67,8 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 pre {
-  background: #313131;
-  color: #fefefe;
+  background: rgba(0, 0, 0, 0.04);
+  color: inherit;
   padding: 20px;
   border-radius: 20px;
   text-align: left;

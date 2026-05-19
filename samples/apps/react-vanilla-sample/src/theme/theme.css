@@ -17,32 +17,29 @@
  */
 
 :root {
-    --background: #f5f5f5;
-    --foreground: #171717;
+    --background: #ffffff;
+    --foreground: #181818;
 
-    --md-contained-primary-background: linear-gradient(77.74deg, #eb4f63 11.16%, #fa7b3f 99.55%);
-    --md-contained-primary-hover-background: linear-gradient(77.74deg, #d0364b 11.16%, #f2621f 99.55%);
+    --md-contained-primary-background: linear-gradient(90deg, #3a87ed 0%, #00b8d9 100%);
+    --md-contained-primary-hover-background: linear-gradient(90deg, #2572d3 0%, #009cb8 100%);
 }
 
 html[data-color-scheme='light'] {
     color-scheme: light;
-
-    --md-palette-background-paper: #ffffff6b;
-    --md-palette-border-color-paper: #ffffffd6;
+    --md-palette-background-paper: rgba(244, 246, 249, 0.7);
+    --md-palette-border-color-paper: rgba(191, 198, 207, 0.4);
 
     background: var(--background);
 }
 
 html[data-color-scheme='dark'] {
     color-scheme: dark;
+    --background: #060d1a;
+    --foreground: #FFFFFF;
 
-    --background: #1E1E24;
-    --foreground: #ededed;
-
-    --md-palette-background-paper: #0f0f0f41;
-    --md-palette-border-color-paper: #2d2d2d;
-
-    --mui-palette-background-paper: #141414;
+    --md-palette-background-paper: rgba(11, 22, 40, 0.7);
+    --md-palette-border-color-paper: rgba(255, 255, 255, 0.08);
+    --mui-palette-background-paper: #0b1424;
 
     background: var(--background);
 }
