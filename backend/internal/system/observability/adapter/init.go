@@ -18,6 +18,12 @@
 
 package adapter
 
+import (
+	"github.com/IBM/sarama"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+)
+
 // InitializeConsoleAdapter creates and returns a console adapter that writes formatted events to stdout.
 //
 // Returns:
@@ -50,4 +56,17 @@ func InitializeConsoleAdapter() OutputAdapterInterface {
 //	err = adapter.Write(formattedData)
 func InitializeFileAdapter(filePath string) (OutputAdapterInterface, error) {
 	return NewFileAdapter(filePath)
+}
+
+// InitializeKafkaAdapter creates a kafka adapter that publishes formatted events to a Kafka topic
+// using an asynchronous sarama producer.
+//
+// Parameters:
+//   - cfg: Kafka sink configuration (brokers, topic, retries, timeout, client id)
+//
+// Returns:
+//   - OutputAdapterInterface: The initialized kafka adapter instance
+//   - error: Error if broker connection or producer creation fails
+func InitializeKafkaAdapter(cfg config.ObservabilityKafkaConfig) (OutputAdapterInterface, error) {
+	return newKafkaAdapter(cfg, sarama.NewAsyncProducer)
 }

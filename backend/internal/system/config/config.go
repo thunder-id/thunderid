@@ -372,6 +372,7 @@ type ObservabilityOutputConfig struct {
 	File          ObservabilityFileConfig    `yaml:"file" json:"file"`
 	Console       ObservabilityConsoleConfig `yaml:"console" json:"console"`
 	OpenTelemetry ObservabilityOTelConfig    `yaml:"opentelemetry" json:"opentelemetry"`
+	Kafka         ObservabilityKafkaConfig   `yaml:"kafka" json:"kafka"`
 }
 
 // ObservabilityFileConfig captures file sink settings for observability events.
@@ -389,6 +390,18 @@ type ObservabilityConsoleConfig struct {
 	Enabled    bool     `yaml:"enabled" json:"enabled"`
 	Format     string   `yaml:"format" json:"format"`
 	Categories []string `yaml:"categories" json:"categories"`
+}
+
+// ObservabilityKafkaConfig captures Kafka sink settings for observability events.
+type ObservabilityKafkaConfig struct {
+	Enabled    bool          `yaml:"enabled" json:"enabled"`
+	Brokers    []string      `yaml:"brokers" json:"brokers"`
+	Topic      string        `yaml:"topic" json:"topic"`
+	ClientID   string        `yaml:"client_id" json:"client_id"`
+	Format     string        `yaml:"format" json:"format"`
+	Retries    int           `yaml:"retries" json:"retries"`
+	Timeout    time.Duration `yaml:"timeout" json:"timeout"`
+	Categories []string      `yaml:"categories" json:"categories"`
 }
 
 // ObservabilityOTelConfig holds OpenTelemetry configuration.
