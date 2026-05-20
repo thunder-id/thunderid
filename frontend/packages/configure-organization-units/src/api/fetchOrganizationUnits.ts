@@ -24,7 +24,7 @@ import type {OrganizationUnitListResponse} from '../models/responses';
  * This is a standalone API utility that can be used both by React Query hooks
  * and by imperative fetch calls (e.g. via queryClient.fetchQuery).
  *
- * @param http - The HTTP client from useAsgardeo
+ * @param http - The HTTP client from useThunderID
  * @param serverUrl - The base server URL
  * @param params - Pagination parameters
  * @param params.limit - Maximum number of records to return

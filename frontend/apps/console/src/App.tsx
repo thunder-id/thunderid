@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {ProtectedRoute} from '@asgardeo/react-router';
+import {ProtectedRoute} from '@thunderid/react-router';
 import {ViewAgentTypePage} from '@thunderid/configure-agent-types';
 import {
   CreateOrganizationUnitPage,
@@ -234,6 +234,46 @@ export default function App(): JSX.Element {
           </Route>
           <Route
             path="/flows/signin/:flowId"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<LoginFlowBuilderPage />} />
+          </Route>
+          <Route
+            path="/flows/registration"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<LoginFlowBuilderPage />} />
+          </Route>
+          <Route
+            path="/flows/registration/:flowId"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<LoginFlowBuilderPage />} />
+          </Route>
+          <Route
+            path="/flows/recovery"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<LoginFlowBuilderPage />} />
+          </Route>
+          <Route
+            path="/flows/recovery/:flowId"
             element={
               <ProtectedRoute>
                 <DashboardLayout />

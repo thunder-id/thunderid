@@ -23,7 +23,7 @@ pipelineName: identity-platform-pipeline  # DeploymentPipeline name (must exist 
 
 # Container image configuration
 image:
-  repository: ghcr.io/asgardeo/thunder  # ThunderID container image repository
+  repository: ghcr.io/thunder-id/thunderid  # ThunderID container image repository
   tag: "latest"                          # Use a specific version tag in production
 
 # ThunderID server configuration

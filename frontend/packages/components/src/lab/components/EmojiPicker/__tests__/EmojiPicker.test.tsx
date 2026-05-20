@@ -21,6 +21,22 @@ import userEvent from '@testing-library/user-event';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import EmojiPicker from '../EmojiPicker';
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, fallback?: string | Record<string, unknown>, options?: Record<string, unknown>) => {
+      const str = typeof fallback === 'string' ? fallback : key;
+      const vars = typeof fallback === 'object' ? fallback : options;
+      if (vars && typeof vars === 'object') {
+        return str.replace(/\{\{(\w+)\}\}/g, (_, k: string) => {
+          const val = vars[k];
+          return typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean' ? String(val) : '';
+        });
+      }
+      return str;
+    },
+  }),
+}));
+
 // The module-level _supportedCategories cache needs to be reset between tests
 // so that the canvas mock only runs once per test. Since jsdom's canvas 2D
 // context is null, getSupportedCategories() falls through to returning all

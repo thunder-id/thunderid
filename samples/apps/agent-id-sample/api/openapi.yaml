@@ -1,0 +1,574 @@
+openapi: 3.0.3
+info:
+  title: Wayfinder Travel API
+  version: 0.1.0
+  description: REST API for the Wayfinder Travel sample application.
+servers:
+  - url: http://localhost:8787
+    description: Local development server
+tags:
+  - name: Health
+  - name: Flights
+  - name: Hotels
+  - name: Trips
+  - name: Locations
+  - name: Bookings
+  - name: User
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Check API health
+      responses:
+        "200":
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+  /api/flights:
+    get:
+      tags:
+        - Flights
+      summary: Search flights
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+          example: Colombo
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+          example: Singapore
+        - name: cabin
+          in: query
+          required: false
+          schema:
+            type: string
+          example: Economy
+      responses:
+        "200":
+          description: Matching flights
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Flight"
+  /api/hotels:
+    get:
+      tags:
+        - Hotels
+      summary: Search hotels
+      parameters:
+        - name: location
+          in: query
+          required: false
+          schema:
+            type: string
+          example: Singapore
+        - name: maxNightlyRate
+          in: query
+          required: false
+          schema:
+            type: number
+          example: 150
+      responses:
+        "200":
+          description: Matching hotels
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Hotel"
+  /api/trips:
+    get:
+      tags:
+        - Trips
+      summary: List saved sample trips
+      parameters:
+        - name: destination
+          in: query
+          required: false
+          schema:
+            type: string
+          example: Singapore
+      responses:
+        "200":
+          description: Saved trips
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Trip"
+  /api/locations:
+    get:
+      tags:
+        - Locations
+      summary: List searchable locations
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - flights
+              - hotels
+              - trips
+          example: flights
+      responses:
+        "200":
+          description: Available locations for search dropdowns
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Location"
+  /api/bookings:
+    post:
+      tags:
+        - Bookings
+      summary: Create a booking
+      description: Requires a ThunderID bearer token when `API_REQUIRE_AUTH=true`.
+      security:
+        - ThunderIDBearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBookingRequest"
+            examples:
+              flightBooking:
+                summary: Flight booking
+                value:
+                  type: flight
+                  itemId: flight-cmb-sin-01
+                  travelers: 2
+      responses:
+        "201":
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "400":
+          description: Invalid booking request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Token is missing the required scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/bookings/flights:
+    get:
+      tags:
+        - Bookings
+      summary: List booked flights for the current user
+      description: Requires a ThunderID bearer token when `API_REQUIRE_AUTH=true`.
+      security:
+        - ThunderIDBearerAuth: []
+        - {}
+      responses:
+        "200":
+          description: Current user's booked flights
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BookedFlight"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Token is missing the required scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags:
+        - Bookings
+      summary: Delete all booked flights for the current user
+      description: Requires a ThunderID bearer token when `API_REQUIRE_AUTH=true`.
+      security:
+        - ThunderIDBearerAuth: []
+        - {}
+      responses:
+        "200":
+          description: Deletion summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      deleted:
+                        type: integer
+                      username:
+                        type: string
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Token is missing the required scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/me:
+    get:
+      tags:
+        - User
+      summary: Get current user profile
+      description: Requires a ThunderID bearer token when `API_REQUIRE_AUTH=true`.
+      security:
+        - ThunderIDBearerAuth: []
+        - {}
+      responses:
+        "200":
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "401":
+          description: Missing or invalid bearer token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  securitySchemes:
+    ThunderIDBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: ThunderID access token.
+  schemas:
+    Flight:
+      type: object
+      required:
+        - id
+        - from
+        - to
+        - airline
+        - departureTime
+        - arrivalTime
+        - duration
+        - stops
+        - price
+        - currency
+        - cabin
+        - dates
+        - tags
+      properties:
+        id:
+          type: string
+          example: flight-cmb-sin-01
+        from:
+          type: string
+          example: Colombo
+        to:
+          type: string
+          example: Singapore
+        airline:
+          type: string
+          example: Serendib Air
+        departureTime:
+          type: string
+          example: "08:45"
+        arrivalTime:
+          type: string
+          example: "15:05"
+        duration:
+          type: string
+          example: 3h 50m
+        stops:
+          type: integer
+          example: 0
+        price:
+          type: number
+          example: 314
+        currency:
+          type: string
+          example: USD
+        cabin:
+          type: string
+          example: Economy
+        dates:
+          type: string
+          example: Jun 12 - Jun 18
+        tags:
+          type: array
+          items:
+            type: string
+          example:
+            - Best value
+            - Nonstop
+    Hotel:
+      type: object
+      required:
+        - id
+        - name
+        - location
+        - nightlyRate
+        - currency
+        - rating
+        - amenities
+      properties:
+        id:
+          type: string
+          example: hotel-harborlight-suites
+        name:
+          type: string
+          example: Harborlight Suites
+        location:
+          type: string
+          example: Singapore Marina
+        nightlyRate:
+          type: number
+          example: 142
+        currency:
+          type: string
+          example: USD
+        rating:
+          type: number
+          example: 9.1
+        amenities:
+          type: array
+          items:
+            type: string
+          example:
+            - Breakfast
+            - Pool
+            - Airport shuttle
+    Trip:
+      type: object
+      required:
+        - id
+        - title
+        - destination
+        - flightId
+        - hotelId
+        - status
+        - totalEstimate
+        - currency
+      properties:
+        id:
+          type: string
+          example: trip-singapore-week
+        title:
+          type: string
+          example: Singapore city week
+        destination:
+          type: string
+          example: Singapore
+        flightId:
+          type: string
+          example: flight-cmb-sin-01
+        hotelId:
+          type: string
+          example: hotel-harborlight-suites
+        status:
+          type: string
+          example: planning
+        totalEstimate:
+          type: number
+          example: 1166
+        currency:
+          type: string
+          example: USD
+    CreateBookingRequest:
+      type: object
+      required:
+        - type
+        - itemId
+      properties:
+        type:
+          type: string
+          enum:
+            - flight
+            - hotel
+            - trip
+          example: flight
+        itemId:
+          type: string
+          example: flight-cmb-sin-01
+        travelers:
+          type: integer
+          minimum: 1
+          default: 1
+          example: 2
+    Location:
+      type: object
+      required:
+        - name
+        - type
+      properties:
+        name:
+          type: string
+          example: Singapore
+        type:
+          type: string
+          example: city
+    Booking:
+      type: object
+      required:
+        - id
+        - userId
+        - username
+        - type
+        - itemId
+        - travelers
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          example: booking-2cd80f0a-17b8-4d2f-a436-44595fa0aa44
+        userId:
+          type: string
+          example: local-demo-user
+        username:
+          type: string
+          example: local.traveler
+        type:
+          type: string
+          example: flight
+        itemId:
+          type: string
+          example: flight-cmb-sin-01
+        travelers:
+          type: integer
+          example: 2
+        status:
+          type: string
+          example: confirmed
+        createdAt:
+          type: string
+          format: date-time
+    BookedFlight:
+      type: object
+      required:
+        - id
+        - username
+        - travelers
+        - status
+        - createdAt
+        - flight
+      properties:
+        id:
+          type: string
+          example: booking-2cd80f0a-17b8-4d2f-a436-44595fa0aa44
+        username:
+          type: string
+          example: local.traveler
+        travelers:
+          type: integer
+          example: 2
+        status:
+          type: string
+          example: confirmed
+        createdAt:
+          type: string
+          format: date-time
+        flight:
+          $ref: "#/components/schemas/Flight"
+    User:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          example: local-demo-user
+        username:
+          type: string
+          example: local.traveler
+        email:
+          type: string
+          format: email
+          example: local.traveler@example.com
+        givenName:
+          type: string
+          example: Local
+        familyName:
+          type: string
+          example: Traveler
+        rawClaims:
+          type: object
+          additionalProperties: true
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          example: Missing bearer token

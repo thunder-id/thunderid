@@ -41,12 +41,12 @@
  * @public
  */
 export const ApplicationCreateFlowStep = {
+  STACK: 'STACK',
   NAME: 'NAME',
   ORGANIZATION_UNIT: 'ORGANIZATION_UNIT',
   DESIGN: 'DESIGN',
   OPTIONS: 'OPTIONS',
   EXPERIENCE: 'EXPERIENCE',
-  STACK: 'STACK',
   CONFIGURE: 'CONFIGURE',
   COMPLETE: 'COMPLETE',
 } as const;

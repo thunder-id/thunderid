@@ -26,8 +26,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/asgardeo/thunder/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -794,23 +794,13 @@ func (suite *RoleAPITestSuite) TestDeleteRole_WithAssignments() {
 	role, err := suite.createRole(roleRequest)
 	suite.Require().NoError(err)
 
-	// Try to delete - should fail because it has assignments
+	// Delete should succeed - assignments are cascade deleted automatically
 	err = suite.deleteRole(role.ID)
-	suite.Require().Error(err, "Delete should fail when role has assignments")
-	suite.Contains(err.Error(), "ROL-1006", "Should return cannot delete role error")
+	suite.NoError(err, "Delete should succeed and cascade delete assignments")
 
-	// Remove assignments first
-	removeRequest := AssignmentsRequest{
-		Assignments: []Assignment{
-			{ID: testUserID1, Type: AssigneeTypeUser},
-		},
-	}
-	err = suite.removeAssignments(role.ID, removeRequest)
-	suite.Require().NoError(err)
-
-	// Now delete should succeed
-	err = suite.deleteRole(role.ID)
-	suite.NoError(err)
+	// Verify the role is gone
+	_, err = suite.getRole(role.ID)
+	suite.Require().Error(err, "Role should no longer exist after deletion")
 }
 
 // Test 19: Delete Role - Success
@@ -1450,6 +1440,59 @@ func (suite *RoleAPITestSuite) TestAddAssignments_InvalidApp() {
 	err = suite.addAssignments(role.ID, assignmentsRequest)
 	suite.Error(err)
 	suite.Contains(err.Error(), "ROL-1007")
+}
+
+// Test 20: Add Assignment to Declarative Role
+func (suite *RoleAPITestSuite) TestAddAssignments_DeclarativeRole() {
+	// The declarative role 'decl-role-1' is loaded from the file store.
+	// Create a user via API, assign them to the declarative role, then verify and clean up.
+	const declRoleID = "decl-role-1"
+	const declOUID = "decl-ou-1"
+
+	// Step 1: Verify the declarative role is accessible via the API.
+	declRole, err := suite.getRole(declRoleID)
+	suite.Require().NoError(err, "Declarative role should be accessible via API")
+	suite.Require().NotNil(declRole)
+	suite.Equal(declRoleID, declRole.ID)
+
+	// Step 2: Create a user in the declarative OU via API.
+	user := testutils.User{
+		OUID: declOUID,
+		Type: "Declarative Test Schema",
+		Attributes: json.RawMessage(`{
+			"email": "decl-role-assign-user@example.com",
+			"username": "declroleassignuser"
+		}`),
+	}
+	userID, err := testutils.CreateUser(user)
+	suite.Require().NoError(err, "Failed to create user for declarative role assignment test")
+	defer testutils.DeleteUser(userID)
+
+	// Step 3: Assign the user to the declarative role via API.
+	assignmentsRequest := AssignmentsRequest{
+		Assignments: []Assignment{
+			{ID: userID, Type: AssigneeTypeUser},
+		},
+	}
+	err = suite.addAssignments(declRoleID, assignmentsRequest)
+	suite.Require().NoError(err, "Should be able to assign a user to a declarative role")
+	defer func() {
+		_ = suite.removeAssignments(declRoleID, assignmentsRequest)
+	}()
+
+	// Step 4: Verify the assignment appears in the role's assignment list.
+	assignments, err := suite.getRoleAssignments(declRoleID, 0, 10)
+	suite.Require().NoError(err)
+	suite.Require().NotNil(assignments)
+
+	var found bool
+	for _, a := range assignments.Assignments {
+		if a.ID == userID {
+			found = true
+			break
+		}
+	}
+	suite.True(found, "Assigned user should appear in the declarative role's assignment list")
 }
 
 // Helper methods

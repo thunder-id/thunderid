@@ -5,9 +5,9 @@
 package granthandlersmock
 
 import (
-	"github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
-	"github.com/asgardeo/thunder/internal/oauth/oauth2/granthandlers"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
 )
 
 // NewGrantHandlerProviderInterfaceMock creates a new instance of GrantHandlerProviderInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

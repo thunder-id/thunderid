@@ -1,7 +1,12 @@
 name: '📚 Deploy Documentation to GitHub Pages'
 description: 'Deploy documentation to GitHub Pages'
 author: 'WSO2'
+
 inputs:
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: 'lts/*'
   docs-artifact-name:
     description: 'Name of the artifact containing built docs (optional if docs need to be built)'
     required: false
@@ -17,6 +22,14 @@ inputs:
     description: 'Commit message for the deployment'
     required: false
     default: '📚 Deploy documentation'
+  site-url:
+    description: 'Override the site URL used during the Docusaurus build (e.g. https://owner.github.io)'
+    required: false
+    default: ''
+  site-base-url:
+    description: 'Override the base URL used during the Docusaurus build (e.g. /repo-name/)'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -25,13 +38,12 @@ runs:
       if: inputs.build-docs == 'true'
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
-        node-version: 'lts/*'
+        node-version: ${{ inputs.node-version }}
 
     - name: 📦 Install pnpm
       if: inputs.build-docs == 'true'
       uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
       with:
-        version: '10.33.4'
         run_install: false
 
     - name: 🛠️ Build Documentation
@@ -41,6 +53,8 @@ runs:
         make build_docs
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        DOCUSAURUS_URL: ${{ inputs.site-url }}
+        DOCUSAURUS_BASE_URL: ${{ inputs.site-base-url }}
 
     - name: 📥 Download Docs Artifact
       if: inputs.docs-artifact-name != ''

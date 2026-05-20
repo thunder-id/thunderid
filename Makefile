@@ -124,13 +124,22 @@ docker-build-multiarch-latest:
 docker-build-multiarch-push:
 	docker buildx build --platform linux/amd64,linux/arm64 -t $(BINARY_NAME):$(VERSION) -t $(BINARY_NAME):latest --push .
 
-lint: lint_backend lint_frontend
+lint: lint_backend lint_frontend lint_sdks
+
+build_sdks:
+	./build.sh build_sdks
+
+test_sdks:
+	./build.sh test_sdks
+
+lint_sdks:
+	./build.sh lint_sdks
 
 lint_backend: check_i18n golangci-lint
 	cd backend && $(GOLANGCI_LINT) run ./...
 
 lint_frontend:
-	cd frontend && pnpm install --frozen-lockfile && pnpm build && pnpm lint
+	cd frontend && pnpm install --frozen-lockfile && pnpm build:frontend && pnpm lint
 
 generate_i18n: install-i18n-extractor
 	@echo "Extracting i18n messages from backend source code..."
@@ -174,7 +183,10 @@ help:
 	@echo "  docker-build-multiarch        - Build multi-arch Docker image with version tag."
 	@echo "  docker-build-multiarch-latest - Build multi-arch Docker image with latest tag."
 	@echo "  docker-build-multiarch-push   - Build and push multi-arch images to registry."
-	@echo "  lint                          - Run linting on both backend and frontend code."
+	@echo "  build_sdks                    - Build all SDK packages."
+	@echo "  test_sdks                     - Run tests for all SDK packages."
+	@echo "  lint_sdks                     - Run linting on all SDK packages."
+	@echo "  lint                          - Run linting on backend, frontend, and SDK code."
 	@echo "  lint_backend                  - Run golangci-lint on the backend code."
 	@echo "  lint_frontend                 - Run ESLint on the frontend code."
 	@echo "  mockery                       - Generate mocks for unit tests using mockery."
@@ -186,7 +198,7 @@ help:
 .PHONY: docker-build-multiarch-latest docker-build-multiarch-push
 .PHONY: test_unit test_integration build_with_coverage build_with_coverage_only test
 .PHONY: help go_install_tool
-.PHONY: lint lint_backend lint_frontend golangci-lint mockery install-mockery
+.PHONY: lint lint_backend lint_frontend lint_sdks build_sdks test_sdks golangci-lint mockery install-mockery
 .PHONY: run_backend debug_backend run_frontend run_docs
 
 define go_install_tool

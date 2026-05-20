@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type {EmbeddedFlowComponent} from '@asgardeo/react';
+import type {EmbeddedFlowComponent} from '@thunderid/react';
 
 /**
  * Represents a normalized embedded flow component with all optional properties
@@ -136,4 +136,14 @@ export interface FlowComponentRendererProps {
    * but `application.sign_up_url` is absent from the meta object.
    */
   signUpFallbackUrl?: string;
+  /**
+   * Fallback forgot-password URL used when the flow meta contains a forgot-password URL template
+   * but `application.forgot_password_url` is absent from the meta object.
+   */
+  forgotPasswordFallbackUrl?: string;
+  /**
+   * Fallback sign-in URL used when the flow meta contains a sign-in URL template
+   * but `application.sign_in_url` is absent from the meta object.
+   */
+  signInFallbackUrl?: string;
 }

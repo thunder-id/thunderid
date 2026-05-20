@@ -22,14 +22,14 @@ import (
 	"context"
 	"fmt"
 
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/asgardeo/thunder/internal/application/model"
-	oauth2const "github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
-	"github.com/asgardeo/thunder/internal/system/mcp/tool"
+	"github.com/thunder-id/thunderid/internal/application/model"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
 
 // applicationTools provides MCP tools for managing  applications.
@@ -78,11 +78,16 @@ func registerMCPTools(server *mcp.Server, appService ApplicationServiceInterface
 
 Use get_application_templates to get pre-configured minimal templates for common app types (SPA, Mobile, Server, M2M).
 
-Prerequisites: Create flows first using create_flow if custom authentication/registration flows are needed.
+Prerequisites:
+- Create flows first using create_flow if custom authentication/registration flows are needed.
+- Use thunderid_list_themes to pick a theme and set themeId before creating the application
+  (skip for M2M — no login page).
 
 Behavior:
 - If auth_flow_id is omitted, the default authentication flow is used.
-- If user_attributes are omitted in token configs, defaults are applied.`,
+- If user_attributes are omitted in token configs, defaults are applied.
+- themeId (Go: InboundAuthProfile.ThemeID) controls the login page appearance. It is a top-level
+  field in the request body, not nested under inboundAuthProfile.`,
 		InputSchema: getCreateAppSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Create Application",
@@ -115,8 +120,15 @@ Any field not provided will be reset to empty/default.`,
 
 Templates contain ONLY the required fields to create each app type. ` +
 			`Optional fields with service-layer defaults are omitted.
-` +
-			`Prompt the user for any missing required placeholders.`,
+
+Theme: SPA, Mobile, and Server templates include a themeId field that controls the ` +
+			`visual appearance of the ThunderID-hosted login page. ` +
+			`Call thunderid_list_themes first to see available themes, then replace the ` +
+			`<THEME_ID> placeholder with the ID of the desired theme. ` +
+			`Omit themeId to use the system default theme. ` +
+			`M2M templates do not include themeId — M2M apps have no login page.
+
+Prompt the user for any missing required placeholders.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "Get Application Templates",
 			ReadOnlyHint: true,
@@ -211,94 +223,112 @@ func (t *applicationTools) getApplicationTemplates(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	_ any,
-) (*mcp.CallToolResult, map[string]interface{}, error) {
-	templates := map[string]interface{}{
-		"spa": map[string]interface{}{
-			"name": "<APP_NAME>",
-			"token": map[string]interface{}{
-				"user_attributes": model.DefaultUserAttributes,
+) (*mcp.CallToolResult, map[string]model.ApplicationDTO, error) {
+	templates := map[string]model.ApplicationDTO{
+		"spa": {
+			OUID: "<OU_ID>",
+			Name: "<APP_NAME>",
+			InboundAuthProfile: inboundmodel.InboundAuthProfile{
+				ThemeID: "<THEME_ID>",
 			},
-			"inbound_auth_config": []map[string]interface{}{
+			InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
 				{
-					"type": "oauth2",
-					"config": map[string]interface{}{
-						"redirect_uris":              []string{"<REDIRECT_URI>"},
-						"grant_types":                []string{"authorization_code", "refresh_token"},
-						"token_endpoint_auth_method": "none",
-						"pkce_required":              true,
-						"public_client":              true,
-						"scopes":                     model.DefaultScopes,
-						"token": map[string]interface{}{
-							"access_token": map[string]interface{}{
-								"user_attributes": model.DefaultUserAttributes,
+					Type: inboundmodel.OAuthInboundAuthType,
+					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+						RedirectURIs: []string{"<REDIRECT_URI>"},
+						GrantTypes: []oauth2const.GrantType{
+							oauth2const.GrantTypeAuthorizationCode,
+							oauth2const.GrantTypeRefreshToken,
+						},
+						TokenEndpointAuthMethod: oauth2const.TokenEndpointAuthMethodNone,
+						PKCERequired:            true,
+						PublicClient:            true,
+						Scopes:                  model.DefaultScopes,
+						Token: &inboundmodel.OAuthTokenConfig{
+							IDToken: &inboundmodel.IDTokenConfig{
+								UserAttributes: model.DefaultUserAttributes,
 							},
-							"id_token": map[string]interface{}{
-								"user_attributes": model.DefaultUserAttributes,
-							},
+						},
+						UserInfo: &inboundmodel.UserInfoConfig{
+							ResponseType:   inboundmodel.UserInfoResponseTypeJSON,
+							UserAttributes: model.DefaultUserAttributes,
 						},
 					},
 				},
 			},
 		},
-		"mobile": map[string]interface{}{
-			"name": "<APP_NAME>",
-			"token": map[string]interface{}{
-				"user_attributes": model.DefaultUserAttributes,
+		"mobile": {
+			OUID: "<OU_ID>",
+			Name: "<APP_NAME>",
+			InboundAuthProfile: inboundmodel.InboundAuthProfile{
+				ThemeID: "<THEME_ID>",
 			},
-			"inbound_auth_config": []map[string]interface{}{
+			InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
 				{
-					"type": "oauth2",
-					"config": map[string]interface{}{
-						"redirect_uris":              []string{"<CUSTOM_SCHEME>://callback"},
-						"grant_types":                []string{"authorization_code", "refresh_token"},
-						"token_endpoint_auth_method": "none",
-						"pkce_required":              true,
-						"public_client":              true,
-						"scopes":                     model.DefaultScopes,
-						"token": map[string]interface{}{
-							"access_token": map[string]interface{}{
-								"user_attributes": model.DefaultUserAttributes,
+					Type: inboundmodel.OAuthInboundAuthType,
+					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+						RedirectURIs: []string{"<CUSTOM_SCHEME>://callback"},
+						GrantTypes: []oauth2const.GrantType{
+							oauth2const.GrantTypeAuthorizationCode,
+							oauth2const.GrantTypeRefreshToken,
+						},
+						TokenEndpointAuthMethod: oauth2const.TokenEndpointAuthMethodNone,
+						PKCERequired:            true,
+						PublicClient:            true,
+						Scopes:                  model.DefaultScopes,
+						Token: &inboundmodel.OAuthTokenConfig{
+							IDToken: &inboundmodel.IDTokenConfig{
+								UserAttributes: model.DefaultUserAttributes,
 							},
-							"id_token": map[string]interface{}{
-								"user_attributes": model.DefaultUserAttributes,
-							},
+						},
+						UserInfo: &inboundmodel.UserInfoConfig{
+							ResponseType:   inboundmodel.UserInfoResponseTypeJSON,
+							UserAttributes: model.DefaultUserAttributes,
 						},
 					},
 				},
 			},
 		},
-		"server": map[string]interface{}{
-			"name": "<APP_NAME>",
-			"token": map[string]interface{}{
-				"user_attributes": model.DefaultUserAttributes,
+		"server": {
+			OUID: "<OU_ID>",
+			Name: "<APP_NAME>",
+			InboundAuthProfile: inboundmodel.InboundAuthProfile{
+				ThemeID: "<THEME_ID>",
 			},
-			"inbound_auth_config": []map[string]interface{}{
+			InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
 				{
-					"type": "oauth2",
-					"config": map[string]interface{}{
-						"redirect_uris": []string{"<REDIRECT_URI>"},
-						"grant_types":   []string{"authorization_code", "refresh_token"},
-						"pkce_required": true,
-						"scopes":        model.DefaultScopes,
-						"token": map[string]interface{}{
-							"access_token": map[string]interface{}{
-								"user_attributes": model.DefaultUserAttributes,
+					Type: inboundmodel.OAuthInboundAuthType,
+					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+						RedirectURIs: []string{"<REDIRECT_URI>"},
+						GrantTypes: []oauth2const.GrantType{
+							oauth2const.GrantTypeAuthorizationCode,
+							oauth2const.GrantTypeRefreshToken,
+						},
+						TokenEndpointAuthMethod: oauth2const.TokenEndpointAuthMethodClientSecretBasic,
+						PKCERequired:            true,
+						Scopes:                  model.DefaultScopes,
+						Token: &inboundmodel.OAuthTokenConfig{
+							IDToken: &inboundmodel.IDTokenConfig{
+								UserAttributes: model.DefaultUserAttributes,
 							},
-							"id_token": map[string]interface{}{
-								"user_attributes": model.DefaultUserAttributes,
-							},
+						},
+						UserInfo: &inboundmodel.UserInfoConfig{
+							ResponseType:   inboundmodel.UserInfoResponseTypeJSON,
+							UserAttributes: model.DefaultUserAttributes,
 						},
 					},
 				},
 			},
 		},
-		"m2m": map[string]interface{}{
-			"name": "<APP_NAME>",
-			"inbound_auth_config": []map[string]interface{}{
+		"m2m": {
+			OUID: "<OU_ID>",
+			Name: "<APP_NAME>",
+			InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
 				{
-					"type": "oauth2",
-					"config": map[string]interface{}{
-						"grant_types": []string{"client_credentials"},
+					Type: inboundmodel.OAuthInboundAuthType,
+					OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+						GrantTypes:              []oauth2const.GrantType{oauth2const.GrantTypeClientCredentials},
+						TokenEndpointAuthMethod: oauth2const.TokenEndpointAuthMethodClientSecretBasic,
 					},
 				},
 			},

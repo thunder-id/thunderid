@@ -24,7 +24,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/asgardeo/thunder/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 )
 
 type testEntity struct {

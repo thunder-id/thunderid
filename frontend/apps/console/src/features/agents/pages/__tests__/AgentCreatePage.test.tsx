@@ -64,8 +64,8 @@ vi.mock('../../api/useCreateAgent', () => ({
   }),
 }));
 
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({user: {id: 'current-user', ouId: 'token-ou'}}),
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({user: {id: 'current-user', ouId: 'token-ou'}}),
 }));
 
 vi.mock('../../contexts/AgentCreate/useAgentCreate', () => ({
@@ -128,7 +128,11 @@ vi.mock('@thunderid/configure-users', () => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string | {defaultValue?: string}) => {
+      if (typeof fallback === 'string') return fallback || key;
+      if (fallback && typeof fallback === 'object') return fallback.defaultValue ?? key;
+      return key;
+    },
   }),
 }));
 
@@ -181,7 +185,7 @@ describe('AgentCreatePage', () => {
     }));
 
     mockUseGetAgentTypes.mockReturnValue({
-      data: {schemas: [{id: 'schema-1', name: 'default', ouId: 'ou-1'}]},
+      data: {types: [{id: 'schema-1', name: 'default', ouId: 'ou-1'}]},
     });
 
     mockUseGetAgentType.mockReturnValue({

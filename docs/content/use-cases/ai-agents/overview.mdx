@@ -1,0 +1,55 @@
+---
+title: Identity for AI Agents
+description: Authenticate agents, authorize actions, secure MCP servers, and audit every interaction.
+sidebar_position: 0
+---
+
+# Identity for AI Agents
+
+AI agents don't just answer questions — they take actions. They call APIs, access user data, interact with MCP servers, and delegate work to other agents. Every one of these interactions is an identity decision: who is this agent, what can it access, and on whose behalf?
+
+Without proper identity controls, agents become a vector for unauthorized data access, privilege escalation, impersonation, and compliance violations. ThunderID treats agents as first-class identities, applying the same authentication, authorization, and audit principles that protect human users.
+
+## The Four A's of Agent Identity
+
+<div className="uc-fact-grid uc-fact-grid--ai">
+	<article className="uc-fact-card">
+		<h3>Administer</h3>
+		<p>Define, provision, and manage agent identities with unique credentials and metadata.</p>
+	</article>
+	<article className="uc-fact-card">
+		<h3>Authenticate</h3>
+		<p>Issue secure, verifiable credentials so agents can prove who they are.</p>
+	</article>
+	<article className="uc-fact-card">
+		<h3>Authorize</h3>
+		<p>Enforce policies that control what agents can access and when they need human approval.</p>
+	</article>
+	<article className="uc-fact-card">
+		<h3>Audit</h3>
+		<p>Track every agent action with delegation chains that show who did what, on whose behalf.</p>
+	</article>
+</div>
+
+## Interaction Patterns
+
+Agents participate in different interaction patterns, each with its own identity requirements. ThunderID provides capabilities for every pattern.
+
+<div className="uc-cap-grid">
+	<article className="uc-cap-card">
+		<h3><a href="./protect-your-agent">Protect Your Agent</a></h3>
+		<p>Control who can invoke your agent and what capabilities they can access.</p>
+	</article>
+	<article className="uc-cap-card">
+		<h3><a href="./connect-to-services">Connect to Services</a></h3>
+		<p>Your agent calls APIs, MCP servers, or LLMs — autonomously or on behalf of a user.</p>
+	</article>
+	<article className="uc-cap-card">
+		<h3><a href="./multi-agent-workflows">Multi-Agent Workflows</a></h3>
+		<p>Agents delegate work to other agents while preserving trust and limiting scope at every hop.</p>
+	</article>
+	<article className="uc-cap-card">
+		<h3><a href="./mcp-authorization">MCP Authorization</a></h3>
+		<p>Secure MCP servers and govern MCP clients with standards-based access control.</p>
+	</article>
+</div>

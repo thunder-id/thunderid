@@ -7,9 +7,9 @@ package flowmgtmock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/mgt"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/mgt"
 )
 
 // newFlowStoreInterfaceMock creates a new instance of flowStoreInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

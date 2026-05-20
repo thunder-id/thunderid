@@ -1,0 +1,42 @@
+---
+title: Protect Your Agent
+description: Control who can invoke your AI agent and what capabilities they can access.
+sidebar_position: 1
+---
+
+# Protect Your Agent
+
+You built an AI agent and deployed it. It exposes multiple capabilities — some low-risk, some sensitive, some that should only be available to specific consumers. Now other applications need to use it: a web app, a mobile client, another backend service, an MCP host.
+
+The question is straightforward: when a request arrives at your agent, how do you know whether the caller is allowed to be there, and whether they are allowed to use that specific capability?
+
+An agent without access control is an open door. Any application that discovers the endpoint can invoke any capability. There is no distinction between a customer-facing chat widget and an internal admin tool — both get the same access. There is no way to say "this caller can use these two capabilities but not that one." There is no way to revoke access to one consumer without shutting the agent down for everyone.
+
+This is the same challenge API developers have solved for years, but agents introduce a nuance. Agents often combine multiple capabilities behind a single deployment, each with a different sensitivity level. A general conversation capability might be low-risk, but a capability that exposes internal reasoning traces or processes confidential documents carries real consequences if accessed by the wrong party.
+
+Treating the entire agent as a single "all or nothing" resource is not enough.
+
+## What needs to be solved
+
+- **Identify the caller.** When a request arrives, the agent needs to know which application or service is making the call. Anonymous access is not acceptable for agents that handle user data or perform actions with real-world consequences.
+
+- **Differentiate access by capability.** Not every caller should reach every capability. One consumer might need only the conversational interface, while another needs access to analytical or administrative operations. The agent needs a way to enforce these boundaries per capability, not just at the front door.
+
+- **Grant and revoke access independently.** When you onboard a new consumer, you should be able to grant access to specific capabilities without affecting existing consumers. When a consumer is decommissioned or compromised, you should be able to cut its access without redeploying the agent.
+
+- **Centralize authorization decisions.** The agent should not maintain its own allowlists, API key tables, or access logic. Authorization decisions should come from a central identity provider so you manage access in one place — across all your agents, not inside each one.
+
+## How to solve it
+
+### Represent the agent as a protected resource
+
+Register your agent's capabilities as a resource in ThunderID. Each capability becomes a scope — a named permission that describes what the caller is allowed to do. When a consumer requests access, ThunderID issues a token that contains only the scopes that consumer has been granted. The agent validates the token on every request and checks whether the required scope is present before executing the capability.
+
+1. **Define the resource and its scopes.** Register the agent as a resource server in ThunderID and define a scope for each capability or group of capabilities you want to protect independently. The granularity is yours — you can create one scope per endpoint, or group related capabilities under a single scope. See the [Resource Servers](/docs/next/guides/guides/resource-servers) guide.
+2. **Create roles and assign permissions.** Create roles that map to how your consumers should interact with the agent. A role bundles one or more scopes into a reusable access level. One role might grant access to low-risk conversational capabilities only, while another includes administrative or analytical operations. See [Authorization](/docs/next/guides/key-concepts/authorization) for how roles and permissions work.
+3. **Assign consumers to roles.** Bind the consumers — users, applications, or other agents — to the appropriate roles. Users can be assigned directly or through [groups](/docs/next/guides/guides/users/manage-groups). Applications receive their role assignment at registration, and agents receive theirs through group memberships. See [Manage Users](/docs/next/guides/guides/users/manage-users), [Manage Applications](/docs/next/guides/guides/applications/manage-applications), and [Manage Agents](/docs/next/guides/guides/agents/manage-agents).
+4. **Validate on every request.** The agent checks the incoming token for the required scope before executing any capability. If the scope is missing, the request is denied. The agent never makes the authorization decision itself — it simply enforces what ThunderID has already decided. See [Tokens](/docs/next/guides/key-concepts/tokens) for token structure and validation.
+
+:::note[Coming soon]
+Today, you register the agent's capabilities as a standalone resource server. In a future release, ThunderID will let you bind the resource server directly to the agent identity. When the agent is deactivated, ThunderID will automatically stop issuing tokens for its resource — revoking access across all consumers without manual cleanup.
+:::

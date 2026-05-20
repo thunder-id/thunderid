@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {EmbeddedFlowComponentType, SignIn, type EmbeddedFlowComponent} from '@asgardeo/react';
+import {EmbeddedFlowComponentType, SignIn, type EmbeddedFlowComponent} from '@thunderid/react';
 import {useDesign, FlowComponentRenderer, AuthCardLayout} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {TemplateLiteralType} from '@thunderid/utils';
@@ -25,6 +25,7 @@ import {useState} from 'react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useSearchParams} from 'react-router';
+import generateFallbackRecoveryUrl from '../../utils/generateFallbackRecoveryUrl';
 import generateFallbackSignUpUrl from '../../utils/generateFallbackSignUpUrl';
 
 export default function SignInBox(): JSX.Element {
@@ -34,6 +35,7 @@ export default function SignInBox(): JSX.Element {
   const {isDesignEnabled} = useDesign();
 
   const signUpFallbackUrl = generateFallbackSignUpUrl(searchParams);
+  const forgotPasswordFallbackUrl = generateFallbackRecoveryUrl(searchParams);
 
   const [formInputs, setFormInputs] = useState<Record<string, string>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -114,6 +116,7 @@ export default function SignInBox(): JSX.Element {
                           isLoading={isLoading}
                           additionalData={additionalData}
                           signUpFallbackUrl={signUpFallbackUrl}
+                          forgotPasswordFallbackUrl={forgotPasswordFallbackUrl}
                           resolve={(template) =>
                             resolveAll(template, {
                               [TemplateLiteralType.TRANSLATION]: t,

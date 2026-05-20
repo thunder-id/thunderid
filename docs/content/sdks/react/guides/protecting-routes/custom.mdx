@@ -1,21 +1,21 @@
 ---
 title: Custom Implementation
-description: Build custom route protection using Asgardeo SDK primitives
+description: Build custom route protection using SDK primitives
 ---
 
 # Custom Implementation
 
-If you prefer to have full control over how the app routes should be secured—for example, if you want to run custom application logic before enabling or disabling a route—you can build a completely custom solution using the primitives provided by the Asgardeo React SDK.
+If you prefer to have full control over how the app routes should be secured—for example, if you want to run custom application logic before enabling or disabling a route—you can build a completely custom solution using the primitives provided by the <ProductName /> React SDK.
 
 ## Basic Custom Route Guard
 
 ```tsx title="src/App.tsx" showLineNumbers
 import React, { ReactNode } from 'react'
 import { Routes, Route } from 'react-router-dom'
-import { useAsgardeo } from '@asgardeo/react'
+import { useThunderID } from '@thunderid/react'
 
 const ProtectedRoute = ({ children }: { children: ReactNode }) => {
-  const { isSignedIn } = useAsgardeo()
+  const { isSignedIn } = useThunderID()
 
   if (!isSignedIn) {
     return <Unauthenticated />
@@ -51,7 +51,7 @@ You can extend the basic pattern to include loading states, redirects, and custo
 ```tsx title="src/components/ProtectedRoute.tsx" showLineNumbers
 import React, { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
-import { useAsgardeo } from '@asgardeo/react'
+import { useThunderID } from '@thunderid/react'
 
 interface ProtectedRouteProps {
   children: ReactNode
@@ -66,7 +66,7 @@ export const ProtectedRoute = ({
   fallback,
   requireRole,
 }: ProtectedRouteProps) => {
-  const { isSignedIn, user, loading } = useAsgardeo()
+  const { isSignedIn, user, loading } = useThunderID()
 
   // Show loading state while authentication is being checked
   if (loading) {

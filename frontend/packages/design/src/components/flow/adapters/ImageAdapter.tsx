@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {isEmojiUri, extractEmojiFromUri} from '@asgardeo/react';
+import {isEmojiUri, extractEmojiFromUri} from '@thunderid/react';
 import {cn} from '@thunderid/utils';
 import {Box} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';

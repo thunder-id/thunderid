@@ -1,39 +1,167 @@
 ---
 title: Customer Identity for B2C Applications
-description: Build secure and low-friction customer sign-in and sign-up flows.
+description: Identify common B2C identity use cases, from sign-in to registration, profile, recovery, and team onboarding.
 sidebar_position: 1
 ---
 
+import { B2CIdentityJourneyRoadmap } from '../../../src/components/B2CIdentityJourney';
+
 # Customer Identity for B2C Applications
 
-Choose this pattern when your users are individual consumers who expect fast onboarding and simple sign-in across web and mobile applications.
+Build B2C identity where each user owns their account. Users sign themselves up, sign in with the method they prefer, manage their own profile, and recover access when things go wrong.
 
-## Typical Requirements
+<div className="uc-b2b-intro-panel">
+  <div className="uc-b2b-intro-kicker">When to use this pattern</div>
+  <div className="uc-b2b-intro-text">
+    Use this pattern when each user is an individual consumer who owns their own account and registers themselves. They sign in with methods of their choice, such as password, passwordless, social, or passkey.
+  </div>
+</div>
 
-- Support social, password, and passwordless sign-in options.
-- Keep registration short and progressively collect profile data.
-- Add step-up authentication only for high-risk actions.
-- Provide reliable account recovery paths.
+## How the Model Works
 
-## Recommended Baseline Flow
+- **Consumer end users**: own their accounts; sign themselves up, sign in, and manage their own profile.
+- **Application**: the web or mobile product the consumer signs into.
+- **Identity product**: issues identities, runs sign-in / sign-up / recovery journeys, and issues tokens to the app.
+- **Identity providers (optional)**: external providers (Google, GitHub, enterprise IdPs) the application accepts as sign-in options.
+- **Internal team**: the people who run the product (support agents, internal admins, and other operations staff). Onboarded by invitation or created directly, not through consumer self sign-up.
 
-1. Start with email or social registration.
-2. Add passkey registration during onboarding or first successful sign-in.
-3. Use passkey-first sign-in with fallback to password or magic link.
-4. Trigger step-up authentication for sensitive operations.
-5. Offer recovery through verified email channels.
+## B2C Identity Journey
 
-## <ProductName /> Capabilities to Use
+From a consumer-app owner's perspective, you need to solve the full identity lifecycle. That covers sign-in, self sign-up, ongoing profile management, recovery, and onboarding of your own internal team. The capabilities below map to the five core use cases your application needs to cover.
 
-- **Flow engine** to orchestrate sign-up and sign-in journeys.
-- **Passkeys** for phishing-resistant authentication in the [Passkeys Guide](../../guides/key-concepts/authentication/passwordless/passkeys).
-- **Hosted or custom UI** depending on your product control needs.
-- **SDK integration** for frontend applications with the [React SDK Overview](../../sdks/react/overview).
+<B2CIdentityJourneyRoadmap />
 
-## Implementation Checklist
+### Add Login to Your App
 
-1. Install and run <ProductName /> using the [Installation Guide](../../guides/getting-started/get-thunderid).
-2. Define your sign-up and sign-in flows.
-3. Enable passkeys and validate your relying party configuration.
-4. Integrate your frontend with <ProductName /> APIs or SDK.
-5. Test onboarding, step-up, and recovery paths end-to-end.
+As your most visible identity surface, sign-in needs to feel effortless. Consumers expect to choose the method they already prefer, such as password, social, passwordless, or passkey. They want to walk through the rest of your app without multi-factor checks unless something genuinely sensitive is happening. They expect "remember me" to remember them, and they walk away when sign-in is slow or fragile.
+
+You also need flexibility for different audience segments. A pure consumer app leans on social providers and passwordless methods. A prosumer app needs to accept enterprise identities for users signing in on behalf of their employer. An app handling sensitive data needs step-up authentication that only triggers when the user attempts something risky. Sign-in is also where federated identity, scope requests, and consent prompts come together for the user.
+
+For example, a user installs your mobile app, taps **Sign in with Google**, and reaches their dashboard within seconds. Later, when they try to change their email address, the app asks them to confirm a one-time code as a step-up check. A power user enables a passkey on their phone and from then on signs in with a single tap on every device, with no password required.
+
+**Capabilities Involved**
+
+- Sign-in with password, email or SMS one-time code, magic link, or passkey.
+- Sign-in with social providers (Google, GitHub, and others).
+- Sign-in via enterprise identity providers (OIDC, SAML) for prosumer or mixed audiences.
+- Multi-factor authentication.
+- Step-up authentication for sensitive operations.
+- Persistent sign-in / "remember me".
+
+### Enable Self Sign-Up and Registration
+
+New users decide whether your product is worth their time in the first minute. You need a sign-up experience that asks for the minimum information required to get them started. The method should match how they already manage their other accounts. The shorter the form, the higher the completion rate.
+
+Beyond the initial form, you want to verify contact details, capture terms acceptance and marketing consent, and progressively collect additional information as the user engages with features. If they arrive via a federated identity provider, you want the account created automatically with profile attributes pre-populated. That way they don't have to retype data the provider already gave you.
+
+For example, a new user lands on your home page, taps **Sign up with Google**, and arrives signed in with a basic profile already filled in. A week later, when they enable two-factor authentication, the app asks for their phone number and verifies it via a one-time code. Their consent decisions are recorded at sign-up time and can be revisited from settings.
+
+**Capabilities Involved**
+
+- Sign-up with email + password.
+- Sign-up with email or SMS one-time code (passwordless).
+- Sign-up with a social provider.
+- Sign-up with a passkey from the start.
+- Progressive profile collection: ask for additional fields only when needed.
+- Email / phone verification during sign-up.
+- Just-in-time account creation when a federated user lands for the first time.
+- Capture terms acceptance and marketing consent.
+
+### Add a Profile Section
+
+Once a consumer signs in, they expect a self-service area where they can inspect and change their own identity without contacting support. This is where they update display name and contact details, swap one sign-in method for another, link or unlink social accounts, and revoke devices they no longer use. Self-service profile management directly reduces support load and improves user trust.
+
+You also want users to see and control what your app does on their behalf. Granted consents should be visible and revocable. Active sessions should be visible per device so the user can sign out remote sessions if they lose a phone. Sensitive changes such as email, phone, and password should require re-verification so an attacker who borrows a signed-in session cannot quietly take over the account.
+
+For example, a user opens the account page and switches from password to passkey. They remove an old linked Google account they no longer use and sign out a session on a device they sold last month. When they change their email address, the new address is verified via a magic link before the change takes effect.
+
+**Capabilities Involved**
+
+- View and edit profile attributes.
+- Change password.
+- Add or remove a passkey.
+- Manage other second factors (TOTP, SMS, and so on).
+- Change verified email or phone with re-verification.
+- View and withdraw stored consents.
+- Manage linked social and enterprise identities.
+- View active sessions and revoke a specific session.
+- Account deletion or data export.
+
+### Account Recovery
+
+Lost-access events test whether users stay or leave. You need recovery paths that are quick when the user is who they say they are, and resistant when they aren't. Multiple recovery channels reduce lockout pain, and verification on the recovery channel itself prevents account takeover via a forgotten email forwarder or a recycled phone number.
+
+Different users arrive at recovery with different contexts. Some lost their phone but still have their email. Some lost both and need a fallback channel or a support intervention. Others are locked out after too many failed sign-ins and just need to wait. You want recovery options that map to your security policy and to the channels each user has verified, without making low-risk recovery feel high-friction.
+
+For example, a user who forgot their password requests a magic link delivered to their email, clicks it, sets a new password, and is signed back in. Another user who lost their phone uses an email one-time code for recovery because their SMS channel is no longer verified. A third, whose account was locked after too many failed attempts, is automatically unlocked after the lockout window expires.
+
+**Capabilities Involved**
+
+- Forgotten-password reset.
+- Passwordless recovery via email magic link.
+- Passwordless recovery via email one-time code.
+- Passwordless recovery via SMS one-time code.
+- Re-verify the recovery channel when needed.
+- Account unlock after lockout.
+
+### Onboard Internal Users
+
+Your consumer product is run by people other than consumers, such as support agents, internal admins, and other operations staff. Onboarding them is not the same as consumer self sign-up. Identity and role are decided up front, before the user arrives. Two common patterns exist. The first is to invite the user by email; they follow a link, set credentials, accept terms, and land signed in. The second is to create the user account directly with initial credentials shared out-of-band.
+
+In both patterns the user lands in the right area of the product with the correct role already assigned. Invitation-driven onboarding adds a lifecycle: invitations expire, support resend, and can be revoked if the wrong person was invited. Direct creation typically skips the acceptance step. It should still walk the user through a first-sign-in flow that requires them to set or rotate the initial credential. Bulk operations help when onboarding a whole team at once.
+
+For example, a new support agent receives an invitation email and follows the link. They set a password, accept the support terms, and land in the admin console with the support role pre-assigned. Separately, an operations admin creates ten new staff accounts directly for a regional support team. The initial passwords are auto-generated and distributed via a secure channel; the staff members rotate them on first sign-in.
+
+In B2C, the "organization" is implicit; your company runs the product. This use case is about the people who *run* the product, not the consumers who *use* it.
+
+**Capabilities Involved**
+
+- Invite a user by email.
+- Create a user account directly with initial credentials.
+- Configurable invitation expiry and resend.
+- Revoke a pending invitation.
+- Bulk invite or bulk create.
+- Single onboarding flow after invitation acceptance (set credential, accept terms, capture profile, and so on).
+- Force credential set or rotation on first sign-in for directly-created users.
+- Assign an initial role / permission set.
+
+## Cross-Cutting Capabilities
+
+Beyond the five core use cases, a few capabilities run across them. They are not separate journeys but choices and behaviors that shape sign-in, self sign-up, profile management, recovery, and invitation flows in similar ways. Treat them as horizontal concerns that you decide on once and apply everywhere.
+
+### Federated Identity
+
+External identity providers, both social and enterprise, let users bring an identity they already have to your app. Done well, federation creates one user record per real person regardless of how many sign-in methods they end up using. You want accounts created automatically on first federated sign-in. Those accounts should be linked across methods so the user is not split across silos, and signed out together when the user signs out.
+
+### Authorization
+
+When your app needs to call APIs on behalf of the user, it has to request the right level of access. Scopes describe what the app may do (read profile, send notifications, charge payments, and so on) and audiences describe which API the resulting token is valid for. Request only the scopes the app actually needs; the issued tokens carry those scopes and can be enforced at the API edge.
+
+### Consent
+
+Consent is the user's side of the same conversation. Three kinds typically appear together. The first is consent to share specific profile attributes with the app, such as email, name, or phone. The second is consent to the permissions the app has requested. The third is acceptance of the policies you require, such as terms of service, privacy policy, and marketing preferences. Each decision is recorded so the user can review or revoke it later. The record also lets you prove the user agreed if a regulator asks.
+
+### Branding
+
+Your sign-in, sign-up, and recovery surfaces should match your brand (colors, logo, and copy) whether they live on hosted pages or inside your own app screens. The user should not notice they crossed a boundary into an identity product.
+
+### Privacy
+
+Consent capture and policy alignment should be built into registration and ongoing profile interactions, not bolted on later. The user should be able to see what's stored about them, what's been shared with which downstream system, and how to delete or export their data.
+
+---
+
+## Next Steps
+
+Once you know which use cases apply, the next decision is how to integrate. See **[Solution Patterns](./solution-patterns)** to compare different approaches and pick what fits your application.
+
+## Related Capabilities
+
+<div className="uc-cap-grid">
+  <article className="uc-cap-card"><h3>Flows</h3><p>Sign-in, sign-up, and recovery journeys.</p></article>
+  <article className="uc-cap-card"><h3>Passkeys</h3><p>Phishing-resistant sign-in.</p></article>
+  <article className="uc-cap-card"><h3>Federation</h3><p>Social and enterprise identity providers.</p></article>
+  <article className="uc-cap-card"><h3>Consent</h3><p>Capture and revisit consent decisions.</p></article>
+  <article className="uc-cap-card"><h3>Recovery</h3><p>Multiple recovery channels.</p></article>
+  <article className="uc-cap-card"><h3>Invitations</h3><p>Onboard your internal team.</p></article>
+</div>

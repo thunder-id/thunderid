@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { SignOutButton, useAsgardeo } from "@asgardeo/react";
+import { SignOutButton, useThunderID } from "@thunderid/react";
 import {
   Avatar,
   Box,
@@ -113,7 +113,7 @@ const JsonDisplay = ({ data }: { data: unknown }) => {
 };
 
 const HomePage = () => {
-  const { getAccessToken, signIn } = useAsgardeo();
+  const { getAccessToken, signIn } = useThunderID();
   const [token, setToken] = useState<string | null>(null);
   const [decodedToken, setDecodedToken] = useState<DecodedToken | null>(null);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);

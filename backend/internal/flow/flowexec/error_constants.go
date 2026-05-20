@@ -19,9 +19,9 @@
 package flowexec
 
 import (
-	"github.com/asgardeo/thunder/internal/system/error/apierror"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/i18n/core"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 // Client error structs
@@ -106,6 +106,20 @@ var ErrorRegistrationFlowDisabled = serviceerror.ServiceError{
 	ErrorDescription: core.I18nMessage{
 		Key:          "error.flowexecservice.registration_not_allowed_description",
 		DefaultValue: "Registration flow is disabled for the application",
+	},
+}
+
+// ErrorRecoveryFlowDisabled defines the error response for recovery flow disabled errors.
+var ErrorRecoveryFlowDisabled = serviceerror.ServiceError{
+	Code: "FES-1010",
+	Type: serviceerror.ClientErrorType,
+	Error: core.I18nMessage{
+		Key:          "error.flowexecservice.recovery_not_allowed",
+		DefaultValue: "Recovery not allowed",
+	},
+	ErrorDescription: core.I18nMessage{
+		Key:          "error.flowexecservice.recovery_not_allowed_description",
+		DefaultValue: "Recovery flow is disabled for the application",
 	},
 }
 

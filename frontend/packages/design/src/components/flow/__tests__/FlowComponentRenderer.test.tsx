@@ -17,7 +17,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import type {EmbeddedFlowComponent} from '@asgardeo/react';
+import type {EmbeddedFlowComponent} from '@thunderid/react';
 import {screen, cleanup} from '@testing-library/react';
 import {describe, it, expect, afterEach, vi} from 'vitest';
 import renderWithProviders from '../../../test/renderWithProviders';

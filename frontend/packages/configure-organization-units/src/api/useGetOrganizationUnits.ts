@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import fetchOrganizationUnits from './fetchOrganizationUnits';
@@ -58,7 +58,7 @@ export default function useGetOrganizationUnits(
   params?: OrganizationUnitListParams,
   enabled = true,
 ): UseQueryResult<OrganizationUnitListResponse> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const {limit = 30, offset = 0} = params ?? {};
 

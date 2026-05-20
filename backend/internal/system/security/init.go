@@ -21,7 +21,7 @@ package security
 import (
 	"net/http"
 
-	"github.com/asgardeo/thunder/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 )
 
 // Initialize creates and returns the security middleware with necessary authenticators.

@@ -22,11 +22,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	"github.com/asgardeo/thunder/internal/system/database/provider"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
 const storeLoggerComponentName = "RoleStore"
@@ -47,6 +47,7 @@ type roleStoreInterface interface {
 	GetRoleAssignmentsCountByType(ctx context.Context, id string, assigneeType string) (int, error)
 	UpdateRole(ctx context.Context, id string, role RoleUpdateDetail) error
 	DeleteRole(ctx context.Context, id string) error
+	DeleteAssignmentsByRoleID(ctx context.Context, id string) error
 	AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) error
 	RemoveAssignments(ctx context.Context, id string, assignments []RoleAssignment) error
 	CheckRoleNameExists(ctx context.Context, ouID, name string) (bool, error)
@@ -54,6 +55,12 @@ type roleStoreInterface interface {
 	GetAuthorizedPermissions(
 		ctx context.Context, entityID string, groupIDs []string, requestedPermissions []string) ([]string, error)
 	GetUserRoles(ctx context.Context, entityID string, groupIDs []string) ([]string, error)
+	// GetEntityRoleIDs returns the set of role IDs assigned to the entity directly or via
+	// group membership. Unlike GetUserRoles this does not require the role to exist in the
+	// underlying store; it returns raw assignee->role bindings. Used by the composite store
+	// to resolve permissions for declarative roles whose definitions live in the file store
+	// while their assignments live in the DB.
+	GetEntityRoleIDs(ctx context.Context, entityID string, groupIDs []string) ([]string, error)
 	IsRoleDeclarative(ctx context.Context, roleID string) (bool, error)
 }
 
@@ -340,6 +347,20 @@ func (s *roleStore) DeleteRole(ctx context.Context, id string) error {
 	return nil
 }
 
+// DeleteAssignmentsByRoleID deletes all assignments for a role. Used for cascade delete.
+func (s *roleStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) error {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return err
+	}
+
+	_, err = dbClient.ExecuteContext(ctx, queryDeleteAllRoleAssignments, id, s.deploymentID)
+	if err != nil {
+		return fmt.Errorf("failed to delete assignments for role: %w", err)
+	}
+	return nil
+}
+
 // AddAssignments adds assignments to a role.
 func (s *roleStore) AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) error {
 	dbClient, err := s.getConfigDBClient()
@@ -581,6 +602,44 @@ func (s *roleStore) GetUserRoles(
 	}
 
 	return roles, nil
+}
+
+// GetEntityRoleIDs retrieves the IDs of roles assigned to an entity directly and/or via
+// group membership, without joining the ROLE table. This surfaces assignments to roles
+// whose definitions live only in the file-based declarative store. Callers (notably the
+// composite store) use this to resolve permissions for declarative roles whose permission
+// rows are absent from the DB.
+func (s *roleStore) GetEntityRoleIDs(
+	ctx context.Context, entityID string, groupIDs []string,
+) ([]string, error) {
+	if groupIDs == nil {
+		groupIDs = []string{}
+	}
+	// Short-circuit before touching the DB when there's nothing to look up.
+	if entityID == "" && len(groupIDs) == 0 {
+		return []string{}, nil
+	}
+
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	query, args := buildEntityRoleIDsQuery(entityID, groupIDs, s.deploymentID)
+
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get entity role IDs: %w", err)
+	}
+
+	roleIDs := make([]string, 0, len(results))
+	for _, row := range results {
+		if id, ok := row["role_id"].(string); ok {
+			roleIDs = append(roleIDs, id)
+		}
+	}
+
+	return roleIDs, nil
 }
 
 // IsRoleDeclarative checks if a role is defined in declarative configuration.

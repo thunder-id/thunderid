@@ -1,4 +1,4 @@
-module github.com/asgardeo/thunder
+module github.com/thunder-id/thunderid
 
 go 1.26
 

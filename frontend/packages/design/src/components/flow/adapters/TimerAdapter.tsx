@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {FlowTimer, type FlowTimerRenderProps} from '@asgardeo/react';
+import {FlowTimer, type FlowTimerRenderProps} from '@thunderid/react';
 import {cn} from '@thunderid/utils';
 import {Alert, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';

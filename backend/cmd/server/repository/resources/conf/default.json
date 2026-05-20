@@ -210,6 +210,9 @@
   "layout": {
     "store": "composite"
   },
+  "translation": {
+    "store": "composite"
+  },
   "authn_provider": {
     "type": "default",
     "rest": {

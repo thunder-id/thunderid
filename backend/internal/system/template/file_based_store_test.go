@@ -24,8 +24,8 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/declarative_resource/entity"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 )
 
 // newTemplateFileBasedStoreForTest creates an isolated store for testing

@@ -7,9 +7,9 @@ package providermock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/authnprovider/common"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewAuthnProviderInterfaceMock creates a new instance of AuthnProviderInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

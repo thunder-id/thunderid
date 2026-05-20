@@ -9,9 +9,9 @@
     "shareable",
     "wso2"
   ],
-  "homepage": "https://github.com/asgardeo/thunder/tree/main/frontend/packages/contexts#readme",
+  "homepage": "https://github.com/thunder-id/thunderid/tree/main/frontend/packages/contexts#readme",
   "bugs": {
-    "url": "https://github.com/asgardeo/thunder/issues"
+    "url": "https://github.com/thunder-id/thunderid/issues"
   },
   "author": "WSO2",
   "license": "Apache-2.0",
@@ -34,7 +34,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/asgardeo/thunder",
+    "url": "https://github.com/thunder-id/thunderid",
     "directory": "frontend/packages/contexts"
   },
   "scripts": {
@@ -51,6 +51,7 @@
   "devDependencies": {
     "@thunderid/eslint-plugin": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
+    "@vitest/browser-playwright": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
@@ -62,7 +63,6 @@
     "rimraf": "catalog:",
     "rolldown": "catalog:",
     "typescript": "catalog:",
-    "@vitest/browser-playwright": "catalog:",
     "playwright": "catalog:",
     "vitest": "catalog:"
   },

@@ -17,7 +17,7 @@
  */
 
 import "./App.css";
-import { SignedIn, SignedOut, SignInButton } from "@asgardeo/react";
+import { SignedIn, SignedOut, SignInButton } from "@thunderid/react";
 import HomePage from "./pages/HomePage";
 
 function App() {

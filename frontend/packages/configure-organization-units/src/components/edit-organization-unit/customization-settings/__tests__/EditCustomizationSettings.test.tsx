@@ -22,7 +22,7 @@ import type {OrganizationUnit} from '../../../../models/organization-unit';
 import EditCustomizationSettings from '../EditCustomizationSettings';
 
 // Mock child components
-vi.mock('../AppearanceSection', () => ({
+vi.mock('@/components/edit-organization-unit/customization-settings/AppearanceSection', () => ({
   default: ({
     organizationUnit,
     editedOU,

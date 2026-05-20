@@ -16,7 +16,7 @@ You can use the `SignOutButton` in two main ways: as a simple button or with ren
 Use `SignOutButton` as a simple button to trigger sign-out.
 
 ```jsx title="src/App.jsx" showLineNumbers
-import { SignOutButton } from '@asgardeo/react'
+import { SignOutButton } from '@thunderid/react'
 
 function App() {
   return <SignOutButton />
@@ -49,7 +49,7 @@ The `SignOutButton` component is designed for easy customization to fit your app
 You can use the `className` prop to apply custom `CSS` classes to the button.
 
 ```jsx title="src/App.jsx" {5} showLineNumbers
-import { SignOutButton } from '@asgardeo/react'
+import { SignOutButton } from '@thunderid/react'
 
 function App() {
   return (
@@ -86,7 +86,7 @@ You can theme the button and other SDK components using CSS variables:
 Override button text and translations using the `preferences` prop:
 
 ```jsx title="src/App.jsx" {6-18} showLineNumbers
-import { SignOutButton } from '@asgardeo/react'
+import { SignOutButton } from '@thunderid/react'
 
 function App() {
   return (
@@ -118,7 +118,7 @@ export default App
 You can customize the button UI and behavior using render props. This allows you to access the `signOut` function and `isLoading` state directly, giving you the flexibility to use any library like Tailwind CSS, Shadcn UI, Material-UI, etc.
 
 ```jsx title="src/App.jsx" {6} showLineNumbers
-import { SignOutButton } from '@asgardeo/react'
+import { SignOutButton } from '@thunderid/react'
 
 function App() {
   return (

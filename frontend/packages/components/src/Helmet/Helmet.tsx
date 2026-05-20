@@ -76,6 +76,7 @@ export default function Helmet({children}: HelmetProps): null {
       }
 
       const el = document.createElement(type as string);
+      el.setAttribute('data-helmet', 'true');
       applyAttributes(el, props);
 
       if (type === 'style' || type === 'script' || type === 'noscript') {

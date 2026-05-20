@@ -20,6 +20,10 @@ package core
 
 import (
 	"regexp"
+	"strings"
+
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // placeholderPattern matches {{ context.key }} with optional whitespace.
@@ -77,4 +81,90 @@ func ResolvePlaceholder(ctx *NodeContext, value string) string {
 		// If not found, keep the placeholder as-is
 		return match
 	})
+}
+
+// ParsePresentedOptionalInputIdentifiers converts a space-separated identifier list into a set.
+func ParsePresentedOptionalInputIdentifiers(raw string) map[string]struct{} {
+	result := make(map[string]struct{})
+	if raw == "" {
+		return result
+	}
+
+	for _, identifier := range strings.Fields(raw) {
+		if identifier != "" {
+			result[identifier] = struct{}{}
+		}
+	}
+
+	return result
+}
+
+// GetPresentedOptionalInputs extracts and parses the presented optional input identifiers from
+// runtime data into a set. Call this once before a loop to avoid repeated string parsing.
+func GetPresentedOptionalInputs(runtimeData map[string]string) map[string]struct{} {
+	return ParsePresentedOptionalInputIdentifiers(runtimeData[common.RuntimeKeyPresentedOptionalInputs])
+}
+
+// hasPresentedOptionalInput returns true when the given identifier appears in the presented-input set.
+func hasPresentedOptionalInput(presentedInputs map[string]struct{}, identifier string) bool {
+	if identifier == "" || len(presentedInputs) == 0 {
+		return false
+	}
+
+	_, ok := presentedInputs[identifier]
+	return ok
+}
+
+// IsOptionalInputPrompted returns true when an optional input identifier has already been shown
+// to the user in a prior prompt step.
+func IsOptionalInputPrompted(presentedOptionalInputs map[string]struct{}, identifier string) bool {
+	return hasPresentedOptionalInput(presentedOptionalInputs, identifier)
+}
+
+// collectMissingInputs returns inputs from requiredInputs that are not satisfied by user inputs,
+// runtime data, forwarded data, or already-presented optional inputs.
+func collectMissingInputs(ctx *NodeContext, presentedOptionalInputs map[string]struct{},
+	requiredInputs []common.Input, logger *log.Logger) []common.Input {
+	missing := make([]common.Input, 0, len(requiredInputs))
+	for _, input := range requiredInputs {
+		if _, ok := ctx.UserInputs[input.Identifier]; ok {
+			continue
+		}
+		if _, ok := ctx.RuntimeData[input.Identifier]; ok {
+			logger.Debug("Input available in runtime data, skipping",
+				log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
+			continue
+		}
+		if value, ok := ctx.ForwardedData[input.Identifier]; ok {
+			if _, isString := value.(string); isString {
+				logger.Debug("Input available in forwarded data, skipping",
+					log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
+				continue
+			}
+		}
+		if !input.Required && IsOptionalInputPrompted(presentedOptionalInputs, input.Identifier) {
+			logger.Debug("Optional input already prompted, skipping",
+				log.String("identifier", input.Identifier))
+			continue
+		}
+		logger.Debug("Input not available in the context",
+			log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
+		missing = append(missing, input)
+	}
+	return missing
+}
+
+// MergePresentedOptionalInputIdentifiers appends identifiers to an existing serialized identifier string.
+// Duplicates are acceptable since ParsePresentedOptionalInputIdentifiers deduplicates on read.
+func MergePresentedOptionalInputIdentifiers(raw string, identifiers []string) string {
+	parts := make([]string, 0, len(identifiers)+1)
+	if raw != "" {
+		parts = append(parts, raw)
+	}
+	for _, identifier := range identifiers {
+		if identifier != "" {
+			parts = append(parts, identifier)
+		}
+	}
+	return strings.Join(parts, " ")
 }

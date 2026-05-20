@@ -183,7 +183,11 @@ export function renderHook<Result, Props>(
   const {queryClient: providedQueryClient, ...restOptions} = options ?? {};
   const queryClient = providedQueryClient ?? createTestQueryClient();
 
-  const wrapper = ({children}: {children: ReactNode}) => <Providers queryClient={queryClient}>{children}</Providers>;
+  const wrapper = ({children}: {children: ReactNode}) => (
+    <Providers config={currentConfig} queryClient={queryClient}>
+      {children}
+    </Providers>
+  );
 
   return {
     ...rtlRenderHook(hook, {wrapper, ...restOptions}),

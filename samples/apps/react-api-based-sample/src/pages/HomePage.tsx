@@ -16,42 +16,42 @@
  * under the License.
  */
 
-import { Box, Button, Divider, Typography } from '@wso2/oxygen-ui';
-import { Link } from '@tanstack/react-router';
+import { Box, Button, Divider, Typography } from "@wso2/oxygen-ui";
+import { Link } from "react-router";
 
 function HomePage() {
   return (
     <Box
       sx={{
-        position: 'absolute',
+        position: "absolute",
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
         background:
-          'linear-gradient(135deg, rgba(25, 118, 210, 0.1) 0%, rgba(25, 118, 210, 0.05) 50%, rgba(25, 118, 210, 0.1) 100%)',
+          "linear-gradient(135deg, rgba(25, 118, 210, 0.1) 0%, rgba(25, 118, 210, 0.05) 50%, rgba(25, 118, 210, 0.1) 100%)",
       }}
     >
       <Box
         sx={{
-          position: 'relative',
-          width: '100%',
+          position: "relative",
+          width: "100%",
           maxWidth: 520,
           mx: 2,
         }}
       >
         {/* Logo/Brand Section */}
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
+        <Box sx={{ textAlign: "center", mb: 4 }}>
           <Typography
             variant="h3"
             component="h1"
             sx={{
               fontWeight: 700,
-              color: 'primary.main',
-              letterSpacing: '-0.5px',
+              color: "primary.main",
+              letterSpacing: "-0.5px",
             }}
           >
             ThunderID Sample App
@@ -59,7 +59,7 @@ function HomePage() {
           <Typography
             variant="h6"
             sx={{
-              color: 'text.secondary',
+              color: "text.secondary",
               fontWeight: 400,
               mt: 1,
             }}
@@ -73,16 +73,16 @@ function HomePage() {
           sx={{
             p: { xs: 3, sm: 5 },
             borderRadius: 3,
-            bgcolor: 'background.paper',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.15)',
+            bgcolor: "background.paper",
+            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.15)",
           }}
         >
           {/* Description */}
           <Typography
             variant="body1"
             sx={{
-              color: 'text.secondary',
-              textAlign: 'center',
+              color: "text.secondary",
+              textAlign: "center",
               lineHeight: 1.7,
               mb: 4,
             }}
@@ -97,10 +97,10 @@ function HomePage() {
             <Typography
               variant="overline"
               sx={{
-                color: 'text.secondary',
+                color: "text.secondary",
                 fontWeight: 600,
                 letterSpacing: 1.5,
-                display: 'block',
+                display: "block",
                 mb: 1.5,
               }}
             >
@@ -115,13 +115,13 @@ function HomePage() {
               fullWidth
               sx={{
                 py: 1.5,
-                fontSize: '1rem',
+                fontSize: "1rem",
                 fontWeight: 600,
                 borderRadius: 2,
-                textTransform: 'none',
-                boxShadow: '0 4px 14px 0 rgba(25, 118, 210, 0.39)',
-                '&:hover': {
-                  boxShadow: '0 6px 20px 0 rgba(25, 118, 210, 0.5)',
+                textTransform: "none",
+                boxShadow: "0 4px 14px 0 rgba(25, 118, 210, 0.39)",
+                "&:hover": {
+                  boxShadow: "0 6px 20px 0 rgba(25, 118, 210, 0.5)",
                 },
               }}
             >
@@ -140,10 +140,10 @@ function HomePage() {
             <Typography
               variant="overline"
               sx={{
-                color: 'text.secondary',
+                color: "text.secondary",
                 fontWeight: 600,
                 letterSpacing: 1.5,
-                display: 'block',
+                display: "block",
                 mb: 1.5,
               }}
             >
@@ -158,12 +158,12 @@ function HomePage() {
               fullWidth
               sx={{
                 py: 1.5,
-                fontSize: '0.95rem',
+                fontSize: "0.95rem",
                 fontWeight: 500,
                 borderRadius: 2,
-                textTransform: 'none',
+                textTransform: "none",
                 borderWidth: 2,
-                '&:hover': {
+                "&:hover": {
                   borderWidth: 2,
                 },
               }}
@@ -174,12 +174,12 @@ function HomePage() {
         </Box>
 
         {/* Footer text */}
-        <Box sx={{ textAlign: 'center', mt: 3 }}>
+        <Box sx={{ textAlign: "center", mt: 3 }}>
           <Typography
             variant="caption"
             sx={{
-              color: 'text.secondary',
-              display: 'block',
+              color: "text.secondary",
+              display: "block",
             }}
           >
             Powered by ThunderID Identity Server

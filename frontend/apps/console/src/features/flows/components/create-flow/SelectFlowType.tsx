@@ -17,7 +17,7 @@
  */
 
 import {Box, Card, CardActionArea, CardContent, Stack, Typography} from '@wso2/oxygen-ui';
-import {KeyRound, UserPlus} from '@wso2/oxygen-ui-icons-react';
+import {KeyRound, Lock, UserPlus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {FlowType} from '../../models/flows';
@@ -56,6 +56,14 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
       descriptionKey: 'flows:create.type.signup.description',
       descriptionDefault: 'Let users register themselves with your application',
       icon: <UserPlus size={28} />,
+    },
+    {
+      type: FlowType.RECOVERY,
+      labelKey: 'flows:create.type.recovery.label',
+      labelDefault: 'Password Recovery',
+      descriptionKey: 'flows:create.type.recovery.description',
+      descriptionDefault: 'Let users recover their password or account',
+      icon: <Lock size={28} />,
     },
   ];
 

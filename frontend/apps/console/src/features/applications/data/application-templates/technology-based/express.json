@@ -1,0 +1,107 @@
+{
+  "id": "express",
+  "displayName": "Express.js",
+  "description": "Server-side Node.js application built with Express.js",
+  "defaults": {
+    "name": "Express.js Application",
+    "inboundAuthConfig": [
+      {
+        "type": "oauth2",
+        "config": {
+          "grantTypes": ["authorization_code", "refresh_token"],
+          "responseTypes": ["code"],
+          "redirectUris": ["http://localhost:3000/login"],
+          "pkceRequired": false,
+          "tokenEndpointAuthMethod": "client_secret_basic",
+          "publicClient": false
+        }
+      }
+    ],
+    "allowedUserTypes": []
+  },
+  "fieldConstraints": {
+    "oauth2": {
+      "publicClient": {
+        "readOnly": true,
+        "value": false
+      },
+      "tokenEndpointAuthMethod": {
+        "readOnly": true,
+        "value": "client_secret_basic"
+      }
+    }
+  },
+  "integrationGuides": {
+    "INBUILT": {
+      "llm_prompt": {
+        "id": "llm-prompt",
+        "title": "Integrate with a Coding Agent Prompt",
+        "description": "Use AI to generate integration code for your Express.js application",
+        "type": "llm",
+        "icon": "sparkles",
+        "content": "# Integrate {{productName}} Authentication in an Express.js Application (Inbuilt Mode)\n\n## Context\nI have an Express.js application and I want to integrate {{productName}} authentication using the ThunderID Express SDK with {{productName}}-hosted sign-in pages.\n\n## Requirements\n- Use `@thunderid/express` in a Node.js + Express application\n- Use `cookie-parser` and `express.json()` middleware\n- Configure ThunderID middleware with `baseUrl`, `clientId`, `clientSecret`, `afterSignInUrl`, and `afterSignOutUrl`\n- Implement `/login` with `handleSignIn()` and `/logout` with `handleSignOut()`\n- Protect a route (`/protected`) using `protect((res) => res.redirect('/login'))`\n- Add a `/me` route that returns the authenticated user profile as JSON\n- Keep the code minimal, production-lean, and fully runnable\n\n## Configuration\n- **Client ID**: {{clientId}}\n- **Client Secret**: `<your-client-secret>`\n- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)\n- **App URL**: http://localhost:3000\n- **Login Callback Route**: `/login`\n- **Logout Callback Route**: `/logout`\n- **SDK**: @thunderid/express\n\n## Important Rules\n- Use CommonJS syntax (`require`) in `index.js`\n- Use these SDK imports exactly: `thunderID`, `handleSignIn`, `handleSignOut`, `protect`\n- Ensure redirect URL alignment: the app callback URL must be `http://localhost:3000/login`, and the post-logout redirect URL must be `http://localhost:3000/logout`\n- Do not invent unsupported SDK APIs or custom wrappers\n- Keep route names and behavior exactly as specified\n\n## Implementation Steps\n1. Create a new project and install `express` and `cookie-parser`\n2. Install `@thunderid/express`\n3. Add `index.js` with ThunderID middleware and auth routes\n4. Add `/protected` and `/me` routes with `protect()`\n5. Start the server with `node index.js`\n6. Validate the flow by opening `/protected`, then `/me`\n\nPlease provide:\n- The exact terminal commands\n- A complete `index.js` file\n- A short verification checklist for sign-in, sign-out, and protected route behavior"
+      },
+      "manual_steps": [
+        {
+          "step": 1,
+          "title": "Create an Express app",
+          "description": "Create your project and install the base dependencies:",
+          "code": {
+            "language": "terminal",
+            "content": "mkdir my-express-app\ncd my-express-app\nnpm init -y\nnpm install express cookie-parser"
+          }
+        },
+        {
+          "step": 2,
+          "title": "Install @thunderid/express",
+          "description": "Install the ThunderID Express SDK package:",
+          "code": {
+            "language": "terminal",
+            "content": "npm install @thunderid/express"
+          }
+        },
+        {
+          "step": 3,
+          "title": "Add ThunderID middleware and authentication routes",
+          "description": "Create an index.js file with middleware and auth route handlers:",
+          "code": {
+            "language": "javascript",
+            "filename": "index.js",
+            "content": "const express = require('express');\nconst cookieParser = require('cookie-parser');\nconst {thunderID, handleSignIn, handleSignOut, protect} = require('@thunderid/express');\n\nconst app = express();\nconst port = 3000;\n\napp.use(cookieParser());\napp.use(express.json());\n\napp.use(\n  thunderID({\n    baseUrl: 'https://localhost:8090',\n    clientId: '{{clientId}}',\n    clientSecret: '<your-client-secret>',\n    afterSignInUrl: 'http://localhost:3000/login',\n    afterSignOutUrl: 'http://localhost:3000/logout',\n  }),\n);\n\napp.get('/', (_req, res) => {\n  res.send('<a href=\"/protected\">Go to protected page</a>');\n});\n\napp.get('/login', handleSignIn());\napp.get('/logout', handleSignOut());\n\napp.get(\n  '/protected',\n  protect((res) => res.redirect('/login')),\n  (_req, res) => {\n    res.send('You are signed in and can access this protected route.');\n  },\n);\n\napp.get('/me', protect(), async (req, res) => {\n  const user = await req.thunderIDAuth.getUserFromRequest(req);\n  res.json(user);\n});\n\napp.listen(port, () => {\n  console.log(`Server running on http://localhost:${port}`);\n});"
+          }
+        },
+        {
+          "step": 4,
+          "title": "Update credentials",
+          "description": "Replace the placeholders with your actual application credentials from {{productName}}:",
+          "bullets": [
+            "Replace `{{clientId}}` with your Client ID",
+            "Replace `<your-client-secret>` with your Client Secret",
+            "Ensure your authorized redirect URL is `http://localhost:3000/login`",
+            "Ensure your allowed post-logout redirect URL is `http://localhost:3000/logout`"
+          ]
+        },
+        {
+          "step": 5,
+          "title": "Run the app",
+          "description": "Start your Express server:",
+          "code": {
+            "language": "terminal",
+            "content": "node index.js"
+          }
+        },
+        {
+          "step": 6,
+          "title": "Verify authentication flow",
+          "description": "Test the integration end-to-end:",
+          "bullets": [
+            "Open `http://localhost:3000/protected` and verify redirect to {{productName}} sign-in",
+            "Sign in and confirm access to the protected route",
+            "Open `http://localhost:3000/me` to inspect the signed-in user profile JSON",
+            "Open `http://localhost:3000/logout` while signed in and verify sign-out"
+          ]
+        }
+      ]
+    }
+  }
+}

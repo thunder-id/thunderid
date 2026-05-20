@@ -21,13 +21,13 @@ import {render, screen, within, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ConfigureOwner, {type ConfigureOwnerProps} from '../ConfigureOwner';
 
-const {mockAsgardeoUser, mockUseGetUsers} = vi.hoisted(() => ({
-  mockAsgardeoUser: {id: 'current-user-id'},
+const {mockCurrentUser, mockUseGetUsers} = vi.hoisted(() => ({
+  mockCurrentUser: {id: 'current-user-id'},
   mockUseGetUsers: vi.fn(),
 }));
 
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({user: mockAsgardeoUser}),
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({user: mockCurrentUser}),
 }));
 
 vi.mock('@thunderid/configure-users', () => ({

@@ -7,9 +7,9 @@ package certmock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/cert"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewCertificateServiceInterfaceMock creates a new instance of CertificateServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

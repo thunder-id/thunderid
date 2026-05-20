@@ -5,7 +5,7 @@
 package flowmgt_legacymock
 
 import (
-	"github.com/asgardeo/thunder/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	mock "github.com/stretchr/testify/mock"
 )
 

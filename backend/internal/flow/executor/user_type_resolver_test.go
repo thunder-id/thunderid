@@ -19,8 +19,8 @@
 package executor
 
 import (
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-	i18ncore "github.com/asgardeo/thunder/internal/system/i18n/core"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 
 	"context"
 	"testing"
@@ -29,14 +29,14 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	appmodel "github.com/asgardeo/thunder/internal/application/model"
-	"github.com/asgardeo/thunder/internal/entitytype"
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/tests/mocks/entitytypemock"
-	"github.com/asgardeo/thunder/tests/mocks/flow/coremock"
-	"github.com/asgardeo/thunder/tests/mocks/oumock"
+	appmodel "github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 type UserTypeResolverTestSuite struct {
@@ -1052,7 +1052,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserTyp
 
 	// Mock GetEntityTypeList returning empty list
 	emptyList := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{},
+		Types: []entitytype.EntityTypeListItem{},
 	}
 	suite.mockEntityTypeService.On("GetEntityTypeList", ctx.Context, mock.Anything, 100, 0, false).
 		Return(emptyList, nil)
@@ -1102,7 +1102,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserTyp
 
 	// Mock GetEntityTypeList returning a single schema
 	schemaList := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{
+		Types: []entitytype.EntityTypeListItem{
 			{Name: "employee", OUID: "ou-123"},
 		},
 	}
@@ -1130,7 +1130,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserTyp
 
 	// Mock GetEntityTypeList returning schemas
 	schemaList := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{
+		Types: []entitytype.EntityTypeListItem{
 			{Name: "employee"},
 			{Name: "customer"},
 		},
@@ -1166,7 +1166,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 
 	// Mock GetEntityTypeList returning multiple schemas
 	schemaList := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{
+		Types: []entitytype.EntityTypeListItem{
 			{Name: "employee", OUID: "ou-123"},
 			{Name: "customer", OUID: "ou-456"},
 			{Name: "partner", OUID: "ou-789"},
@@ -1199,7 +1199,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 
 	// Mock GetEntityTypeList returning multiple schemas including non-allowed ones
 	schemaList := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{
+		Types: []entitytype.EntityTypeListItem{
 			{Name: "employee", OUID: "ou-123"},
 			{Name: "customer", OUID: "ou-456"},
 			{Name: "partner", OUID: "ou-789"},
@@ -1234,7 +1234,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 
 	// Mock GetEntityTypeList returning schemas that don't match the allowed list
 	schemaList := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{
+		Types: []entitytype.EntityTypeListItem{
 			{Name: "employee", OUID: "ou-123"},
 			{Name: "customer", OUID: "ou-456"},
 		},
@@ -1491,7 +1491,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_Filte
 	}
 
 	schemaList := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{
+		Types: []entitytype.EntityTypeListItem{
 			{Name: "employee", OUID: "parent-ou-123"},
 			{Name: "customer", OUID: "other-ou-789"},
 			{Name: "partner", OUID: "parent-ou-123"},
@@ -1531,7 +1531,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_Filte
 	}
 
 	schemaList := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{
+		Types: []entitytype.EntityTypeListItem{
 			{Name: "employee", OUID: "parent-ou-123"},
 			{Name: "customer", OUID: "other-ou-789"},
 		},
@@ -1567,7 +1567,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_AllSc
 	}
 
 	schemaList := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{
+		Types: []entitytype.EntityTypeListItem{
 			{Name: "employee", OUID: "ou-123"},
 			{Name: "customer", OUID: "ou-456"},
 		},
@@ -1602,7 +1602,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_IsPar
 	}
 
 	schemaList := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{
+		Types: []entitytype.EntityTypeListItem{
 			{Name: "employee", OUID: "parent-ou-123"},
 			{Name: "customer", OUID: "error-ou"},
 		},

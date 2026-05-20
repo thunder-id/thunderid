@@ -28,7 +28,7 @@ vi.mock('../../api/useDeleteAgent');
 // Mock translations
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => {
+    t: (key: string, fallback?: string | {defaultValue?: string}) => {
       const translations: Record<string, string> = {
         'agents:delete.title': 'Delete agent',
         'agents:delete.message': 'Are you sure you want to delete this agent? This action cannot be undone.',
@@ -37,7 +37,10 @@ vi.mock('react-i18next', () => ({
         'common:actions.delete': 'Delete',
         'common:status.deleting': 'Deleting...',
       };
-      return translations[key] ?? fallback ?? key;
+      if (translations[key]) return translations[key];
+      if (typeof fallback === 'string') return fallback || key;
+      if (fallback && typeof fallback === 'object') return fallback.defaultValue ?? key;
+      return key;
     },
   }),
 }));

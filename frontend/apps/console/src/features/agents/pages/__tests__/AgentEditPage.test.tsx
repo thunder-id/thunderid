@@ -99,7 +99,11 @@ vi.mock('../../../applications/components/edit-application/token-settings/EditTo
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string | {defaultValue?: string}) => {
+      if (typeof fallback === 'string') return fallback || key;
+      if (fallback && typeof fallback === 'object') return fallback.defaultValue ?? key;
+      return key;
+    },
   }),
 }));
 
@@ -248,6 +252,26 @@ describe('AgentEditPage', () => {
       // After clicking, the heading text becomes a text input
       const inputs = screen.getAllByRole('textbox');
       expect(inputs.length).toBeGreaterThan(0);
+    });
+
+    it('does not raise an unsaved-changes diff when description editor is opened and closed without changes', async () => {
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      const editIcons = screen.getAllByRole('button').filter((b) => b.querySelector('svg'));
+      const descEditButton = editIcons.find((btn) => btn.parentElement?.textContent?.includes('Test description'));
+      if (!descEditButton) throw new Error('description edit button not found');
+      await user.click(descEditButton);
+
+      const descInput = screen
+        .getAllByRole('textbox')
+        .find((el) => (el as HTMLTextAreaElement).value === 'Test description');
+      if (!descInput) throw new Error('description textarea not found');
+
+      // Blur without typing → no diff should be created → no unsaved-changes bar.
+      descInput.dispatchEvent(new FocusEvent('blur', {bubbles: true}));
+
+      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
     });
   });
 

@@ -21,6 +21,7 @@
  */
 export const ALLOWED_RESOURCE_TYPES = [
   'application',
+  'group',
   'user',
   'flow',
   'theme',

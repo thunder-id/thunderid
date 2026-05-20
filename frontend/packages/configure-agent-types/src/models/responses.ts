@@ -26,6 +26,6 @@ export interface AgentTypeListResponse {
   totalResults: number;
   startIndex: number;
   count: number;
-  schemas: AgentTypeListItem[];
+  types: AgentTypeListItem[];
   links?: ApiPaginationLink[];
 }

@@ -22,7 +22,7 @@ package message
 import (
 	"time"
 
-	"github.com/asgardeo/thunder/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/notification/common"
 )
 
 // httpClientTimeout is the timeout duration for the HTTP client.

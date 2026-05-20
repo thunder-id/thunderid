@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import AgentTypeQueryKeys from '../constants/agentTypeQueryKeys';
@@ -29,7 +29,7 @@ import type {ApiAgentType} from '../models/agent-type';
  * @returns TanStack Query result object containing agent type data, loading state, and error information
  */
 export default function useGetAgentType(id?: string): UseQueryResult<ApiAgentType> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
   return useQuery<ApiAgentType>({

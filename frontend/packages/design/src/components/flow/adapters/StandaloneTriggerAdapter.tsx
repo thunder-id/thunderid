@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {type EmbeddedFlowComponent} from '@asgardeo/react';
+import {type EmbeddedFlowComponent} from '@thunderid/react';
 import {cn} from '@thunderid/utils';
 import {Box, Button} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';

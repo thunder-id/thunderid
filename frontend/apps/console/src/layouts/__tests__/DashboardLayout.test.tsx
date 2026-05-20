@@ -45,9 +45,9 @@ vi.mock('../../features/applications/api/useGetApplications', () => ({
   default: (params: unknown) => mockUseGetApplications(params),
 }));
 
-// Mock Asgardeo
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+// Mock ThunderID
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     signIn: mockSignIn,
     clearSession: mockClearSession,
     discovery: mockDiscovery,
@@ -122,7 +122,8 @@ describe('DashboardLayout', () => {
   });
 
   it('renders AppShell layout', () => {
-    render(<DashboardLayout />);
+    const {rerender} = render(<DashboardLayout />);
+    rerender(<DashboardLayout />);
 
     // Check that the outlet is rendered
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
@@ -217,6 +218,27 @@ describe('DashboardLayout', () => {
     render(<DashboardLayout />);
 
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
+  });
+
+  it('navigates to export page when export button is clicked', async () => {
+    const user = userEvent.setup();
+    render(<DashboardLayout />);
+
+    const exportButton = screen.getByText('navigation:pages.export');
+    expect(exportButton).toBeInTheDocument();
+    await user.click(exportButton);
+  });
+
+  it('navigates to welcome page when welcome menu item is clicked', async () => {
+    const user = userEvent.setup();
+    render(<DashboardLayout />);
+
+    const userMenuTrigger = screen.getByLabelText('Test User');
+    await user.click(userMenuTrigger);
+
+    const welcomeItem = await screen.findByText('common:userMenu.welcome');
+    expect(welcomeItem).toBeInTheDocument();
+    await user.click(welcomeItem);
   });
 
   describe('generic OIDC sign out', () => {

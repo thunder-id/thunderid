@@ -1152,6 +1152,23 @@ describe('ApplicationEditPage', () => {
       });
     });
 
+    it('does not raise an unsaved-changes diff when description editor is opened and closed without changes', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      // Open the description editor (description is non-empty: 'Test application description')
+      const descriptionSection = screen.getByText('Test application description').closest('div');
+      const editButton = descriptionSection?.querySelector('button');
+      await user.click(editButton!);
+
+      // Blur immediately without typing — value is unchanged.
+      const descriptionInput = screen.getByPlaceholderText('Add a description');
+      fireEvent.blur(descriptionInput);
+
+      // No diff should be created → no unsaved-changes bar.
+      expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+    });
+
     it('should handle description when original is empty and new is empty', async () => {
       mockUseGetApplication.mockReturnValue({
         data: {...mockApplication, description: undefined},

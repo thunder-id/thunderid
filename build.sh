@@ -153,7 +153,7 @@ TEST_RUN="${4:-}"
 TEST_PACKAGE="${5:-}"
 
 # PNPM version to use for frontend builds and docs build
-PNPM_VERSION="10.33.4"
+PNPM_VERSION="11.0.9"
 
 # ============================================================================
 # Read Configuration from deployment.yaml
@@ -373,41 +373,89 @@ function initialize_databases() {
     echo "================================================================"
 }
 
-function build_frontend() {
-    echo "================================================================"
-    echo "Building frontend apps..."
-    
-    # Check if pnpm is installed, if not install it
+function ensure_pnpm() {
     if ! command -v pnpm >/dev/null 2>&1; then
         echo "pnpm not found, installing..."
         npm install -g pnpm@$PNPM_VERSION
     fi
+}
+
+function build_frontend() {
+    echo "================================================================"
+    echo "Building frontend apps..."
+    ensure_pnpm
     
-    # Navigate to frontend directory and install dependencies
-    cd "$FRONTEND_BASE_DIR" || exit 1
+    # Install dependencies
     echo "Installing frontend dependencies..."
     pnpm install --frozen-lockfile
     
     echo "Building frontend applications & packages..."
-    pnpm build
+    pnpm build:frontend
     
     # Return to script directory
     cd "$SCRIPT_DIR" || exit 1
     echo "================================================================"
 }
 
+function build_sdks_js() {
+    ensure_pnpm
+    
+    echo "Installing SDK dependencies..."
+    pnpm install --frozen-lockfile
+    
+    echo "Building JavaScript ecosystem SDK packages..."
+    pnpm --filter './sdks/**' build
+    cd "$SCRIPT_DIR" || exit 1
+}
+
+function test_sdks_js() {
+    ensure_pnpm
+    
+    echo "Installing SDK dependencies..."
+    pnpm install --frozen-lockfile
+    
+    echo "Running JavaScript ecosystem SDK tests..."
+    pnpm --filter './sdks/**' test
+    cd "$SCRIPT_DIR" || exit 1
+}
+
+function lint_sdks_js() {
+    ensure_pnpm
+    
+    echo "Installing SDK dependencies..."
+    pnpm install --frozen-lockfile
+    
+    echo "Linting JavaScript ecosystem SDK packages..."
+    pnpm --filter './sdks/**' lint
+    cd "$SCRIPT_DIR" || exit 1
+}
+
+function build_sdks() {
+    echo "================================================================"
+    echo "Building SDKs..."
+    build_sdks_js
+    echo "================================================================"
+}
+
+function test_sdks() {
+    echo "================================================================"
+    echo "Running SDK tests..."
+    test_sdks_js
+    echo "================================================================"
+}
+
+function lint_sdks() {
+    echo "================================================================"
+    echo "Linting SDKs..."
+    lint_sdks_js
+    echo "================================================================"
+}
+
 function build_docs() {
     echo "================================================================"
     echo "Building documentation..."
+    ensure_pnpm
     
-    # Check if pnpm is installed, if not install it
-    if ! command -v pnpm >/dev/null 2>&1; then
-        echo "pnpm not found, installing..."
-        npm install -g pnpm@$PNPM_VERSION
-    fi
-    
-    # Navigate to frontend directory first to ensure build:docs script can run
-    cd "$FRONTEND_BASE_DIR" || exit 1
     echo "Installing frontend dependencies (required for docs build)..."
     pnpm install --frozen-lockfile
     
@@ -554,10 +602,10 @@ function build_sample_app() {
 
     cd "$REACT_SDK_SAMPLE_APP_DIR" || exit 1
     echo "Installing React SDK sample dependencies..."
-    npm ci
+    pnpm install
 
     echo "Building React SDK sample app..."
-    npm run build
+    pnpm run build
 
     cd - || exit 1
     echo "✅ React SDK sample app built successfully."
@@ -1150,20 +1198,14 @@ function start_backend() {
 function run_frontend() {
     echo "================================================================"
     echo "Running frontend apps..."
+    ensure_pnpm
     
-    # Check if pnpm is installed, if not install it
-    if ! command -v pnpm >/dev/null 2>&1; then
-        echo "pnpm not found, installing..."
-        npm install -g pnpm@$PNPM_VERSION
-    fi
-    
-    # Navigate to frontend directory and install dependencies
-    cd "$FRONTEND_BASE_DIR" || exit 1
+    # Install dependencies
     echo "Installing frontend dependencies..."
     pnpm install --frozen-lockfile
     
     echo "Building frontend applications & packages..."
-    pnpm build
+    pnpm build:frontend
     
     echo "Starting frontend applications in the background..."
     # Start frontend processes in background
@@ -1178,15 +1220,9 @@ function run_frontend() {
 function run_docs() {
     echo "================================================================"
     echo "Starting documentation development server..."
+    ensure_pnpm
     
-    # Check if pnpm is installed, if not install it
-    if ! command -v pnpm >/dev/null 2>&1; then
-        echo "pnpm not found, installing..."
-        npm install -g pnpm@$PNPM_VERSION
-    fi
-    
-    # Navigate to frontend directory first to install all dependencies
-    cd "$FRONTEND_BASE_DIR" || exit 1
+    # Install dependencies
     echo "Installing frontend dependencies (required for docs)..."
     pnpm install --frozen-lockfile
     
@@ -1256,7 +1292,17 @@ case "$1" in
     build_docs)
         build_docs
         ;;
+    build_sdks)
+        build_sdks
+        ;;
+    test_sdks)
+        test_sdks
+        ;;
+    lint_sdks)
+        lint_sdks
+        ;;
     build_samples)
+        build_sdks_js
         build_sample_app
         package_sample_app
         ;;
@@ -1306,6 +1352,9 @@ case "$1" in
         echo "  build_backend            - Build only the ${PRODUCT_NAME} backend server"
         echo "  build_frontend           - Build only the Next.js frontend applications"
         echo "  build_docs               - Build only the documentation"
+        echo "  build_sdks               - Build all SDK packages"
+        echo "  test_sdks                - Run tests for all SDK packages"
+        echo "  lint_sdks                - Run linting for all SDK packages"
         echo "  build_samples            - Build the sample applications"
         echo "  test_unit                - Run unit tests with coverage"
         echo "  test_integration         - Run integration tests. Use -run and -package for filtering"

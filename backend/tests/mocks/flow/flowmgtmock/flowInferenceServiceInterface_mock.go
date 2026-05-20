@@ -5,8 +5,8 @@
 package flowmgtmock
 
 import (
-	"github.com/asgardeo/thunder/internal/flow/mgt"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/flow/mgt"
 )
 
 // newFlowInferenceServiceInterfaceMock creates a new instance of flowInferenceServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "types": ["vitest", "node"]
+  },
+  "include": ["**/*.cjs", "**/*.js", "**/*.ts", "**/*.vue", "**/*.mjs", "**/*.cts", "**/*.mts"]
+}

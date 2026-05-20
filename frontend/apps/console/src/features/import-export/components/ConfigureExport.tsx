@@ -43,12 +43,12 @@ import {useTranslation} from 'react-i18next';
 import yaml from 'yaml';
 import EnvVariablesViewer from './EnvVariablesViewer';
 import FileContentViewer from './FileContentViewer';
+import HowProductRunInHostedIllustration from './HowProductRunInHostedIllustration';
 import ResourceSummaryTable from './ResourceSummaryTable';
 import TemplateVariableDisplay from './TemplateVariableDisplay';
 import type {ConfigSummaryItem} from '../models/import-configuration';
 import getConfigFileName from '../utils/getConfigFileName';
 import getEnvFileName from '../utils/getEnvFileName';
-import HowProductWorksInHostedIllustration from '@/assets/images/illustrations/how-product-run-in-hosted.svg?react';
 
 /**
  * Props for the {@link ConfigureExport} component.
@@ -72,10 +72,6 @@ export interface ConfigureExportProps {
    * Whether the export operation is in progress
    */
   isExporting?: boolean;
-  /**
-   * Organization name for generated run instructions
-   */
-  orgName?: string;
 }
 
 /**
@@ -89,7 +85,6 @@ export default function ConfigureExport({
   environmentVariables = '',
   resourceCounts = undefined,
   isExporting = false,
-  orgName: orgNameProp = undefined,
 }: ConfigureExportProps): JSX.Element {
   const {t} = useTranslation(['applications', 'importExport']);
   const logger = useLogger('ConfigureExport');
@@ -97,7 +92,6 @@ export default function ConfigureExport({
   const productName = config.brand.product_name;
   const configFileName = getConfigFileName(productName);
   const envFileName = getEnvFileName(productName);
-  const systemConsoleClientId = (config?.client?.client_id ?? 'CONSOLE').toUpperCase();
 
   // Expand/collapse state for each resource type
   const [expandedApplications, setExpandedApplications] = useState(false);
@@ -182,7 +176,7 @@ export default function ConfigureExport({
         const trimmedSection = section.trim();
         if (!trimmedSection) return;
 
-        const lines = trimmedSection.split('\n');
+        const lines = trimmedSection.split(/\r?\n|\r/);
         let resourceType = 'unknown';
         let fileName = 'unknown';
 
@@ -261,32 +255,7 @@ export default function ConfigureExport({
     }
   }, [resources, logger]);
 
-  const orgName = useMemo(() => {
-    const explicitOrgName = orgNameProp?.trim();
-    if (explicitOrgName) {
-      return explicitOrgName;
-    }
-
-    const orgUnits =
-      (configData?.organization_unit as {name?: string; handle?: string}[] | undefined)?.filter(Boolean) ?? [];
-    const firstOrg = orgUnits.find((org) => (org.handle?.trim() ?? org.name?.trim()) !== undefined);
-    const orgUnitName = firstOrg?.handle?.trim() ?? firstOrg?.name?.trim();
-    if (orgUnitName) {
-      return orgUnitName;
-    }
-
-    const applications =
-      (configData?.application as
-        | {inbound_auth_config?: {type?: string; config?: {client_id?: string}}[]}[]
-        | undefined) ?? [];
-    const appClientId = applications
-      .map((app) => app.inbound_auth_config?.find((cfg) => cfg.type === 'oauth2')?.config?.client_id?.trim())
-      .find((clientId) => clientId && clientId.toUpperCase() !== systemConsoleClientId);
-
-    return appClientId ?? 'unknown-org';
-  }, [configData, orgNameProp, systemConsoleClientId]);
-
-  const command = `./start.sh ${orgName}.yml --env ${envFileName}`;
+  const command = t('howSolutionWorksIllustration:commandProduction');
 
   // Use resourceCounts from API if available, otherwise fall back to parsing
   const applicationsCount =
@@ -345,7 +314,7 @@ export default function ConfigureExport({
                 const appKey = app.name ?? clientId ?? `app-${idx}`;
                 return (
                   <Stack key={appKey} spacing={0.5}>
-                    <Stack direction="row" alignItems="center" spacing={1}>
+                    <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                       <LayoutGrid size={14} />
                       <Typography variant="body2" fontWeight={600}>
                         {app.name ?? t('importExport:configureExport.fallback.unnamedApplication')}
@@ -414,7 +383,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedIdps.map((idp, idx) => (
                 <Stack key={idp.handle ?? idp.name ?? `idp-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Layers size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {idp.name ?? t('importExport:configureExport.fallback.unnamedProvider')}
@@ -464,7 +433,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedFlows.map((flow, idx) => (
                 <Stack key={flow.handle ?? flow.name ?? `flow-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Workflow size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {flow.name ?? flow.handle ?? t('importExport:configureExport.fallback.unnamedFlow')}
@@ -521,7 +490,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedThemes.map((theme, idx) => (
                 <Stack key={theme.handle ?? theme.name ?? `theme-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Palette size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {theme.name ?? theme.handle ?? t('importExport:configureExport.fallback.unnamedTheme')}
@@ -581,7 +550,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedUsers.map((user, idx) => (
                 <Stack key={user.attributes?.username ?? user.attributes?.email ?? `user-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <UsersRound size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {user.attributes?.name ??
@@ -644,7 +613,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedOrgUnits.map((org, idx) => (
                 <Stack key={org.handle ?? org.name ?? `org-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Building size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {org.name ?? org.handle ?? t('importExport:configureExport.fallback.unnamedOrganization')}
@@ -703,7 +672,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedSenders.map((sender, idx) => (
                 <Stack key={sender.handle ?? sender.name ?? `sender-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Bell size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {sender.name ?? t('importExport:configureExport.fallback.unnamedSender')}
@@ -754,7 +723,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedSchemas.map((schema, idx) => (
                 <Stack key={schema.handle ?? schema.name ?? `schema-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <UserRoundCog size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {schema.name ?? schema.handle ?? t('importExport:configureExport.fallback.unnamedSchema')}
@@ -812,7 +781,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedTranslations.map((translation, idx) => (
                 <Stack key={translation.locale ?? `translation-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Languages size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {translation.locale ?? t('importExport:configureExport.fallback.unnamedTranslation')}
@@ -869,7 +838,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedLayouts.map((layout, idx) => (
                 <Stack key={layout.handle ?? layout.name ?? `layout-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <LayoutIcon size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {layout.name ?? layout.handle ?? t('importExport:configureExport.fallback.unnamedLayout')}
@@ -924,7 +893,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedResourceServers.map((rs, idx) => (
                 <Stack key={rs.handle ?? rs.name ?? `rs-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Server size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {rs.name ?? rs.handle ?? t('importExport:configureExport.fallback.unnamedResourceServer')}
@@ -983,7 +952,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedRoles.map((role, idx) => (
                 <Stack key={role.handle ?? role.name ?? `role-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Key size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {role.name ?? role.handle ?? t('importExport:configureExport.fallback.unnamedRole')}
@@ -1042,7 +1011,7 @@ export default function ConfigureExport({
             <Stack spacing={2} divider={<Box sx={{borderBottom: 1, borderColor: 'divider'}} />}>
               {displayedGroups.map((group, idx) => (
                 <Stack key={group.id ?? group.name ?? `group-${idx}`} spacing={0.5}>
-                  <Stack direction="row" alignItems="center" spacing={1}>
+                  <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                     <Users size={14} />
                     <Typography variant="body2" fontWeight={600}>
                       {group.name ?? t('importExport:configureExport.fallback.unnamedGroup')}
@@ -1090,9 +1059,15 @@ export default function ConfigureExport({
       </Stack>
 
       {/* Two-column layout: Main content and Right sidebar */}
-      <Stack direction="row" spacing={3} alignItems="flex-start">
+      <Stack
+        sx={{
+          flexDirection: {xs: 'column', lg: 'row'},
+          alignItems: {xs: 'stretch', lg: 'flex-start'},
+          gap: 3,
+        }}
+      >
         {/* Left: Resource summary table and downloads */}
-        <Box sx={{width: 850, flexShrink: 0}}>
+        <Box sx={{width: '100%', maxWidth: {lg: 850}, minWidth: 500, flexShrink: 1}}>
           <Stack spacing={2}>
             {/* Project Details */}
             <Paper variant="outlined" sx={{p: 3, borderRadius: 2}}>
@@ -1152,14 +1127,13 @@ export default function ConfigureExport({
             )}
           </Stack>
         </Box>
-
         {/* Right: Run Product Locally */}
-        <Box sx={{flex: '1 1 0', minWidth: 0}}>
+        <Box sx={{width: '100%', flex: {lg: '1 1 0'}, minWidth: 350}}>
           <Paper variant="outlined" sx={{p: 3}}>
             <Stack spacing={3}>
-              <Stack direction="row" spacing={1.5} alignItems="flex-start">
+              <Stack direction="row" spacing={1.5} sx={{alignItems: 'flex-start'}}>
                 <Box sx={{flex: 1}}>
-                  <Stack direction="row" spacing={1.5} alignItems="center" mb={1}>
+                  <Stack direction="row" spacing={1.5} sx={{alignItems: 'center', mb: 1}}>
                     <Box
                       sx={{
                         width: 32,
@@ -1184,12 +1158,13 @@ export default function ConfigureExport({
                   </Typography>
 
                   {/* Illustration */}
-                  <Box sx={{mt: 5, mb: 6, display: 'flex', justifyContent: 'center'}}>
+                  <Box sx={{mt: 5, mb: 6, display: 'flex', justifyContent: 'center', overflow: 'auto'}}>
                     <ColorSchemeSVG
-                      svg={HowProductWorksInHostedIllustration}
+                      svg={HowProductRunInHostedIllustration}
                       sx={{
                         width: '100%',
-                        maxWidth: '300px',
+                        minWidth: '240px',
+                        maxWidth: {xs: '280px', sm: '350px', md: '400px'},
                         height: 'auto',
                       }}
                     />
@@ -1206,7 +1181,7 @@ export default function ConfigureExport({
                       borderColor: 'divider',
                     }}
                   >
-                    <Stack direction="row" alignItems="center" justifyContent="space-between">
+                    <Stack direction="row" sx={{alignItems: 'center', justifyContent: 'space-between'}}>
                       <Typography
                         variant="body2"
                         sx={{

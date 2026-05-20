@@ -1,28 +1,28 @@
 ---
 title: TanStack Router
-description: Protect routes in TanStack Router applications with Asgardeo authentication
+description: Protect routes in TanStack Router applications with authentication
 ---
 
 # TanStack Router
 
-`@asgardeo/tanstack-router` is a supplementary package that provides seamless integration between Asgardeo authentication and TanStack Router. It offers components to easily protect routes and handle authentication flows in your React applications using TanStack Router.
+`@thunderid/tanstack-router` is a supplementary package that provides seamless integration between <ProductName /> authentication and TanStack Router. It offers components to easily protect routes and handle authentication flows in your React applications using TanStack Router.
 
 ## Installation
 
 <CodeGroup>
 <CodeBlock icon="npm" label="npm">
 ```bash
-npm install @asgardeo/tanstack-router
+npm install @thunderid/tanstack-router
 ```
 </CodeBlock>
 <CodeBlock icon="yarn" label="yarn">
 ```bash
-yarn add @asgardeo/tanstack-router
+yarn add @thunderid/tanstack-router
 ```
 </CodeBlock>
 <CodeBlock icon="pnpm" label="pnpm">
 ```bash
-pnpm add @asgardeo/tanstack-router
+pnpm add @thunderid/tanstack-router
 ```
 </CodeBlock>
 </CodeGroup>
@@ -32,8 +32,8 @@ pnpm add @asgardeo/tanstack-router
 ```tsx title="src/App.tsx" showLineNumbers
 import React from 'react'
 import { createRouter, createRoute, createRootRoute, RouterProvider } from '@tanstack/react-router'
-import { AsgardeoProvider } from '@asgardeo/react'
-import { ProtectedRoute } from '@asgardeo/tanstack-router'
+import { ThunderIDProvider } from '@thunderid/react'
+import { ProtectedRoute } from '@thunderid/tanstack-router'
 import Dashboard from './components/Dashboard'
 import Profile from './components/Profile'
 import SignIn from './components/SignIn'
@@ -80,13 +80,12 @@ const router = createRouter({ routeTree })
 
 function App() {
   return (
-    <AsgardeoProvider
-      baseUrl="https://api.asgardeo.io/t/your-org"
+    <ThunderIDProvider
+      baseUrl="https://localhost:8090"
       clientId="your-client-id"
-      platform="AsgardeoV2"
     >
       <RouterProvider router={router} />
-    </AsgardeoProvider>
+    </ThunderIDProvider>
   )
 }
 
@@ -96,7 +95,7 @@ export default App
 ## Custom Fallback and Loading States
 
 ```tsx title="src/routes.tsx" showLineNumbers
-import { ProtectedRoute } from '@asgardeo/tanstack-router'
+import { ProtectedRoute } from '@thunderid/tanstack-router'
 
 // Redirect to custom login page
 const dashboardRoute = createRoute({
@@ -144,8 +143,8 @@ const dashboardRoute = createRoute({
 ```tsx title="src/App.tsx" showLineNumbers
 import React from 'react'
 import { createRouter, createRoute, createRootRoute, RouterProvider } from '@tanstack/react-router'
-import { AsgardeoProvider } from '@asgardeo/react'
-import { ProtectedRoute } from '@asgardeo/tanstack-router'
+import { ThunderIDProvider } from '@thunderid/react'
+import { ProtectedRoute } from '@thunderid/tanstack-router'
 import Home from './components/Home'
 import About from './components/About'
 import SignIn from './components/SignIn'
@@ -225,13 +224,12 @@ const router = createRouter({ routeTree })
 
 function App() {
   return (
-    <AsgardeoProvider
-      baseUrl="https://api.asgardeo.io/t/your-org"
+    <ThunderIDProvider
+      baseUrl="https://localhost:8090"
       clientId="your-client-id"
-      platform="AsgardeoV2"
     >
       <RouterProvider router={router} />
-    </AsgardeoProvider>
+    </ThunderIDProvider>
   )
 }
 

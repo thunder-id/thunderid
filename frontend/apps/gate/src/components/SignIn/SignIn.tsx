@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useDesign, AuthPageLayout} from '@thunderid/design';
 import {ParticleBackground} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
@@ -24,7 +24,7 @@ import SignInBox from './SignInBox';
 import SignInSlogan from './SignInSlogan';
 
 export default function SignIn(): JSX.Element {
-  const {isMetaLoading} = useAsgardeo();
+  const {isMetaLoading} = useThunderID();
   const {isDesignEnabled, isLoading: isDesignLoading} = useDesign();
 
   const showSlogan = !isDesignLoading && !isDesignEnabled;

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
@@ -24,7 +24,7 @@ import {useTranslation} from 'react-i18next';
 import AgentQueryKeys from '../constants/agent-query-keys';
 
 export default function useDeleteAgent(): UseMutationResult<void, Error, string> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient = useQueryClient();
   const {t} = useTranslation('agents');
@@ -39,7 +39,8 @@ export default function useDeleteAgent(): UseMutationResult<void, Error, string>
         headers: {'Content-Type': 'application/json'},
       } as unknown as Parameters<typeof http.request>[0]);
     },
-    onSuccess: () => {
+    onSuccess: (_data, agentId) => {
+      queryClient.removeQueries({queryKey: [AgentQueryKeys.AGENT, agentId]});
       queryClient.invalidateQueries({queryKey: [AgentQueryKeys.AGENTS]}).catch(() => undefined);
       showToast(t('delete.success', 'Agent deleted successfully'), 'success');
     },

@@ -5,7 +5,7 @@ inputs:
   node-version:
     description: 'Version of Node.js to use'
     required: false
-    default: '20'
+    default: 'lts/*'
   package-manager:
     description: 'Package manager to use (npm, yarn, pnpm, or auto for detection)'
     required: false

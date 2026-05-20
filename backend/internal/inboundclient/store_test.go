@@ -27,10 +27,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/database/provider"
-	"github.com/asgardeo/thunder/tests/mocks/database/providermock"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
 
 const (
@@ -105,6 +105,8 @@ func (suite *InboundClientStoreTestSuite) TestBuildInboundClientFromRow_Success(
 		"auth_flow_id":                 "auth_flow_1",
 		"registration_flow_id":         "reg_flow_1",
 		"is_registration_flow_enabled": "1",
+		"recovery_flow_id":             "recovery_flow_1",
+		"is_recovery_flow_enabled":     "1",
 		"theme_id":                     "theme-123",
 		"layout_id":                    "layout-456",
 		"properties":                   string(blobBytes),
@@ -118,6 +120,8 @@ func (suite *InboundClientStoreTestSuite) TestBuildInboundClientFromRow_Success(
 	suite.Equal("auth_flow_1", result.AuthFlowID)
 	suite.Equal("reg_flow_1", result.RegistrationFlowID)
 	suite.True(result.IsRegistrationFlowEnabled)
+	suite.Equal("recovery_flow_1", result.RecoveryFlowID)
+	suite.True(result.IsRecoveryFlowEnabled)
 	suite.Equal("theme-123", result.ThemeID)
 	suite.Equal("layout-456", result.LayoutID)
 	suite.NotNil(result.Assertion)
@@ -147,6 +151,8 @@ func (suite *InboundClientStoreTestSuite) TestBuildInboundClientFromRow_MinimalR
 		"auth_flow_id":                 nil,
 		"registration_flow_id":         nil,
 		"is_registration_flow_enabled": nil,
+		"recovery_flow_id":             nil,
+		"is_recovery_flow_enabled":     nil,
 		"theme_id":                     nil,
 		"layout_id":                    nil,
 		"properties":                   nil,
@@ -160,6 +166,8 @@ func (suite *InboundClientStoreTestSuite) TestBuildInboundClientFromRow_MinimalR
 	suite.Equal("", result.AuthFlowID)
 	suite.Equal("", result.RegistrationFlowID)
 	suite.False(result.IsRegistrationFlowEnabled)
+	suite.Equal("", result.RecoveryFlowID)
+	suite.False(result.IsRecoveryFlowEnabled)
 	suite.Nil(result.Assertion)
 	suite.Nil(result.LoginConsent)
 	suite.Nil(result.AllowedUserTypes)
@@ -532,7 +540,8 @@ func (suite *InboundClientStoreTestSuite) TestCreateProfile() {
 		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
 		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateInboundClient,
 			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything).
 			Return(int64(1), nil).Once()
 
 		err := suite.store.CreateInboundClient(context.Background(), client)
@@ -566,7 +575,8 @@ func (suite *InboundClientStoreTestSuite) TestUpdateProfile() {
 		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
 		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateInboundClientByEntityID,
 			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-			mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything).
 			Return(int64(1), nil).Once()
 
 		err := suite.store.UpdateInboundClient(context.Background(), client)
@@ -615,6 +625,8 @@ func (suite *InboundClientStoreTestSuite) TestGetInboundClientList() {
 				"auth_flow_id":                 "flow1",
 				"registration_flow_id":         "reg1",
 				"is_registration_flow_enabled": "1",
+				"recovery_flow_id":             "recovery1",
+				"is_recovery_flow_enabled":     "1",
 				"theme_id":                     nil,
 				"layout_id":                    nil,
 				"properties":                   nil,
@@ -628,6 +640,8 @@ func (suite *InboundClientStoreTestSuite) TestGetInboundClientList() {
 		suite.NoError(err)
 		suite.Len(profiles, 1)
 		suite.Equal("app1", profiles[0].ID)
+		suite.Equal("recovery1", profiles[0].RecoveryFlowID)
+		suite.True(profiles[0].IsRecoveryFlowEnabled)
 	})
 }
 
@@ -638,6 +652,8 @@ func (suite *InboundClientStoreTestSuite) TestGetInboundClientByEntityID() {
 			"auth_flow_id":                 "flow1",
 			"registration_flow_id":         "reg1",
 			"is_registration_flow_enabled": "1",
+			"recovery_flow_id":             "recovery1",
+			"is_recovery_flow_enabled":     "1",
 			"theme_id":                     nil,
 			"layout_id":                    nil,
 			"properties":                   nil,
@@ -650,6 +666,8 @@ func (suite *InboundClientStoreTestSuite) TestGetInboundClientByEntityID() {
 		suite.NoError(err)
 		suite.NotNil(p)
 		suite.Equal("app1", p.ID)
+		suite.Equal("recovery1", p.RecoveryFlowID)
+		suite.True(p.IsRecoveryFlowEnabled)
 	})
 
 	suite.Run("returns ErrInboundClientNotFound when not found", func() {

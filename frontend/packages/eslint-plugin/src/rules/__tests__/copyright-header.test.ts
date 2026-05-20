@@ -20,11 +20,11 @@ import {Linter, RuleTester} from 'eslint';
 import copyrightHeaderRule from '../copyright-header.js';
 
 const ruleTester = new RuleTester({
-  parserOptions: {
+  languageOptions: {
     ecmaVersion: 2020,
     sourceType: 'module',
   },
-} as unknown as Linter.Config);
+} as Linter.Config);
 
 const getCurrentYear = (): number => new Date().getFullYear();
 

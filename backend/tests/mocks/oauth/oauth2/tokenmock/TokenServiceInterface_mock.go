@@ -7,9 +7,9 @@ package tokenmock
 import (
 	"context"
 
-	model0 "github.com/asgardeo/thunder/internal/inboundclient/model"
-	"github.com/asgardeo/thunder/internal/oauth/oauth2/model"
 	mock "github.com/stretchr/testify/mock"
+	model0 "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 )
 
 // NewTokenServiceInterfaceMock creates a new instance of TokenServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

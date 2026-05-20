@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import I18nQueryKeys from '../constants/i18n-query-keys';
@@ -68,7 +68,7 @@ export interface UseUpdateTranslationOptions {
 export default function useUpdateTranslation(
   options?: UseUpdateTranslationOptions,
 ): UseMutationResult<TranslationResponse, Error, UpdateTranslationVariables> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {onMutationSuccess} = options ?? {};

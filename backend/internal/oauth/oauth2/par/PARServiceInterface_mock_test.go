@@ -7,9 +7,9 @@ package par
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/inboundclient/model"
-	model0 "github.com/asgardeo/thunder/internal/oauth/oauth2/model"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/inboundclient/model"
+	model0 "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 )
 
 // NewPARServiceInterfaceMock creates a new instance of PARServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

@@ -48,6 +48,10 @@ export interface Routes {
      * OAuth callback page route.
      */
     CALLBACK: string;
+    /**
+     * Recovery page route.
+     */
+    RECOVERY: string;
   };
 }
 
@@ -73,6 +77,7 @@ const ROUTES: Routes = {
     SIGN_UP: '/signup',
     INVITE: '/invite',
     CALLBACK: '/callback',
+    RECOVERY: '/recovery',
   },
 } as const;
 

@@ -16,14 +16,14 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
 import {useEffect, type JSX} from 'react';
 import {useLocation, useNavigate} from 'react-router';
 import getWelcomeDismissedStorageKey from '../utils/getWelcomeDismissedStorageKey';
 
 export default function WelcomeRedirect(): JSX.Element | null {
-  const {isSignedIn} = useAsgardeo();
+  const {isSignedIn} = useThunderID();
   const {config} = useConfig();
   const navigate = useNavigate();
   const location = useLocation();

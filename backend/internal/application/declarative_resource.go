@@ -20,18 +20,17 @@ package application
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
-	"encoding/json"
-
-	"github.com/asgardeo/thunder/internal/application/model"
-	"github.com/asgardeo/thunder/internal/entity"
-	"github.com/asgardeo/thunder/internal/inboundclient"
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
 
 	"gopkg.in/yaml.v3"
 )
@@ -157,6 +156,7 @@ func makeAppInboundParser(appService ApplicationServiceInterface) func([]byte) (
 }
 
 // parseToApplicationDTO unmarshals YAML bytes into an ApplicationDTO.
+// Handle fields (ou_handle) are preserved in the DTO for the service layer to resolve.
 func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 	var appRequest model.ApplicationRequestWithID
 	err := yaml.Unmarshal(data, &appRequest)
@@ -167,12 +167,18 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 	appDTO := model.ApplicationDTO{
 		ID:          appRequest.ID,
 		OUID:        appRequest.OUID,
+		OUHandle:    appRequest.OUHandle,
 		Name:        appRequest.Name,
 		Description: appRequest.Description,
 		InboundAuthProfile: inboundmodel.InboundAuthProfile{
 			AuthFlowID:                appRequest.AuthFlowID,
+			AuthFlowHandle:            appRequest.AuthFlowHandle,
 			RegistrationFlowID:        appRequest.RegistrationFlowID,
+			RegistrationFlowHandle:    appRequest.RegistrationFlowHandle,
 			IsRegistrationFlowEnabled: appRequest.IsRegistrationFlowEnabled,
+			RecoveryFlowID:            appRequest.RecoveryFlowID,
+			RecoveryFlowHandle:        appRequest.RecoveryFlowHandle,
+			IsRecoveryFlowEnabled:     appRequest.IsRecoveryFlowEnabled,
 			ThemeID:                   appRequest.ThemeID,
 			LayoutID:                  appRequest.LayoutID,
 			Assertion:                 appRequest.Assertion,

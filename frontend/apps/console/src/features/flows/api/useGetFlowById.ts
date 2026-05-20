@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import FlowQueryKeys from '../constants/flow-query-keys';
@@ -48,7 +48,7 @@ export default function useGetFlowById(
   flowId: string | undefined,
   enabled = true,
 ): UseQueryResult<FlowDefinitionResponse> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
   return useQuery<FlowDefinitionResponse>({

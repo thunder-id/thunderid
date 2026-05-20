@@ -1309,7 +1309,7 @@ paths:
                 totalResults: 1
                 startIndex: 1
                 count: 1
-                schemas:
+                types:
                   - id: "550e8400-e29b-41d4-a716-446655440000"
                     name: "default"
                     ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
@@ -2636,7 +2636,7 @@ components:
           type: integer
           description: "Number of elements in the returned page."
           example: 3
-        schemas:
+        types:
           type: array
           items:
             type: object

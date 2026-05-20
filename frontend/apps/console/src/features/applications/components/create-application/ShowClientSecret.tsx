@@ -29,6 +29,10 @@ export interface ShowClientSecretProps {
    */
   appName: string;
   /**
+   * The client ID of the created application
+   */
+  clientId?: string;
+  /**
    * The client secret that needs to be saved
    */
   clientSecret: string;
@@ -48,16 +52,24 @@ export interface ShowClientSecretProps {
  */
 export default function ShowClientSecret({
   appName,
+  clientId = '',
   clientSecret,
   onCopySecret = () => null,
   onContinue,
 }: ShowClientSecretProps): JSX.Element {
   const {t} = useTranslation();
   const [showSecret, setShowSecret] = useState(false);
+  const {copy: copyClientId} = useCopyToClipboard({
+    resetDelay: 2000,
+  }) as {copied: boolean; copy: (text: string) => Promise<void>};
   const {copied, copy} = useCopyToClipboard({
     resetDelay: 2000,
     onCopy: onCopySecret,
   }) as {copied: boolean; copy: (text: string) => Promise<void>};
+
+  const handleClientIdCopy = async (): Promise<void> => {
+    await copyClientId(clientId);
+  };
 
   const handleCopy = async (): Promise<void> => {
     await copy(clientSecret);
@@ -112,6 +124,42 @@ export default function ShowClientSecret({
             <Typography variant="body1">{appName}</Typography>
           </Box>
 
+          {clientId && (
+            <>
+              <Divider />
+
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
+                  {t('applications:clientSecret.clientIdLabel')}
+                </Typography>
+                <TextField
+                  fullWidth
+                  data-testid="application-client-id-value"
+                  value={clientId}
+                  InputProps={{
+                    readOnly: true,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          aria-label={`${t('common:actions.copy')} ${t('applications:clientSecret.clientIdLabel')}`}
+                          onClick={() => {
+                            handleClientIdCopy().catch(() => {
+                              // Error already handled in handleClientIdCopy
+                            });
+                          }}
+                          edge="end"
+                          size="small"
+                        >
+                          <Copy size={16} />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+            </>
+          )}
+
           <Divider />
 
           <Box>
@@ -127,10 +175,16 @@ export default function ShowClientSecret({
                 readOnly: true,
                 endAdornment: (
                   <InputAdornment position="end">
-                    <IconButton onClick={handleToggleVisibility} edge="end" size="small">
+                    <IconButton
+                      aria-label={t('applications:regenerateSecret.success.toggleVisibility')}
+                      onClick={handleToggleVisibility}
+                      edge="end"
+                      size="small"
+                    >
                       {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
                     </IconButton>
                     <IconButton
+                      aria-label={`${t('common:actions.copy')} ${t('applications:clientSecret.clientSecretLabel')}`}
                       onClick={() => {
                         handleCopy().catch(() => {
                           // Error already handled in handleCopy

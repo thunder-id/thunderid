@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {SettingsCard} from '@thunderid/components';
 import {
   Box,
@@ -148,7 +148,7 @@ export default function OAuth2ConfigSection({
   onOAuth2ConfigChange = undefined,
 }: OAuth2ConfigSectionProps) {
   const {t} = useTranslation();
-  const {discovery} = useAsgardeo();
+  const {discovery} = useThunderID();
 
   if (!oauth2Config) return null;
 

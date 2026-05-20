@@ -7,9 +7,9 @@ package cryptomock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/system/cryptolab"
-	"github.com/asgardeo/thunder/internal/system/kmprovider"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/cryptolab"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 )
 
 // NewRuntimeCryptoProviderMock creates a new instance of RuntimeCryptoProviderMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -40,7 +40,7 @@ func (_m *RuntimeCryptoProviderMock) EXPECT() *RuntimeCryptoProviderMock_Expecte
 }
 
 // Decrypt provides a mock function for the type RuntimeCryptoProviderMock
-func (_mock *RuntimeCryptoProviderMock) Decrypt(ctx context.Context, keyRef kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte) ([]byte, error) {
+func (_mock *RuntimeCryptoProviderMock) Decrypt(ctx context.Context, keyRef *kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte) ([]byte, error) {
 	ret := _mock.Called(ctx, keyRef, params, content)
 
 	if len(ret) == 0 {
@@ -49,17 +49,17 @@ func (_mock *RuntimeCryptoProviderMock) Decrypt(ctx context.Context, keyRef kmpr
 
 	var r0 []byte
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) ([]byte, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) ([]byte, error)); ok {
 		return returnFunc(ctx, keyRef, params, content)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) []byte); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) []byte); ok {
 		r0 = returnFunc(ctx, keyRef, params, content)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) error); ok {
 		r1 = returnFunc(ctx, keyRef, params, content)
 	} else {
 		r1 = ret.Error(1)
@@ -74,22 +74,22 @@ type RuntimeCryptoProviderMock_Decrypt_Call struct {
 
 // Decrypt is a helper method to define mock.On call
 //   - ctx context.Context
-//   - keyRef kmprovider.KeyRef
+//   - keyRef *kmprovider.KeyRef
 //   - params cryptolab.AlgorithmParams
 //   - content []byte
 func (_e *RuntimeCryptoProviderMock_Expecter) Decrypt(ctx interface{}, keyRef interface{}, params interface{}, content interface{}) *RuntimeCryptoProviderMock_Decrypt_Call {
 	return &RuntimeCryptoProviderMock_Decrypt_Call{Call: _e.mock.On("Decrypt", ctx, keyRef, params, content)}
 }
 
-func (_c *RuntimeCryptoProviderMock_Decrypt_Call) Run(run func(ctx context.Context, keyRef kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte)) *RuntimeCryptoProviderMock_Decrypt_Call {
+func (_c *RuntimeCryptoProviderMock_Decrypt_Call) Run(run func(ctx context.Context, keyRef *kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte)) *RuntimeCryptoProviderMock_Decrypt_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 kmprovider.KeyRef
+		var arg1 *kmprovider.KeyRef
 		if args[1] != nil {
-			arg1 = args[1].(kmprovider.KeyRef)
+			arg1 = args[1].(*kmprovider.KeyRef)
 		}
 		var arg2 cryptolab.AlgorithmParams
 		if args[2] != nil {
@@ -114,13 +114,13 @@ func (_c *RuntimeCryptoProviderMock_Decrypt_Call) Return(bytes []byte, err error
 	return _c
 }
 
-func (_c *RuntimeCryptoProviderMock_Decrypt_Call) RunAndReturn(run func(ctx context.Context, keyRef kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte) ([]byte, error)) *RuntimeCryptoProviderMock_Decrypt_Call {
+func (_c *RuntimeCryptoProviderMock_Decrypt_Call) RunAndReturn(run func(ctx context.Context, keyRef *kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte) ([]byte, error)) *RuntimeCryptoProviderMock_Decrypt_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Encrypt provides a mock function for the type RuntimeCryptoProviderMock
-func (_mock *RuntimeCryptoProviderMock) Encrypt(ctx context.Context, keyRef kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte) ([]byte, *cryptolab.CryptoDetails, error) {
+func (_mock *RuntimeCryptoProviderMock) Encrypt(ctx context.Context, keyRef *kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte) ([]byte, *cryptolab.CryptoDetails, error) {
 	ret := _mock.Called(ctx, keyRef, params, content)
 
 	if len(ret) == 0 {
@@ -130,24 +130,24 @@ func (_mock *RuntimeCryptoProviderMock) Encrypt(ctx context.Context, keyRef kmpr
 	var r0 []byte
 	var r1 *cryptolab.CryptoDetails
 	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) ([]byte, *cryptolab.CryptoDetails, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) ([]byte, *cryptolab.CryptoDetails, error)); ok {
 		return returnFunc(ctx, keyRef, params, content)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) []byte); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) []byte); ok {
 		r0 = returnFunc(ctx, keyRef, params, content)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) *cryptolab.CryptoDetails); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) *cryptolab.CryptoDetails); ok {
 		r1 = returnFunc(ctx, keyRef, params, content)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*cryptolab.CryptoDetails)
 		}
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) error); ok {
+	if returnFunc, ok := ret.Get(2).(func(context.Context, *kmprovider.KeyRef, cryptolab.AlgorithmParams, []byte) error); ok {
 		r2 = returnFunc(ctx, keyRef, params, content)
 	} else {
 		r2 = ret.Error(2)
@@ -162,22 +162,22 @@ type RuntimeCryptoProviderMock_Encrypt_Call struct {
 
 // Encrypt is a helper method to define mock.On call
 //   - ctx context.Context
-//   - keyRef kmprovider.KeyRef
+//   - keyRef *kmprovider.KeyRef
 //   - params cryptolab.AlgorithmParams
 //   - content []byte
 func (_e *RuntimeCryptoProviderMock_Expecter) Encrypt(ctx interface{}, keyRef interface{}, params interface{}, content interface{}) *RuntimeCryptoProviderMock_Encrypt_Call {
 	return &RuntimeCryptoProviderMock_Encrypt_Call{Call: _e.mock.On("Encrypt", ctx, keyRef, params, content)}
 }
 
-func (_c *RuntimeCryptoProviderMock_Encrypt_Call) Run(run func(ctx context.Context, keyRef kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte)) *RuntimeCryptoProviderMock_Encrypt_Call {
+func (_c *RuntimeCryptoProviderMock_Encrypt_Call) Run(run func(ctx context.Context, keyRef *kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte)) *RuntimeCryptoProviderMock_Encrypt_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 kmprovider.KeyRef
+		var arg1 *kmprovider.KeyRef
 		if args[1] != nil {
-			arg1 = args[1].(kmprovider.KeyRef)
+			arg1 = args[1].(*kmprovider.KeyRef)
 		}
 		var arg2 cryptolab.AlgorithmParams
 		if args[2] != nil {
@@ -202,7 +202,7 @@ func (_c *RuntimeCryptoProviderMock_Encrypt_Call) Return(bytes []byte, cryptoDet
 	return _c
 }
 
-func (_c *RuntimeCryptoProviderMock_Encrypt_Call) RunAndReturn(run func(ctx context.Context, keyRef kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte) ([]byte, *cryptolab.CryptoDetails, error)) *RuntimeCryptoProviderMock_Encrypt_Call {
+func (_c *RuntimeCryptoProviderMock_Encrypt_Call) RunAndReturn(run func(ctx context.Context, keyRef *kmprovider.KeyRef, params cryptolab.AlgorithmParams, content []byte) ([]byte, *cryptolab.CryptoDetails, error)) *RuntimeCryptoProviderMock_Encrypt_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -276,7 +276,7 @@ func (_c *RuntimeCryptoProviderMock_GetPublicKeys_Call) RunAndReturn(run func(ct
 }
 
 // GetTLSMaterial provides a mock function for the type RuntimeCryptoProviderMock
-func (_mock *RuntimeCryptoProviderMock) GetTLSMaterial(ctx context.Context, keyRef kmprovider.KeyRef) (*kmprovider.TLSMaterial, error) {
+func (_mock *RuntimeCryptoProviderMock) GetTLSMaterial(ctx context.Context, keyRef *kmprovider.KeyRef) (*kmprovider.TLSMaterial, error) {
 	ret := _mock.Called(ctx, keyRef)
 
 	if len(ret) == 0 {
@@ -285,17 +285,17 @@ func (_mock *RuntimeCryptoProviderMock) GetTLSMaterial(ctx context.Context, keyR
 
 	var r0 *kmprovider.TLSMaterial
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, kmprovider.KeyRef) (*kmprovider.TLSMaterial, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *kmprovider.KeyRef) (*kmprovider.TLSMaterial, error)); ok {
 		return returnFunc(ctx, keyRef)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, kmprovider.KeyRef) *kmprovider.TLSMaterial); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *kmprovider.KeyRef) *kmprovider.TLSMaterial); ok {
 		r0 = returnFunc(ctx, keyRef)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*kmprovider.TLSMaterial)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, kmprovider.KeyRef) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *kmprovider.KeyRef) error); ok {
 		r1 = returnFunc(ctx, keyRef)
 	} else {
 		r1 = ret.Error(1)
@@ -310,20 +310,20 @@ type RuntimeCryptoProviderMock_GetTLSMaterial_Call struct {
 
 // GetTLSMaterial is a helper method to define mock.On call
 //   - ctx context.Context
-//   - keyRef kmprovider.KeyRef
+//   - keyRef *kmprovider.KeyRef
 func (_e *RuntimeCryptoProviderMock_Expecter) GetTLSMaterial(ctx interface{}, keyRef interface{}) *RuntimeCryptoProviderMock_GetTLSMaterial_Call {
 	return &RuntimeCryptoProviderMock_GetTLSMaterial_Call{Call: _e.mock.On("GetTLSMaterial", ctx, keyRef)}
 }
 
-func (_c *RuntimeCryptoProviderMock_GetTLSMaterial_Call) Run(run func(ctx context.Context, keyRef kmprovider.KeyRef)) *RuntimeCryptoProviderMock_GetTLSMaterial_Call {
+func (_c *RuntimeCryptoProviderMock_GetTLSMaterial_Call) Run(run func(ctx context.Context, keyRef *kmprovider.KeyRef)) *RuntimeCryptoProviderMock_GetTLSMaterial_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 kmprovider.KeyRef
+		var arg1 *kmprovider.KeyRef
 		if args[1] != nil {
-			arg1 = args[1].(kmprovider.KeyRef)
+			arg1 = args[1].(*kmprovider.KeyRef)
 		}
 		run(
 			arg0,
@@ -338,7 +338,7 @@ func (_c *RuntimeCryptoProviderMock_GetTLSMaterial_Call) Return(tLSMaterial *kmp
 	return _c
 }
 
-func (_c *RuntimeCryptoProviderMock_GetTLSMaterial_Call) RunAndReturn(run func(ctx context.Context, keyRef kmprovider.KeyRef) (*kmprovider.TLSMaterial, error)) *RuntimeCryptoProviderMock_GetTLSMaterial_Call {
+func (_c *RuntimeCryptoProviderMock_GetTLSMaterial_Call) RunAndReturn(run func(ctx context.Context, keyRef *kmprovider.KeyRef) (*kmprovider.TLSMaterial, error)) *RuntimeCryptoProviderMock_GetTLSMaterial_Call {
 	_c.Call.Return(run)
 	return _c
 }

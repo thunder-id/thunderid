@@ -424,7 +424,7 @@ export class MFASetup {
     }
 
     const schemasData = await schemasResponse.json();
-    const personSchema = schemasData.schemas?.find((s: any) => s.name === "Person");
+    const personSchema = schemasData.types?.find((s: any) => s.name === "Person");
 
     if (!personSchema || !personSchema.ouId) {
       throw new Error("Person user type not found or missing organization unit");

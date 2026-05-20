@@ -18,7 +18,7 @@
 
 package layoutmgt
 
-import dbmodel "github.com/asgardeo/thunder/internal/system/database/model"
+import dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 
 var (
 	// queryCreateLayout creates a new layout configuration.

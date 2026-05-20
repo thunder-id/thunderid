@@ -17,9 +17,11 @@
  */
 
 import ComponentTypes from '@theme-original/NavbarItem/ComponentTypes';
+import GitHubStarButton from './GitHubStarButton';
 import PersonaDropdown from './PersonaDropdown';
 
 export default {
   ...ComponentTypes,
+  'custom-GitHubStarButton': GitHubStarButton,
   'custom-PersonaDropdown': PersonaDropdown,
 } as typeof ComponentTypes;

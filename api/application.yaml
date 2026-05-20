@@ -48,6 +48,8 @@ paths:
                     authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                     registrationFlowId: "80024fb3-29ed-4c33-aa48-8aee5e96d522"
                     isRegistrationFlowEnabled: true
+                    recoveryFlowId: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+                    isRecoveryFlowEnabled: true
                   - id: "660e8400-e29b-41d4-a716-446655440001"
                     name: "Mobile App"
                     description: "Mobile application for customers"
@@ -56,6 +58,8 @@ paths:
                     authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                     registrationFlowId: "80024fb3-29ed-4c33-aa48-8aee5e96d522"
                     isRegistrationFlowEnabled: false
+                    recoveryFlowId: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+                    isRecoveryFlowEnabled: false
         "400":
           description: Bad request
           content:
@@ -106,6 +110,8 @@ paths:
               authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
               registrationFlowId: "80024fb3-29ed-4c33-aa48-8aee5e96d522"
               isRegistrationFlowEnabled: true
+              recoveryFlowId: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+              isRecoveryFlowEnabled: true
               url: "https://myapp.example.com"
               logoUrl: "https://myapp.example.com/logo.png"
               tosUri: "https://myapp.example.com/terms"
@@ -178,6 +184,8 @@ paths:
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "80024fb3-29ed-4c33-aa48-8aee5e96d522"
                 isRegistrationFlowEnabled: true
+                recoveryFlowId: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+                isRecoveryFlowEnabled: true
                 url: "https://myapp.example.com"
                 logoUrl: "https://myapp.example.com/logo.png"
                 tosUri: "https://myapp.example.com/terms"
@@ -272,6 +280,16 @@ paths:
                     description:
                       key: "error.applicationservice.invalid_grant_type_description"
                       defaultValue: "One or more grant types are not supported"
+                invalid-recovery-flow-id:
+                  summary: Invalid or disabled recovery flow ID
+                  value:
+                    code: "APP-1005"
+                    message:
+                      key: "error.applicationservice.invalid_recovery_flow_id"
+                      defaultValue: "Invalid or disabled recovery flow ID"
+                    description:
+                      key: "error.applicationservice.invalid_recovery_flow_id_description"
+                      defaultValue: "The provided recoveryFlowId does not exist or is not enabled"
         "500":
           description: Internal server error
           content:
@@ -318,6 +336,8 @@ paths:
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "80024fb3-29ed-4c33-aa48-8aee5e96d522"
                 isRegistrationFlowEnabled: true
+                recoveryFlowId: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+                isRecoveryFlowEnabled: true
                 url: "https://myapp.example.com"
                 logoUrl: "https://myapp.example.com/logo.png"
                 tosUri: "https://myapp.example.com/terms"
@@ -444,6 +464,8 @@ paths:
               authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
               registrationFlowId: "80024fb3-29ed-4c33-aa48-8aee5e96d522"
               isRegistrationFlowEnabled: true
+              recoveryFlowId: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+              isRecoveryFlowEnabled: true
               url: "https://myapp.example.com"
               logoUrl: "https://myapp.example.com/updated-logo.png"
               tosUri: "https://myapp.example.com/terms"
@@ -517,6 +539,8 @@ paths:
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "80024fb3-29ed-4c33-aa48-8aee5e96d522"
                 isRegistrationFlowEnabled: true
+                recoveryFlowId: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+                isRecoveryFlowEnabled: true
                 url: "https://myapp.example.com"
                 logoUrl: "https://myapp.example.com/updated-logo.png"
                 tosUri: "https://myapp.example.com/terms"
@@ -603,6 +627,16 @@ paths:
                     description:
                       key: "error.applicationservice.invalid_redirect_uri_description"
                       defaultValue: "One or more redirect URIs are not valid"
+                invalid-recovery-flow-id:
+                  summary: Invalid or disabled recovery flow ID
+                  value:
+                    code: "APP-1005"
+                    message:
+                      key: "error.applicationservice.invalid_recovery_flow_id"
+                      defaultValue: "Invalid or disabled recovery flow ID"
+                    description:
+                      key: "error.applicationservice.invalid_recovery_flow_id_description"
+                      defaultValue: "The provided recoveryFlowId does not exist or is not enabled"
         "404":
           description: Application not found
           content:
@@ -740,6 +774,19 @@ components:
           description: Indicates if the registration flow is enabled for the application.
           example: true
           default: false
+        recoveryFlowId:
+          type: string
+          description: The ID of the recovery flow.
+          example: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: >
+            Indicates if the recovery flow is enabled for the application.
+            When set to true, recoveryFlowId must also be provided in the
+            ApplicationRequest; omitting recoveryFlowId while setting this
+            field to true will result in a 400 error.
+          example: true
+          default: false
         themeId:
           type: string
           format: uuid
@@ -847,6 +894,14 @@ components:
           type: boolean
           description: Indicates if the registration flow is enabled for the application.
           example: true
+        recoveryFlowId:
+          type: string
+          description: The ID of the recovery flow.
+          example: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: Indicates if the recovery flow is enabled for the application.
+          example: true
         themeId:
           type: string
           format: uuid
@@ -952,6 +1007,14 @@ components:
         isRegistrationFlowEnabled:
           type: boolean
           description: Indicates if the registration flow is enabled for the application.
+          example: true
+        recoveryFlowId:
+          type: string
+          description: The ID of the recovery flow.
+          example: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: Indicates if the recovery flow is enabled for the application.
           example: true
         themeId:
           type: string
@@ -1059,6 +1122,14 @@ components:
         isRegistrationFlowEnabled:
           type: boolean
           description: Indicates if the registration flow is enabled for the application.
+          example: true
+        recoveryFlowId:
+          type: string
+          description: The ID of the recovery flow.
+          example: "f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a"
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: Indicates if the recovery flow is enabled for the application.
           example: true
         themeId:
           type: string

@@ -7,8 +7,8 @@ package mgt
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewI18nServiceInterfaceMock creates a new instance of I18nServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

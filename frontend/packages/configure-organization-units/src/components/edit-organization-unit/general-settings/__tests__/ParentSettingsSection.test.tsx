@@ -23,7 +23,7 @@ import ParentSettingsSection from '../ParentSettingsSection';
 
 // Mock the useGetOrganizationUnit hook
 const mockUseGetOrganizationUnit = vi.fn();
-vi.mock('../../../../api/useGetOrganizationUnit', () => ({
+vi.mock('@/api/useGetOrganizationUnit', () => ({
   default: (id?: string, enabled?: boolean): unknown => mockUseGetOrganizationUnit(id, enabled),
 }));
 

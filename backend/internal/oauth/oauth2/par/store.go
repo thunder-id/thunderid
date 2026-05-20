@@ -27,7 +27,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/asgardeo/thunder/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/provider"
 )
 
 // requestURIRandomBytes is the number of random bytes for the request URI (32 bytes = 256 bits).

@@ -1,0 +1,35 @@
+---
+title: Multi-Agent Workflows
+description: Preserve trust and limit scope when agents delegate work to other agents.
+sidebar_position: 3
+---
+
+# Multi-Agent Workflows
+
+Agents don't always work alone. One agent delegates a task to another, which may delegate further to a third. These are multi-agent workflows — chains of agents collaborating to complete a task that no single agent handles end to end.
+
+The identity challenge multiplies at every hop. The first agent might hold a token that represents a user. When it delegates to a second agent, that second agent needs a token too. But it should not receive the same token — it should receive a narrower one, scoped to only what it needs, and locked to only the service it will call.
+
+If every agent in the chain shares the same token, a compromised agent anywhere in the chain has access to everything the first agent could reach. If no agent carries the user's identity, there is no way to trace the final action back to the person who initiated it. If tokens are not restricted to their intended target, any agent can replay a token against a service it was never meant to call.
+
+The longer the chain, the worse these problems get.
+
+## What needs to be solved
+
+- **Permissions must shrink at every hop.** When an agent delegates to another agent, the downstream agent should receive only the permissions it needs for its specific task. Each delegation should narrow the scope, never widen it.
+
+- **Tokens must be locked to their target.** A token issued for a specific agent or service should not be usable anywhere else. If a downstream agent receives a token meant for one service, that token should be rejected by any other service. This prevents a compromised agent from replaying tokens across the system.
+
+- **The full delegation chain must be traceable.** When the final agent in the chain performs an action, it should be possible to trace the complete path — which user initiated the request, which agent delegated to which, and what permissions were granted at each step. Without this, audit and accountability break down.
+
+- **Each hop must produce a new token.** Agents should not pass their own token to the next agent in the chain. Each delegation should go through the identity provider, which issues a new token with the correct audience, scoped permissions, and delegation chain. This ensures the identity provider remains the single authority for access decisions — not the agents themselves.
+
+## How to solve it
+
+### Token exchange with downscoped permissions
+
+Before delegating work, the parent agent exchanges its token with ThunderID for a new token with narrower permissions. The parent specifies which scopes the child agent needs and which service it will call. ThunderID issues a new token that carries only those scopes — the child agent never sees the parent's full permissions.
+
+1. **Exchange the token.** The parent agent sends its current token to ThunderID along with the scopes the child agent needs. ThunderID validates that the requested scopes are a subset of the parent's current permissions and issues a new, narrower token. The child agent only ever sees the permissions it was explicitly granted. See [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication) for the token exchange flow.
+2. **Lock the token to the target.** The parent specifies the target resource during the exchange using resource indicators. ThunderID audience-locks the issued token to that resource and further narrows the scopes to only those valid for it. If the child agent tries to use the token against a different service, the service rejects it. See [Resource Servers](/docs/next/guides/guides/resource-servers).
+3. **Preserve the delegation chain.** The new token carries the identity of the original user (if present) and a chain of actors — each agent that participated in the delegation. The final service can inspect this chain to understand exactly how the request arrived and who is accountable.

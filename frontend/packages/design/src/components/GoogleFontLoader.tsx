@@ -20,8 +20,8 @@ import {useConfig} from '@thunderid/contexts';
 import {useEffect} from 'react';
 import {SYSTEM_FONTS} from '../constants/fonts';
 
-/** CSS variable set by the Asgardeo SDK when design data includes a custom font. */
-const ASGARDEO_FONT_CSS_VAR = '--asgardeo-typography-fontFamily';
+/** CSS variable set by the ThunderID SDK when design data includes a custom font. */
+const THUNDERID_FONT_CSS_VAR = '--thunderid-typography-fontFamily';
 
 /** MUI class selectors that set their own font-family via CSS-in-JS. */
 const MUI_FONT_SELECTORS = [
@@ -38,7 +38,7 @@ const MUI_FONT_SELECTORS = [
 
 export interface GoogleFontLoaderProps {
   /** Optional explicit font family. When omitted the component references the
-   *  Asgardeo CSS variable so the browser resolves it automatically. */
+   *  ThunderID CSS variable so the browser resolves it automatically. */
   fontFamily?: string;
   /** Optional document to inject elements into (defaults to `window.document`). */
   targetDocument?: Document;
@@ -49,10 +49,10 @@ export interface GoogleFontLoaderProps {
  * theme specifies a custom font family.
  *
  * It performs two tasks:
- * 1. Injects a CSS override referencing `var(--asgardeo-typography-fontFamily)`
+ * 1. Injects a CSS override referencing `var(--thunderid-typography-fontFamily)`
  *    so MUI components use the design font instead of the theme default.
  *    By using the CSS variable directly (rather than reading its value in JS),
- *    there are no timing issues with the Asgardeo SDK setting it.
+ *    there are no timing issues with the ThunderID SDK setting it.
  * 2. Watches for the CSS variable to be set, then loads the Google Font if needed.
  */
 export default function GoogleFontLoader({
@@ -75,9 +75,9 @@ export default function GoogleFontLoader({
       // Explicit font: use the value directly.
       style.textContent = `${MUI_FONT_SELECTORS} { font-family: ${fontFamilyProp}, sans-serif !important; }`;
     } else {
-      // No explicit font: reference the Asgardeo CSS variable so the browser
+      // No explicit font: reference the ThunderID CSS variable so the browser
       // resolves it whenever the SDK sets it — no race condition.
-      style.textContent = `${MUI_FONT_SELECTORS} { font-family: var(${ASGARDEO_FONT_CSS_VAR}), sans-serif !important; }`;
+      style.textContent = `${MUI_FONT_SELECTORS} { font-family: var(${THUNDERID_FONT_CSS_VAR}), sans-serif !important; }`;
     }
 
     doc.getElementById(fontOverrideId)?.remove();
@@ -95,13 +95,13 @@ export default function GoogleFontLoader({
       return loadGoogleFont(fontLinkId, fontFamilyProp, targetDocument);
     }
 
-    // Poll briefly for the Asgardeo CSS variable to be set, then load the font.
+    // Poll briefly for the ThunderID CSS variable to be set, then load the font.
     const doc = targetDocument ?? document;
     let cancelled = false;
     let cleanup: (() => void) | undefined;
 
     const tryLoad = (): boolean => {
-      const value = getComputedStyle(doc.documentElement).getPropertyValue(ASGARDEO_FONT_CSS_VAR).trim();
+      const value = getComputedStyle(doc.documentElement).getPropertyValue(THUNDERID_FONT_CSS_VAR).trim();
       if (value) {
         cleanup = loadGoogleFont(fontLinkId, value, targetDocument);
         return true;

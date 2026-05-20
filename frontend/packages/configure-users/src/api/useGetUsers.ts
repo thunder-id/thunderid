@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import type {ApiFilteringParams} from '@thunderid/types';
@@ -30,7 +30,7 @@ import type {UserListResponse} from '../models/users';
  * @returns TanStack Query result object containing user list data, loading state, and error information
  */
 export default function useGetUsers(params?: ApiFilteringParams): UseQueryResult<UserListResponse> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const {limit, offset, filter} = params ?? {};
 

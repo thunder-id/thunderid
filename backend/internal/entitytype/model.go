@@ -87,7 +87,7 @@ type EntityTypeListResponse struct {
 	TotalResults int                  `json:"totalResults"`
 	StartIndex   int                  `json:"startIndex"`
 	Count        int                  `json:"count"`
-	Schemas      []EntityTypeListItem `json:"schemas"`
+	Types        []EntityTypeListItem `json:"types"`
 	Links        []Link               `json:"links"`
 }
 
@@ -106,6 +106,7 @@ type CreateEntityTypeRequestWithID struct {
 	ID                    string            `json:"id,omitempty" yaml:"id,omitempty"`
 	Name                  string            `json:"name"`
 	OUID                  string            `json:"ouId"`
+	OUHandle              string            `json:"ouHandle,omitempty"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
 	SystemAttributes      *SystemAttributes `json:"systemAttributes,omitempty"`
 	Schema                json.RawMessage   `json:"schema"`
@@ -115,6 +116,7 @@ type CreateEntityTypeRequestWithID struct {
 type UpdateEntityTypeRequest struct {
 	Name                  string            `json:"name"`
 	OUID                  string            `json:"ouId"`
+	OUHandle              string            `json:"ouHandle,omitempty"`
 	AllowSelfRegistration bool              `json:"allowSelfRegistration,omitempty"`
 	SystemAttributes      *SystemAttributes `json:"systemAttributes,omitempty"`
 	Schema                json.RawMessage   `json:"schema"`
@@ -126,8 +128,9 @@ type EntityTypeRequestWithID struct {
 	ID                    string            `yaml:"id"`
 	Category              TypeCategory      `yaml:"category,omitempty"`
 	Name                  string            `yaml:"name"`
-	OUID                  string            `yaml:"organization_unit_id"`
+	OUID                  string            `yaml:"organization_unit_id,omitempty"`
+	OUHandle              string            `yaml:"ou_handle,omitempty"`
 	AllowSelfRegistration bool              `yaml:"allow_self_registration,omitempty"`
 	SystemAttributes      *SystemAttributes `yaml:"system_attributes,omitempty"`
-	Schema                string            `yaml:"schema"`
+	Schema                interface{}       `yaml:"schema"`
 }

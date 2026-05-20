@@ -5,16 +5,16 @@
   "description": "Documentation for ⚡️ ThunderID",
   "author": "WSO2",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/asgardeo/thunder/tree/main/docs#readme",
+  "homepage": "https://github.com/thunder-id/thunderid/tree/main/docs#readme",
   "bugs": {
-    "url": "https://github.com/asgardeo/thunder/issues"
+    "url": "https://github.com/thunder-id/thunderid/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/asgardeo/thunder"
+    "url": "https://github.com/thunder-id/thunderid"
   },
   "keywords": [
-    "asgardeo",
+    "thunderid",
     "thunderid",
     "docs",
     "documentation",
@@ -22,7 +22,7 @@
   ],
   "scripts": {
     "build": "pnpm setup && docusaurus build",
-    "clear": "docusaurus clear",
+    "clean": "docusaurus clear",
     "deploy": "docusaurus deploy",
     "dev": "pnpm setup && docusaurus start --port 5180",
     "docusaurus": "docusaurus",
@@ -43,6 +43,7 @@
     "@docusaurus/plugin-content-docs": "3.9.2",
     "@docusaurus/preset-classic": "3.9.2",
     "@mdx-js/react": "3.0.0",
+    "docusaurus-plugin-copy-page-button": "0.5.0",
     "@thunderid/design": "workspace:^",
     "@thunderid/eslint-plugin": "workspace:^",
     "@thunderid/logger": "workspace:^",
@@ -52,10 +53,10 @@
     "@scalar/api-reference-react": "0.9.15",
     "clsx": "2.1.1",
     "eslint": "9.39.4",
-    "prettier": "3.6.2",
     "prism-react-renderer": "2.3.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "react-github-btn": "1.4.0"
   },
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.9.2",

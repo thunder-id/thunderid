@@ -21,7 +21,7 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import EditGroupSettings from '../EditGroupSettings';
 
 // Mock child component
-vi.mock('../ManageGroupsSection', () => ({
+vi.mock('@/components/edit-organization-unit/group-settings/ManageGroupsSection', () => ({
   default: ({organizationUnitId}: {organizationUnitId: string}) => (
     <div data-testid="manage-groups-section">ManageGroupsSection - {organizationUnitId}</div>
   ),

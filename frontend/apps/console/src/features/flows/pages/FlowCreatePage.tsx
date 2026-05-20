@@ -103,7 +103,9 @@ export default function FlowCreatePage(): JSX.Element {
       createFlow.mutate(flowRequest, {
         onSuccess: (savedFlow) => {
           (async () => {
-            await navigate(`/flows/signin/${savedFlow.id}`);
+            const flowTypeRoute =
+              selectedType === 'AUTHENTICATION' ? 'signin' : (selectedType?.toLowerCase() ?? 'signin');
+            await navigate(`/flows/${flowTypeRoute}/${savedFlow.id}`);
           })().catch((_error: unknown) => {
             logger.error('Failed to navigate to flow builder', {error: _error, flowId: savedFlow.id});
           });

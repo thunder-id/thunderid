@@ -27,7 +27,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	dbMock "github.com/asgardeo/thunder/tests/mocks/database/providermock"
+	dbMock "github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
 
 type StoreTestSuite struct {

@@ -1,0 +1,198 @@
+---
+title: Browser SDK Overview
+displayed_sidebar: browserSdkSidebar
+sidebar_position: 1
+sidebar_label: Overview
+description: Vanilla JavaScript SDK for browser-based authentication
+---
+
+# Browser SDK
+
+The ThunderID Browser SDK (`@thunderid/browser`) provides a framework-agnostic JavaScript client for integrating <ProductName /> authentication into any browser-based application. Use it with vanilla JavaScript, or as a foundation for frameworks without a dedicated <ProductName /> SDK.
+
+## Installation
+
+Install the <ProductName /> Browser SDK using your preferred package manager:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/browser
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/browser
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/browser
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/browser
+  </CodeBlock>
+</CodeGroup>
+
+## Getting Started
+
+To get started quickly, check out our [JavaScript Quickstart Guide](/docs/next/guides/quick-start/connect-your-application/browser) for step-by-step instructions.
+
+## Quick Example
+
+```js
+import { ThunderIDBrowserClient } from '@thunderid/browser'
+
+const auth = new ThunderIDBrowserClient()
+
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  afterSignInUrl: window.location.origin,
+  afterSignOutUrl: window.location.origin,
+})
+
+// Check authentication state
+const isSignedIn = await auth.isSignedIn()
+
+// Sign in
+await auth.signIn()
+
+// Get user profile
+const user = await auth.getUser()
+
+// Sign out
+await auth.signOut()
+```
+
+## Features
+
+### ThunderIDBrowserClient
+
+The main client class that manages the full authentication lifecycle.
+
+#### Initialization
+
+| Method | Description |
+|--------|-------------|
+| `initialize(config, storage?)` | Initialize the client with configuration and an optional storage backend |
+| `isInitialized()` | Check whether the client has completed initialization |
+| `reInitialize(config)` | Update configuration at runtime without creating a new instance |
+
+#### Authentication
+
+| Method | Description |
+|--------|-------------|
+| `signIn(config?)` | Redirect the user to the <ProductName /> sign-in page |
+| `signInSilently(additionalParams?)` | Perform a background token refresh without user interaction |
+| `signOut()` | Sign out the current user and clear the session |
+
+#### Token Management
+
+| Method | Description |
+|--------|-------------|
+| `getAccessToken()` | Retrieve the current access token |
+| `refreshAccessToken()` | Refresh an expired access token |
+| `revokeAccessToken()` | Revoke the access token and end the session |
+| `getIdToken()` | Retrieve the raw ID token |
+| `getDecodedIdToken()` | Retrieve the decoded ID token claims |
+
+#### User and Session
+
+| Method | Description |
+|--------|-------------|
+| `getUser()` | Retrieve the authenticated user's profile |
+| `isSignedIn()` | Check whether a user is currently signed in |
+| `isSessionActive()` | Check whether the current session is active |
+| `getOpenIDProviderEndpoints()` | Retrieve the OIDC provider endpoint URLs |
+
+#### HTTP Requests
+
+| Method | Description |
+|--------|-------------|
+| `httpRequest(config)` | Make an authenticated HTTP request (access token injected automatically) |
+| `httpRequestAll(configs)` | Make multiple authenticated HTTP requests in parallel |
+| `getHttpClient()` | Retrieve the underlying `FetchHttpClient` instance |
+| `enableHttpHandler()` | Enable automatic token injection in HTTP requests |
+| `disableHttpHandler()` | Disable automatic token injection |
+
+#### Event Hooks
+
+Register callbacks for authentication lifecycle events using the `on()` method:
+
+```js
+import { Hooks } from '@thunderid/browser'
+
+auth.on(Hooks.SignIn, (user) => {
+  console.log('User signed in:', user.displayName)
+})
+
+auth.on(Hooks.SignOut, () => {
+  console.log('User signed out')
+})
+```
+
+| Hook | Description |
+|------|-------------|
+| `Hooks.SignIn` | Fires when a user signs in |
+| `Hooks.SignOut` | Fires when a user signs out |
+| `Hooks.Initialize` | Fires when the SDK completes initialization |
+| `Hooks.HttpRequestStart` | Fires when an HTTP request begins |
+| `Hooks.HttpRequestFinish` | Fires when an HTTP request completes |
+| `Hooks.HttpRequestError` | Fires when an HTTP request fails |
+| `Hooks.RevokeAccessToken` | Fires when an access token is revoked |
+| `Hooks.CustomGrant` | Fires when a custom grant completes |
+
+### Configuration
+
+Pass a configuration object to `initialize()`:
+
+```js
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  afterSignInUrl: 'http://localhost:5173',
+  afterSignOutUrl: 'http://localhost:5173',
+  storage: 'sessionStorage',
+})
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `clientId` | `string` | — | **Required.** The Client ID from your <ProductName /> application |
+| `baseUrl` | `string` | — | **Required.** Your <ProductName /> instance URL |
+| `afterSignInUrl` | `string` | — | URL to redirect to after sign-in |
+| `afterSignOutUrl` | `string` | — | URL to redirect to after sign-out |
+| `scopes` | `string[]` | `['openid', 'profile']` | OAuth 2.0 scopes to request |
+| `storage` | `string` | `'sessionStorage'` | Storage backend: `'sessionStorage'`, `'localStorage'`, or `'browserMemory'` |
+| `periodicTokenRefresh` | `boolean` | `false` | Automatically refresh tokens before expiry |
+| `sessionRefreshInterval` | `number` | `300` | Interval in seconds for silent token refresh |
+| `syncSession` | `boolean` | `false` | Enable OIDC Session Management via RP iframe |
+| `checkSessionInterval` | `number` | `3` | Interval in seconds between session-check polls |
+| `autoLogoutOnTokenRefreshError` | `boolean` | `false` | Sign the user out when a token refresh fails |
+
+### Storage Backends
+
+The SDK provides three storage implementations for persisting session data:
+
+| Storage | Class | Description |
+|---------|-------|-------------|
+| `'sessionStorage'` | `SessionStore` | Default. Data persists for the browser tab lifetime |
+| `'localStorage'` | `LocalStore` | Data persists across tabs and browser restarts |
+| `'browserMemory'` | `MemoryStore` | In-memory only. Data is lost on page reload |
+
+### Utilities
+
+| Export | Description |
+|--------|-------------|
+| `hasAuthParamsInUrl()` | Check whether the current URL contains authorization callback parameters |
+| `navigate(url)` | SPA-aware navigation that dispatches `popstate` for same-origin URLs |
+| `http(client)` | Factory for creating authenticated HTTP request helpers |
+| `SPACryptoUtils` | Browser cryptography utilities for PKCE and token hashing |
+
+## Customization
+
+The <ProductName /> Browser SDK gives you full control over your application's authentication flow. You can:
+
+- Choose a storage backend that fits your security requirements
+- Register event hooks for fine-grained control over authentication events
+- Make authenticated API calls with automatic token management
+- Implement custom UI since the SDK is framework-agnostic

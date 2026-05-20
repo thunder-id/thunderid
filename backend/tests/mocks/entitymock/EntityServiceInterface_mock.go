@@ -8,8 +8,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/asgardeo/thunder/internal/entity"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/entity"
 )
 
 // NewEntityServiceInterfaceMock creates a new instance of EntityServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

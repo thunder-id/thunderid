@@ -39,8 +39,8 @@ import (
 	"hash"
 	"strings"
 
-	cryptohash "github.com/asgardeo/thunder/internal/system/cryptolab/hash"
-	"github.com/asgardeo/thunder/internal/system/jose/jws"
+	cryptohash "github.com/thunder-id/thunderid/internal/system/cryptolab/hash"
+	"github.com/thunder-id/thunderid/internal/system/jose/jws"
 )
 
 // encryptKey encrypts or derives the content encryption key (CEK) for a recipient.

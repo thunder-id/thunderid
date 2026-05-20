@@ -19,4 +19,8 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-svgr/client" />
 
-declare const VERSION: string;
+declare global {
+  const VERSION: string;
+}
+
+export {};

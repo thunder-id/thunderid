@@ -87,7 +87,7 @@ post-install hooks (weight 0 → 1)
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| `image` | ThunderID container image (`repository:tag`) | `ghcr.io/asgardeo/thunder:latest` |
+| `image` | ThunderID container image (`repository:tag`) | `ghcr.io/thunder-id/thunderid:latest` |
 | `runtime.imagePullPolicy` | Container image pull policy | `Always` |
 | `runtime.dbType` | Database engine: `sqlite` or `postgres` | `sqlite` |
 | `runtime.dbStorageSize` | PVC size for SQLite data files | `1Gi` |
@@ -204,7 +204,7 @@ To promote ThunderID to `staging` or `production`:
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `thunderid-component.componentName` | Base name for all OpenChoreo resources | `thunder` |
-| `thunderid-component.image.repository` | ThunderID container image repository | `ghcr.io/asgardeo/thunder` |
+| `thunderid-component.image.repository` | ThunderID container image repository | `ghcr.io/thunder-id/thunderid` |
 | `thunderid-component.image.tag` | Container image tag | `latest` |
 | `thunderid-component.thunder.server.port` | Port on which ThunderID server listens | `8090` |
 | `thunderid-component.serverPublicUrl` | ThunderID public-facing URL | `<SERVER_PUBLIC_URL>` |
@@ -454,5 +454,5 @@ helm template thunderid install/openchoreo/helm/ \
 
 ## Contributing
 
-- Open an issue in the [ThunderID GitHub repository](https://github.com/asgardeo/thunder)
+- Open an issue in the [ThunderID GitHub repository](https://github.com/thunder-id/thunderid)
 - Refer to the project's [CONTRIBUTING guidelines](../../../CONTRIBUTING.md)

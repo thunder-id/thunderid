@@ -23,8 +23,8 @@ import type {Group} from '../../models/group';
 import type {CreateGroupRequest} from '../../models/requests';
 
 const mockHttpRequest = vi.fn();
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     http: {request: mockHttpRequest},
   }),
 }));

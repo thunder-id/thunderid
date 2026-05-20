@@ -208,7 +208,7 @@ const features = [
     ),
     title: 'Native agent identity',
     description:
-      'Engineered with native Agent ID and inherent agentic AI capabilities to secure end-to-end workflows among humans, agents, and resources, including full MCP and A2A Authorization',
+      'Engineered with native Agent ID and inherent agentic AI capabilities to secure end-to-end workflows among humans, agents, and resources, including full MCP and A2A authorization.',
   },
   {
     icon: (
@@ -297,7 +297,7 @@ const features = [
     ),
     title: 'Every journey is a flow',
     description:
-      'Model and orchestrate identity journeys as composable flows using a drag-&-drop visual flow builder. ',
+      'Model and orchestrate identity journeys as composable flows using a drag-and-drop visual flow builder.',
   },
   {
     icon: (

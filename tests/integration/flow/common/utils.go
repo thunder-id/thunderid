@@ -26,7 +26,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/asgardeo/thunder/tests/integration/testutils"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const testServerURL = "https://localhost:8095"
@@ -41,6 +41,12 @@ func InitiateAuthenticationFlow(appID string, verbose bool, inputs map[string]st
 func InitiateRegistrationFlow(appID string, verbose bool, inputs map[string]string, action string) (
 	*FlowStep, error) {
 	return initiateFlow(appID, "REGISTRATION", verbose, inputs, action)
+}
+
+// InitiateRecoveryFlow initiates the recovery flow
+func InitiateRecoveryFlow(appID string, verbose bool, inputs map[string]string, action string) (
+	*FlowStep, error) {
+	return initiateFlow(appID, "RECOVERY", verbose, inputs, action)
 }
 
 // initiateFlow is a generic helper to initiate a flow of a given type

@@ -98,7 +98,7 @@ describe('ConfigProvider', () => {
           </ConfigProvider>,
         );
       });
-    }).toThrow('Runtime configuration is not available');
+    }).toThrow('ThunderID runtime configuration is not available on window.__THUNDERID_RUNTIME_CONFIG__');
   });
 
   it('provides server URL with HTTPS when http_only is false', () => {

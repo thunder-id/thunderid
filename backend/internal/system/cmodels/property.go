@@ -24,7 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/asgardeo/thunder/internal/system/kmprovider/defaultkm"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
 )
 
 // Property represents a generic property with name, value, and isSecret fields.

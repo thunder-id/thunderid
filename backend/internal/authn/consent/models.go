@@ -18,6 +18,13 @@
 
 package consent
 
+// Wire-level discriminator values for ConsentPurposePrompt.Type. These are the strings the UI
+// reads to choose between attribute and permission rendering.
+const (
+	consentPromptTypeAttributes  = "attributes"
+	consentPromptTypePermissions = "permissions"
+)
+
 // ConsentPromptData holds the structured data needed to render a consent prompt for the user.
 // It contains all purposes whose consent is required, with their elements grouped under each purpose.
 type ConsentPromptData struct {
@@ -28,6 +35,7 @@ type ConsentPromptData struct {
 }
 
 // ConsentPurposePrompt holds a single consent purpose's elements that need user consent.
+// The Type discriminator tells the UI how to label and group sections.
 type ConsentPurposePrompt struct {
 	// PurposeName is the name of the consent purpose (e.g. "app:my_app:attrs")
 	PurposeName string `json:"purposeName"`
@@ -35,10 +43,21 @@ type ConsentPurposePrompt struct {
 	PurposeID string `json:"purposeId"`
 	// Description is a human-readable description of the consent purpose
 	Description string `json:"description,omitempty"`
-	// Essential is the list of mandatory attribute names that require user consent
-	Essential []string `json:"essential"`
-	// Optional is the list of optional attribute names for which the user can choose
-	Optional []string `json:"optional"`
+	// Type discriminates between attribute and permission consent purposes.
+	Type string `json:"type,omitempty"`
+	// Essential is the list of mandatory elements that require user consent
+	Essential []PromptElement `json:"essential"`
+	// Optional is the list of elements the user can opt in or out of
+	Optional []PromptElement `json:"optional"`
+}
+
+// PromptElement represents a single element within a consent purpose prompt. Parent carries
+// rollup linkage for permission elements (zero value, omitted on the wire, for attribute elements).
+type PromptElement struct {
+	// Name is the canonical element name (attribute name or permission string)
+	Name string `json:"name"`
+	// Parent is the canonical name of the rollup parent, if any
+	Parent string `json:"parent,omitempty"`
 }
 
 // ConsentDecisions holds the user's consent decisions.

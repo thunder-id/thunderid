@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {EmbeddedFlowTextVariant} from '@asgardeo/react';
+import {EmbeddedFlowTextVariant} from '@thunderid/react';
 import type {TypographyVariant} from '@wso2/oxygen-ui';
 
 /**

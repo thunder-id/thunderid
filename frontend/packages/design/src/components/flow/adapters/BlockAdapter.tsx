@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {EmbeddedFlowComponentType, EmbeddedFlowEventType, type EmbeddedFlowComponent} from '@asgardeo/react';
+import {EmbeddedFlowComponentType, EmbeddedFlowEventType, type EmbeddedFlowComponent} from '@thunderid/react';
 import {cn} from '@thunderid/utils';
 import {Box, Button} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
@@ -47,6 +47,10 @@ interface BlockContext {
   primarySubmitId?: string;
   /** Fallback sign-up URL for RICH_TEXT elements that embed `application.sign_up_url` */
   signUpFallbackUrl?: string;
+  /** Fallback sign-in URL for RICH_TEXT elements that embed `application.sign_in_url` */
+  signInFallbackUrl?: string;
+  /** Fallback forgot-password URL for RICH_TEXT elements that embed `application.forgot_password_url` */
+  forgotPasswordFallbackUrl?: string;
 }
 
 interface SubmitButtonAdapterProps {
@@ -210,6 +214,8 @@ function renderFormSubComponent(
         component={sub}
         resolve={ctx.resolve}
         signUpFallbackUrl={ctx.signUpFallbackUrl}
+        signInFallbackUrl={ctx.signInFallbackUrl}
+        forgotPasswordFallbackUrl={ctx.forgotPasswordFallbackUrl}
       />
     );
   }

@@ -27,8 +27,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/database/provider"
 )
 
 // consumeAuthCodeScript atomically transitions an authorization code from ACTIVE to INACTIVE.

@@ -19,8 +19,8 @@
 package core
 
 import (
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 const (
@@ -186,37 +186,15 @@ func (e *executor) GetExecutionPolicy(mode string) *ExecutionPolicy {
 	return nil
 }
 
-// appendMissingInputs appends the missing required inputs to the executor response.
-// Returns true if any required input is found missing, otherwise false.
+// appendMissingInputs appends the missing executor inputs to the response.
+// Returns true when execution should pause for user input.
 func (e *executor) appendMissingInputs(ctx *NodeContext, execResp *common.ExecutorResponse,
 	requiredInputs []common.Input) bool {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "Executor"),
 		log.String(log.LoggerKeyExecutorName, e.GetName()),
 		log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	requireData := false
-	for _, input := range requiredInputs {
-		if _, ok := ctx.UserInputs[input.Identifier]; !ok {
-			if _, ok := ctx.RuntimeData[input.Identifier]; ok {
-				logger.Debug("Input available in runtime data, skipping",
-					log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
-				continue
-			}
-
-			if value, ok := ctx.ForwardedData[input.Identifier]; ok {
-				if _, isString := value.(string); isString {
-					logger.Debug("Input available in forwarded data, skipping",
-						log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
-					continue
-				}
-			}
-
-			requireData = true
-			execResp.Inputs = append(execResp.Inputs, input)
-			logger.Debug("Input not available in the context",
-				log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
-		}
-	}
-
-	return requireData
+	missing := collectMissingInputs(ctx, GetPresentedOptionalInputs(ctx.RuntimeData), requiredInputs, logger)
+	execResp.Inputs = append(execResp.Inputs, missing...)
+	return len(missing) > 0
 }

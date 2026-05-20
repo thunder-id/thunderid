@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {SignOutButton, User, useAsgardeo} from '@asgardeo/react';
+import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {
@@ -67,6 +67,8 @@ function ExportConfigButton(): ReactNode {
           width: collapsed ? 40 : 'auto',
           height: 40,
           borderRadius: collapsed ? '50%' : 40,
+          wordBreak: 'keep-all',
+          whiteSpace: 'nowrap',
           px: collapsed ? 0 : 2,
           '& .MuiButton-startIcon': {
             margin: collapsed ? 0 : undefined,
@@ -80,7 +82,7 @@ function ExportConfigButton(): ReactNode {
 }
 
 export default function DashboardLayout(): ReactNode {
-  const {signIn, clearSession, discovery} = useAsgardeo();
+  const {signIn, clearSession, discovery} = useThunderID();
   const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
   const {t} = useTranslation();
   const logger = useLogger();
@@ -120,7 +122,6 @@ export default function DashboardLayout(): ReactNode {
   const appRoutes = useMemo(
     () => [
       {
-        category: '',
         routes: [
           {
             id: 'home',
@@ -233,7 +234,7 @@ export default function DashboardLayout(): ReactNode {
                   dark: `${import.meta.env.BASE_URL}/assets/images/logo-inverted.svg`,
                 }}
                 alt={{light: 'Logo (Light)', dark: 'Logo (Dark)'}}
-                height={21}
+                height={27}
                 width="auto"
                 alignItems="center"
                 marginBottom="3px"
@@ -275,7 +276,7 @@ export default function DashboardLayout(): ReactNode {
           <Sidebar.Nav>
             {appRoutes.map((categoryGroup) => (
               <Sidebar.Category key={categoryGroup.category}>
-                <Sidebar.CategoryLabel>{categoryGroup.category}</Sidebar.CategoryLabel>
+                {categoryGroup.category && <Sidebar.CategoryLabel>{categoryGroup.category}</Sidebar.CategoryLabel>}
                 {categoryGroup.routes.map((route) => (
                   <Sidebar.Item key={route.id} id={route.id} link={<NavigateLink to={route.path} />}>
                     <Sidebar.ItemIcon>{route.icon}</Sidebar.ItemIcon>

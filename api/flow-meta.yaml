@@ -31,8 +31,8 @@ paths:
         - Application or OU details based on type
         - Resolved design configuration (theme and layout)
         - i18n translations based on language and namespace filters
-        - Registration flow enablement status
-        
+        - Registration and recovery flow enablement status
+
         **Note:** When `type=APP`, the OU metadata is only included in the response
         when the deployment has exactly one organization unit (i.e., `totalResults == 1`).
         For deployments with multiple OUs, the OU metadata will be omitted from APP-type responses.
@@ -82,6 +82,7 @@ paths:
                   summary: Application metadata with i18n
                   value:
                     isRegistrationFlowEnabled: true
+                    isRecoveryFlowEnabled: true
                     application:
                       id: "60a9b38b-6eba-9f9e-55f9-267067de4680"
                       name: "My Web Application"
@@ -126,6 +127,7 @@ paths:
                   summary: Organization unit metadata
                   value:
                     isRegistrationFlowEnabled: false
+                    isRecoveryFlowEnabled: false
                     ou:
                       id: "fe447a2f-29c5-4e33-ac8f-d77be15fdb32"
                       handle: "default"
@@ -153,12 +155,17 @@ components:
       type: object
       required:
         - isRegistrationFlowEnabled
+        - isRecoveryFlowEnabled
         - design
         - i18n
       properties:
         isRegistrationFlowEnabled:
           type: boolean
           description: Indicates if registration flow is enabled for the entity
+          example: true
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: Indicates if recovery flow is enabled for the entity
           example: true
         application:
           $ref: '#/components/schemas/ApplicationMetadata'

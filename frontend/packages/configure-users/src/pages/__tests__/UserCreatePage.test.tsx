@@ -88,15 +88,15 @@ const mockUseCreateUser = vi.fn<() => UseCreateUserReturn>();
 const mockUseGetUserTypes = vi.fn<() => UseGetUserTypesReturn>();
 const mockUseGetUserType = vi.fn<() => UseGetUserTypeReturn>();
 
-vi.mock('../../api/useCreateUser', () => ({
+vi.mock('@/api/useCreateUser', () => ({
   default: () => mockUseCreateUser(),
 }));
 
-vi.mock('../../api/useGetUserTypes', () => ({
+vi.mock('@/api/useGetUserTypes', () => ({
   default: () => mockUseGetUserTypes(),
 }));
 
-vi.mock('../../api/useGetUserType', () => ({
+vi.mock('@/api/useGetUserType', () => ({
   default: () => mockUseGetUserType(),
 }));
 
@@ -111,14 +111,18 @@ vi.mock('../../../organization-units/api/useGetChildOrganizationUnits', () => ({
   default: () => mockUseGetChildOrganizationUnits(),
 }));
 
-// Mock useAsgardeo
-const mockUseAsgardeo = vi.fn();
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => mockUseAsgardeo() as {user: {ouId?: string} | null | undefined},
-}));
+// Mock useThunderID
+const mockUseThunderID = vi.fn();
+vi.mock('@thunderid/react', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    useThunderID: () => mockUseThunderID() as {user: {ouId?: string} | null | undefined},
+  };
+});
 
 // Mock ConfigureOrganizationUnit — mirrors real component's auto-select behavior
-vi.mock('../../components/create-user/ConfigureOrganizationUnit', async () => {
+vi.mock('@/components/create-user/ConfigureOrganizationUnit', async () => {
   const React = await import('react');
 
   function MockConfigureOrganizationUnit({
@@ -174,7 +178,7 @@ vi.mock('../../components/create-user/ConfigureOrganizationUnit', async () => {
 });
 
 // Mock child components with controlled test behavior
-vi.mock('../../components/create-user/ConfigureUserType', () => ({
+vi.mock('@/components/create-user/ConfigureUserType', () => ({
   default: ({
     schemas,
     selectedSchema,
@@ -205,7 +209,7 @@ vi.mock('../../components/create-user/ConfigureUserType', () => ({
   ),
 }));
 
-vi.mock('../../components/create-user/ConfigureUserDetails', () => ({
+vi.mock('@/components/create-user/ConfigureUserDetails', () => ({
   default: ({
     onFormValuesChange,
     onReadyChange,
@@ -251,7 +255,7 @@ const mockSchemasData: UserTypeListResponse = {
   totalResults: 2,
   startIndex: 1,
   count: 2,
-  schemas: [
+  types: [
     {id: 'schema1', name: 'Employee', ouId: 'root-ou'},
     {id: 'schema2', name: 'Contractor', ouId: 'child-ou'},
   ],
@@ -327,7 +331,7 @@ describe('UserCreatePage', () => {
       error: null,
     });
     // Default: user object has no ouId
-    mockUseAsgardeo.mockReturnValue({
+    mockUseThunderID.mockReturnValue({
       user: {ouId: undefined},
     });
   });
@@ -607,7 +611,7 @@ describe('UserCreatePage', () => {
     mockUseGetUserTypes.mockReturnValue({
       data: {
         ...mockSchemasData,
-        schemas: [{id: 'schema1', name: 'Employee', ouId: ''}],
+        types: [{id: 'schema1', name: 'Employee', ouId: ''}],
       },
       isLoading: false,
       error: null,
@@ -665,7 +669,7 @@ describe('UserCreatePage', () => {
     mockUseGetUserTypes.mockReturnValue({
       data: {
         ...mockSchemasData,
-        schemas: [{id: 'schema1', name: 'Employee', ouId: ''}],
+        types: [{id: 'schema1', name: 'Employee', ouId: ''}],
       },
       isLoading: false,
       error: null,

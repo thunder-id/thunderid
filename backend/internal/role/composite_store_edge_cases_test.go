@@ -407,6 +407,10 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 	suite.mockFileStore.On(
 		"GetAuthorizedPermissions", suite.ctx, "user1", []string{"group1"}, perms,
 	).Return([]string{"perm1", "perm2"}, nil)
+	// Cross-store lookup: no DB-recorded role IDs to fold in.
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{"group1"},
+	).Return([]string{}, nil)
 
 	result, err := suite.store.GetAuthorizedPermissions(
 		suite.ctx, "user1", []string{"group1"}, perms,
@@ -429,6 +433,9 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_C
 	suite.mockFileStore.On(
 		"GetAuthorizedPermissions", suite.ctx, "user1", []string{"group1"}, perms,
 	).Return([]string{"p2", "p3"}, nil)
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{"group1"},
+	).Return([]string{}, nil)
 
 	result, err := suite.store.GetAuthorizedPermissions(
 		suite.ctx, "user1", []string{"group1"}, perms,
@@ -451,6 +458,9 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_E
 	suite.mockFileStore.On(
 		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, perms,
 	).Return([]string{}, nil)
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
+	).Return([]string{}, nil)
 
 	result, err := suite.store.GetAuthorizedPermissions(
 		suite.ctx, "user1", []string{}, perms,
@@ -458,6 +468,186 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_E
 
 	assert.NoError(suite.T(), err)
 	assert.Len(suite.T(), result, 0)
+}
+
+// Test GetAuthorizedPermissions resolves a declarative role whose definition lives in the
+// file store and whose assignment lives in the DB (the bug fixed by this change).
+// dbStore.GetAuthorizedPermissions returns nothing because there are no DB-side ROLE_PERMISSION
+// rows for the declarative role; fileStore.GetAuthorizedPermissions returns nothing because the
+// YAML carries no static assignments. The composite must fold in the role's file-store
+// permissions by following the DB-recorded role ID assignment.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_DeclarativeRoleWithDynamicAssignment() {
+	perms := []string{"tenant_instance:system", "system:user:view"}
+	declarativeRoleID := "a1c00000-0000-0000-0000-000000000004"
+
+	suite.mockDBStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, perms,
+	).Return([]string{}, nil)
+	suite.mockFileStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, perms,
+	).Return([]string{}, nil)
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
+	).Return([]string{declarativeRoleID}, nil)
+	suite.mockFileStore.On(
+		"IsRoleExist", suite.ctx, declarativeRoleID,
+	).Return(true, nil)
+	suite.mockFileStore.On(
+		"GetRole", suite.ctx, declarativeRoleID,
+	).Return(RoleWithPermissions{
+		ID: declarativeRoleID, Name: "TenantInstanceAdmin",
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: "rs", Permissions: []string{"tenant_instance:system"}},
+		},
+	}, nil)
+
+	result, err := suite.store.GetAuthorizedPermissions(
+		suite.ctx, "user1", []string{}, perms,
+	)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"tenant_instance:system"}, result)
+}
+
+// Test that the cross-store lookup ignores role IDs that exist only in the DB. Those
+// roles' permissions are already covered by dbStore.GetAuthorizedPermissions, and looking
+// them up in the file store would be wasted work.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_DBRoleNotDoubleResolved() {
+	perms := []string{"perm1"}
+	dbOnlyRoleID := "db-role-only"
+
+	suite.mockDBStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, perms,
+	).Return([]string{"perm1"}, nil)
+	suite.mockFileStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, perms,
+	).Return([]string{}, nil)
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
+	).Return([]string{dbOnlyRoleID}, nil)
+	suite.mockFileStore.On(
+		"IsRoleExist", suite.ctx, dbOnlyRoleID,
+	).Return(false, nil)
+	// fileStore.GetRole MUST NOT be called for DB-only roles.
+
+	result, err := suite.store.GetAuthorizedPermissions(
+		suite.ctx, "user1", []string{}, perms,
+	)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"perm1"}, result)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetRole", mock.Anything, dbOnlyRoleID)
+}
+
+// Test that an unexpected storage error from fileStore.GetRole in the cross-store path is
+// propagated (wrapped) rather than silently swallowed. Silently dropping a real I/O error
+// here would yield an empty permission set and could lead to under-authorization decisions.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_CrossStorePropagatesGetRoleError() {
+	requested := []string{"perm1"}
+	roleID := "declarative-role"
+	storageErr := errors.New("disk read failure")
+
+	suite.mockDBStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return([]string{}, nil)
+	suite.mockFileStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return([]string{}, nil)
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
+	).Return([]string{roleID}, nil)
+	suite.mockFileStore.On(
+		"IsRoleExist", suite.ctx, roleID,
+	).Return(true, nil)
+	suite.mockFileStore.On(
+		"GetRole", suite.ctx, roleID,
+	).Return(RoleWithPermissions{}, storageErr)
+
+	result, err := suite.store.GetAuthorizedPermissions(suite.ctx, "user1", []string{}, requested)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.ErrorIs(suite.T(), err, storageErr, "underlying storage error must be wrapped, not dropped")
+}
+
+// Test that benign GetRole errors from fileStore are silently skipped:
+//   - ErrRoleNotFound: YAML removed between assignment-time and lookup-time (race).
+//   - ErrRoleDataCorrupted: parse/type-assertion failure already logged by fileStore.
+//
+// Both cases must not bubble up; the cross-store path treats the role as absent and
+// returns an empty result without error.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_CrossStoreSkipsBenignGetRoleErrors() {
+	cases := []struct {
+		name string
+		err  error
+	}{
+		{"ErrRoleNotFound", ErrRoleNotFound},
+		{"ErrRoleDataCorrupted", ErrRoleDataCorrupted},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest() // fresh mocks per subtest
+			requested := []string{"perm1"}
+			roleID := "role-" + tc.name
+
+			suite.mockDBStore.On(
+				"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+			).Return([]string{}, nil)
+			suite.mockFileStore.On(
+				"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+			).Return([]string{}, nil)
+			suite.mockDBStore.On(
+				"GetEntityRoleIDs", suite.ctx, "user1", []string{},
+			).Return([]string{roleID}, nil)
+			suite.mockFileStore.On(
+				"IsRoleExist", suite.ctx, roleID,
+			).Return(true, nil)
+			suite.mockFileStore.On(
+				"GetRole", suite.ctx, roleID,
+			).Return(RoleWithPermissions{}, tc.err)
+
+			result, err := suite.store.GetAuthorizedPermissions(
+				suite.ctx, "user1", []string{}, requested,
+			)
+
+			assert.NoError(suite.T(), err)
+			assert.Empty(suite.T(), result)
+		})
+	}
+}
+
+// Test that the cross-store lookup respects requestPermissions narrowing: permissions on
+// the role that aren't in the request are silently dropped.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_CrossStoreRespectsRequestedSet() {
+	requested := []string{"tenant_instance:system"}
+	roleID := "declarative-role"
+
+	suite.mockDBStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return([]string{}, nil)
+	suite.mockFileStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return([]string{}, nil)
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
+	).Return([]string{roleID}, nil)
+	suite.mockFileStore.On(
+		"IsRoleExist", suite.ctx, roleID,
+	).Return(true, nil)
+	suite.mockFileStore.On(
+		"GetRole", suite.ctx, roleID,
+	).Return(RoleWithPermissions{
+		ID: roleID,
+		Permissions: []ResourcePermissions{{
+			ResourceServerID: "rs",
+			Permissions:      []string{"tenant_instance:system", "system:user:view", "something_else"},
+		}},
+	}, nil)
+
+	result, err := suite.store.GetAuthorizedPermissions(suite.ctx, "user1", []string{}, requested)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []string{"tenant_instance:system"}, result)
 }
 
 // Test DB precedence in deduplication
@@ -504,4 +694,155 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetRoleList_PropagatesFile
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), fileErr, err)
+}
+
+// Test GetEntityRoleIDs delegates directly to the DB store; the file store is never
+// consulted (assignments are never persisted in YAML).
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleIDs_DelegatesToDB() {
+	expected := []string{"role-a", "role-b"}
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{"group1"},
+	).Return(expected, nil)
+
+	result, err := suite.store.GetEntityRoleIDs(suite.ctx, "user1", []string{"group1"})
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), expected, result)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetEntityRoleIDs", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// Test GetEntityRoleIDs propagates DB errors.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleIDs_PropagatesDBError() {
+	dbErr := errors.New("db error")
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
+	).Return(nil, dbErr)
+
+	result, err := suite.store.GetEntityRoleIDs(suite.ctx, "user1", []string{})
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), dbErr, err)
+}
+
+// Test that GetAuthorizedPermissions short-circuits when no permissions are requested.
+// Without this, every downstream store would be queried even though the result is
+// guaranteed to be empty.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_EmptyRequestedShortCircuits() {
+	result, err := suite.store.GetAuthorizedPermissions(suite.ctx, "user1", []string{"group1"}, []string{})
+
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result)
+	// Neither store should have been called.
+	suite.mockDBStore.AssertNotCalled(
+		suite.T(), "GetAuthorizedPermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	)
+	suite.mockFileStore.AssertNotCalled(
+		suite.T(), "GetAuthorizedPermissions", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	)
+	suite.mockDBStore.AssertNotCalled(
+		suite.T(), "GetEntityRoleIDs", mock.Anything, mock.Anything, mock.Anything,
+	)
+}
+
+// Test GetAuthorizedPermissions propagates a DB store error from the first call.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_PropagatesDBStoreError() {
+	dbErr := errors.New("db unreachable")
+	requested := []string{"perm1"}
+	suite.mockDBStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return(nil, dbErr)
+
+	result, err := suite.store.GetAuthorizedPermissions(suite.ctx, "user1", []string{}, requested)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), dbErr, err)
+}
+
+// Test GetAuthorizedPermissions propagates a file store error from the second call.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_PropagatesFileStoreError() {
+	fileErr := errors.New("file read failure")
+	requested := []string{"perm1"}
+	suite.mockDBStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return([]string{}, nil)
+	suite.mockFileStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return(nil, fileErr)
+
+	result, err := suite.store.GetAuthorizedPermissions(suite.ctx, "user1", []string{}, requested)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), fileErr, err)
+}
+
+// Test the cross-store path short-circuits when neither entity nor groups are supplied.
+// The first two source paths might still return data based on store-internal logic, but
+// the cross-store path itself has nothing to look up.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_CrossStoreNoEntityNoGroups() {
+	requested := []string{"perm1"}
+	suite.mockDBStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "", []string{}, requested,
+	).Return([]string{}, nil)
+	suite.mockFileStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "", []string{}, requested,
+	).Return([]string{}, nil)
+	// Cross-store path must not call GetEntityRoleIDs when there's no assignee to look up.
+
+	result, err := suite.store.GetAuthorizedPermissions(suite.ctx, "", []string{}, requested)
+
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result)
+	suite.mockDBStore.AssertNotCalled(
+		suite.T(), "GetEntityRoleIDs", mock.Anything, mock.Anything, mock.Anything,
+	)
+}
+
+// Test cross-store path propagates GetEntityRoleIDs errors.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_CrossStoreRoleIDsErrorPropagates() {
+	requested := []string{"perm1"}
+	rolesErr := errors.New("assignment table unreachable")
+	suite.mockDBStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return([]string{}, nil)
+	suite.mockFileStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return([]string{}, nil)
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
+	).Return(nil, rolesErr)
+
+	result, err := suite.store.GetAuthorizedPermissions(suite.ctx, "user1", []string{}, requested)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), rolesErr, err)
+}
+
+// Test cross-store path propagates a file-store IsRoleExist error so token issuance
+// fails loudly instead of silently dropping a role.
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetAuthorizedPermissions_CrossStorePropagatesIsRoleExistError() {
+	requested := []string{"perm1"}
+	existErr := errors.New("file lookup failure")
+	roleID := "some-role"
+	suite.mockDBStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return([]string{}, nil)
+	suite.mockFileStore.On(
+		"GetAuthorizedPermissions", suite.ctx, "user1", []string{}, requested,
+	).Return([]string{}, nil)
+	suite.mockDBStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{},
+	).Return([]string{roleID}, nil)
+	suite.mockFileStore.On(
+		"IsRoleExist", suite.ctx, roleID,
+	).Return(false, existErr)
+
+	result, err := suite.store.GetAuthorizedPermissions(suite.ctx, "user1", []string{}, requested)
+
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), existErr, err)
 }

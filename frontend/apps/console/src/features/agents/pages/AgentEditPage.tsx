@@ -83,8 +83,18 @@ export default function AgentEditPage(): JSX.Element {
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [tempName, setTempName] = useState('');
   const [tempDescription, setTempDescription] = useState('');
-  const [hasValidationErrors, setHasValidationErrors] = useState(false);
-  const [hasRedirectUriError, setHasRedirectUriError] = useState(false);
+  const [validationErrorSources, setValidationErrorSources] = useState<Record<string, boolean>>({});
+  const handleValidationChange = useCallback(
+    (source: string) =>
+      (hasError: boolean): void => {
+        setValidationErrorSources((prev) => {
+          if (prev[source] === hasError) return prev;
+          return {...prev, [source]: hasError};
+        });
+      },
+    [],
+  );
+  const hasAnyValidationError = Object.values(validationErrorSources).some(Boolean);
 
   const handleBack = async () => {
     await navigate('/agents');
@@ -234,7 +244,7 @@ export default function AgentEditPage(): JSX.Element {
             application={appLikeAgent}
             oauth2Config={oauth2Config}
             onFieldChange={appHandleFieldChange}
-            onValidationChange={setHasValidationErrors}
+            onValidationChange={handleValidationChange('token')}
             entityLabel="agent"
           />
         ),
@@ -248,7 +258,7 @@ export default function AgentEditPage(): JSX.Element {
             editedAgent={editedAgent}
             oauth2Config={oauth2Config}
             onFieldChange={handleFieldChange}
-            onValidationChange={setHasRedirectUriError}
+            onValidationChange={handleValidationChange('redirectUri')}
           />
         ),
       },
@@ -326,7 +336,11 @@ export default function AgentEditPage(): JSX.Element {
                 value={tempDescription}
                 onChange={(e) => setTempDescription(e.target.value)}
                 onBlur={() => {
-                  handleFieldChange('description', tempDescription.trim());
+                  const trimmed = tempDescription.trim();
+                  const currentValue = editedAgent.description ?? agent.description ?? '';
+                  if (trimmed !== currentValue) {
+                    handleFieldChange('description', trimmed);
+                  }
                   setIsEditingDescription(false);
                 }}
                 onKeyDown={(e) => {
@@ -384,7 +398,7 @@ export default function AgentEditPage(): JSX.Element {
           saveLabel={t('agents:edit.page.save', 'Save')}
           savingLabel={t('agents:edit.page.saving', 'Saving…')}
           isSaving={updateAgent.isPending}
-          saveDisabled={hasValidationErrors || hasRedirectUriError}
+          saveDisabled={hasAnyValidationError}
           onReset={() => setEditedAgent({})}
           onSave={() => {
             void handleSave();

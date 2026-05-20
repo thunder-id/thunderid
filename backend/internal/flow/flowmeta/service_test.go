@@ -27,18 +27,18 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/design/common"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/inboundclient"
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-	"github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	i18nmgt "github.com/asgardeo/thunder/internal/system/i18n/mgt"
-	"github.com/asgardeo/thunder/tests/mocks/design/resolvemock"
-	"github.com/asgardeo/thunder/tests/mocks/entityprovidermock"
-	"github.com/asgardeo/thunder/tests/mocks/i18n/mgtmock"
-	"github.com/asgardeo/thunder/tests/mocks/inboundclientmock"
-	"github.com/asgardeo/thunder/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/internal/design/common"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	"github.com/thunder-id/thunderid/tests/mocks/design/resolvemock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
+	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 const (
@@ -150,7 +150,7 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_APP_Success() {
 		},
 	}
 
-	suite.mockOUService.On("GetOrganizationUnitList", mock.Anything, 1, 0).Return(mockOUList, nil)
+	suite.mockOUService.On("GetOrganizationUnitList", mock.Anything, 1, 0, mock.Anything).Return(mockOUList, nil)
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
 	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, common.DesignResolveTypeAPP, appID).
 		Return(mockDesign, nil)
@@ -288,7 +288,7 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_DesignResolveError_Co
 		Name:   "Default OU",
 	}
 
-	suite.mockOUService.On("GetOrganizationUnitList", mock.Anything, 1, 0).Return(mockOUList, nil)
+	suite.mockOUService.On("GetOrganizationUnitList", mock.Anything, 1, 0, mock.Anything).Return(mockOUList, nil)
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
 	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, common.DesignResolveTypeAPP, appID).
 		Return(nil, &serviceerror.InternalServerError)

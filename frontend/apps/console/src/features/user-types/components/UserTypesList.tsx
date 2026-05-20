@@ -195,7 +195,7 @@ export default function UserTypesList() {
       <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
         <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
-            rows={userTypesData?.schemas ?? []}
+            rows={userTypesData?.types ?? []}
             columns={columns}
             getRowId={(row) => (row as UserTypeListItem).id}
             onRowClick={(params) => {

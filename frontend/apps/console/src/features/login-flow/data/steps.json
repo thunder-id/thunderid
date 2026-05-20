@@ -114,6 +114,12 @@
               }
             }
           ]
+        },
+        {
+          "id": "{{ID}}",
+          "category": "DISPLAY",
+          "type": "RICH_TEXT",
+          "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Go back to </span><a href=\"{{meta(application.url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Application</span></a></p>"
         }
       ]
     }

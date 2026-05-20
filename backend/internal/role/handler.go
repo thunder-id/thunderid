@@ -23,24 +23,26 @@ import (
 	"net/url"
 	"strconv"
 
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	"github.com/asgardeo/thunder/internal/system/error/apierror"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/log"
-	sysutils "github.com/asgardeo/thunder/internal/system/utils"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const handlerLoggerComponentName = "RoleHandler"
 
 // roleHandler is the handler for role management operations.
 type roleHandler struct {
-	roleService RoleServiceInterface
+	roleService       RoleServiceInterface
+	assignmentService RoleAssignmentServiceInterface
 }
 
 // newRoleHandler creates a new instance of roleHandler
-func newRoleHandler(roleService RoleServiceInterface) *roleHandler {
+func newRoleHandler(roleService RoleServiceInterface, assignmentService RoleAssignmentServiceInterface) *roleHandler {
 	return &roleHandler{
-		roleService: roleService,
+		roleService:       roleService,
+		assignmentService: assignmentService,
 	}
 }
 
@@ -205,10 +207,10 @@ func (rh *roleHandler) HandleRoleAssignmentsGetRequest(w http.ResponseWriter, r 
 
 	var serviceResponse *AssignmentList
 	if assigneeType != "" {
-		serviceResponse, svcErr = rh.roleService.GetRoleAssignmentsByType(
+		serviceResponse, svcErr = rh.assignmentService.GetRoleAssignmentsByType(
 			ctx, id, limit, offset, includeDisplay, assigneeType)
 	} else {
-		serviceResponse, svcErr = rh.roleService.GetRoleAssignments(ctx, id, limit, offset, includeDisplay)
+		serviceResponse, svcErr = rh.assignmentService.GetRoleAssignments(ctx, id, limit, offset, includeDisplay)
 	}
 	if svcErr != nil {
 		handleError(w, svcErr)
@@ -256,7 +258,7 @@ func (rh *roleHandler) HandleRoleAddAssignmentsRequest(w http.ResponseWriter, r 
 	// Convert HTTP request to service request
 	serviceRequest := rh.toRoleAssignments(sanitizedRequest)
 
-	svcErr := rh.roleService.AddAssignments(ctx, id, serviceRequest)
+	svcErr := rh.assignmentService.AddAssignments(ctx, id, serviceRequest)
 	if svcErr != nil {
 		handleError(w, svcErr)
 		return
@@ -283,7 +285,7 @@ func (rh *roleHandler) HandleRoleRemoveAssignmentsRequest(w http.ResponseWriter,
 	// Convert HTTP request to service request
 	serviceRequest := rh.toRoleAssignments(sanitizedRequest)
 
-	svcErr := rh.roleService.RemoveAssignments(ctx, id, serviceRequest)
+	svcErr := rh.assignmentService.RemoveAssignments(ctx, id, serviceRequest)
 	if svcErr != nil {
 		handleError(w, svcErr)
 		return
@@ -303,7 +305,7 @@ func handleError(w http.ResponseWriter,
 			statusCode = http.StatusNotFound
 		case ErrorRoleNameConflict.Code:
 			statusCode = http.StatusConflict
-		case ErrorOrganizationUnitNotFound.Code, ErrorCannotDeleteRole.Code,
+		case ErrorOrganizationUnitNotFound.Code,
 			ErrorInvalidRequestFormat.Code, ErrorMissingRoleID.Code,
 			ErrorInvalidLimit.Code, ErrorInvalidOffset.Code,
 			ErrorEmptyAssignments.Code,

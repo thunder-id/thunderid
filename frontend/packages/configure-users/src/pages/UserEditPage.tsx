@@ -95,12 +95,12 @@ export default function UserEditPage() {
 
   // Find the schema ID based on the user's type (which is the schema name)
   const matchedSchema = useMemo(() => {
-    if (!user?.type || !userTypeList?.schemas) {
+    if (!user?.type || !userTypeList?.types) {
       return undefined;
     }
 
-    return userTypeList.schemas.find((s) => s.name === user.type);
-  }, [user?.type, userTypeList?.schemas]);
+    return userTypeList.types.find((s) => s.name === user.type);
+  }, [user?.type, userTypeList?.types]);
 
   const schemaId = matchedSchema?.id;
   const trimmedOuId = matchedSchema?.ouId?.trim();

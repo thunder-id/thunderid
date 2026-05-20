@@ -65,7 +65,7 @@ function parseEnvData(envData: string | null): Map<string, string> {
     return entries;
   }
 
-  envData.split('\n').forEach((line) => {
+  envData.split(/\r?\n|\r/).forEach((line) => {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) {
       return;
@@ -1035,7 +1035,7 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
           display: 'flex',
           flexDirection: 'column',
           py: 8,
-          px: 20,
+          px: {xs: 2, sm: 3, md: 8, lg: 20},
           alignItems: 'flex-start',
         }}
       >
@@ -1060,9 +1060,16 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
           </Stack>
 
           {/* Two-column layout: Main content and Pre-flight Check */}
-          <Stack direction="row" spacing={3} mb={4} alignItems="flex-start">
+          <Stack
+            mb={4}
+            sx={{
+              flexDirection: {xs: 'column', lg: 'row'},
+              alignItems: {xs: 'stretch', lg: 'flex-start'},
+              gap: 3,
+            }}
+          >
             {/* Left: Main content */}
-            <Box sx={{flex: '1 1 0', minWidth: 0}}>
+            <Box sx={{width: '100%', flex: {lg: '1 1 0'}, minWidth: 0}}>
               <Stack spacing={3}>
                 {/* Project Details */}
                 <Paper variant="outlined" sx={{p: 3, borderRadius: 2}}>
@@ -1124,7 +1131,7 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
             </Box>
 
             {/* Right: Pre-flight Check */}
-            <Box sx={{width: 480, flexShrink: 0}}>
+            <Box sx={{width: '100%', maxWidth: {lg: 480}, flexShrink: 0}}>
               <Paper variant="outlined" sx={{p: 2.5}}>
                 <Stack direction="column" spacing={2}>
                   <Typography variant="subtitle2">{t('summary.preImportValidation')}</Typography>

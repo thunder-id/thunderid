@@ -23,9 +23,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/executor"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // flowInferenceServiceInterface defines the interface for flow inference services
@@ -214,7 +214,8 @@ func (s *flowInferenceService) cleanPromptNodeMeta(node *NodeDefinition) {
 					continue
 				}
 				if bcMap["type"] == "RICH_TEXT" {
-					if label, ok := bcMap["label"].(string); ok && strings.Contains(label, "sign_up_url") {
+					if label, ok := bcMap["label"].(string); ok &&
+						(strings.Contains(label, "sign_up_url") || strings.Contains(label, "forgot_password_url")) {
 						continue
 					}
 				}

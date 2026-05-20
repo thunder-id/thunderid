@@ -19,7 +19,7 @@
 package executor
 
 import (
-	i18ncore "github.com/asgardeo/thunder/internal/system/i18n/core"
+	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 
 	"context"
 	"encoding/json"
@@ -29,28 +29,28 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	appmodel "github.com/asgardeo/thunder/internal/application/model"
-	"github.com/asgardeo/thunder/internal/attributecache"
-	authnassert "github.com/asgardeo/thunder/internal/authn/assert"
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
-	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
-	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-	oauth2const "github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
-	"github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/tests/mocks/attributecachemock"
-	"github.com/asgardeo/thunder/tests/mocks/authn/assertmock"
-	"github.com/asgardeo/thunder/tests/mocks/authnprovider/managermock"
-	"github.com/asgardeo/thunder/tests/mocks/entityprovidermock"
-	"github.com/asgardeo/thunder/tests/mocks/flow/coremock"
-	"github.com/asgardeo/thunder/tests/mocks/jose/jwtmock"
-	"github.com/asgardeo/thunder/tests/mocks/oumock"
-	"github.com/asgardeo/thunder/tests/mocks/rolemock"
+	appmodel "github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/attributecache"
+	authnassert "github.com/thunder-id/thunderid/internal/authn/assert"
+	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/authn/assertmock"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 )
 
 const (
@@ -1747,4 +1747,78 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithRuntimeRequiredEssenti
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+}
+
+// ----- resolvePermissionsForClaim -----
+
+func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_PrefersConsented() {
+	ctx := &core.NodeContext{RuntimeData: map[string]string{
+		common.RuntimeKeyConsentedPermissions: "booking:read",
+		"authorized_permissions":              "booking:read booking:write",
+		common.RuntimeKeyRequestedPermissions: "booking:read booking:write booking:cancel",
+	}}
+	assert.Equal(suite.T(), "booking:read", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_ConsentedEmptyStillPreferredOverAuthorized() {
+	// Consent step ran but the user denied every permission. The empty value must be used so
+	// the JWT does not leak authorized but not consented permissions.
+	ctx := &core.NodeContext{RuntimeData: map[string]string{
+		common.RuntimeKeyConsentedPermissions: "",
+		"authorized_permissions":              "booking:read",
+	}}
+	assert.Equal(suite.T(), "", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_FallsBackToAuthorized() {
+	ctx := &core.NodeContext{RuntimeData: map[string]string{
+		"authorized_permissions":              "booking:read",
+		common.RuntimeKeyRequestedPermissions: "booking:read booking:write",
+	}}
+	assert.Equal(suite.T(), "booking:read", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_RequestedAloneNeverLeaksToClaim() {
+	// Raw requested permissions must NEVER end up in the JWT claim without going through
+	// the authz executor. Regression: when a user has no authorized permissions, an empty
+	// claim must be emitted so token endpoint clears PermissionScopes correctly.
+	ctx := &core.NodeContext{RuntimeData: map[string]string{
+		common.RuntimeKeyRequestedPermissions: "booking:read booking:write",
+	}}
+	assert.Equal(suite.T(), "", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_NoKeysReturnsEmpty() {
+	ctx := &core.NodeContext{RuntimeData: map[string]string{}}
+	assert.Equal(suite.T(), "", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_IntersectsConsentedWithAuthorized() {
+	// Stale-permission scenario: the consent record has a permission ("write") the user no
+	// longer holds in this session. The intersection must drop it from the JWT.
+	ctx := &core.NodeContext{RuntimeData: map[string]string{
+		common.RuntimeKeyConsentedPermissions: "read write cancel",
+		"authorized_permissions":              "read cancel",
+	}}
+	got := (&authAssertExecutor{}).resolvePermissionsForClaim(ctx)
+	assert.Equal(suite.T(), "read cancel", got)
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_EmptyInputs() {
+	assert.Equal(suite.T(), "", intersectPermissionSpaceList("", "a b"))
+	assert.Equal(suite.T(), "", intersectPermissionSpaceList("a b", ""))
+	assert.Equal(suite.T(), "", intersectPermissionSpaceList("", ""))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_PreservesOrderOfFirstArg() {
+	assert.Equal(suite.T(), "c a", intersectPermissionSpaceList("c a b", "a c"))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_DropsDuplicates() {
+	// Defensive dedup: if `a` has duplicates, each token appears at most once in the result.
+	assert.Equal(suite.T(), "x y", intersectPermissionSpaceList("x y x y", "x y"))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_NoOverlap() {
+	assert.Equal(suite.T(), "", intersectPermissionSpaceList("a b", "c d"))
 }

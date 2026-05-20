@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // ExecutorRegistryInterface defines registry operations for executors.

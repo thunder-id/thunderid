@@ -19,9 +19,9 @@
 package notification
 
 import (
-	"github.com/asgardeo/thunder/internal/notification/common"
-	"github.com/asgardeo/thunder/internal/notification/message"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/notification/message"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // notificationClientProviderInterface defines the interface for obtaining notification clients.

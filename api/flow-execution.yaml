@@ -167,6 +167,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - RECOVERY
           example: "AUTHENTICATION"
 
     SubSequentFlowRequest:

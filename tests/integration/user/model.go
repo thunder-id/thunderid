@@ -22,7 +22,7 @@ import (
 	"encoding/json"
 	"sort"
 
-	"github.com/asgardeo/thunder/tests/integration/testutils"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 // UserGroup represents a group with basic information for user endpoints.

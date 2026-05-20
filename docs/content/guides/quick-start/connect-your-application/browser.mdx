@@ -1,0 +1,300 @@
+---
+title: JavaScript Quickstart
+sidebar_position: 4
+persona: app
+description: Quick start guide to integrate with a vanilla JavaScript application
+---
+
+import {
+  Boxes,
+  Package,
+  LogIn,
+  BookOpen,
+  Clock,
+  Server,
+  Hexagon,
+  FileCode,
+} from '@wso2/oxygen-ui-icons-react';
+
+# JavaScript Quickstart
+
+This is **step 4** of the getting started sequence. By the end you will have a working vanilla JavaScript app with sign-in and sign-out powered by <ProductName />.
+
+<TutorialHero>
+
+## What You Will Learn
+
+<TutorialHeroItem icon={<Boxes />}>Create a new JavaScript app using Vite</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>Install the <code>@thunderid/browser</code> package</TutorialHeroItem>
+<TutorialHeroItem icon={<LogIn />}>Add working sign-in and sign-out</TutorialHeroItem>
+<TutorialHeroItem icon={<BookOpen />}>Display the signed-in user's profile</TutorialHeroItem>
+
+## Prerequisites
+
+<TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
+<TutorialHeroItem icon={<Server />}>Steps 1–3 complete: <ProductName /> running, an application registered, and a sign-in flow built. Start at <a href="../../getting-started/get-thunderid">Get <ProductName /></a> if you haven't already.</TutorialHeroItem>
+<TutorialHeroItem icon={<Hexagon />}>Node.js installed on your system</TutorialHeroItem>
+<TutorialHeroItem icon={<Package />}>npm, yarn, or pnpm</TutorialHeroItem>
+<TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
+
+</TutorialHero>
+
+<Stepper stepNode="h2" as="h2">
+
+## Create an Application in <ProductName />
+
+Before integrating <ProductName /> with your JavaScript app, you need to create an application in <ProductName />.
+
+### Using the <ProductName /> Console
+
+1. Sign into the <ProductName /> Console at [https://localhost:8090/console](https://localhost:8090/console)
+2. Navigate to **Applications** → **New Application**
+3. Select **JavaScript** as the technology
+4. Provide the following details:
+   - **Name**: `my-js-app`
+   - **Authorized Redirect URL**: `http://localhost:5173`
+
+:::info
+The authorized redirect URL determines where <ProductName /> should send users after they successfully log in. For this guide, we use `http://localhost:5173`, as the Vite development server runs at this URL by default.
+:::
+
+### Using the <ProductName /> API
+
+You can also create an application using the <ProductName /> API. First, [obtain a system API token](/docs/next/guides/getting-started/get-thunderid#obtain-system-api-token), then:
+
+```bash
+curl -kL -X POST https://localhost:8090/applications \
+  -H 'Authorization: Bearer <your-system-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "my-js-app",
+    "inboundAuthConfig": [{
+      "type": "oauth2",
+      "config": {
+        "grantTypes": ["authorization_code", "refresh_token"],
+        "responseTypes": ["code"],
+        "redirectUris": ["http://localhost:5173"],
+        "tokenEndpointAuthMethod": "none",
+        "publicClient": true,
+        "pkceRequired": true
+      }
+    }]
+  }'
+```
+
+:::warning Important
+Note down the **Client ID** from the response. You need it to configure your JavaScript app.
+:::
+
+## Create a JavaScript App
+
+Create your new JavaScript app using Vite:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm create vite@latest my-js-app -- --template vanilla
+    cd my-js-app
+    npm install
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn create vite my-js-app --template vanilla
+    cd my-js-app
+    yarn install
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm create vite my-js-app --template vanilla
+    cd my-js-app
+    pnpm install
+  </CodeBlock>
+</CodeGroup>
+
+## Install @thunderid/browser
+
+Install the <ProductName /> Browser SDK in your project:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm install @thunderid/browser
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn add @thunderid/browser
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm add @thunderid/browser
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Bun">
+    bun add @thunderid/browser
+  </CodeBlock>
+</CodeGroup>
+
+## Initialize the SDK
+
+The `ThunderIDBrowserClient` serves as the main entry point for the SDK. Create a new file to initialize and export the client instance.
+
+Create `src/auth.js` with the following:
+
+```js title="src/auth.js" showLineNumbers
+import { ThunderIDBrowserClient } from '@thunderid/browser'
+
+const auth = new ThunderIDBrowserClient()
+
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  afterSignInUrl: window.location.origin,
+  afterSignOutUrl: window.location.origin,
+})
+
+export default auth
+```
+
+:::warning Configuration
+Replace `<your-client-id>` with the Client ID you obtained when creating the application in <ProductName />.
+:::
+
+### Configuration Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `clientId` | The Client ID from your <ProductName /> application |
+| `baseUrl` | Your <ProductName /> instance URL (e.g., `https://localhost:8090`) |
+| `afterSignInUrl` | URL to redirect to after sign-in (defaults to current origin) |
+| `afterSignOutUrl` | URL to redirect to after sign-out (defaults to current origin) |
+
+## Add Sign-In and Sign-Out
+
+Replace the content of `src/main.js` with the following to add sign-in and sign-out functionality:
+
+```js title="src/main.js" showLineNumbers
+import './style.css'
+import auth from './auth.js'
+
+async function renderApp() {
+  const isSignedIn = await auth.isSignedIn()
+
+  if (isSignedIn) {
+    const user = await auth.getUser()
+
+    document.querySelector('#app').innerHTML = `
+      <div>
+        <h1>{{ProductName}} Auth Demo</h1>
+        <div class="card">
+          <h2>Welcome, ${user.displayName || user.username}!</h2>
+          <div class="user-details">
+            <p><strong>Email:</strong> ${user.email || 'N/A'}</p>
+            <p><strong>Username:</strong> ${user.username || 'N/A'}</p>
+          </div>
+          <button id="sign-out-btn" type="button">Sign Out</button>
+        </div>
+      </div>
+    `
+
+    document.querySelector('#sign-out-btn')
+      .addEventListener('click', () => auth.signOut())
+  } else {
+    document.querySelector('#app').innerHTML = `
+      <div>
+        <h1>{{ProductName}} Auth Demo</h1>
+        <div class="card">
+          <p>You are not signed in.</p>
+          <button id="sign-in-btn" type="button">Sign In</button>
+        </div>
+      </div>
+    `
+
+    document.querySelector('#sign-in-btn')
+      .addEventListener('click', () => auth.signIn())
+  }
+}
+
+renderApp()
+```
+
+## Update the HTML Entry Point
+
+Replace the content of `index.html` to provide a clean entry point:
+
+```html title="index.html" showLineNumbers
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ThunderID JavaScript Demo</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+```
+
+## Run Your App
+
+Start the development server:
+
+<CodeGroup>
+  <CodeBlock lang="bash" label="npm">
+    npm run dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="Yarn">
+    yarn dev
+  </CodeBlock>
+
+  <CodeBlock lang="bash" label="pnpm">
+    pnpm run dev
+  </CodeBlock>
+</CodeGroup>
+
+Visit your app at [http://localhost:5173](http://localhost:5173)
+
+:::tip Success
+You should see the sign-in button. Click it to be redirected to the <ProductName />-hosted sign-in page. Authenticate with the test user you created in step 2, then return to your app with the user profile displayed.
+:::
+
+</Stepper>
+
+## You're Done
+
+You have completed the full getting started sequence:
+
+1. ✅ <ProductName /> running
+2. ✅ Application registered with a Client ID
+3. ✅ Sign-in flow built in the Flow Designer
+4. ✅ JavaScript app integrated and authenticating
+
+## What's Next
+
+<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1.5rem'}}>
+
+  <a href="../../../guides/flows/build-a-flow#go-further" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Upgrade the Sign-In Flow</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add MFA, passkeys, or social login to your flow — no app code changes required.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>Flow Designer →</div>
+    </div>
+  </a>
+
+  <a href="../../../sdks/browser/overview" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Browser SDK Reference</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Explore the full API reference for the <ProductName /> Browser SDK.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>API Reference →</div>
+    </div>
+  </a>
+
+  <a href="../../../use-cases/b2b/multi-tenant-saas" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Add Organizations</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Multi-tenant SaaS with per-org identity providers and delegated admin access.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>B2B guide →</div>
+    </div>
+  </a>
+
+</div>

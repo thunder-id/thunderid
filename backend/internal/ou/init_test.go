@@ -22,8 +22,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -69,7 +69,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, exporter, err := Initialize(mux, nil)
+	service, resolver, exporter, err := Initialize(mux, nil, nil, nil)
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -90,7 +90,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesEnabled() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, exporter, err := Initialize(mux, nil)
+	service, resolver, exporter, err := Initialize(mux, nil, nil, nil)
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -111,7 +111,7 @@ func (suite *InitTestSuite) TestInitialize_FileBasedStoreCreation() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, exporter, err := Initialize(mux, nil)
+	service, resolver, exporter, err := Initialize(mux, nil, nil, nil)
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -132,7 +132,7 @@ func (suite *InitTestSuite) TestInitialize_DatabaseStoreCreation() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, exporter, err := Initialize(mux, nil)
+	service, resolver, exporter, err := Initialize(mux, nil, nil, nil)
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -149,7 +149,7 @@ func (suite *InitTestSuite) TestInitialize_RoutesRegistered() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, exporter, err := Initialize(mux, nil)
+	service, resolver, exporter, err := Initialize(mux, nil, nil, nil)
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -170,7 +170,7 @@ func (suite *InitTestSuite) TestInitialize_ExporterInterfaceCompliance() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, exporter, err := Initialize(mux, nil)
+	service, resolver, exporter, err := Initialize(mux, nil, nil, nil)
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -198,7 +198,7 @@ func (suite *InitTestSuite) TestInitialize_ServiceInterfaceCompliance() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, resolver, exporter, err := Initialize(mux, nil)
+	service, resolver, exporter, err := Initialize(mux, nil, nil, nil)
 
 	// Assert
 	assert.NoError(suite.T(), err)
@@ -215,14 +215,14 @@ func (suite *InitTestSuite) TestInitialize_MultipleInitializations() {
 	runtime.Config.DeclarativeResources.Enabled = false
 
 	mux1 := http.NewServeMux()
-	service1, resolver1, exporter1, err1 := Initialize(mux1, nil)
+	service1, resolver1, exporter1, err1 := Initialize(mux1, nil, nil, nil)
 	assert.NoError(suite.T(), err1)
 	assert.NotNil(suite.T(), service1)
 	assert.NotNil(suite.T(), resolver1)
 	assert.NotNil(suite.T(), exporter1)
 
 	mux2 := http.NewServeMux()
-	service2, resolver2, exporter2, err2 := Initialize(mux2, nil)
+	service2, resolver2, exporter2, err2 := Initialize(mux2, nil, nil, nil)
 	assert.NoError(suite.T(), err2)
 	assert.NotNil(suite.T(), service2)
 	assert.NotNil(suite.T(), resolver2)

@@ -64,7 +64,7 @@ describe('AccessSection', () => {
   } as OAuth2Config;
 
   const mockUserTypes = {
-    schemas: [
+    types: [
       {name: 'admin', id: '1'},
       {name: 'user', id: '2'},
       {name: 'guest', id: '3'},

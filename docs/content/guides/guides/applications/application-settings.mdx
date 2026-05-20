@@ -104,13 +104,15 @@ myapp://callback/*
 my*app://callback
 ```
 
-## Configure Sign-In and Registration Flows
+## Configure Sign-In, Registration, and Recovery Flows
 
-On the **Flows** tab, choose the flows that drive sign-in and sign-up for this application.
+On the **Flows** tab, choose the flows that drive sign-in, sign-up, and password recovery for this application.
 
 **Authentication Flow** - select the flow users follow to sign in. You can assign a custom flow built with the Flow Designer or use the deployment default. Use the **open the flow builder** link to edit the selected flow directly.
 
 **Registration Flow** - toggle the switch to enable or disable self-registration. When enabled, select a flow that defines what information users must provide to create an account.
+
+**Recovery Flow** - toggle the switch to enable or disable password recovery. When enabled, select a flow that guides users through the password reset process. See [Password Recovery Setup](/docs/next/guides/guides/password-recovery-setup) for configuration details and best practices.
 
 ## Customize the Appearance
 
@@ -164,3 +166,4 @@ You can also attach a **Certificate** for client authentication or token encrypt
 
 - [Manage Applications](../applications/manage-applications) - Create, update, and delete applications
 - [Flows](/docs/next/guides/guides/flows/what-is-flows) - Build and assign custom authentication and registration flows
+- [Password Recovery Setup](/docs/next/guides/guides/password-recovery-setup) - Enable and configure recovery flows for password reset

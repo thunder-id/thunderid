@@ -29,7 +29,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/constants"
 )
 
 type LogTestSuite struct {

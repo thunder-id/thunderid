@@ -90,7 +90,7 @@ export default function AccessSection({
   const [redirectUris, setRedirectUris] = useState<string[]>(() => oauth2Config?.redirectUris ?? []);
   const [uriErrors, setUriErrors] = useState<Record<number, string>>({});
 
-  const userTypeOptions = userTypesData?.schemas.map((schema) => schema.name) ?? [];
+  const userTypeOptions = userTypesData?.types.map((schema) => schema.name) ?? [];
 
   const generalSettingsSchema = z.object({
     url: z.string().url('Please enter a valid URL').or(z.literal('')).optional(),

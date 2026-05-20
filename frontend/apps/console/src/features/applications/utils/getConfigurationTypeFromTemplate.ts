@@ -41,7 +41,7 @@ const getConfigurationTypeFromTemplate = (
   }
 
   // If redirectUris is undefined, null, or empty array, determine what type of configuration is needed
-  // TODO: Remove this once https://github.com/asgardeo/thunder/pulls/924 is merged.
+  // TODO: Remove this once https://github.com/thunder-id/thunderid/pulls/924 is merged.
   const templateName = templateConfig.defaults?.name?.toLowerCase() ?? '';
 
   // Mobile apps need deep link

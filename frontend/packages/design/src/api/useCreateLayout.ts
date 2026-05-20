@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import DesignQueryKeys from '../constants/design-query-keys';
@@ -29,7 +29,7 @@ import type {LayoutResponse} from '../models/responses';
  * @returns TanStack Query mutation object for creating layout configurations
  */
 export default function useCreateLayout(): UseMutationResult<LayoutResponse, Error, CreateLayoutRequest> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
 

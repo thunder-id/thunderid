@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import type {ExportRequest, JSONExportResponse} from '../models/export-configuration';
@@ -63,7 +63,7 @@ import type {ExportRequest, JSONExportResponse} from '../models/export-configura
  * @public
  */
 export default function useExportConfiguration(): UseMutationResult<JSONExportResponse, Error, ExportRequest> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
   return useMutation<JSONExportResponse, Error, ExportRequest>({

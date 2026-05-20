@@ -22,8 +22,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
 )
 
 // setupTestService creates a test service with controlled configuration.

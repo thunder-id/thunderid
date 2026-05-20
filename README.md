@@ -1,12 +1,13 @@
-# ThunderID ⚡
+<img src="https://thunderid.dev/assets/images/readme/repo-banner.png" alt="ThunderID" width="100%" />
 
-### Identity Management Suite
+###
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![GitHub last commit](https://img.shields.io/github/last-commit/asgardeo/thunder.svg)](https://github.com/asgardeo/thunder/commits/main)
-[![GitHub issues](https://img.shields.io/github/issues/asgardeo/thunder.svg)](https://github.com/asgardeo/thunder/issues)
-[![codecov.io](https://codecov.io/github/asgardeo/thunder/coverage.svg?branch=main)](https://codecov.io/github/asgardeo/thunder?branch=main)
-[![GitHub Release](https://img.shields.io/github/v/release/asgardeo/thunder?color=blue)](https://github.com/asgardeo/thunder/releases/latest)
+[![GitHub last commit](https://img.shields.io/github/last-commit/thunder-id/thunderid.svg)](https://github.com/thunder-id/thunderid/commits/main)
+[![GitHub issues](https://img.shields.io/github/issues/thunder-id/thunderid.svg)](https://github.com/thunder-id/thunderid/issues)
+[![codecov.io](https://codecov.io/github/thunder-id/thunderid/coverage.svg?branch=main)](https://codecov.io/github/thunder-id/thunderid?branch=main)
+[![GitHub Release](https://img.shields.io/github/v/release/thunder-id/thunderid?color=blue)](https://github.com/thunder-id/thunderid/releases/latest)
+
 
 ThunderID is a lightweight, open-source Identity and Access Management (IAM) engine built to secure access for humans, AI agents, and machines.
 
@@ -55,7 +56,7 @@ Follow these steps to download the latest release of ThunderID and run it locall
 
 1. **Download the distribution from the latest release**
 
-    Download `thunderid-<version>-<os>-<arch>.zip` from the [latest release](https://github.com/asgardeo/thunder/releases/latest) for your operating system and architecture.
+    Download `thunderid-<version>-<os>-<arch>.zip` from the [latest release](https://github.com/thunder-id/thunderid/releases/latest) for your operating system and architecture.
 
     For example, if you are using a MacOS machine with a Apple Silicon (ARM64) processor, you would download `thunderid-<version>-macos-arm64.zip`.
 
@@ -116,7 +117,7 @@ Follow these steps to run ThunderID using Docker Compose.
     Download the `docker-compose.yml` file using the following command:
 
     ```bash
-    curl -o docker-compose.yml https://raw.githubusercontent.com/asgardeo/thunder/v0.37.0/install/quick-start/docker-compose.yml
+    curl -o docker-compose.yml https://raw.githubusercontent.com/thunder-id/thunderid/v0.39.0/install/quick-start/docker-compose.yml
     ```
 
 2. **Start ThunderID**
@@ -157,7 +158,7 @@ ThunderID provides two sample applications to help you get started quickly:
 
 1. **Download the sample**
 
-    Download `sample-app-react-vanilla-<version>-<os>-<arch>.zip` from the [latest release](https://github.com/asgardeo/thunder/releases/latest).
+    Download `sample-app-react-vanilla-<version>-<os>-<arch>.zip` from the [latest release](https://github.com/thunder-id/thunderid/releases/latest).
 
 2. **Unzip and navigate to the sample app directory**
 
@@ -190,7 +191,7 @@ ThunderID provides two sample applications to help you get started quickly:
 
 1. **Download the sample**
 
-    Download `sample-app-react-sdk-<version>-<os>-<arch>.zip` from the [latest release](https://github.com/asgardeo/thunder/releases/latest).
+    Download `sample-app-react-sdk-<version>-<os>-<arch>.zip` from the [latest release](https://github.com/thunder-id/thunderid/releases/latest).
 
 2. **Unzip and navigate to the sample app directory**
 
@@ -308,15 +309,15 @@ To try out the Client Credentials flow, follow these steps:
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=asgardeo/thunder&type=date&legend=top-left)](https://www.star-history.com/#asgardeo/thunder&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=thunder-id/thunderid&type=date&legend=top-left)](https://www.star-history.com/#thunder-id/thunderid&type=date&legend=top-left)
 
 ---
 
 ## Contributing
 
-Please refer to the [Contributing Guide](https://asgardeo.github.io/thunder/docs/next/community/contributing/overview) for the different ways to contribute to this project and the relevant guidelines.
+Please refer to the [Contributing Guide](https://thunderid.dev/docs/next/community/contributing/overview) for the different ways to contribute to this project and the relevant guidelines.
 
-For code contributions, refer to the [Contributing Code](https://asgardeo.github.io/thunder/docs/next/community/contributing/contributing-code/prerequisites) section for details on the prerequisites and instructions for running ThunderID in development mode.
+For code contributions, refer to the [Contributing Code](https://thunderid.dev/docs/next/community/contributing/contributing-code/prerequisites) section for details on the prerequisites and instructions for running ThunderID in development mode.
 
 ## Documentation
 

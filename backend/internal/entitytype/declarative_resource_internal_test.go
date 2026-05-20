@@ -26,24 +26,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	oupkg "github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/i18n/core"
-	"github.com/asgardeo/thunder/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // TestValidateEntityType tests the validateEntityType function with various scenarios.
+// OU handle resolution and OU existence checks have been moved to the service layer
+// (ResolveEntityTypeHandles / ensureOrganizationUnitExists), so validateEntityType is
+// now a pure structural validator.
 func TestValidateEntityType(t *testing.T) {
-	// Setup mock OU service
-	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-
 	testCases := []struct {
-		name      string
-		schema    *EntityType
-		setupMock func()
-		wantErr   bool
-		errMsg    string
+		name    string
+		schema  *EntityType
+		wantErr bool
+		errMsg  string
 	}{
 		{
 			name: "valid schema",
@@ -52,11 +48,6 @@ func TestValidateEntityType(t *testing.T) {
 				Name:   "Valid Schema",
 				OUID:   "ou-1",
 				Schema: json.RawMessage(`{"email":{"type":"string"}}`),
-			},
-			setupMock: func() {
-				mockOUService.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").
-					Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
-					Once()
 			},
 			wantErr: false,
 		},
@@ -67,9 +58,8 @@ func TestValidateEntityType(t *testing.T) {
 				Name: "",
 				OUID: "ou-1",
 			},
-			setupMock: func() {},
-			wantErr:   true,
-			errMsg:    "entity type name is required",
+			wantErr: true,
+			errMsg:  "entity type name is required",
 		},
 		{
 			name: "whitespace only name",
@@ -78,9 +68,8 @@ func TestValidateEntityType(t *testing.T) {
 				Name: "   ",
 				OUID: "ou-1",
 			},
-			setupMock: func() {},
-			wantErr:   true,
-			errMsg:    "entity type name is required",
+			wantErr: true,
+			errMsg:  "entity type name is required",
 		},
 		{
 			name: "missing ID",
@@ -89,9 +78,8 @@ func TestValidateEntityType(t *testing.T) {
 				Name: "Valid Schema",
 				OUID: "ou-1",
 			},
-			setupMock: func() {},
-			wantErr:   true,
-			errMsg:    "entity type ID is required",
+			wantErr: true,
+			errMsg:  "entity type ID is required",
 		},
 		{
 			name: "whitespace only ID",
@@ -100,9 +88,8 @@ func TestValidateEntityType(t *testing.T) {
 				Name: "Valid Schema",
 				OUID: "ou-1",
 			},
-			setupMock: func() {},
-			wantErr:   true,
-			errMsg:    "entity type ID is required",
+			wantErr: true,
+			errMsg:  "entity type ID is required",
 		},
 		{
 			name: "missing organization unit ID",
@@ -111,9 +98,8 @@ func TestValidateEntityType(t *testing.T) {
 				Name: "Valid Schema",
 				OUID: "",
 			},
-			setupMock: func() {},
-			wantErr:   true,
-			errMsg:    "organization unit ID is required",
+			wantErr: true,
+			errMsg:  "organization_unit_id or ou_handle is required",
 		},
 		{
 			name: "whitespace only organization unit ID",
@@ -122,25 +108,8 @@ func TestValidateEntityType(t *testing.T) {
 				Name: "Valid Schema",
 				OUID: "   ",
 			},
-			setupMock: func() {},
-			wantErr:   true,
-			errMsg:    "organization unit ID is required",
-		},
-		{
-			name: "organization unit not found",
-			schema: &EntityType{
-				ID:     "schema-1",
-				Name:   "Valid Schema",
-				OUID:   "nonexistent",
-				Schema: json.RawMessage(`{"type": "object"}`),
-			},
-			setupMock: func() {
-				mockOUService.EXPECT().GetOrganizationUnit(mock.Anything, "nonexistent").
-					Return(oupkg.OrganizationUnit{}, &serviceerror.ServiceError{Code: "NOT_FOUND"}).
-					Once()
-			},
 			wantErr: true,
-			errMsg:  "organization unit 'nonexistent' not found",
+			errMsg:  "organization_unit_id or ou_handle is required",
 		},
 		{
 			name: "invalid schema JSON",
@@ -149,11 +118,6 @@ func TestValidateEntityType(t *testing.T) {
 				Name:   "Invalid Schema",
 				OUID:   "ou-1",
 				Schema: json.RawMessage(`{invalid json}`),
-			},
-			setupMock: func() {
-				mockOUService.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").
-					Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
-					Once()
 			},
 			wantErr: true,
 			errMsg:  "invalid schema for entity type",
@@ -166,11 +130,6 @@ func TestValidateEntityType(t *testing.T) {
 				OUID:   "ou-1",
 				Schema: json.RawMessage(``),
 			},
-			setupMock: func() {
-				mockOUService.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").
-					Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
-					Once()
-			},
 			wantErr: true,
 			errMsg:  "schema definition is required",
 		},
@@ -178,9 +137,7 @@ func TestValidateEntityType(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			tc.setupMock()
-
-			err := validateEntityType(tc.schema, mockOUService)
+			err := validateEntityType(tc.schema)
 
 			if tc.wantErr {
 				assert.Error(t, err)
@@ -194,9 +151,8 @@ func TestValidateEntityType(t *testing.T) {
 
 // TestValidateEntityTypeWrapper tests the wrapper function.
 func TestValidateEntityTypeWrapper(t *testing.T) {
-	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-
 	t.Run("valid type", func(t *testing.T) {
+		mockSvc := NewEntityTypeServiceInterfaceMock(t)
 		schema := &EntityType{
 			ID:     "schema-1",
 			Name:   "Valid Schema",
@@ -204,20 +160,60 @@ func TestValidateEntityTypeWrapper(t *testing.T) {
 			Schema: json.RawMessage(`{"email":{"type":"string"}}`),
 		}
 
-		mockOUService.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").
-			Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
-			Once()
+		mockSvc.EXPECT().ResolveEntityTypeHandles(mock.Anything, schema).Return(nil).Once()
 
-		validator := validateEntityTypeWrapper(mockOUService)
+		validator := validateEntityTypeWrapper(mockSvc)
 		err := validator(schema)
 
 		assert.NoError(t, err)
 	})
 
+	t.Run("ou_handle resolved by service", func(t *testing.T) {
+		mockSvc := NewEntityTypeServiceInterfaceMock(t)
+		schema := &EntityType{
+			ID:       "schema-1",
+			Name:     "Valid Schema",
+			OUHandle: "default",
+			Schema:   json.RawMessage(`{"email":{"type":"string"}}`),
+		}
+
+		mockSvc.EXPECT().ResolveEntityTypeHandles(mock.Anything, schema).
+			RunAndReturn(func(_ context.Context, et *EntityType) *serviceerror.ServiceError {
+				et.OUID = "ou-resolved"
+				return nil
+			}).Once()
+
+		validator := validateEntityTypeWrapper(mockSvc)
+		err := validator(schema)
+
+		assert.NoError(t, err)
+		assert.Equal(t, "ou-resolved", schema.OUID)
+	})
+
+	t.Run("ou_handle not found", func(t *testing.T) {
+		mockSvc := NewEntityTypeServiceInterfaceMock(t)
+		schema := &EntityType{
+			ID:       "schema-1",
+			Name:     "Valid Schema",
+			OUHandle: "missing",
+			Schema:   json.RawMessage(`{"email":{"type":"string"}}`),
+		}
+
+		mockSvc.EXPECT().ResolveEntityTypeHandles(mock.Anything, schema).
+			Return(&ErrorInvalidRequestFormat).Once()
+
+		validator := validateEntityTypeWrapper(mockSvc)
+		err := validator(schema)
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), `organization unit with handle "missing" not found`)
+	})
+
 	t.Run("invalid type", func(t *testing.T) {
+		mockSvc := NewEntityTypeServiceInterfaceMock(t)
 		invalidData := "not a schema"
 
-		validator := validateEntityTypeWrapper(mockOUService)
+		validator := validateEntityTypeWrapper(mockSvc)
 		err := validator(invalidData)
 
 		assert.Error(t, err)
@@ -228,11 +224,12 @@ func TestValidateEntityTypeWrapper(t *testing.T) {
 // TestParseToEntityTypeDTO tests the parseToEntityTypeDTO function.
 func TestParseToEntityTypeDTO(t *testing.T) {
 	testCases := []struct {
-		name    string
-		yaml    string
-		want    *EntityType
-		wantErr bool
-		errMsg  string
+		name           string
+		yaml           string
+		want           *EntityType
+		wantErr        bool
+		errMsg         string
+		validateSchema bool
 	}{
 		{
 			name: "valid YAML",
@@ -287,6 +284,38 @@ schema: '{invalid json}'
 			wantErr: true,
 			errMsg:  "schema field contains invalid JSON",
 		},
+		{
+			name: "schema as YAML object",
+			yaml: `
+id: schema-1
+name: Test Schema
+organization_unit_id: ou-1
+schema:
+  username:
+    type: string
+    required: true
+`,
+			want: &EntityType{
+				ID:   "schema-1",
+				Name: "Test Schema",
+				OUID: "ou-1",
+				Schema: json.RawMessage(
+					`{"username":{"required":true,"type":"string"}}`,
+				),
+			},
+			wantErr:        false,
+			validateSchema: true,
+		},
+		{
+			name: "missing schema field",
+			yaml: `
+id: schema-1
+name: Test Schema
+organization_unit_id: ou-1
+`,
+			wantErr: true,
+			errMsg:  "schema field contains invalid JSON",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -304,6 +333,14 @@ schema: '{invalid json}'
 				assert.Equal(t, tc.want.Name, result.Name)
 				assert.Equal(t, tc.want.OUID, result.OUID)
 				assert.Equal(t, tc.want.AllowSelfRegistration, result.AllowSelfRegistration)
+				if tc.validateSchema {
+					var got, expected map[string]interface{}
+					assert.NoError(t, json.Unmarshal(result.Schema, &got), "result schema must decode to JSON object")
+					assert.NoError(t, json.Unmarshal(tc.want.Schema, &expected),
+						"test fixture schema must decode to JSON object")
+					assert.Equal(t, expected, got, "decoded schema must deep-equal the expected value")
+					assert.NotEqual(t, map[string]interface{}{}, got, "schema must not decode to an empty object")
+				}
 			}
 		})
 	}
@@ -328,8 +365,6 @@ schema: '{"type": "object"}'
 
 // TestLoadDeclarativeResources tests the loadDeclarativeResources function.
 func TestLoadDeclarativeResources(t *testing.T) {
-	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-
 	// Initialize runtime config for tests that need DB access
 	testConfig := &config.Config{
 		DeclarativeResources: config.DeclarativeResources{
@@ -353,16 +388,10 @@ func TestLoadDeclarativeResources(t *testing.T) {
 		dbStore, _, _ := newEntityTypeStore()
 		compositeStore := newCompositeEntityTypeStore(fileStore, dbStore)
 
-		// Mock OU service to return valid OU for any ID
-		mockOUService.On("GetOrganizationUnit", mock.Anything, mock.Anything).
-			Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
-			Maybe()
+		mockSvc := NewEntityTypeServiceInterfaceMock(t)
+		mockSvc.On("ResolveEntityTypeHandles", mock.Anything, mock.Anything).Return(nil).Maybe()
 
-		// loadDeclarativeResources should work with composite store
-		err = loadDeclarativeResources(compositeStore, mockOUService)
-		// The function should complete without panicking
-		// Error handling is appropriate: if no declarative_resources directory exists,
-		// that's acceptable for a composite store configuration
+		err = loadDeclarativeResources(compositeStore, mockSvc)
 		assert.True(t, err == nil || err != nil, "Function should complete regardless of directory presence")
 	})
 
@@ -374,14 +403,10 @@ func TestLoadDeclarativeResources(t *testing.T) {
 
 		fileStore, _ := newEntityTypeFileBasedStore()
 
-		// Mock OU service
-		mockOUService.On("GetOrganizationUnit", mock.Anything, mock.Anything).
-			Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil).
-			Maybe()
+		mockSvc := NewEntityTypeServiceInterfaceMock(t)
+		mockSvc.On("ResolveEntityTypeHandles", mock.Anything, mock.Anything).Return(nil).Maybe()
 
-		// loadDeclarativeResources should work with file-based store
-		err = loadDeclarativeResources(fileStore, mockOUService)
-		// May succeed or fail depending on whether declarative_resources directory exists
+		err = loadDeclarativeResources(fileStore, mockSvc)
 		_ = err // Don't assert on error as it depends on file system state
 	})
 
@@ -391,10 +416,11 @@ func TestLoadDeclarativeResources(t *testing.T) {
 		assert.NoError(t, err)
 		defer config.ResetServerRuntime()
 
-		// Use the regular database store which should not be valid for declarative resources
 		dbStore, _, _ := newEntityTypeStore()
 
-		err = loadDeclarativeResources(dbStore, mockOUService)
+		mockSvc := NewEntityTypeServiceInterfaceMock(t)
+
+		err = loadDeclarativeResources(dbStore, mockSvc)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid store type")
 	})
@@ -407,7 +433,7 @@ func TestGetAllResourceIDs_WithReadOnlyFilter(t *testing.T) {
 	exporter := newEntityTypeExporter(mockService)
 
 	response := &EntityTypeListResponse{
-		Schemas: []EntityTypeListItem{
+		Types: []EntityTypeListItem{
 			{ID: "schema1", Name: "Schema 1", IsReadOnly: false}, // Mutable - should be included
 			{ID: "schema2", Name: "Schema 2", IsReadOnly: true},  // Immutable - should be excluded
 			{ID: "schema3", Name: "Schema 3", IsReadOnly: false}, // Mutable - should be included
@@ -425,8 +451,8 @@ func TestGetAllResourceIDs_WithReadOnlyFilter(t *testing.T) {
 	assert.NotContains(t, ids, "schema2", "Schema2 is read-only and should be excluded")
 }
 
-// TestLoadDeclarativeResources_WithNilOUService tests error handling when OU service is nil.
-func TestLoadDeclarativeResources_WithNilOUService(t *testing.T) {
+// TestLoadDeclarativeResources_WithNilService tests that passing a nil service completes without panic.
+func TestLoadDeclarativeResources_WithNilService(t *testing.T) {
 	testConfig := &config.Config{
 		DeclarativeResources: config.DeclarativeResources{
 			Enabled: false,
@@ -448,38 +474,6 @@ func TestLoadDeclarativeResources_WithNilOUService(t *testing.T) {
 	dbStore, _, _ := newEntityTypeStore()
 	compositeStore := newCompositeEntityTypeStore(fileStore, dbStore)
 
-	// This should handle nil OU service gracefully or return an error
-	// depending on whether resources are actually being validated
 	err = loadDeclarativeResources(compositeStore, nil)
-	// We don't assert specific behavior since it depends on file system state
-	// The important part is that it doesn't panic
-	_ = err
-}
-
-// TestValidateEntityType_OUServiceError tests handling of OU service errors.
-func TestValidateEntityType_OUServiceError(t *testing.T) {
-	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-
-	schema := &EntityType{
-		ID:     "schema-1",
-		Name:   "Valid Schema",
-		OUID:   "ou-1",
-		Schema: json.RawMessage(`{"type": "object"}`),
-	}
-
-	// Simulate a service error (not just not found)
-	mockOUService.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").
-		Return(oupkg.OrganizationUnit{}, &serviceerror.ServiceError{
-			Code: "DB_ERROR",
-			Error: core.I18nMessage{
-				Key:          "error.organizationunit.database_error",
-				DefaultValue: "database connection failed",
-			},
-		}).
-		Once()
-
-	err := validateEntityType(schema, mockOUService)
-
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "organization unit 'ou-1' not found")
+	_ = err // outcome depends on file system state; important that it doesn't panic
 }

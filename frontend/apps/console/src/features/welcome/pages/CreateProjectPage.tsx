@@ -33,7 +33,7 @@ import {motion} from 'framer-motion';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
-import HowSolutionWorksIllustration from '@/assets/images/illustrations/how-solution-works.svg?react';
+import HowSolutionWorksIllustration from '../components/HowSolutionWorksIllustration';
 
 const MotionBox = motion.create(Box);
 
@@ -69,7 +69,7 @@ export default function CreateProjectPage(): JSX.Element {
             alignItems: 'center',
           }}
         >
-          <Stack direction="row" alignItems="center" spacing={2}>
+          <Stack direction="row" spacing={2} sx={{alignItems: 'center'}}>
             <IconButton
               aria-label={t('common:actions.close')}
               onClick={handleClose}
@@ -90,7 +90,7 @@ export default function CreateProjectPage(): JSX.Element {
                 onClick={() => {
                   void navigate('/welcome');
                 }}
-                onKeyDown={(e) => {
+                onKeyDown={(e: React.KeyboardEvent) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     void navigate('/welcome');
@@ -163,13 +163,15 @@ export default function CreateProjectPage(): JSX.Element {
                 my: 8,
                 display: 'flex',
                 justifyContent: 'center',
+                overflow: 'auto',
               }}
             >
               <ColorSchemeSVG
                 svg={HowSolutionWorksIllustration}
                 sx={{
                   width: '100%',
-                  maxWidth: '1000px',
+                  minWidth: {xs: '280px', sm: 'auto'},
+                  maxWidth: {xs: '100%', sm: '600px', md: '800px', lg: '1000px'},
                   height: 'auto',
                 }}
               />
@@ -189,9 +191,9 @@ export default function CreateProjectPage(): JSX.Element {
                 animate={{opacity: 1, y: 0}}
                 transition={{duration: 0.4, delay: 0.3}}
               >
-                <Card variant="outlined" sx={{p: 3, height: '100%'}}>
+                <Card sx={{p: 3, height: '100%', border: '1px solid', borderColor: 'divider'}}>
                   <Stack spacing={1}>
-                    <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                       <Settings size={20} />
                       <Typography variant="h3" sx={{fontSize: '1.125rem', fontWeight: 600}}>
                         {t('common:welcome.createProject.cards.configure.title')}
@@ -209,9 +211,9 @@ export default function CreateProjectPage(): JSX.Element {
                 animate={{opacity: 1, y: 0}}
                 transition={{duration: 0.4, delay: 0.4}}
               >
-                <Card variant="outlined" sx={{p: 3, height: '100%'}}>
+                <Card sx={{p: 3, height: '100%', border: '1px solid', borderColor: 'divider'}}>
                   <Stack spacing={1}>
-                    <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                       <CheckCircle size={20} />
                       <Typography variant="h3" sx={{fontSize: '1.125rem', fontWeight: 600}}>
                         {t('common:welcome.createProject.cards.verify.title')}
@@ -229,9 +231,9 @@ export default function CreateProjectPage(): JSX.Element {
                 animate={{opacity: 1, y: 0}}
                 transition={{duration: 0.4, delay: 0.5}}
               >
-                <Card variant="outlined" sx={{p: 3, height: '100%'}}>
+                <Card sx={{p: 3, height: '100%', border: '1px solid', borderColor: 'divider'}}>
                   <Stack spacing={1}>
-                    <Stack direction="row" spacing={1} alignItems="center">
+                    <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                       <PlayCircle size={20} />
                       <Typography variant="h3" sx={{fontSize: '1.125rem', fontWeight: 600}}>
                         {t('common:welcome.createProject.cards.runServer.title')}

@@ -19,8 +19,8 @@
 package entityprovider
 
 import (
-	"github.com/asgardeo/thunder/internal/entity"
-	"github.com/asgardeo/thunder/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/system/config"
 )
 
 // InitializeEntityProvider initializes the entity provider.

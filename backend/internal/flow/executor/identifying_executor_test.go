@@ -26,11 +26,11 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/tests/mocks/entityprovidermock"
-	"github.com/asgardeo/thunder/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
 type IdentifyingExecutorTestSuite struct {
@@ -745,7 +745,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_IdentifyMode_AmbiguousUse
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), failureReasonFailedToIdentifyUser, resp.FailureReason)
+	assert.Equal(suite.T(), failureReasonAmbiguousUser, resp.FailureReason)
 	assert.Empty(suite.T(), resp.Inputs, "Inputs must not be populated for ambiguous user in identify mode")
 }
 
@@ -904,16 +904,18 @@ func TestExtractDisambiguationOptions(t *testing.T) {
 
 	inputs := extractDisambiguationOptions(candidates)
 
-	optionsByKey := make(map[string][]string)
+	inputsByKey := make(map[string]common.Input)
 	for _, input := range inputs {
-		optionsByKey[input.Identifier] = input.Options
+		inputsByKey[input.Identifier] = input
 	}
 
-	assert.Contains(t, optionsByKey, "userType")
-	assert.ElementsMatch(t, []string{"Person", "Engineer"}, optionsByKey["userType"])
+	assert.Contains(t, inputsByKey, "userType")
+	assert.ElementsMatch(t, []string{"Person", "Engineer"}, inputsByKey["userType"].Options)
+	assert.Equal(t, common.InputTypeSelect, inputsByKey["userType"].Type)
 
-	assert.Contains(t, optionsByKey, "family_name")
-	assert.ElementsMatch(t, []string{"Johnson", "Smith"}, optionsByKey["family_name"])
+	assert.Contains(t, inputsByKey, "family_name")
+	assert.ElementsMatch(t, []string{"Johnson", "Smith"}, inputsByKey["family_name"].Options)
+	assert.Equal(t, common.InputTypeSelect, inputsByKey["family_name"].Type)
 
-	assert.NotContains(t, optionsByKey, "given_name")
+	assert.NotContains(t, inputsByKey, "given_name")
 }

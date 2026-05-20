@@ -2,19 +2,20 @@
 title: What are Flows?
 sidebar_position: 15
 persona: iam
-description: Design and customize key user journeys — from sign-in to self-registration — using the visual Flow Builder in the Console.
+description: Design and customize key user journeys — from sign-in to self-registration and password recovery — using the visual Flow Builder in the Console.
 ---
 
 # What are Flows?
 
-A flow in <ProductName /> defines the step-by-step journey a user takes during a specific interaction with your application, such as signing in or self-registering. You build flows visually using the **Flow Builder** in the <ProductName /> Console, a canvas-based editor where you drag, connect, and configure nodes to design the exact experience you want.
+A flow in <ProductName /> defines the step-by-step journey a user takes during a specific interaction with your application, such as signing in, self-registering, or resetting a password. You build flows visually using the **Flow Builder** in the <ProductName /> Console, a canvas-based editor where you drag, connect, and configure nodes to design the exact experience you want.
 
-<ProductName /> supports two flow types:
+<ProductName /> supports three flow types:
 
 | Flow Type | Purpose |
 |-----------|---------|
 | **Authentication** | Controls how users sign in to an application, including multi-step and multi-factor scenarios. |
 | **Registration** | Controls how new users self-register, including profile collection, identity verification, and account activation. |
+| **Recovery** | Controls how users reset forgotten passwords through identity verification and secure token validation. |
 
 Each flow is a versioned, named definition. You assign a flow to one or more applications. When a user interacts with an application, <ProductName /> executes the assigned flow step by step.
 
@@ -31,3 +32,4 @@ A flow on the canvas always starts with a **START** node and ends with one or mo
 
 - To learn about the building blocks of the Flow Builder, read [Flow Concepts](./flow-concepts).
 - To create and configure your first flow step by step, see [Build a Flow](./build-a-flow).
+- To set up password recovery for your application, see [Password Recovery Setup](../password-recovery-setup).

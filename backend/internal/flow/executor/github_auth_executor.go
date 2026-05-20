@@ -19,13 +19,13 @@
 package executor
 
 import (
-	authngithub "github.com/asgardeo/thunder/internal/authn/github"
-	authnoauth "github.com/asgardeo/thunder/internal/authn/oauth"
-	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
-	"github.com/asgardeo/thunder/internal/entitytype"
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/idp"
+	authngithub "github.com/thunder-id/thunderid/internal/authn/github"
+	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/idp"
 )
 
 // githubOAuthExecutor implements the OAuth authentication executor for GitHub.

@@ -22,10 +22,10 @@ import type {OrganizationUnit} from '../../models/organization-unit';
 import type {UpdateOrganizationUnitRequest} from '../../models/requests';
 import useUpdateOrganizationUnit from '../useUpdateOrganizationUnit';
 
-// Mock useAsgardeo
+// Mock useThunderID
 const mockHttpRequest = vi.fn();
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     http: {
       request: mockHttpRequest,
     },

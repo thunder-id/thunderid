@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	dbmodel "github.com/asgardeo/thunder/internal/system/database/model"
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 )
 
 var (

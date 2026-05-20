@@ -32,7 +32,7 @@ import type {DesignResolveResponse} from '../../models/responses';
 export type DesignProviderProps = PropsWithChildren<{
   /**
    * Optional pre-resolved design to use directly, skipping the internal
-   * resolve API call. Useful when the host SDK (e.g. Asgardeo) already
+   * resolve API call. Useful when the host SDK (e.g. ThunderID) already
    * provides design data via its metadata (e.g. `meta.design`).
    */
   design?: DesignResolveResponse;
@@ -44,7 +44,7 @@ export type DesignProviderProps = PropsWithChildren<{
   shouldResolveDesignInternally?: boolean;
 
   /**
-   * Signals that an external source (e.g. Asgardeo meta) is still loading.
+   * Signals that an external source (e.g. ThunderID meta) is still loading.
    * When true, isLoading is reported as true so consumers can defer rendering
    * until the design data has actually arrived.
    */

@@ -53,15 +53,15 @@ vi.mock('react-router', async () => {
   };
 });
 
-vi.mock('../../api/useGetAgentType', () => ({
+vi.mock('@/api/useGetAgentType', () => ({
   default: (id?: string): unknown => mockUseGetAgentType(id) as unknown,
 }));
 
-vi.mock('../../api/useUpdateAgentType', () => ({
+vi.mock('@/api/useUpdateAgentType', () => ({
   default: (): unknown => mockUseUpdateAgentType() as unknown,
 }));
 
-vi.mock('../../components/edit-agent-type/schema-settings/EditSchemaSettings', () => ({
+vi.mock('@/components/edit-agent-type/schema-settings/EditSchemaSettings', () => ({
   default: ({onPropertiesChange}: {onPropertiesChange: (props: unknown[]) => void}) => (
     <div data-testid="edit-schema-settings">
       <button

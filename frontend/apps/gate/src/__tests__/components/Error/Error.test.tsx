@@ -37,7 +37,8 @@ describe('Error', () => {
   });
 
   it('renders without crashing', () => {
-    const {container} = render(<Error />);
+    const {container, rerender} = render(<Error />);
+    rerender(<Error />);
     expect(container).toBeInTheDocument();
   });
 
@@ -82,6 +83,13 @@ describe('Error', () => {
 
     const logos = screen.getAllByAltText(/Logo/i);
     expect(logos.length).toBeGreaterThan(0);
+  });
+
+  it('renders the logo with correct height', () => {
+    render(<Error />);
+
+    const logo = screen.getByAltText('Logo (Light)');
+    expect(logo).toHaveStyle({height: '40px'});
   });
 
   it('renders the error images', () => {

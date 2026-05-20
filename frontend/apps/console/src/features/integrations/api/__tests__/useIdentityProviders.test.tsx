@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {QueryClient} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {waitFor, act, renderHook} from '@thunderid/test-utils';
@@ -27,8 +27,8 @@ import type {IdentityProviderListResponse} from '../../models/responses';
 import useIdentityProviders from '../useIdentityProviders';
 
 // Mock the dependencies
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: vi.fn(),
+vi.mock('@thunderid/react', () => ({
+  useThunderID: vi.fn(),
 }));
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
@@ -66,11 +66,11 @@ describe('useIdentityProviders', () => {
   beforeEach(() => {
     mockHttpRequest = vi.fn().mockResolvedValue({data: mockIdentityProviders});
 
-    vi.mocked(useAsgardeo).mockReturnValue({
+    vi.mocked(useThunderID).mockReturnValue({
       http: {
         request: mockHttpRequest,
       },
-    } as unknown as ReturnType<typeof useAsgardeo>);
+    } as unknown as ReturnType<typeof useThunderID>);
 
     vi.mocked(useConfig).mockReturnValue({
       getServerUrl: () => 'http://localhost:8090',

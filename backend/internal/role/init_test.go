@@ -30,12 +30,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	"github.com/asgardeo/thunder/internal/system/database/provider"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/declarative_resource/entity"
-	"github.com/asgardeo/thunder/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
 
 // InitTestSuite contains tests for store initialization.
@@ -657,7 +657,7 @@ func (suite *InitTestSuite) TestInitialize_DBClientError() {
 	}()
 
 	mux := http.NewServeMux()
-	_, _, err := Initialize(mux, nil, nil, nil, nil, nil)
+	_, _, _, err := Initialize(mux, nil, nil, nil, nil, nil)
 
 	suite.Error(err)
 	suite.Equal("mock db client error", err.Error())
@@ -681,7 +681,7 @@ func (suite *InitTestSuite) TestInitialize_TransactionerError() {
 	}()
 
 	mux := http.NewServeMux()
-	_, _, err := Initialize(mux, nil, nil, nil, nil, nil)
+	_, _, _, err := Initialize(mux, nil, nil, nil, nil, nil)
 
 	suite.Error(err)
 	suite.Equal("mock transactioner error", err.Error())
@@ -712,7 +712,7 @@ func (suite *InitTestSuite) TestInitialize_Success() {
 	}()
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, nil, nil, nil, nil, nil)
+	svc, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil)
 
 	suite.NoError(err)
 	suite.NotNil(svc)
@@ -748,7 +748,7 @@ func (suite *InitTestSuite) TestInitialize_StoreInitError() {
 	}()
 
 	mux := http.NewServeMux()
-	svc, exporter, err := Initialize(mux, nil, nil, nil, nil, nil)
+	svc, _, exporter, err := Initialize(mux, nil, nil, nil, nil, nil)
 
 	suite.Error(err)
 	if err != nil {

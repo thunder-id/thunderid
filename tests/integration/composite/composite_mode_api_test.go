@@ -36,7 +36,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asgardeo/thunder/tests/integration/testutils"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -263,7 +263,7 @@ func (suite *CompositeModeSuite) TestEntityTypeDeclarativeVisibility() {
 	suite.Equal(http.StatusOK, resp.StatusCode, "declarative user type should be visible")
 	resp.Body.Close()
 
-	suite.assertMergedCollectionContainsIDs("/user-types", "schemas", "decl-schema-1", "user_type")
+	suite.assertMergedCollectionContainsIDs("/user-types", "types", "decl-schema-1", "user_type")
 }
 
 func (suite *CompositeModeSuite) TestThemeDeclarativeVisibility() {

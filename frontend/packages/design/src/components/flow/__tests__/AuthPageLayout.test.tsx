@@ -73,7 +73,7 @@ describe('AuthPageLayout', () => {
         </AuthPageLayout>,
       );
       const main = screen.getByRole('main');
-      expect(main.classList.contains('ThunderSignIn--root')).toBe(true);
+      expect(main.classList.contains('ThunderIDSignIn--root')).toBe(true);
     });
 
     it('does not apply product prefix CSS class when variant is not provided', () => {
@@ -125,7 +125,7 @@ describe('AuthPageLayout', () => {
         </AuthPageLayout>,
       );
       const main = screen.getByRole('main');
-      expect(main.classList.contains('ThunderSignUp--root')).toBe(true);
+      expect(main.classList.contains('ThunderIDSignUp--root')).toBe(true);
       expect(screen.getByText('Sign up form')).toBeTruthy();
     });
 

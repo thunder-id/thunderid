@@ -27,21 +27,21 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/asgardeo/thunder/internal/attributecache"
-	"github.com/asgardeo/thunder/internal/authn/assert"
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
-	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
-	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	oauth2const "github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
-	"github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/role"
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/jose/jwt"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/attributecache"
+	"github.com/thunder-id/thunderid/internal/authn/assert"
+	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 const (
@@ -160,11 +160,8 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *core.NodeContext, logger
 		jwtClaims["assurance"] = assertionResult.Context
 	}
 
-	// Include authorized permissions in JWT if present in runtime data
-	// The "authorized_permissions" claim contains space-separated permission strings.
-	// This claim will be present only if the authorization executor has run before this executor in the flow
-	// and has set the authorized permissions in the runtime data.
-	if permissions, exists := ctx.RuntimeData["authorized_permissions"]; exists && permissions != "" {
+	// Include permissions in the JWT (see resolvePermissionsForClaim for the precedence chain).
+	if permissions := a.resolvePermissionsForClaim(ctx); permissions != "" {
 		jwtClaims["authorized_permissions"] = permissions
 	}
 
@@ -615,4 +612,41 @@ func (a *authAssertExecutor) buildGetAttributesMetadata(ctx *core.NodeContext) *
 	}
 
 	return metadata
+}
+
+// resolvePermissionsForClaim returns the permission set to embed in the assertion. When the
+// consent step ran, the result is the consented set intersected with the currently authorized
+// set (defense against stale consent records containing permissions the user no longer holds).
+// If consent ran in a flow without an authz step, the consented set is returned as-is (no
+// authz decision is available to intersect against). Otherwise the authorized set is returned
+// directly. Raw requested permissions are intentionally not used — the authz executor must
+// validate them first.
+func (a *authAssertExecutor) resolvePermissionsForClaim(ctx *core.NodeContext) string {
+	if v, ok := ctx.RuntimeData[common.RuntimeKeyConsentedPermissions]; ok {
+		if authorized, hasAuthorized := ctx.RuntimeData["authorized_permissions"]; hasAuthorized {
+			return intersectPermissionSpaceList(v, authorized)
+		}
+		return v
+	}
+	return ctx.RuntimeData["authorized_permissions"]
+}
+
+// intersectPermissionSpaceList returns the space-separated set of permissions present in both
+// inputs, preserving the order of `a`. Empty inputs are handled as empty sets.
+func intersectPermissionSpaceList(a, b string) string {
+	if a == "" || b == "" {
+		return ""
+	}
+	allowed := make(map[string]bool)
+	for _, p := range strings.Fields(b) {
+		allowed[p] = true
+	}
+	out := make([]string, 0, len(allowed))
+	for _, p := range strings.Fields(a) {
+		if allowed[p] {
+			out = append(out, p)
+			delete(allowed, p)
+		}
+	}
+	return strings.Join(out, " ")
 }

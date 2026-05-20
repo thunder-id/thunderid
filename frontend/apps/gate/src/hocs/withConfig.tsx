@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {AsgardeoProvider} from '@asgardeo/react';
+import {ThunderIDProvider} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
 import type {JSX, ComponentType} from 'react';
 
@@ -26,13 +26,12 @@ export default function withConfig<P extends object>(WrappedComponent: Component
     const applicationId = new URL(window.location.href).searchParams.get('applicationId');
 
     return (
-      <AsgardeoProvider
-        baseUrl={getServerUrl() ?? (import.meta.env.VITE_ASGARDEO_BASE_URL as string)}
+      <ThunderIDProvider
+        baseUrl={getServerUrl() ?? (import.meta.env.VITE_THUNDER_BASE_URL as string)}
         applicationId={applicationId!}
-        platform="AsgardeoV2"
       >
         <WrappedComponent {...props} />
-      </AsgardeoProvider>
+      </ThunderIDProvider>
     );
   };
 }

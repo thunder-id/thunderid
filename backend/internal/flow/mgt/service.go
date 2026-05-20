@@ -25,15 +25,15 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/flow/executor"
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	i18ncore "github.com/asgardeo/thunder/internal/system/i18n/core"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/transaction"
-	"github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const loggerComponentName = "FlowMgtService"
@@ -485,7 +485,8 @@ func (s *flowMgtService) IsValidFlow(
 func isValidFlowType(flowType common.FlowType) bool {
 	return flowType == common.FlowTypeAuthentication ||
 		flowType == common.FlowTypeRegistration ||
-		flowType == common.FlowTypeUserOnboarding
+		flowType == common.FlowTypeUserOnboarding ||
+		flowType == common.FlowTypeRecovery
 }
 
 // buildPaginationLinks constructs pagination links for the flow list response.

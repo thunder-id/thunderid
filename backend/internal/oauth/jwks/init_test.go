@@ -21,16 +21,19 @@ package jwks
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/x509"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/tests/mocks/crypto/pki/pkimock"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/cryptolab"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider"
+	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 )
 
 type InitTestSuite struct {
@@ -42,7 +45,6 @@ func TestInitTestSuite(t *testing.T) {
 }
 
 func (suite *InitTestSuite) SetupTest() {
-	// Initialize Runtime config for CORS middleware
 	testConfig := &config.Config{}
 	_ = config.InitializeServerRuntime("test", testConfig)
 }
@@ -53,11 +55,9 @@ func (suite *InitTestSuite) TearDownTest() {
 
 func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
+	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 
-	// Prepare PKI mock with minimal expectations
-	pkiMock := pkimock.NewPKIServiceInterfaceMock(suite.T())
-
-	service := Initialize(mux, pkiMock)
+	service := Initialize(mux, cryptoMock)
 
 	assert.NotNil(suite.T(), service)
 	assert.Implements(suite.T(), (*JWKSServiceInterface)(nil), service)
@@ -65,23 +65,28 @@ func (suite *InitTestSuite) TestInitialize() {
 
 func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	mux := http.NewServeMux()
-	// Prepare PKI mock with expectations for handler invocation using new method
-	pkiMock := pkimock.NewPKIServiceInterfaceMock(suite.T())
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
-	cert := &x509.Certificate{Raw: []byte("raw-cert"), PublicKey: &key.PublicKey}
-	allCerts := map[string]*x509.Certificate{"test-kid": cert}
-	pkiMock.EXPECT().GetAllX509Certificates().Return(allCerts, nil)
-	pkiMock.EXPECT().GetCertThumbprint("test-kid").Return("test-kid")
+	cryptoMock := cryptomock.NewRuntimeCryptoProviderMock(suite.T())
 
-	_ = Initialize(mux, pkiMock)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(suite.T(), err)
+	keys := []kmprovider.PublicKeyInfo{
+		{
+			KeyID:          "test-kid",
+			Algorithm:      cryptolab.AlgorithmRS256,
+			PublicKey:      &rsaKey.PublicKey,
+			Thumbprint:     "test-kid",
+			CertificateDER: []byte("raw-cert"),
+		},
+	}
+	cryptoMock.EXPECT().GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{}).Return(keys, nil)
 
-	// Test that routes are registered by making requests
+	_ = Initialize(mux, cryptoMock)
+
 	req := httptest.NewRequest("GET", "/oauth2/jwks", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	assert.NotEqual(suite.T(), http.StatusNotFound, w.Code)
 
-	// Test OPTIONS request
 	req = httptest.NewRequest("OPTIONS", "/oauth2/jwks", nil)
 	w = httptest.NewRecorder()
 	mux.ServeHTTP(w, req)

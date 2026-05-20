@@ -25,7 +25,7 @@ import {
   Stack,
   Typography,
 } from "@wso2/oxygen-ui";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "react-router";
 import { decodeJwt } from "../utils/jwt";
 import UserTable from "../components/UserTable";
 import { useStepUpAuth } from "../hooks/useStepUpAuth";
@@ -75,7 +75,7 @@ function DashboardPage() {
   }, [assertion]);
 
   if (!assertion || !decodedToken) {
-    navigate({ to: "/" });
+    navigate("/");
     return null;
   }
 
@@ -153,7 +153,10 @@ function DashboardPage() {
             if (successTimeoutRef.current) {
               clearTimeout(successTimeoutRef.current);
             }
-            successTimeoutRef.current = setTimeout(() => setExportSuccess(false), 3000);
+            successTimeoutRef.current = setTimeout(
+              () => setExportSuccess(false),
+              3000
+            );
           } catch (err) {
             setExportError(
               err instanceof Error
@@ -175,7 +178,11 @@ function DashboardPage() {
   return (
     <Container maxWidth="lg" sx={{ px: { xs: 2, sm: 3 } }}>
       <Box sx={{ my: 4 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Stack
+          direction="row"
+          justifyContent="space-between"
+          alignItems="center"
+        >
           <Box>
             <Typography variant="h4" component="h1" fontWeight={600}>
               Dashboard
@@ -196,13 +203,21 @@ function DashboardPage() {
       </Box>
 
       {exportError && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setExportError(null)}>
+        <Alert
+          severity="error"
+          sx={{ mb: 2 }}
+          onClose={() => setExportError(null)}
+        >
           {exportError}
         </Alert>
       )}
 
       {exportSuccess && (
-        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setExportSuccess(false)}>
+        <Alert
+          severity="success"
+          sx={{ mb: 2 }}
+          onClose={() => setExportSuccess(false)}
+        >
           User data exported successfully!
         </Alert>
       )}

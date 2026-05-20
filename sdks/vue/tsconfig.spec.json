@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "module": "ESNext",
+    "types": ["vitest", "node"]
+  },
+  "include": ["**/*.test.ts", "**/*.spec.ts", "**/*.test.js", "**/*.spec.js", "**/*.d.ts"]
+}

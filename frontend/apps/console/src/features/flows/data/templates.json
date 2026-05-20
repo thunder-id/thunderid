@@ -6870,7 +6870,7 @@
     "flowType": "USER_ONBOARDING",
     "display": {
       "label": "Default Onboarding",
-      "description": "Standard user onboarding with invite and provisioning",
+      "description": "Standard user onboarding with direct creation and invite options",
       "image": "assets/images/icons/user-plus.svg",
       "showOnResourcePanel": true
     },
@@ -6918,7 +6918,8 @@
               {
                 "type": "TEXT",
                 "id": "subtitle_usertype",
-                "label": "{{ t(onboarding:forms.user_type.subtitle) }}"
+                "label": "{{ t(onboarding:forms.user_type.subtitle) }}",
+                "variant": "HEADING_6"
               },
               {
                 "type": "BLOCK",
@@ -6970,7 +6971,7 @@
           "executor": {
             "name": "OUResolverExecutor"
           },
-          "onSuccess": "prompt_email",
+          "onSuccess": "prompt_onboarding_mode",
           "onIncomplete": "prompt_ou_selection"
         },
         {
@@ -6988,7 +6989,8 @@
               {
                 "type": "TEXT",
                 "id": "subtitle_ou_selection",
-                "label": "{{ t(onboarding:forms.ou_selection.subtitle) }}"
+                "label": "{{ t(onboarding:forms.ou_selection.subtitle) }}",
+                "variant": "HEADING_6"
               },
               {
                 "type": "BLOCK",
@@ -7028,6 +7030,162 @@
               }
             }
           ]
+        },
+        {
+          "id": "prompt_onboarding_mode",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "type": "TEXT",
+                "id": "text_header_onboarding_mode",
+                "label": "{{ t(onboarding:forms.onboarding_mode.title) }}",
+                "variant": "HEADING_1",
+                "align": "center"
+              },
+              {
+                "type": "TEXT",
+                "id": "text_subtitle_onboarding_mode",
+                "label": "{{ t(onboarding:forms.onboarding_mode.subtitle) }}",
+                "variant": "HEADING_6",
+                "align": "center"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_onboarding_mode_actions",
+                "components": [
+                  {
+                    "type": "STACK",
+                    "id": "stack_onboarding_mode_actions",
+                    "direction": "row",
+                    "justify": "center",
+                    "components": [
+                      {
+                        "type": "ACTION",
+                        "id": "action_create_user_now",
+                        "label": "{{ t(onboarding:forms.onboarding_mode.actions.create.label) }}",
+                        "variant": "PRIMARY",
+                        "eventType": "SUBMIT"
+                      },
+                      {
+                        "type": "ACTION",
+                        "id": "action_invite_user",
+                        "label": "{{ t(onboarding:forms.onboarding_mode.actions.invite.label) }}",
+                        "variant": "OUTLINED",
+                        "eventType": "SUBMIT"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_create_user_now",
+                "nextNode": "direct_create_provisioning"
+              }
+            },
+            {
+              "action": {
+                "ref": "action_invite_user",
+                "nextNode": "prompt_email"
+              }
+            }
+          ]
+        },
+        {
+          "id": "direct_create_provisioning",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "includeOptional": true,
+            "includeOptionalCredentials": true
+          },
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "onSuccess": "admin_registration_complete",
+          "onIncomplete": "prompt_create_user_details"
+        },
+        {
+          "id": "prompt_create_user_details",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_header_create_user_details",
+                "label": "{{ t(onboarding:forms.add_user.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_subtitle_create_user_details",
+                "label": "{{ t(onboarding:forms.add_user.subtitle) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_create_user_details",
+                "components": [
+                  {
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs_create_user_details"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_create_user_details",
+                    "label": "{{ t(onboarding:forms.add_user.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [],
+              "action": {
+                "ref": "action_create_user_details",
+                "nextNode": "direct_create_provisioning"
+              }
+            }
+          ]
+        },
+        {
+          "id": "admin_registration_complete",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "admin_registration_complete_icon",
+                "label": "\u2705",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "admin_registration_complete_heading",
+                "label": "{{ t(onboarding:forms.add_user_complete.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "admin_registration_complete_message",
+                "label": "{{ t(onboarding:forms.add_user_complete.description) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "User added successfully",
+          "next": "end"
         },
         {
           "id": "prompt_email",
@@ -7087,11 +7245,75 @@
           "executor": {
             "name": "AttributeUniquenessValidator"
           },
-          "onSuccess": "invite_generate",
+          "onSuccess": "prompt_invite_method",
           "onIncomplete": "prompt_email"
         },
         {
-          "id": "invite_generate",
+          "id": "prompt_invite_method",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "type": "TEXT",
+                "id": "text_header_invite_method",
+                "label": "{{ t(onboarding:forms.invite_mode.title) }}",
+                "variant": "HEADING_1",
+                "align": "center"
+              },
+              {
+                "type": "TEXT",
+                "id": "text_subtitle_invite_method",
+                "label": "{{ t(onboarding:forms.invite_mode.subtitle) }}",
+                "variant": "HEADING_6",
+                "align": "center"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_invite_method_actions",
+                "components": [
+                  {
+                    "type": "STACK",
+                    "id": "stack_invite_actions",
+                    "direction": "row",
+                    "justify": "center",
+                    "components": [
+                      {
+                        "type": "ACTION",
+                        "id": "action_send_email_invite",
+                        "label": "{{ t(onboarding:forms.invite_mode.actions.email.label) }}",
+                        "variant": "PRIMARY",
+                        "eventType": "SUBMIT"
+                      },
+                      {
+                        "type": "ACTION",
+                        "id": "action_share_manually",
+                        "label": "{{ t(onboarding:forms.invite_mode.actions.link.label) }}",
+                        "variant": "OUTLINED",
+                        "eventType": "SUBMIT"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_send_email_invite",
+                "nextNode": "invite_generate_email"
+              }
+            },
+            {
+              "action": {
+                "ref": "action_share_manually",
+                "nextNode": "invite_generate_manual"
+              }
+            }
+          ]
+        },
+        {
+          "id": "invite_generate_email",
           "type": "TASK_EXECUTION",
           "executor": {
             "name": "InviteExecutor",
@@ -7109,7 +7331,122 @@
             "name": "EmailExecutor",
             "mode": "send"
           },
-          "onSuccess": "invite_verify"
+          "onSuccess": "email_invite_status",
+          "onFailure": "invite_email_service_unavailable"
+        },
+        {
+          "id": "email_invite_status",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "email_status_icon",
+                "label": "\u2705",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "email_status_heading",
+                "label": "{{ t(onboarding:forms.invite_email_sent.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "email_status_message",
+                "label": "{{ t(onboarding:forms.invite_email_sent.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Invitation sent",
+          "next": "invite_verify"
+        },
+        {
+          "id": "invite_email_service_unavailable",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "email_unavailable_icon",
+                "label": "\u26a0\ufe0f",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "email_unavailable_heading",
+                "label": "{{ t(onboarding:forms.invite_email_unavailable.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "email_unavailable_message",
+                "label": "{{ t(onboarding:forms.invite_email_unavailable.message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "COPYABLE_TEXT",
+                "id": "email_unavailable_link_copyable",
+                "label": "{{ t(onboarding:forms.invite_link_status.link_label) }}",
+                "source": "inviteLink"
+              }
+            ]
+          },
+          "message": "Email delivery failed",
+          "next": "invite_link_status"
+        },
+        {
+          "id": "invite_generate_manual",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "invite_link_status"
+        },
+        {
+          "id": "invite_link_status",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "link_status_icon",
+                "label": "\u2705",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "link_status_heading",
+                "label": "{{ t(onboarding:forms.invite_link_status.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "link_status_message",
+                "label": "{{ t(onboarding:forms.invite_link_status.message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "COPYABLE_TEXT",
+                "id": "invite_link_copyable",
+                "label": "{{ t(onboarding:forms.invite_link_status.link_label) }}",
+                "source": "inviteLink"
+              }
+            ]
+          },
+          "message": "The invite link is ready to share",
+          "next": "invite_verify"
         },
         {
           "id": "invite_verify",
@@ -7126,7 +7463,20 @@
             "name": "InviteExecutor",
             "mode": "verify"
           },
-          "onSuccess": "prompt_user_details"
+          "onSuccess": "provisioning"
+        },
+        {
+          "id": "provisioning",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "includeOptional": true,
+            "includeOptionalCredentials": true
+          },
+          "executor": {
+            "name": "ProvisioningExecutor"
+          },
+          "onSuccess": "registration_complete",
+          "onIncomplete": "prompt_user_details"
         },
         {
           "id": "prompt_user_details",
@@ -7136,42 +7486,29 @@
               {
                 "align": "center",
                 "type": "TEXT",
-                "id": "text_header_details",
-                "label": "{{ t(onboarding:forms.user_details.title) }}",
+                "id": "text_header_user_details",
+                "label": "{{ t(onboarding:forms.complete_registration.title) }}",
                 "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_subtitle_user_details",
+                "label": "{{ t(onboarding:forms.complete_registration.subtitle) }}",
+                "variant": "HEADING_6"
               },
               {
                 "type": "BLOCK",
                 "id": "block_user_details",
                 "components": [
                   {
-                    "id": "input_prompt_username",
-                    "ref": "username",
-                    "type": "TEXT_INPUT",
-                    "label": "{{ t(onboarding:forms.user_details.fields.username.label) }}",
-                    "required": true,
-                    "placeholder": "{{ t(onboarding:forms.user_details.fields.username.placeholder) }}"
-                  },
-                  {
-                    "id": "input_prompt_given_name",
-                    "ref": "given_name",
-                    "type": "TEXT_INPUT",
-                    "label": "{{ t(onboarding:forms.user_details.fields.first_name.label) }}",
-                    "required": false,
-                    "placeholder": "{{ t(onboarding:forms.user_details.fields.first_name.placeholder) }}"
-                  },
-                  {
-                    "id": "input_prompt_family_name",
-                    "ref": "family_name",
-                    "type": "TEXT_INPUT",
-                    "label": "{{ t(onboarding:forms.user_details.fields.last_name.label) }}",
-                    "required": false,
-                    "placeholder": "{{ t(onboarding:forms.user_details.fields.last_name.placeholder) }}"
+                    "type": "DYNAMIC_INPUT_PLACEHOLDER",
+                    "id": "dynamic_inputs_user_details"
                   },
                   {
                     "type": "ACTION",
-                    "id": "action_submit_details",
-                    "label": "{{ t(onboarding:forms.user_details.actions.next.label) }}",
+                    "id": "action_user_details",
+                    "label": "{{ t(onboarding:forms.complete_registration.actions.submit.label) }}",
                     "variant": "PRIMARY",
                     "eventType": "SUBMIT"
                   }
@@ -7181,137 +7518,810 @@
           },
           "prompts": [
             {
-              "inputs": [
-                {
-                  "ref": "input_prompt_username",
-                  "identifier": "username",
-                  "type": "TEXT_INPUT",
-                  "required": true
-                },
-                {
-                  "ref": "input_prompt_given_name",
-                  "identifier": "given_name",
-                  "type": "TEXT_INPUT",
-                  "required": false
-                },
-                {
-                  "ref": "input_prompt_family_name",
-                  "identifier": "family_name",
-                  "type": "TEXT_INPUT",
-                  "required": false
-                }
-              ],
+              "inputs": [],
               "action": {
-                "ref": "action_submit_details",
-                "nextNode": "check_user_details_uniqueness"
-              }
-            }
-          ]
-        },
-        {
-          "id": "check_user_details_uniqueness",
-          "type": "TASK_EXECUTION",
-          "executor": {
-            "name": "AttributeUniquenessValidator"
-          },
-          "onSuccess": "prompt_credential",
-          "onIncomplete": "prompt_user_details"
-        },
-        {
-          "id": "prompt_credential",
-          "type": "PROMPT",
-          "meta": {
-            "components": [
-              {
-                "align": "center",
-                "type": "TEXT",
-                "id": "text_header_pwd",
-                "label": "{{ t(onboarding:forms.credential.title) }}",
-                "variant": "HEADING_1"
-              },
-              {
-                "type": "BLOCK",
-                "id": "block_pwd",
-                "components": [
-                  {
-                    "id": "input_prompt_password",
-                    "ref": "password",
-                    "type": "PASSWORD_INPUT",
-                    "label": "{{ t(onboarding:forms.credential.fields.password.label) }}",
-                    "required": true,
-                    "placeholder": "{{ t(onboarding:forms.credential.fields.password.placeholder) }}"
-                  },
-                  {
-                    "type": "ACTION",
-                    "id": "action_submit_pwd",
-                    "label": "{{ t(onboarding:forms.credential.actions.submit.label) }}",
-                    "variant": "PRIMARY",
-                    "eventType": "SUBMIT"
-                  }
-                ]
-              }
-            ]
-          },
-          "prompts": [
-            {
-              "inputs": [
-                {
-                  "ref": "input_prompt_password",
-                  "identifier": "password",
-                  "type": "PASSWORD_INPUT",
-                  "required": true
-                }
-              ],
-              "action": {
-                "ref": "action_submit_pwd",
+                "ref": "action_user_details",
                 "nextNode": "provisioning"
               }
             }
           ]
         },
         {
-          "id": "provisioning",
+          "id": "registration_complete",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_complete_icon",
+                "label": "\u2705",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_complete_heading",
+                "label": "{{ t(invite:complete.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "registration_complete_message",
+                "label": "{{ t(invite:complete.description) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Registration complete",
+          "next": "end"
+        },
+        {
+          "id": "end",
+          "type": "END"
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "STARTER",
+    "type": "BLANK",
+    "flowType": "RECOVERY",
+    "display": {
+      "label": "Blank",
+      "description": "Start from scratch with an empty canvas",
+      "image": "assets/images/icons/refresh-ccw.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "New Recovery Flow",
+      "handle": "new-recovery-flow",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "layout": {
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": 62,
+              "y": 278
+            }
+          },
+          "onSuccess": "view_prompt"
+        },
+        {
+          "id": "view_prompt",
+          "type": "PROMPT",
+          "layout": {
+            "size": {
+              "width": 350,
+              "height": 466
+            },
+            "position": {
+              "x": 463,
+              "y": 62
+            }
+          },
+          "meta": {
+            "components": [
+              {
+                "category": "DISPLAY",
+                "id": "text_heading",
+                "label": "Heading",
+                "resourceType": "ELEMENT",
+                "type": "TEXT",
+                "variant": "HEADING_3"
+              },
+              {
+                "category": "BLOCK",
+                "components": [
+                  {
+                    "category": "ACTION",
+                    "eventType": "SUBMIT",
+                    "id": "action_continue",
+                    "label": "Continue",
+                    "resourceType": "ELEMENT",
+                    "type": "ACTION",
+                    "variant": "PRIMARY"
+                  }
+                ],
+                "id": "block_actions",
+                "resourceType": "ELEMENT",
+                "type": "BLOCK"
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "action": {
+                "ref": "action_continue",
+                "nextNode": "end"
+              }
+            }
+          ]
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 1657,
+              "y": 278
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "PASSWORD",
+    "type": "Email_Link",
+    "flowType": "RECOVERY",
+    "display": {
+      "label": "Email Link",
+      "description": "Email-based password recovery with email link",
+      "image": "assets/images/icons/email-down.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "Email Link Password Recovery Flow",
+      "handle": "email-link-based-password-recovery",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "prompt_username",
+          "layout": {
+            "size": {"width": 101, "height": 34},
+            "position": {"x": 0, "y": 400}
+          }
+        },
+        {
+          "id": "prompt_username",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_header_username",
+                "label": "{{ t(recovery:forms.username.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "TEXT",
+                "id": "text_subtitle_username",
+                "label": "{{ t(recovery:forms.username.subtitle) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_username",
+                "components": [
+                  {
+                    "id": "input_username",
+                    "ref": "username",
+                    "type": "TEXT_INPUT",
+                    "label": "{{ t(recovery:forms.username.fields.username.label) }}",
+                    "required": true,
+                    "placeholder": "{{ t(recovery:forms.username.fields.username.placeholder) }}"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_submit_username",
+                    "label": "{{ t(recovery:forms.username.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_username",
+                  "identifier": "username",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_submit_username",
+                "nextNode": "identify_user"
+              }
+            }
+          ],
+          "layout": {
+            "size": {"width": 350, "height": 431},
+            "position": {"x": 200, "y": 250}
+          }
+        },
+        {
+          "id": "identify_user",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "IdentifyingExecutor",
+            "mode": "identify",
+            "inputs": [
+              {
+                "ref": "input_username",
+                "identifier": "username",
+                "type": "TEXT_INPUT",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "generate_recovery_token",
+          "onFailure": "email_sent_status",
+          "layout": {
+            "size": {"width": 206, "height": 113},
+            "position": {"x": 650, "y": 340}
+          }
+        },
+        {
+          "id": "generate_recovery_token",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "generate"
+          },
+          "onSuccess": "send_recovery_email",
+          "layout": {
+            "size": {"width": 206, "height": 113},
+            "position": {"x": 960, "y": 340}
+          }
+        },
+        {
+          "id": "send_recovery_email",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "emailTemplate": "PASSWORD_RECOVERY"
+          },
+          "executor": {
+            "name": "EmailExecutor",
+            "mode": "send"
+          },
+          "onSuccess": "email_sent_status",
+          "onFailure": "email_sent_status",
+          "layout": {
+            "size": {"width": 200, "height": 113},
+            "position": {"x": 1270, "y": 340}
+          }
+        },
+        {
+          "id": "email_sent_status",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "email_sent_icon",
+                "label": "✉️",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "email_sent_heading",
+                "label": "{{ t(recovery:forms.email_sent.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "email_sent_message",
+                "label": "{{ t(recovery:forms.email_sent.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Check Your Email",
+          "next": "verify_recovery_token",
+          "layout": {
+            "size": {"width": 350, "height": 340},
+            "position": {"x": 1580, "y": 250}
+          }
+        },
+        {
+          "id": "verify_recovery_token",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "InviteExecutor",
+            "mode": "verify",
+            "inputs": [
+              {
+                "ref": "input_recovery_token",
+                "identifier": "inviteToken",
+                "type": "HIDDEN",
+                "required": true
+              }
+            ]
+          },
+          "onSuccess": "prompt_new_password",
+          "layout": {
+            "size": {"width": 206, "height": 113},
+            "position": {"x": 2040, "y": 340}
+          }
+        },
+        {
+          "id": "prompt_new_password",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_header_password",
+                "label": "{{ t(recovery:forms.new_password.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "TEXT",
+                "id": "text_subtitle_password",
+                "label": "{{ t(recovery:forms.new_password.subtitle) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_password",
+                "components": [
+                  {
+                    "id": "input_new_password",
+                    "ref": "password",
+                    "type": "PASSWORD_INPUT",
+                    "label": "{{ t(recovery:forms.new_password.fields.password.label) }}",
+                    "required": true,
+                    "placeholder": "{{ t(recovery:forms.new_password.fields.password.placeholder) }}"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_submit_password",
+                    "label": "{{ t(recovery:forms.new_password.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_new_password",
+                  "identifier": "password",
+                  "type": "PASSWORD_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_submit_password",
+                "nextNode": "set_credential"
+              }
+            }
+          ],
+          "layout": {
+            "size": {"width": 350, "height": 431},
+            "position": {"x": 2360, "y": 250}
+          }
+        },
+        {
+          "id": "set_credential",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "CredentialSetter"
+          },
+          "onSuccess": "recovery_complete",
+          "layout": {
+            "size": {"width": 206, "height": 113},
+            "position": {"x": 2820, "y": 340}
+          }
+        },
+        {
+          "id": "recovery_complete",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "recovery_complete_icon",
+                "label": "✅",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "recovery_complete_heading",
+                "label": "{{ t(recovery:forms.complete.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "recovery_complete_message",
+                "label": "{{ t(recovery:forms.complete.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "Password Reset Successful",
+          "next": "end",
+          "layout": {
+            "size": {"width": 350, "height": 340},
+            "position": {"x": 3140, "y": 250}
+          }
+        },
+        {
+          "id": "end",
+          "type": "END",
+          "layout": {
+            "size": {"width": 85, "height": 34},
+            "position": {"x": 3600, "y": 375}
+          }
+        }
+      ]
+    }
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "PASSWORD",
+    "type": "SMS_OTP",
+    "flowType": "RECOVERY",
+    "display": {
+      "label": "SMS OTP",
+      "description": "SMS OTP-based password recovery",
+      "image": "assets/images/icons/mobile-message.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "name": "SMS OTP Password Recovery Flow",
+      "handle": "default-password-recovery-sms-otp",
+      "nodes": [
+        {
+          "id": "start",
+          "type": "START",
+          "onSuccess": "prompt_username",
+          "layout": {
+            "size": {"width": 101, "height": 34},
+            "position": {"x": 0, "y": 400}
+          }
+        },
+        {
+          "id": "prompt_username",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_header_username",
+                "label": "{{ t(recovery:forms.username.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "TEXT",
+                "id": "text_subtitle_username",
+                "label": "{{ t(recovery:forms.username.subtitle) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_username",
+                "components": [
+                  {
+                    "id": "input_username",
+                    "ref": "username",
+                    "type": "TEXT_INPUT",
+                    "label": "{{ t(recovery:forms.username.fields.username.label) }}",
+                    "required": true,
+                    "placeholder": "{{ t(recovery:forms.username.fields.username.placeholder) }}"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_submit_username",
+                    "label": "{{ t(recovery:forms.username.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  },
+                  {
+                    "category": "DISPLAY",
+                    "id": "rich_text_signup",
+                    "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Remember your password? </span><a href=\"{{meta(application.sign_in_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign in</span></a></p>",
+                    "resourceType": "ELEMENT",
+                    "type": "RICH_TEXT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_username",
+                  "identifier": "username",
+                  "type": "TEXT_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_submit_username",
+                "nextNode": "identify_user"
+              }
+            }
+          ],
+          "layout": {
+            "size": {"width": 350, "height": 431},
+            "position": {"x": 200, "y": 250}
+          }
+        },
+        {
+          "id": "identify_user",
           "type": "TASK_EXECUTION",
           "inputs": [
-            {
-              "ref": "input_email",
-              "identifier": "email",
-              "type": "EMAIL_INPUT",
-              "required": true
-            },
             {
               "ref": "input_username",
               "identifier": "username",
               "type": "TEXT_INPUT",
               "required": true
-            },
-            {
-              "ref": "input_password",
-              "identifier": "password",
-              "type": "PASSWORD_INPUT",
-              "required": true
-            },
-            {
-              "ref": "input_given_name",
-              "identifier": "given_name",
-              "type": "TEXT_INPUT",
-              "required": false
-            },
-            {
-              "ref": "input_family_name",
-              "identifier": "family_name",
-              "type": "TEXT_INPUT",
-              "required": false
             }
           ],
           "executor": {
-            "name": "ProvisioningExecutor"
+            "name": "IdentifyingExecutor",
+            "mode": "identify"
           },
-          "onSuccess": "end"
+          "onSuccess": "send_otp",
+          "onFailure": "otp_sent_status",
+          "layout": {
+            "size": {"width": 206, "height": 113},
+            "position": {"x": 650, "y": 340}
+          }
+        },
+        {
+          "id": "send_otp",
+          "type": "TASK_EXECUTION",
+          "properties": {
+            "senderId": "<your-sms-sender-id>"
+          },
+          "executor": {
+            "name": "SMSOTPAuthExecutor",
+            "mode": "send"
+          },
+          "onSuccess": "otp_sent_status",
+          "onFailure": "otp_sent_status",
+          "layout": {
+            "size": {"width": 206, "height": 113},
+            "position": {"x": 960, "y": 340}
+          }
+        },
+        {
+          "id": "otp_sent_status",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "otp_sent_icon",
+                "label": "📱",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "otp_sent_heading",
+                "label": "{{ t(recovery:forms.otp_sent.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "TEXT",
+                "id": "otp_sent_message",
+                "label": "{{ t(recovery:forms.otp_sent.message) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_otp",
+                "components": [
+                  {
+                    "id": "input_otp",
+                    "ref": "otp",
+                    "type": "OTP_INPUT",
+                    "label": "{{ t(recovery:forms.otp_sent.fields.otp.label) }}",
+                    "required": true,
+                    "placeholder": "{{ t(recovery:forms.otp_sent.fields.otp.placeholder) }}"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_submit_otp",
+                    "label": "{{ t(recovery:forms.otp_sent.actions.verify.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  },
+                  {
+                    "category": "DISPLAY",
+                    "id": "rich_text_signup",
+                    "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Remember your password? </span><a href=\"{{meta(application.sign_in_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign in</span></a></p>",
+                    "resourceType": "ELEMENT",
+                    "type": "RICH_TEXT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_otp",
+                  "identifier": "otp",
+                  "type": "OTP_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_submit_otp",
+                "nextNode": "verify_otp"
+              }
+            }
+          ],
+          "layout": {
+            "size": {"width": 350, "height": 431},
+            "position": {"x": 1270, "y": 250}
+          }
+        },
+        {
+          "id": "verify_otp",
+          "type": "TASK_EXECUTION",
+          "inputs": [
+            {
+              "ref": "input_otp",
+              "identifier": "otp",
+              "type": "OTP_INPUT",
+              "required": true
+            }
+          ],
+          "executor": {
+            "name": "SMSOTPAuthExecutor",
+            "mode": "verify"
+          },
+          "onSuccess": "prompt_new_password",
+          "onFailure": "otp_sent_status",
+          "layout": {
+            "size": {"width": 206, "height": 113},
+            "position": {"x": 1720, "y": 340}
+          }
+        },
+        {
+          "id": "prompt_new_password",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "text_header_password",
+                "label": "{{ t(recovery:forms.new_password.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "type": "TEXT",
+                "id": "text_subtitle_password",
+                "label": "{{ t(recovery:forms.new_password.subtitle) }}",
+                "variant": "HEADING_6"
+              },
+              {
+                "type": "BLOCK",
+                "id": "block_password",
+                "components": [
+                  {
+                    "id": "input_new_password",
+                    "ref": "password",
+                    "type": "PASSWORD_INPUT",
+                    "label": "{{ t(recovery:forms.new_password.fields.password.label) }}",
+                    "required": true,
+                    "placeholder": "{{ t(recovery:forms.new_password.fields.password.placeholder) }}"
+                  },
+                  {
+                    "type": "ACTION",
+                    "id": "action_submit_password",
+                    "label": "{{ t(recovery:forms.new_password.actions.submit.label) }}",
+                    "variant": "PRIMARY",
+                    "eventType": "SUBMIT"
+                  }
+                ]
+              }
+            ]
+          },
+          "prompts": [
+            {
+              "inputs": [
+                {
+                  "ref": "input_new_password",
+                  "identifier": "password",
+                  "type": "PASSWORD_INPUT",
+                  "required": true
+                }
+              ],
+              "action": {
+                "ref": "action_submit_password",
+                "nextNode": "set_credential"
+              }
+            }
+          ],
+          "layout": {
+            "size": {"width": 350, "height": 431},
+            "position": {"x": 2040, "y": 250}
+          }
+        },
+        {
+          "id": "set_credential",
+          "type": "TASK_EXECUTION",
+          "executor": {
+            "name": "CredentialSetter"
+          },
+          "onSuccess": "recovery_complete",
+          "layout": {
+            "size": {"width": 206, "height": 113},
+            "position": {"x": 2500, "y": 340}
+          }
+        },
+        {
+          "id": "recovery_complete",
+          "type": "PROMPT",
+          "meta": {
+            "components": [
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "recovery_complete_icon",
+                "label": "✅",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "recovery_complete_heading",
+                "label": "{{ t(recovery:forms.complete.title) }}",
+                "variant": "HEADING_1"
+              },
+              {
+                "align": "center",
+                "type": "TEXT",
+                "id": "recovery_complete_message",
+                "label": "{{ t(recovery:forms.complete.message) }}",
+                "variant": "HEADING_6"
+              }
+            ]
+          },
+          "message": "{{ t(recovery:forms.complete.title) }}",
+          "next": "end",
+          "layout": {
+            "size": {"width": 350, "height": 340},
+            "position": {"x": 2820, "y": 250}
+          }
         },
         {
           "id": "end",
-          "type": "END"
+          "type": "END",
+          "layout": {
+            "size": {"width": 85, "height": 34},
+            "position": {"x": 3280, "y": 375}
+          }
         }
       ]
     }

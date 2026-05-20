@@ -1,0 +1,129 @@
+---
+title: Configuration
+displayed_sidebar: browserSdkSidebar
+description: Configuration options for the Browser SDK
+---
+
+# Configuration
+
+The `initialize()` method accepts a configuration object that controls how the SDK connects to your <ProductName /> instance and manages authentication.
+
+## Basic Configuration
+
+```js
+import { ThunderIDBrowserClient } from '@thunderid/browser'
+
+const auth = new ThunderIDBrowserClient()
+
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+})
+```
+
+## Configuration Reference
+
+### Required Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `clientId` | `string` | The Client ID from your <ProductName /> application |
+| `baseUrl` | `string` | Your <ProductName /> instance URL (e.g., `https://localhost:8090`) |
+
+### Authentication Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `afterSignInUrl` | `string` | `window.location.origin` | URL to redirect to after sign-in |
+| `afterSignOutUrl` | `string` | `window.location.origin` | URL to redirect to after sign-out |
+| `scopes` | `string[]` | `['openid', 'profile']` | OAuth 2.0 scopes to request |
+| `enablePKCE` | `boolean` | `true` | Enable PKCE for the authorization request |
+| `prompt` | `string` | — | Controls the authentication UI behavior (e.g., `"login"`, `"none"`, `"consent"`) |
+| `responseMode` | `string` | `'query'` | OAuth 2.0 response mode for the authorization request |
+| `sendCookiesInRequests` | `boolean` | `true` | Include cookies in token requests |
+| `sendIdTokenInLogoutRequest` | `boolean` | — | Include the ID token hint in the logout request |
+
+### Storage Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `storage` | `string` | `'sessionStorage'` | Storage backend: `'sessionStorage'`, `'localStorage'`, or `'browserMemory'` |
+
+### Session Management Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `syncSession` | `boolean` | `false` | Enable OIDC Session Management via RP iframe. Requires same-domain or third-party cookies |
+| `checkSessionInterval` | `number` | `3` | Interval in seconds between session-check polls |
+| `sessionRefreshInterval` | `number` | `300` | Interval in seconds for silent token refresh |
+| `periodicTokenRefresh` | `boolean` | `false` | Automatically refresh tokens before expiry |
+| `autoLogoutOnTokenRefreshError` | `boolean` | `false` | Sign the user out when a token refresh fails |
+
+### Advanced Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `applicationId` | `string` | — | UUID of the <ProductName /> application. Used for Application Branding and sign-up flow access URLs |
+| `allowedExternalUrls` | `string[]` | — | URL prefixes that the SDK may attach access tokens to when making HTTP requests |
+| `authParams` | `Record<string, string>` | — | Additional query parameters to append to every authorize request |
+
+## Storage Backends
+
+The SDK supports three storage backends for persisting session data. Choose one based on your security and UX requirements.
+
+### Session Storage (Default)
+
+Data persists for the browser tab lifetime. Each tab maintains an independent session.
+
+```js
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  storage: 'sessionStorage',
+})
+```
+
+### Local Storage
+
+Data persists across tabs and browser restarts. Use when you want sessions to survive page reloads and new tabs.
+
+```js
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  storage: 'localStorage',
+})
+```
+
+### Browser Memory
+
+Data exists only in memory and is lost on page reload. Use for the highest security requirements where no data should persist to disk.
+
+```js
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  storage: 'browserMemory',
+})
+```
+
+## Full Example
+
+```js title="src/auth.js" showLineNumbers
+import { ThunderIDBrowserClient } from '@thunderid/browser'
+
+const auth = new ThunderIDBrowserClient()
+
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  afterSignInUrl: 'http://localhost:5173',
+  afterSignOutUrl: 'http://localhost:5173',
+  scopes: ['openid', 'profile', 'email'],
+  storage: 'sessionStorage',
+  periodicTokenRefresh: true,
+  sessionRefreshInterval: 300,
+})
+
+export default auth
+```

@@ -19,7 +19,7 @@
 package executor
 
 import (
-	i18ncore "github.com/asgardeo/thunder/internal/system/i18n/core"
+	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 
 	"context"
 	"testing"
@@ -28,13 +28,13 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/security"
-	"github.com/asgardeo/thunder/tests/mocks/flow/coremock"
-	"github.com/asgardeo/thunder/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 const testParentOUID = "parent-ou-123"
@@ -400,7 +400,7 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_NoChildOUs_Skips() 
 		UserInputs: map[string]string{},
 	}
 
-	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, parentOUID, 1, 0).
+	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, parentOUID, 1, 0, mock.Anything).
 		Return(&ou.OrganizationUnitListResponse{TotalResults: 0}, (*serviceerror.ServiceError)(nil))
 
 	result, err := suite.executor.Execute(ctx)
@@ -424,7 +424,7 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_HasChildOUs_Request
 		UserInputs: map[string]string{},
 	}
 
-	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, parentOUID, 1, 0).
+	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, parentOUID, 1, 0, mock.Anything).
 		Return(&ou.OrganizationUnitListResponse{TotalResults: 3}, (*serviceerror.ServiceError)(nil))
 
 	result, err := suite.executor.Execute(ctx)
@@ -457,7 +457,7 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_GetChildrenError_Re
 		Code:  "OU-50001",
 		Error: i18ncore.I18nMessage{Key: "error.test.internal_error", DefaultValue: "internal error"},
 	}
-	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, parentOUID, 1, 0).
+	suite.mockOUService.On("GetOrganizationUnitChildren", mock.Anything, parentOUID, 1, 0, mock.Anything).
 		Return((*ou.OrganizationUnitListResponse)(nil), svcErr)
 
 	result, err := suite.executor.Execute(ctx)

@@ -17,6 +17,7 @@
  */
 
 import {useLocation} from '@docusaurus/router';
+import useBaseUrl from '@docusaurus/useBaseUrl';
 import {DefaultTheme} from '@thunderid/design';
 import {LoggerProvider, LogLevel} from '@thunderid/logger/react';
 import {OxygenUIThemeProvider} from '@wso2/oxygen-ui';
@@ -27,17 +28,20 @@ const PERSONA_STORAGE_KEY = 'product-docs-persona';
 
 export default function Root({children = null}: PropsWithChildren<Record<string, unknown>>) {
   const location = useLocation();
+  const baseUrl = useBaseUrl('/');
 
   useEffect(() => {
     const html = document.documentElement;
-    const pagePath = location.pathname.replace(/\//g, '-').replace(/^-|-$/g, '') || 'home';
+    const pathname = location.pathname;
+    const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+    const normalizedBase = baseUrl.replace(/\/+$/, '') || '/';
+
+    const pagePath = normalizedPath === normalizedBase
+      ? 'home'
+      : pathname.replace(/\//g, '-').replace(/^-|-$/g, '') || 'home';
 
     html.setAttribute('data-page', pagePath);
-
-    return () => {
-      html.removeAttribute('data-page');
-    };
-  }, [location.pathname]);
+  }, [location.pathname, baseUrl]);
 
   // Restore persona selection from localStorage before first paint.
   useEffect(() => {

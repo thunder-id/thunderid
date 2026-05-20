@@ -7,8 +7,8 @@ package modelmock
 import (
 	"database/sql"
 
-	"github.com/asgardeo/thunder/internal/system/database/model"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/database/model"
 )
 
 // NewTxInterfaceMock creates a new instance of TxInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

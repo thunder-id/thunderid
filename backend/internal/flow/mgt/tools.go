@@ -25,8 +25,8 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	flowCommon "github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/system/mcp/tool"
+	flowCommon "github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
 
 // flowTools provides MCP tools for managing authentication flows.

@@ -18,7 +18,7 @@
 
 package authn
 
-import "github.com/asgardeo/thunder/internal/idp"
+import "github.com/thunder-id/thunderid/internal/idp"
 
 // IDPAuthInitData represents the data returned when initiating IDP authentication.
 type IDPAuthInitData struct {

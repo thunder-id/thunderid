@@ -48,7 +48,7 @@ const mockOUData: OrganizationUnitListResponse = {
   ],
 };
 
-vi.mock('../../api/useGetOrganizationUnits', () => ({
+vi.mock('@/api/useGetOrganizationUnits', () => ({
   default: () => ({
     data: mockOUData,
     isLoading: false,
@@ -57,21 +57,21 @@ vi.mock('../../api/useGetOrganizationUnits', () => ({
 }));
 
 // Mock delete hook
-vi.mock('../../api/useDeleteOrganizationUnit', () => ({
+vi.mock('@/api/useDeleteOrganizationUnit', () => ({
   default: () => ({
     mutate: vi.fn(),
     isPending: false,
   }),
 }));
 
-// Mock Asgardeo — stable reference to avoid useCallback churn when tree view renders
+// Mock ThunderID — stable reference to avoid useCallback churn when tree view renders
 const stableHttp = {request: vi.fn()};
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({http: stableHttp}),
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({http: stableHttp}),
 }));
 
 // Mock useOrganizationUnit hook with React state for reactivity
-vi.mock('../../contexts/useOrganizationUnit', async () => {
+vi.mock('@/contexts/useOrganizationUnit', async () => {
   const {useState, useCallback} = await import('react');
   type OrganizationUnitTreeItem = import('../../models/organization-unit-tree').OrganizationUnitTreeItem;
   function useOrganizationUnit() {

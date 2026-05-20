@@ -41,6 +41,8 @@ $BACKEND_PORT = if ($env:BACKEND_PORT) { [int]$env:BACKEND_PORT } else { 8090 }
 $DEBUG_PORT = if ($env:DEBUG_PORT) { [int]$env:DEBUG_PORT } else { 2345 }
 $DEBUG_MODE = $false
 $WITH_CONSENT = if ($env:WITH_CONSENT -eq 'false') { $false } else { $true }
+$RESOURCES_FILE = ""
+$ENV_FILE = ""
 
 # Parse command line arguments
 $i = 0
@@ -80,12 +82,28 @@ while ($i -lt $args.Count) {
             $i++
             break
         }
+        '--env' {
+            $i++
+            if ($i -lt $args.Count) {
+                $ENV_FILE = $args[$i]
+                $i++
+            }
+            else {
+                Write-Host "Missing value for --env" -ForegroundColor Red
+                exit 1
+            }
+            break
+        }
         '--help' {
             Write-Host "$PRODUCT_NAME Server Startup Script"
             Write-Host ""
-            Write-Host "Usage: .\start.ps1 [options]"
+            Write-Host "Usage: .\start.ps1 [resources_file] [options]"
+            Write-Host ""
+            Write-Host "Arguments:"
+            Write-Host "  resources_file       Path to exported resources YAML file (optional)"
             Write-Host ""
             Write-Host "Options:"
+            Write-Host "  --env FILE           Path to env file with KEY=VALUE variables"
             Write-Host "  --debug              Enable debug mode with remote debugging"
             Write-Host "  --port PORT          Set application port (default: 8090)"
             Write-Host "  --debug-port PORT    Set debug port (default: 2345)"
@@ -100,21 +118,145 @@ while ($i -lt $args.Count) {
             Write-Host "    .\start.ps1"
             Write-Host ""
             Write-Host "Examples:"
-            Write-Host "  .\start.ps1                    Start server normally"
-            Write-Host "  .\start.ps1 --debug            Start in debug mode"
-            Write-Host "  .\start.ps1 --port 9090        Start on custom port"
+            Write-Host "  .\start.ps1                                   Start server normally"
+            Write-Host "  .\start.ps1 --debug                           Start in debug mode"
+            Write-Host "  .\start.ps1 --port 9090                       Start on custom port"
+            Write-Host "  .\start.ps1 cloud.yml --env my.env            Start with exported resources and env"
             exit 0
         }
         default {
-            Write-Host "Unknown option: $($args[$i])" -ForegroundColor Yellow
-            Write-Host "Use --help for usage information"
-            exit 1
+            if (-not $args[$i].StartsWith('-') -and $RESOURCES_FILE -eq "") {
+                $RESOURCES_FILE = $args[$i]
+                $i++
+            }
+            else {
+                Write-Host "Unknown option: $($args[$i])" -ForegroundColor Yellow
+                Write-Host "Use --help for usage information"
+                exit 1
+            }
         }
     }
 }
 
+# Resolve relative paths to absolute.
+if ($RESOURCES_FILE -ne "" -and -not [System.IO.Path]::IsPathRooted($RESOURCES_FILE)) {
+    $RESOURCES_FILE = Join-Path (Get-Location).Path $RESOURCES_FILE
+}
+if ($ENV_FILE -ne "" -and -not [System.IO.Path]::IsPathRooted($ENV_FILE)) {
+    $ENV_FILE = Join-Path (Get-Location).Path $ENV_FILE
+}
+
 # Exit on any error
 $ErrorActionPreference = 'Stop'
+
+function Setup-DeclarativeResources {
+    $scriptDir = Split-Path -Parent $MyInvocation.ScriptName
+    $resourcesBase = Join-Path $scriptDir "repository\resources"
+
+    # Load and export env vars from the env file.
+    if ($ENV_FILE -ne "") {
+        if (-not (Test-Path $ENV_FILE)) {
+            Write-Host "Error: env file not found: $ENV_FILE" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "Loading environment from $ENV_FILE ..."
+        Get-Content $ENV_FILE | ForEach-Object {
+            $line = $_.TrimEnd()
+            if ($line -eq "" -or $line.StartsWith('#')) { return }
+            if ($line -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
+                $key = $Matches[1]
+                $value = $Matches[2]
+                if ($value -match '^\[') {
+                    # JSON array — expand into KEY_0, KEY_1, ...
+                    try {
+                        $arr = $value | ConvertFrom-Json
+                        $idx = 0
+                        foreach ($elem in $arr) {
+                            [System.Environment]::SetEnvironmentVariable("${key}_${idx}", $elem, 'Process')
+                            $idx++
+                        }
+                    } catch {
+                        Write-Warning "Failed to parse JSON array for key '$key': $_"
+                        [System.Environment]::SetEnvironmentVariable($key, $value, 'Process')
+                    }
+                } else {
+                    [System.Environment]::SetEnvironmentVariable($key, $value, 'Process')
+                }
+            }
+        }
+    }
+
+    # Split the combined resources YAML and place each document in its type directory.
+    if ($RESOURCES_FILE -ne "") {
+        if (-not (Test-Path $RESOURCES_FILE)) {
+            Write-Host "Error: resources file not found: $RESOURCES_FILE" -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "Setting up declarative resources from $RESOURCES_FILE ..."
+
+        $typeMap = @{
+            'application'         = 'applications'
+            'flow'                = 'flows'
+            'group'               = 'groups'
+            'identity_provider'   = 'identity_providers'
+            'layout'              = 'layouts'
+            'notification_sender' = 'notification_senders'
+            'organization_unit'   = 'organization_units'
+            'resource_server'     = 'resource_servers'
+            'role'                = 'roles'
+            'theme'               = 'themes'
+            'translation'         = 'translations'
+            'user'                = 'users'
+            'user_schema'         = 'user_schemas'
+        }
+
+        $lines = Get-Content $RESOURCES_FILE
+        $docLines = [System.Collections.Generic.List[string]]::new()
+        $currentFile = ""
+        $currentType = ""
+
+        $flushDoc = {
+            if ($docLines.Count -eq 0 -or $currentType -eq "") {
+                $docLines.Clear()
+                $script:currentFile = ""
+                $script:currentType = ""
+                return
+            }
+            $dir = if ($typeMap.ContainsKey($currentType)) { $typeMap[$currentType] } else { "${currentType}s" }
+            $targetDir = Join-Path $resourcesBase $dir
+            if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
+            $fname = if ($currentFile -ne "") { $currentFile } else { "resource.yaml" }
+            $outPath = Join-Path $targetDir $fname
+            $docLines | Set-Content -Path $outPath -Encoding UTF8
+            Write-Host "  Placed: $dir\$fname"
+            $docLines.Clear()
+            $script:currentFile = ""
+            $script:currentType = ""
+        }
+
+        foreach ($line in $lines) {
+            if ($line -match '^---\s*$') {
+                & $flushDoc
+            }
+            elseif ($line -match '^# File:\s*(.+)$') {
+                $currentFile = $Matches[1].Trim()
+            }
+            elseif ($line -match '^# resource_type:\s*(.+)$') {
+                $currentType = $Matches[1].Trim()
+            }
+            else {
+                $docLines.Add($line)
+            }
+        }
+        & $flushDoc
+        Write-Host "Declarative resources ready."
+    }
+}
+
+# Set up declarative resources if a resources file or env file was provided.
+if ($RESOURCES_FILE -ne "" -or $ENV_FILE -ne "") {
+    Setup-DeclarativeResources
+}
 
 function Stop-PortListener {
     param (

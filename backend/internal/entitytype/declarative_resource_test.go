@@ -27,12 +27,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/entitytype"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/i18n/core"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/tests/mocks/entitytypemock"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 )
 
 // EntityTypeExporterTestSuite tests the entityTypeExporter.
@@ -67,7 +67,7 @@ func (s *EntityTypeExporterTestSuite) TestGetParameterizerType() {
 
 func (s *EntityTypeExporterTestSuite) TestGetAllResourceIDs_Success() {
 	expectedResponse := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{
+		Types: []entitytype.EntityTypeListItem{
 			{ID: "schema1", Name: "Schema 1"},
 			{ID: "schema2", Name: "Schema 2"},
 		},
@@ -106,7 +106,7 @@ func (s *EntityTypeExporterTestSuite) TestGetAllResourceIDs_Error() {
 
 func (s *EntityTypeExporterTestSuite) TestGetAllResourceIDs_EmptyList() {
 	expectedResponse := &entitytype.EntityTypeListResponse{
-		Schemas: []entitytype.EntityTypeListItem{},
+		Types: []entitytype.EntityTypeListItem{},
 	}
 
 	s.mockService.EXPECT().

@@ -17,19 +17,19 @@ export const SDKsContent = () => {
   const [activeFilter, setActiveFilter] = useState('all');
 
   const allSDKs = [
-    {icon: <ReactLogo size={64} />, title: 'React SDK', packageName: '@asgardeo/react', packageManager: 'npm', description: `Get started installing and initializing ${productName} in a new React + Vite app.`, href: 'react/overview', category: 'frontend'},
-    {icon: <NextLogo size={64} />, title: 'Next.js SDK', packageName: '@asgardeo/nextjs', packageManager: 'npm', description: `Integrate ${productName} authentication in your Next.js application with App Router support.`, comingSoon: true, category: 'frontend'},
-    {icon: <VueLogo size={64} />, title: 'Vue SDK', packageName: '@asgardeo/vue', packageManager: 'npm', description: `Add authentication to your Vue.js application with ${productName} SDK.`, comingSoon: true, category: 'frontend'},
-    {icon: <NuxtLogo size={64} />, title: 'Nuxt SDK', packageName: '@asgardeo/nuxt', packageManager: 'npm', description: `Integrate ${productName} authentication in your Nuxt 3 application.`, comingSoon: true, category: 'frontend'},
-    {icon: <AngularLogo size={64} />, title: 'Angular SDK', packageName: '@asgardeo/angular', packageManager: 'npm', description: `Add ${productName} authentication to your Angular application.`, comingSoon: true, category: 'frontend'},
-    {icon: <BrowserLogo size={64} />, title: 'Browser SDK', packageName: '@asgardeo/browser', packageManager: 'npm', description: 'Vanilla JavaScript SDK for browser-based applications without frameworks.', comingSoon: true, category: 'frontend'},
-    {icon: <NodeLogo size={64} />, title: 'Node.js SDK', packageName: '@asgardeo/node', packageManager: 'npm', description: 'Server-side authentication for Node.js applications.', comingSoon: true, category: 'backend'},
-    {icon: <ExpressLogo size={64} />, title: 'Express SDK', packageName: '@asgardeo/express', packageManager: 'npm', description: `Middleware for Express.js applications with ${productName} authentication.`, comingSoon: true, category: 'backend'},
+    {icon: <ReactLogo size={64} />, title: 'React SDK', packageName: '@thunderid/react', packageManager: 'npm', description: `Get started installing and initializing ${productName} in a new React + Vite app.`, href: 'react/overview', category: 'frontend'},
+    {icon: <NextLogo size={64} />, title: 'Next.js SDK', packageName: '@thunderid/nextjs', packageManager: 'npm', description: `Integrate ${productName} authentication in your Next.js application with App Router support.`, comingSoon: true, category: 'frontend'},
+    {icon: <VueLogo size={64} />, title: 'Vue SDK', packageName: '@thunderid/vue', packageManager: 'npm', description: `Add authentication to your Vue.js application with ${productName} SDK.`, comingSoon: true, category: 'frontend'},
+    {icon: <NuxtLogo size={64} />, title: 'Nuxt SDK', packageName: '@thunderid/nuxt', packageManager: 'npm', description: `Integrate ${productName} authentication in your Nuxt 3 application.`, comingSoon: true, category: 'frontend'},
+    {icon: <AngularLogo size={64} />, title: 'Angular SDK', packageName: '@thunderid/angular', packageManager: 'npm', description: `Add ${productName} authentication to your Angular application.`, comingSoon: true, category: 'frontend'},
+    {icon: <BrowserLogo size={64} />, title: 'Browser SDK', packageName: '@thunderid/browser', packageManager: 'npm', description: 'Vanilla JavaScript SDK for browser-based applications without frameworks.', href: 'browser/overview', category: 'frontend'},
+    {icon: <NodeLogo size={64} />, title: 'Node.js SDK', packageName: '@thunderid/node', packageManager: 'npm', description: 'Server-side authentication for Node.js applications.', comingSoon: true, category: 'backend'},
+    {icon: <ExpressLogo size={64} />, title: 'Express SDK', packageName: '@thunderid/express', packageManager: 'npm', description: `Middleware for Express.js applications with ${productName} authentication.`, comingSoon: true, category: 'backend'},
     {icon: <GoLogo size={64} />, title: 'Go SDK', packageName: 'github.com/asgardeo/go', packageManager: 'go', description: `${productName} authentication SDK for Go applications.`, comingSoon: true, category: 'backend'},
     {icon: <PythonLogo size={64} />, title: 'Python SDK', packageName: 'asgardeo', packageManager: 'pip', description: `Integrate ${productName} authentication in your Python applications.`, comingSoon: true, category: 'backend'},
     {icon: <IOSLogo size={64} />, title: 'iOS SDK', packageName: 'Asgardeo', packageManager: 'pod', description: `Native iOS SDK for ${productName} authentication in Swift applications.`, comingSoon: true, category: 'mobile'},
     {icon: <AndroidLogo size={64} />, title: 'Android SDK', packageName: 'io.asgardeo:android', packageManager: 'gradle', description: `Native Android SDK for ${productName} authentication in Kotlin/Java applications.`, comingSoon: true, category: 'mobile'},
-    {icon: <ReactLogo size={64} />, title: 'React Native SDK', packageName: '@asgardeo/react-native', packageManager: 'npm', description: `Cross-platform React Native SDK for ${productName} authentication.`, comingSoon: true, category: 'mobile'},
+    {icon: <ReactLogo size={64} />, title: 'React Native SDK', packageName: '@thunderid/react-native', packageManager: 'npm', description: `Cross-platform React Native SDK for ${productName} authentication.`, comingSoon: true, category: 'mobile'},
     {icon: <FlutterLogo size={64} />, title: 'Flutter SDK', packageName: 'asgardeo_flutter', packageManager: 'pub', description: `Cross-platform Flutter SDK for ${productName} authentication.`, comingSoon: true, category: 'mobile'},
   ];
 
@@ -156,7 +156,6 @@ export const SDKsContent = () => {
                     borderColor: isActive ? 'primary.main' : 'divider',
                     bgcolor: isActive ? 'rgba(255, 107, 0, 0.08)' : 'transparent',
                     color: isActive ? 'primary.main' : 'text.secondary',
-                    boxShadow: isActive ? '0 0 0 1px rgba(255, 107, 0, 0.3), 0 0 12px rgba(255, 107, 0, 0.1)' : 'none',
                     fontFamily: 'inherit',
                     '&:hover': {
                       borderColor: isActive ? 'primary.main' : 'text.secondary',

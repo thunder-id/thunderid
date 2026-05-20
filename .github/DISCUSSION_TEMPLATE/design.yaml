@@ -6,7 +6,7 @@ body:
     attributes:
       label: Related Feature Issue
       description: Link to the approved feature issue this design addresses
-      placeholder: "#123 or https://github.com/asgardeo/thunder/issues/<>"
+      placeholder: "#123 or https://github.com/thunder-id/thunderid/issues/<>"
     validations:
       required: true
 

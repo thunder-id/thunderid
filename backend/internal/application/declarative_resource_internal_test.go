@@ -21,18 +21,15 @@ package application
 import (
 	"context"
 	"encoding/json"
-
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-
-	"github.com/stretchr/testify/mock"
-
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/application/model"
-	oauth2const "github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/application/model"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 )
 
 // ValidateApplicationWrapperTestSuite tests the validateApplicationWrapper function.
@@ -506,4 +503,14 @@ inbound_auth_config:
 	err = json.Unmarshal(sysCredsJSON, &sysCreds)
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), "oauth-client-secret", sysCreds[fieldClientSecret])
+}
+
+func (s *ParseToApplicationDTOTestSuite) TestParseToApplicationDTO_OUHandlePassedThrough() {
+	yamlData := []byte("id: app-1\nname: My App\nou_handle: default\n")
+
+	appDTO, err := parseToApplicationDTO(yamlData)
+
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), "default", appDTO.OUHandle)
+	assert.Empty(s.T(), appDTO.OUID)
 }

@@ -25,9 +25,9 @@ describe('agent-types response types', () => {
       totalResults: 1,
       startIndex: 0,
       count: 1,
-      schemas: [{id: 'a1', name: 'default', ouId: 'ou1'}],
+      types: [{id: 'a1', name: 'default', ouId: 'ou1'}],
     };
-    expect(list.schemas).toHaveLength(1);
+    expect(list.types).toHaveLength(1);
   });
 
   it('accepts AgentTypeListResponse with optional pagination links', () => {
@@ -35,7 +35,7 @@ describe('agent-types response types', () => {
       totalResults: 0,
       startIndex: 0,
       count: 0,
-      schemas: [],
+      types: [],
       links: [{href: 'https://example.com/agent-types?offset=10', rel: 'next'}],
     };
     expect(list.links).toHaveLength(1);

@@ -1,0 +1,26 @@
+{
+  "name": "ai-agent",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "tsx agent.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@thunderid/javascript": "0.0.5",
+    "@langchain/anthropic": "^1.3.0",
+    "@langchain/google-genai": "^2.1.0",
+    "@langchain/langgraph": "^1.3.0",
+    "@langchain/mcp-adapters": "^1.1.0",
+    "dotenv": "^16.5.0",
+    "tsx": "^4.19.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.19"
+  }
+}

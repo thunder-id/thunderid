@@ -10,8 +10,8 @@ CREATE TABLE "AUTHORIZATION_CODE" (
     EXPIRY_TIME DATETIME NOT NULL
 );
 
--- Composite index for authorization code lookup by client + code + deployment (hot login-path query)
-CREATE INDEX idx_authz_code_client_code_deployment ON "AUTHORIZATION_CODE" (CLIENT_ID, AUTHORIZATION_CODE, DEPLOYMENT_ID);
+-- Composite index for authorization code lookup by code + deployment (hot login-path query)
+CREATE INDEX idx_authorization_code_code_deployment ON "AUTHORIZATION_CODE" (AUTHORIZATION_CODE, DEPLOYMENT_ID);
 
 -- Table to store OAuth2 authorization request context
 CREATE TABLE "AUTHORIZATION_REQUEST" (

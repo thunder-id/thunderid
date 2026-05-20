@@ -48,6 +48,7 @@ env:
   RELEASE_BRANCH: "release"
   RELEASE_GIT_USER_NAME: "thunderid-automation-bot"
   RELEASE_GIT_USER_EMAIL: "thunderid-bot@wso2.com"
+  NODE_VERSION: "lts/*"
 
 jobs:
   build:
@@ -162,10 +163,21 @@ jobs:
           echo "📝 Updating README.md docker-compose curl URL to $VERSION"
 
           # Update the docker-compose.yml curl URL in README.md
-          sed -i -E "s|(https://raw\.githubusercontent\.com/asgardeo/thunder/)v[0-9]+\.[0-9]+\.[0-9]+(/.+docker-compose\.yml)|\1${VERSION}\2|g" README.md
+          sed -i -E "s|(https://raw\.githubusercontent\.com/thunder-id/thunderid/)v[0-9]+\.[0-9]+\.[0-9]+(/.+docker-compose\.yml)|\1${VERSION}\2|g" README.md
 
           echo "✅ Updated README.md curl URL to $VERSION"
           grep 'docker-compose.yml' README.md
+
+          echo "📝 Updating get-thunderid.mdx docker-compose curl URL to $VERSION"
+
+          # Update the docker-compose.yml curl URL in docs
+          sed -i -E "s|(https://raw\.githubusercontent\.com/thunder-id/thunderid/)v[0-9]+\.[0-9]+\.[0-9]+(/.+docker-compose\.yml)|\1${VERSION}\2|g" docs/content/guides/getting-started/get-thunderid.mdx
+
+          echo "✅ Updated get-thunderid.mdx curl URL to $VERSION"
+          grep -q "thunder-id/thunderid/${VERSION}/install/quick-start/docker-compose.yml" docs/content/guides/getting-started/get-thunderid.mdx || {
+            echo "❌ Error: Failed to update get-thunderid.mdx docker-compose URL to $VERSION"
+            exit 1
+          }
 
       - name: 📝 Update Helm and Sample App Versions
         if: ${{ steps.get_version.outputs.use_existing_version != 'true' }}
@@ -212,6 +224,7 @@ jobs:
           git add \
             version.txt \
             README.md \
+            docs/content/guides/getting-started/get-thunderid.mdx \
             install/helm/Chart.yaml \
             install/openchoreo/helm/Chart.yaml \
             install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-oc-componenttype/Chart.yaml \
@@ -382,6 +395,18 @@ jobs:
         with:
           show-cert-info: 'true'
           product-name: ${{ env.PRODUCT_NAME }}
+
+      - name: ⚙️ Set up Node.js for Frontend Build
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager: 'npm'
+          dependency-path: 'samples/apps/react-vanilla-sample'
+
+      - name: 📦 Install pnpm for Frontend Build
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          run_install: false
 
       - name: 🔨 Build Release Artifacts
         uses: ./.github/actions/build-multiplatform
@@ -605,14 +630,14 @@ jobs:
       - name: ⚙️ Set up Node.js for Version Update
         uses: ./.github/actions/setup-node
         with:
-          node-version: 'lts/*'
+          node-version: ${{ env.NODE_VERSION }}
           package-manager: 'npm'
           dependency-path: 'samples/apps/react-vanilla-sample'
 
       - name: 📦 Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
-          version: '10.33.4'
+          run_install: false
 
       - name: 🏷️ Update Sample Apps Version
         run: |
@@ -631,13 +656,13 @@ jobs:
 
           # Update the react-sdk sample app package.json
           cd samples/apps/react-sdk-sample
-          pnpm version $NEXT_VERSION --no-git-tag-version --allow-same-version
+          pnpm version $NEXT_VERSION --no-git-tag-version --no-git-checks --allow-same-version
 
           cd "$GITHUB_WORKSPACE"
 
           # Update the react-api-based sample app package.json
           cd samples/apps/react-api-based-sample
-          pnpm version $NEXT_VERSION --no-git-tag-version --allow-same-version
+          pnpm version $NEXT_VERSION --no-git-tag-version --no-git-checks --allow-same-version
 
           cd "$GITHUB_WORKSPACE"
           echo "✅ Updated sample apps version to $NEXT_VERSION"
@@ -1031,7 +1056,7 @@ jobs:
             const releaseTag = '${{ needs.release.outputs.release_tag }}';
             const productNameLower = process.env.PRODUCT_NAME_LOWER;
             const serverDistributionUrl = `https://github.com/${{ github.repository }}/releases/download/${releaseTag}/${productNameLower}-${releaseTag.replace('v', '')}-linux-x64.zip`;
-            const pushBenchmarkToGitHub = ${{ github.repository == 'asgardeo/thunder' }};
+            const pushBenchmarkToGitHub = ${{ github.repository == 'thunder-id/thunderid' }};
 
             try {
               console.log(`🔄 Triggering performance test workflow`);

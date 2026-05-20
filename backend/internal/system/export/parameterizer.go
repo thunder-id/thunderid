@@ -27,8 +27,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/log"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 type templatingRules struct {
@@ -44,6 +44,11 @@ type resourceRules struct {
 	ArrayVariables        []string `yaml:"ArrayVariables,omitempty"`
 	DynamicPropertyFields []string `yaml:"DynamicPropertyFields,omitempty"`
 }
+
+const (
+	yamlTagOmitEmpty = "omitempty"
+	yamlTagInline    = "inline"
+)
 
 // Parameterizer handles the templating logic
 type parameterizer struct {
@@ -361,15 +366,28 @@ func (p *parameterizer) structToNodeIgnoringOmitempty(
 			continue
 		}
 
-		// Parse yaml tag to check for omitempty
+		// Parse yaml tag to detect omitempty and inline options
 		tagParts := strings.Split(yamlTag, ",")
 		yamlFieldName := tagParts[0]
 		hasOmitEmpty := false
+		isInline := false
 		for _, part := range tagParts[1:] {
-			if part == "omitempty" {
+			switch part {
+			case yamlTagOmitEmpty:
 				hasOmitEmpty = true
-				break
+			case yamlTagInline:
+				isInline = true
 			}
+		}
+
+		// Mirror yaml.v3's `yaml:",inline"` semantics: flatten the embedded struct's fields
+		// into the current mapping rather than nesting them under an empty key.
+		if isInline {
+			err := p.appendInlineStructFields(mappingNode, fieldValue, rules, currentPath, resourceName)
+			if err != nil {
+				return err
+			}
+			continue
 		}
 
 		// Check for forced quoting via yamlfmt tag
@@ -409,6 +427,75 @@ func (p *parameterizer) structToNodeIgnoringOmitempty(
 	}
 
 	node.Content = []*yaml.Node{mappingNode}
+	return nil
+}
+
+// appendInlineStructFields flattens a `yaml:",inline"` embedded struct's fields into the
+// given mapping node, honoring per-field omitempty / rules / yamlfmt as the regular walkers do.
+func (p *parameterizer) appendInlineStructFields(
+	mapping *yaml.Node, fieldValue reflect.Value,
+	rules *resourceRules, currentPath, resourceName string,
+) error {
+	v := fieldValue
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return nil
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+	t := v.Type()
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		yamlTag := field.Tag.Get("yaml")
+		if yamlTag == "" || yamlTag == "-" {
+			continue
+		}
+		tagParts := strings.Split(yamlTag, ",")
+		yamlFieldName := tagParts[0]
+		hasOmitEmpty := false
+		isInline := false
+		for _, part := range tagParts[1:] {
+			switch part {
+			case yamlTagOmitEmpty:
+				hasOmitEmpty = true
+			case yamlTagInline:
+				isInline = true
+			}
+		}
+
+		innerValue := v.Field(i)
+		nestedPath := field.Name
+		if currentPath != "" {
+			nestedPath = currentPath + "." + field.Name
+		}
+
+		if isInline {
+			if err := p.appendInlineStructFields(mapping, innerValue, rules, currentPath, resourceName); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if hasOmitEmpty && p.isEmptyValue(innerValue) && !p.isFieldInRules(rules, nestedPath) {
+			continue
+		}
+
+		keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: yamlFieldName}
+		valueNode, err := p.fieldToNode(innerValue, rules, nestedPath, resourceName)
+		if err != nil {
+			return err
+		}
+		if field.Tag.Get("yamlfmt") == "quoted" && valueNode.Kind == yaml.ScalarNode {
+			valueNode.Style = yaml.DoubleQuotedStyle
+		}
+		mapping.Content = append(mapping.Content, keyNode, valueNode)
+	}
 	return nil
 }
 
@@ -630,14 +717,24 @@ func (p *parameterizer) handleStructNode(
 
 		tagParts := strings.Split(yamlTag, ",")
 		yamlFieldName := tagParts[0]
-
-		// Check if this field has omitempty
 		hasOmitEmpty := false
+		isInline := false
 		for _, part := range tagParts[1:] {
-			if part == "omitempty" {
+			switch part {
+			case yamlTagOmitEmpty:
 				hasOmitEmpty = true
-				break
+			case yamlTagInline:
+				isInline = true
 			}
+		}
+
+		fieldValue := v.Field(i)
+
+		if isInline {
+			if err := p.appendInlineStructFields(node, fieldValue, rules, currentPath, resourceName); err != nil {
+				return nil, err
+			}
+			continue
 		}
 
 		// Build the nested field path
@@ -647,7 +744,6 @@ func (p *parameterizer) handleStructNode(
 		}
 
 		// Skip empty fields if omitempty is set AND field is NOT in parameterization rules
-		fieldValue := v.Field(i)
 		if hasOmitEmpty && p.isEmptyValue(fieldValue) && !p.isFieldInRules(rules, nestedFieldPath) {
 			continue
 		}

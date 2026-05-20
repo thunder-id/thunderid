@@ -1443,7 +1443,7 @@ paths:
                 totalResults: 2
                 startIndex: 1
                 count: 2
-                schemas:
+                types:
                   - id: 660e8400-e29b-41d4-a716-446655440001
                     name: service-agent
                     ouId: a839f4bd-39dc-4eaa-b5cc-210d8ecaee87
@@ -1849,6 +1849,8 @@ paths:
                     authFlowId: edc013d0-e893-4dc0-990c-3e1d203e005b
                     registrationFlowId: 80024fb3-29ed-4c33-aa48-8aee5e96d522
                     isRegistrationFlowEnabled: true
+                    recoveryFlowId: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+                    isRecoveryFlowEnabled: true
                   - id: 660e8400-e29b-41d4-a716-446655440001
                     name: Mobile App
                     description: Mobile application for customers
@@ -1857,6 +1859,8 @@ paths:
                     authFlowId: edc013d0-e893-4dc0-990c-3e1d203e005b
                     registrationFlowId: 80024fb3-29ed-4c33-aa48-8aee5e96d522
                     isRegistrationFlowEnabled: false
+                    recoveryFlowId: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+                    isRecoveryFlowEnabled: false
         "400":
           description: Bad request
           content:
@@ -1906,6 +1910,8 @@ paths:
               authFlowId: edc013d0-e893-4dc0-990c-3e1d203e005b
               registrationFlowId: 80024fb3-29ed-4c33-aa48-8aee5e96d522
               isRegistrationFlowEnabled: true
+              recoveryFlowId: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+              isRecoveryFlowEnabled: true
               url: https://myapp.example.com
               logoUrl: https://myapp.example.com/logo.png
               tosUri: https://myapp.example.com/terms
@@ -2000,6 +2006,8 @@ paths:
                 authFlowId: edc013d0-e893-4dc0-990c-3e1d203e005b
                 registrationFlowId: 80024fb3-29ed-4c33-aa48-8aee5e96d522
                 isRegistrationFlowEnabled: true
+                recoveryFlowId: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+                isRecoveryFlowEnabled: true
                 url: https://myapp.example.com
                 logoUrl: https://myapp.example.com/logo.png
                 tosUri: https://myapp.example.com/terms
@@ -2117,6 +2125,16 @@ paths:
                     description:
                       key: error.applicationservice.invalid_grant_type_description
                       defaultValue: One or more grant types are not supported
+                invalid-recovery-flow-id:
+                  summary: Invalid or disabled recovery flow ID
+                  value:
+                    code: APP-1005
+                    message:
+                      key: error.applicationservice.invalid_recovery_flow_id
+                      defaultValue: Invalid or disabled recovery flow ID
+                    description:
+                      key: error.applicationservice.invalid_recovery_flow_id_description
+                      defaultValue: The provided recoveryFlowId does not exist or is not enabled
         "500":
           description: Internal server error
           content:
@@ -2162,6 +2180,8 @@ paths:
                 authFlowId: edc013d0-e893-4dc0-990c-3e1d203e005b
                 registrationFlowId: 80024fb3-29ed-4c33-aa48-8aee5e96d522
                 isRegistrationFlowEnabled: true
+                recoveryFlowId: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+                isRecoveryFlowEnabled: true
                 url: https://myapp.example.com
                 logoUrl: https://myapp.example.com/logo.png
                 tosUri: https://myapp.example.com/terms
@@ -2310,6 +2330,8 @@ paths:
               authFlowId: edc013d0-e893-4dc0-990c-3e1d203e005b
               registrationFlowId: 80024fb3-29ed-4c33-aa48-8aee5e96d522
               isRegistrationFlowEnabled: true
+              recoveryFlowId: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+              isRecoveryFlowEnabled: true
               url: https://myapp.example.com
               logoUrl: https://myapp.example.com/updated-logo.png
               tosUri: https://myapp.example.com/terms
@@ -2406,6 +2428,8 @@ paths:
                 authFlowId: edc013d0-e893-4dc0-990c-3e1d203e005b
                 registrationFlowId: 80024fb3-29ed-4c33-aa48-8aee5e96d522
                 isRegistrationFlowEnabled: true
+                recoveryFlowId: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+                isRecoveryFlowEnabled: true
                 url: https://myapp.example.com
                 logoUrl: https://myapp.example.com/updated-logo.png
                 tosUri: https://myapp.example.com/terms
@@ -2515,6 +2539,16 @@ paths:
                     description:
                       key: error.applicationservice.invalid_redirect_uri_description
                       defaultValue: One or more redirect URIs are not valid
+                invalid-recovery-flow-id:
+                  summary: Invalid or disabled recovery flow ID
+                  value:
+                    code: APP-1005
+                    message:
+                      key: error.applicationservice.invalid_recovery_flow_id
+                      defaultValue: Invalid or disabled recovery flow ID
+                    description:
+                      key: error.applicationservice.invalid_recovery_flow_id_description
+                      defaultValue: The provided recoveryFlowId does not exist or is not enabled
         "404":
           description: Application not found
           content:
@@ -4462,7 +4496,7 @@ paths:
 
         - i18n translations based on language and namespace filters
 
-        - Registration flow enablement status
+        - Registration and recovery flow enablement status
 
 
         **Note:** When `type=APP`, the OU metadata is only included in the
@@ -4522,6 +4556,7 @@ paths:
                   summary: Application metadata with i18n
                   value:
                     isRegistrationFlowEnabled: true
+                    isRecoveryFlowEnabled: true
                     application:
                       id: 60a9b38b-6eba-9f9e-55f9-267067de4680
                       name: My Web Application
@@ -4566,6 +4601,7 @@ paths:
                   summary: Organization unit metadata
                   value:
                     isRegistrationFlowEnabled: false
+                    isRecoveryFlowEnabled: false
                     ou:
                       id: fe447a2f-29c5-4e33-ac8f-d77be15fdb32
                       handle: default
@@ -6580,6 +6616,34 @@ paths:
       parameters:
         - $ref: "#/components/parameters/limitQueryParam"
         - $ref: "#/components/parameters/offsetQueryParam"
+        - in: query
+          name: filter
+          required: false
+          description: >
+            Filter organization units by attribute values.
+
+            Supported operators: `eq`, `gt`, `lt`.
+
+            Filterable attributes: `name`, `handle`, `description`, `createdAt`, `updatedAt`.
+
+            Format: `attribute operator "value"`.
+
+            Examples:
+
+            - `name eq "Engineering"`
+
+            - `handle eq "frontend"`
+
+            - `createdAt gt "2026-01-01T00:00:00Z"`
+          schema:
+            type: string
+          examples:
+            name-filter:
+              summary: Filter by name
+              value: name eq "Engineering"
+            created-at-filter:
+              summary: Filter by creation timestamp
+              value: createdAt gt "2026-01-01T00:00:00Z"
       responses:
         "200":
           description: List of root organization units
@@ -6632,6 +6696,16 @@ paths:
                     description:
                       key: error.ouservice.invalid_offset_parameter_description
                       defaultValue: The offset parameter must be a non-negative integer
+                invalid-filter:
+                  summary: Invalid filter parameter
+                  value:
+                    code: OU-1014
+                    message:
+                      key: error.ouservice.invalid_filter
+                      defaultValue: Invalid filter parameter
+                    description:
+                      key: error.ouservice.invalid_filter_description
+                      defaultValue: 'The filter parameter is invalid. Use format: attribute (eq|gt|lt) "value"'
         "500":
           description: Internal server error
     post:
@@ -6930,6 +7004,34 @@ paths:
             format: uuid
         - $ref: "#/components/parameters/limitQueryParam"
         - $ref: "#/components/parameters/offsetQueryParam"
+        - in: query
+          name: filter
+          required: false
+          description: >
+            Filter organization units by attribute values.
+
+            Supported operators: `eq`, `gt`, `lt`.
+
+            Filterable attributes: `name`, `handle`, `description`, `createdAt`, `updatedAt`.
+
+            Format: `attribute operator "value"`.
+
+            Examples:
+
+            - `name eq "Engineering"`
+
+            - `handle eq "frontend"`
+
+            - `createdAt gt "2026-01-01T00:00:00Z"`
+          schema:
+            type: string
+          examples:
+            name-filter:
+              summary: Filter by name
+              value: name eq "Engineering"
+            created-at-filter:
+              summary: Filter by creation timestamp
+              value: createdAt gt "2026-01-01T00:00:00Z"
       responses:
         "200":
           description: List of child organization units
@@ -6982,6 +7084,16 @@ paths:
                     description:
                       key: error.ouservice.invalid_offset_parameter_description
                       defaultValue: The offset parameter must be a non-negative integer
+                invalid-filter:
+                  summary: Invalid filter parameter
+                  value:
+                    code: OU-1014
+                    message:
+                      key: error.ouservice.invalid_filter
+                      defaultValue: Invalid filter parameter
+                    description:
+                      key: error.ouservice.invalid_filter_description
+                      defaultValue: 'The filter parameter is invalid. Use format: attribute (eq|gt|lt) "value"'
         "404":
           description: Organization unit not found
           content:
@@ -7089,7 +7201,6 @@ paths:
             format: uuid
         - $ref: "#/components/parameters/limitQueryParam"
         - $ref: "#/components/parameters/offsetQueryParam"
-        - $ref: "#/components/parameters/includeGroupQueryParam"
       responses:
         "200":
           description: List of groups in the organization unit
@@ -7602,6 +7713,34 @@ paths:
           example: engineering/frontend
         - $ref: "#/components/parameters/limitQueryParam"
         - $ref: "#/components/parameters/offsetQueryParam"
+        - in: query
+          name: filter
+          required: false
+          description: >
+            Filter organization units by attribute values.
+
+            Supported operators: `eq`, `gt`, `lt`.
+
+            Filterable attributes: `name`, `handle`, `description`, `createdAt`, `updatedAt`.
+
+            Format: `attribute operator "value"`.
+
+            Examples:
+
+            - `name eq "Engineering"`
+
+            - `handle eq "frontend"`
+
+            - `createdAt gt "2026-01-01T00:00:00Z"`
+          schema:
+            type: string
+          examples:
+            name-filter:
+              summary: Filter by name
+              value: name eq "Engineering"
+            created-at-filter:
+              summary: Filter by creation timestamp
+              value: createdAt gt "2026-01-01T00:00:00Z"
       responses:
         "200":
           description: List of child organization units
@@ -7654,6 +7793,16 @@ paths:
                     description:
                       key: error.ouservice.invalid_offset_parameter_description
                       defaultValue: The offset parameter must be a non-negative integer
+                invalid-filter:
+                  summary: Invalid filter parameter
+                  value:
+                    code: OU-1014
+                    message:
+                      key: error.ouservice.invalid_filter
+                      defaultValue: Invalid filter parameter
+                    description:
+                      key: error.ouservice.invalid_filter_description
+                      defaultValue: 'The filter parameter is invalid. Use format: attribute (eq|gt|lt) "value"'
         "404":
           description: Organization unit not found
           content:
@@ -7813,7 +7962,6 @@ paths:
           example: engineering/frontend
         - $ref: "#/components/parameters/limitQueryParam"
         - $ref: "#/components/parameters/offsetQueryParam"
-        - $ref: "#/components/parameters/includeGroupQueryParam"
       responses:
         "200":
           description: List of groups in the organization unit
@@ -11905,7 +12053,7 @@ paths:
                 totalResults: 3
                 startIndex: 1
                 count: 3
-                schemas:
+                types:
                   - id: 660e8400-e29b-41d4-a716-446655440001
                     name: employee
                     ouId: a839f4bd-39dc-4eaa-b5cc-210d8ecaee87
@@ -13402,7 +13550,7 @@ components:
           type: integer
           description: Number of elements in the returned page.
           example: 3
-        schemas:
+        types:
           type: array
           items:
             type: object
@@ -13564,6 +13712,19 @@ components:
           description: Indicates if the registration flow is enabled for the application.
           example: true
           default: false
+        recoveryFlowId:
+          type: string
+          description: The ID of the recovery flow.
+          example: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: >
+            Indicates if the recovery flow is enabled for the application.
+            When set to true, recoveryFlowId must also be provided in the
+            ApplicationRequest; omitting recoveryFlowId while setting this
+            field to true will result in a 400 error.
+          example: true
+          default: false
         themeId:
           type: string
           format: uuid
@@ -13677,6 +13838,14 @@ components:
           type: boolean
           description: Indicates if the registration flow is enabled for the application.
           example: true
+        recoveryFlowId:
+          type: string
+          description: The ID of the recovery flow.
+          example: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: Indicates if the recovery flow is enabled for the application.
+          example: true
         themeId:
           type: string
           format: uuid
@@ -13788,6 +13957,14 @@ components:
         isRegistrationFlowEnabled:
           type: boolean
           description: Indicates if the registration flow is enabled for the application.
+          example: true
+        recoveryFlowId:
+          type: string
+          description: The ID of the recovery flow.
+          example: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: Indicates if the recovery flow is enabled for the application.
           example: true
         themeId:
           type: string
@@ -13901,6 +14078,14 @@ components:
         isRegistrationFlowEnabled:
           type: boolean
           description: Indicates if the registration flow is enabled for the application.
+          example: true
+        recoveryFlowId:
+          type: string
+          description: The ID of the recovery flow.
+          example: f60d3e8a-8c9a-4b2f-9e1a-5b3c8d7e2f4a
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: Indicates if the recovery flow is enabled for the application.
           example: true
         themeId:
           type: string
@@ -15161,6 +15346,7 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - RECOVERY
           example: AUTHENTICATION
     SubSequentFlowRequest:
       type: object
@@ -16115,12 +16301,17 @@ components:
       type: object
       required:
         - isRegistrationFlowEnabled
+        - isRecoveryFlowEnabled
         - design
         - i18n
       properties:
         isRegistrationFlowEnabled:
           type: boolean
           description: Indicates if registration flow is enabled for the entity
+          example: true
+        isRecoveryFlowEnabled:
+          type: boolean
+          description: Indicates if recovery flow is enabled for the entity
           example: true
         application:
           $ref: "#/components/schemas/ApplicationMetadata"
@@ -16955,6 +17146,9 @@ components:
         - id
         - handle
         - name
+        - isReadOnly
+        - createdAt
+        - updatedAt
       properties:
         id:
           type: string
@@ -16969,6 +17163,20 @@ components:
           type: string
           format: uri
           description: Logo URL for the organization unit
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Whether the organization unit is immutable by clients.
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Creation timestamp in UTC.
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: Last update timestamp in UTC.
     OrganizationUnit:
       allOf:
         - $ref: "#/components/schemas/OrganizationUnitBasic"
@@ -16977,6 +17185,26 @@ components:
           type: string
           format: uuid
           nullable: true
+        themeId:
+          type: string
+          format: uuid
+          description: Theme configuration ID for the organization unit
+        layoutId:
+          type: string
+          format: uuid
+          description: Layout configuration ID for the organization unit
+        tosUri:
+          type: string
+          format: uri
+          description: Terms of Service URI
+        policyUri:
+          type: string
+          format: uri
+          description: Privacy Policy URI
+        cookiePolicyUri:
+          type: string
+          format: uri
+          description: Cookie Policy URI
     User:
       type: object
       required:
@@ -18314,7 +18542,7 @@ components:
           type: integer
           description: Number of elements in the returned page.
           example: 3
-        schemas:
+        types:
           type: array
           items:
             type: object

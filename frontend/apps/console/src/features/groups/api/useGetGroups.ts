@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import GroupQueryKeys from '../constants/group-query-keys';
@@ -30,7 +30,7 @@ import type {GroupListParams} from '../models/requests';
  * @returns TanStack Query result object containing groups list data
  */
 export default function useGetGroups(params?: GroupListParams): UseQueryResult<GroupListResponse> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const {limit = 30, offset = 0} = params ?? {};
 

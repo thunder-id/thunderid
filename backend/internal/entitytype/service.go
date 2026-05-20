@@ -25,17 +25,17 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/asgardeo/thunder/internal/consent"
-	"github.com/asgardeo/thunder/internal/entitytype/model"
-	oupkg "github.com/asgardeo/thunder/internal/ou"
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/i18n/core"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/security"
-	"github.com/asgardeo/thunder/internal/system/sysauthz"
-	"github.com/asgardeo/thunder/internal/system/transaction"
-	"github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/consent"
+	"github.com/thunder-id/thunderid/internal/entitytype/model"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const entityTypeLoggerComponentName = "EntityTypeService"
@@ -84,6 +84,7 @@ type EntityTypeServiceInterface interface {
 	GetDisplayAttributesByNames(
 		ctx context.Context, category TypeCategory, names []string,
 	) (map[string]string, *serviceerror.ServiceError)
+	ResolveEntityTypeHandles(ctx context.Context, entityType *EntityType) *serviceerror.ServiceError
 }
 
 // entityTypeService is the default implementation of the EntityTypeServiceInterface.
@@ -162,7 +163,7 @@ func (us *entityTypeService) listAllEntityTypes(
 		TotalResults: totalCount,
 		StartIndex:   offset + 1,
 		Count:        len(entityTypes),
-		Schemas:      entityTypes,
+		Types:        entityTypes,
 		Links: buildPaginationLinks(category, limit, offset, totalCount,
 			utils.DisplayQueryParam(includeDisplay)),
 	}, nil
@@ -180,7 +181,7 @@ func (us *entityTypeService) listAccessibleEntityTypes(
 			TotalResults: 0,
 			StartIndex:   offset + 1,
 			Count:        0,
-			Schemas:      []EntityTypeListItem{},
+			Types:        []EntityTypeListItem{},
 			Links:        buildPaginationLinks(category, limit, offset, 0, displayQuery),
 		}, nil
 	}
@@ -203,7 +204,7 @@ func (us *entityTypeService) listAccessibleEntityTypes(
 		TotalResults: totalCount,
 		StartIndex:   offset + 1,
 		Count:        len(entityTypes),
-		Schemas:      entityTypes,
+		Types:        entityTypes,
 		Links:        buildPaginationLinks(category, limit, offset, totalCount, displayQuery),
 	}, nil
 }
@@ -224,6 +225,14 @@ func (us *entityTypeService) CreateEntityType(
 
 	if isDeclarativeModeEnabled() {
 		return nil, &ErrorCannotModifyDeclarativeResource
+	}
+
+	if request.OUID == "" && request.OUHandle != "" {
+		ou, svcErr := us.ouService.GetOrganizationUnitByPath(ctx, request.OUHandle)
+		if svcErr != nil {
+			return nil, invalidEntityTypeRequestErr(category, "organization unit with handle not found")
+		}
+		request.OUID = ou.ID
 	}
 
 	schemaToValidate := EntityType{
@@ -386,6 +395,14 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 
 	if us.entityTypeStore.IsEntityTypeDeclarative(category, schemaID) {
 		return nil, &ErrorCannotModifyDeclarativeResource
+	}
+
+	if request.OUID == "" && request.OUHandle != "" {
+		ou, svcErr := us.ouService.GetOrganizationUnitByPath(ctx, request.OUHandle)
+		if svcErr != nil {
+			return nil, invalidEntityTypeRequestErr(category, "organization unit with handle not found")
+		}
+		request.OUID = ou.ID
 	}
 
 	schemaToValidate := EntityType{
@@ -744,6 +761,25 @@ func (us *entityTypeService) getAccessibleResources(
 		return nil, &serviceerror.InternalServerError
 	}
 	return accessible, nil
+}
+
+// ResolveEntityTypeHandles resolves ou_handle to an OU ID on the given entity type in-place.
+// Called by the declarative loader validator so that file-based entity types support ou_handle.
+func (us *entityTypeService) ResolveEntityTypeHandles(
+	ctx context.Context, entityType *EntityType,
+) *serviceerror.ServiceError {
+	if entityType.OUID == "" && entityType.OUHandle != "" {
+		if us.ouService == nil {
+			return &serviceerror.InternalServerError
+		}
+		ou, svcErr := us.ouService.GetOrganizationUnitByPath(
+			security.WithRuntimeContext(ctx), entityType.OUHandle)
+		if svcErr != nil {
+			return &ErrorInvalidRequestFormat
+		}
+		entityType.OUID = ou.ID
+	}
+	return nil
 }
 
 // ensureOrganizationUnitExists validates that the provided organization unit exists using the OU service.

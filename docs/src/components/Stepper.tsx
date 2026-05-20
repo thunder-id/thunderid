@@ -17,16 +17,7 @@
  */
 
 import React, {ReactNode, Children, isValidElement} from 'react';
-import {
-  Stepper as MuiStepper,
-  Step,
-  StepLabel,
-  StepContent,
-  Box,
-  Typography,
-  StepIconProps,
-  styled,
-} from '@wso2/oxygen-ui';
+import {Box, Typography, styled} from '@wso2/oxygen-ui';
 
 interface StepperProps {
   children: ReactNode;
@@ -35,40 +26,40 @@ interface StepperProps {
 }
 
 interface StepData {
+  id?: string;
   label: string;
   content: ReactNode[];
 }
 
-const ColorlibStepIconRoot = styled('div')<{
-  ownerState: {completed?: boolean; active?: boolean};
-}>(({theme}) => ({
-  backgroundColor: theme.palette.background.paper,
-  zIndex: 1,
-  color: theme.palette.text.primary,
-  width: 30,
-  height: 30,
-  display: 'flex',
+const StepCircle = styled('div')<{ownerState: {active?: boolean}}>(({theme, ownerState}) => ({
+  width: 36,
+  height: 36,
+  minWidth: 36,
   borderRadius: '50%',
-  justifyContent: 'center',
+  display: 'flex',
   alignItems: 'center',
+  justifyContent: 'center',
+  fontWeight: 700,
+  fontSize: '0.95rem',
+  flexShrink: 0,
+  background: ownerState.active
+    ? theme.palette.primary.main
+    : theme.palette.mode === 'dark'
+      ? theme.palette.grey[800]
+      : theme.palette.grey[200],
+  color: ownerState.active
+    ? theme.palette.primary.contrastText
+    : theme.palette.text.secondary,
+  border: `2px solid ${ownerState.active ? theme.palette.primary.main : theme.palette.divider}`,
+  boxShadow: ownerState.active ? `0 0 0 4px ${theme.palette.primary.main}22` : 'none',
 }));
-
-function ColorlibStepIcon(props: StepIconProps) {
-  const {active, completed, className} = props;
-
-  return (
-    <ColorlibStepIconRoot ownerState={{completed, active}} className={className}>
-      {props.icon}
-    </ColorlibStepIconRoot>
-  );
-}
 
 export default function Stepper({children, stepNode = 'h2', as = 'h2'}: StepperProps) {
   const steps: StepData[] = [];
   let currentStep: StepData | null = null;
 
   // Process children to group them into steps
-  Children.forEach(children, (child) => {
+  Children.forEach(children, (child: ReactNode) => {
     if (!isValidElement(child)) {
       if (currentStep) {
         currentStep.content.push(child);
@@ -88,8 +79,9 @@ export default function Stepper({children, stepNode = 'h2', as = 'h2'}: StepperP
       if (currentStep) {
         steps.push(currentStep);
       }
-      // Create new step
+      // Create new step, preserving the id Docusaurus generated for the heading
       currentStep = {
+        id: child.props.id as string | undefined,
         label:
           typeof child.props.children === 'string'
             ? child.props.children
@@ -109,16 +101,29 @@ export default function Stepper({children, stepNode = 'h2', as = 'h2'}: StepperP
 
   return (
     <Box sx={{mt: 4}}>
-      <MuiStepper orientation="vertical">
-        {steps.map((step) => (
-          <Step key={`${step.label}`} active>
-            <StepLabel slots={{stepIcon: ColorlibStepIcon}}>
-              <Typography variant={as}>{step.label}</Typography>
-            </StepLabel>
-            <StepContent sx={{pt: 4, pl: 4}}>{step.content}</StepContent>
-          </Step>
-        ))}
-      </MuiStepper>
+      {steps.map((step, index) => (
+        <Box key={step.label} sx={{display: 'flex', gap: '16px'}}>
+          {/* Left column: circle + connector line */}
+          <Box sx={{display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0}}>
+            <StepCircle ownerState={{active: true}}>{index + 1}</StepCircle>
+            {index < steps.length - 1 && (
+              <Box sx={{width: '2px', flex: 1, mt: '6px', mb: '6px', background: 'rgba(128,128,128,0.4)', minHeight: '32px', borderRadius: '1px'}} />
+            )}
+          </Box>
+          {/* Right column: title + content */}
+          <Box sx={{flex: 1, minWidth: 0, pb: index < steps.length - 1 ? 4 : 0}}>
+            <Typography
+              id={step.id}
+              variant={as}
+              component="p"
+              sx={{margin: 0, padding: 0, lineHeight: '36px', fontWeight: 700}}
+            >
+              {step.label}
+            </Typography>
+            <Box sx={{mt: 2}}>{step.content}</Box>
+          </Box>
+        </Box>
+      ))}
     </Box>
   );
 }

@@ -24,10 +24,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 
-	"github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
-	sysconfig "github.com/asgardeo/thunder/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
 )
 
 type AuthorizationValidatorTestSuite struct {

@@ -7,9 +7,9 @@ package jwemock
 import (
 	"crypto"
 
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/jose/jwe"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 )
 
 // NewJWEServiceInterfaceMock creates a new instance of JWEServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

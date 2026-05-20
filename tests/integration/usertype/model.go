@@ -21,7 +21,7 @@ package usertype
 import (
 	"encoding/json"
 
-	"github.com/asgardeo/thunder/tests/integration/testutils"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -75,7 +75,7 @@ type UserTypeListResponse struct {
 	TotalResults int                  `json:"totalResults"`
 	StartIndex   int                  `json:"startIndex"`
 	Count        int                  `json:"count"`
-	Schemas      []UserTypeListItem `json:"schemas"`
+	Types        []UserTypeListItem `json:"types"`
 	Links        []testutils.Link     `json:"links"`
 }
 

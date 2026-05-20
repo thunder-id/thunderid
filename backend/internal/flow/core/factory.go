@@ -22,8 +22,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/asgardeo/thunder/internal/flow/common"
-	sysutils "github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // FlowFactoryInterface defines the interface for creating flow graph components.

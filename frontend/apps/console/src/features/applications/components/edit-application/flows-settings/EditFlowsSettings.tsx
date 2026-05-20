@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -18,6 +18,7 @@
 
 import {Stack} from '@wso2/oxygen-ui';
 import AuthenticationFlowSection from './AuthenticationFlowSection';
+import RecoveryFlowSection from './RecoveryFlowSection';
 import RegistrationFlowSection from './RegistrationFlowSection';
 import type {Application} from '../../../models/application';
 
@@ -70,6 +71,12 @@ export default function EditFlowsSettings({
         entityLabel={entityLabel}
       />
       <RegistrationFlowSection
+        application={application}
+        editedApp={editedApp}
+        onFieldChange={onFieldChange}
+        entityLabel={entityLabel}
+      />
+      <RecoveryFlowSection
         application={application}
         editedApp={editedApp}
         onFieldChange={onFieldChange}

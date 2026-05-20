@@ -50,6 +50,11 @@ export const FlowType = {
    * User onboarding flows handle invited user provisioning within an organization
    */
   USER_ONBOARDING: 'USER_ONBOARDING',
+
+  /**
+   * Recovery flows handle password and account recovery processes
+   */
+  RECOVERY: 'RECOVERY',
 } as const;
 
 /**

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
 import {renderHook, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
@@ -25,8 +25,8 @@ import {FlowType, FlowNodeType} from '../../models/flows';
 import type {FlowDefinitionResponse} from '../../models/responses';
 import useGetFlowById from '../useGetFlowById';
 
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: vi.fn(),
+vi.mock('@thunderid/react', () => ({
+  useThunderID: vi.fn(),
 }));
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
@@ -72,11 +72,11 @@ describe('useGetFlowById', () => {
   beforeEach(() => {
     mockHttpRequest = vi.fn();
 
-    vi.mocked(useAsgardeo).mockReturnValue({
+    vi.mocked(useThunderID).mockReturnValue({
       http: {
         request: mockHttpRequest,
       },
-    } as unknown as ReturnType<typeof useAsgardeo>);
+    } as unknown as ReturnType<typeof useThunderID>);
 
     vi.mocked(useConfig).mockReturnValue({
       getServerUrl: () => 'https://localhost:8090',

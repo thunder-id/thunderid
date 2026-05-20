@@ -62,7 +62,7 @@ describe('AgentsListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseGetAgentTypes.mockReturnValue({
-      data: {schemas: [{id: 'schema-1', name: 'default', ouId: 'ou-1'}]},
+      data: {types: [{id: 'schema-1', name: 'default', ouId: 'ou-1'}]},
       isLoading: false,
     });
   });
@@ -120,7 +120,7 @@ describe('AgentsListPage', () => {
   });
 
   it('disables the Schema button when no default agent type exists', () => {
-    mockUseGetAgentTypes.mockReturnValue({data: {schemas: []}, isLoading: false});
+    mockUseGetAgentTypes.mockReturnValue({data: {types: []}, isLoading: false});
     render(<AgentsListPage />);
 
     expect(screen.getByTestId('agent-schema-button')).toBeDisabled();
@@ -149,7 +149,7 @@ describe('AgentsListPage', () => {
   });
 
   it('does not navigate when Schema is clicked but no default type exists', async () => {
-    mockUseGetAgentTypes.mockReturnValue({data: {schemas: []}, isLoading: false});
+    mockUseGetAgentTypes.mockReturnValue({data: {types: []}, isLoading: false});
     const user = userEvent.setup();
 
     render(<AgentsListPage />);

@@ -1,5 +1,5 @@
 # This workflow merges release back into main after a successful release run.
-# If there are no conflicts, it commits directly and deletes the release branch.
+# If there are no conflicts, it commits directly to main.
 # If there are conflicts, it creates a sync PR for manual resolution.
 # Can also be started manually from the Actions tab.
 
@@ -67,12 +67,6 @@ jobs:
           echo "✅ Successfully merged ${SOURCE_BRANCH} into ${TARGET_BRANCH}."
           echo "conflict_detected=false" >> "$GITHUB_OUTPUT"
           echo "merged=true" >> "$GITHUB_OUTPUT"
-
-      - name: 🗑️ Delete Release Branch
-        if: steps.merge_sync.outputs.merged == 'true'
-        run: |
-          git push origin --delete "${SOURCE_BRANCH}"
-          echo "✅ Deleted '${SOURCE_BRANCH}' branch."
 
       - name: 🔔 Create Sync PR for Conflict Resolution
         if: steps.merge_sync.outputs.conflict_detected == 'true'

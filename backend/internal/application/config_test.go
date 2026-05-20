@@ -23,9 +23,9 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 
-	"github.com/asgardeo/thunder/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/config"
 )
 
 // ConfigTestSuite tests application configuration functions.

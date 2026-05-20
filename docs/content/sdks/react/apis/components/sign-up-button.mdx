@@ -16,7 +16,7 @@ You can use the `SignUpButton` in two main ways: as a simple button or with rend
 Use `SignUpButton` as a simple button to trigger sign-up.
 
 ```jsx title="src/LandingPage.jsx" showLineNumbers
-import { SignUpButton } from '@asgardeo/react'
+import { SignUpButton } from '@thunderid/react'
 
 function LandingPage() {
   return <SignUpButton />
@@ -53,7 +53,7 @@ The `SignUpButton` component is designed for easy customization to fit your appl
 You can use the `className` prop to apply custom `CSS` classes to the button.
 
 ```jsx title="src/LandingPage.jsx" {5} showLineNumbers
-import { SignUpButton } from '@asgardeo/react'
+import { SignUpButton } from '@thunderid/react'
 
 function LandingPage() {
   return (
@@ -90,7 +90,7 @@ You can theme the button and other SDK components using CSS variables:
 Override button text and translations using the `preferences` prop:
 
 ```jsx title="src/LandingPage.jsx" {6-18} showLineNumbers
-import { SignUpButton } from '@asgardeo/react'
+import { SignUpButton } from '@thunderid/react'
 
 function LandingPage() {
   return (
@@ -122,7 +122,7 @@ export default LandingPage
 You can customize the button UI and behavior using render props. This allows you to access the `signUp` function and `isLoading` state directly, giving you the flexibility to use any library like Tailwind CSS, Shadcn UI, Material-UI, etc.
 
 ```jsx title="src/LandingPage.jsx" {6} showLineNumbers
-import { SignUpButton } from '@asgardeo/react'
+import { SignUpButton } from '@thunderid/react'
 
 function LandingPage() {
   return (

@@ -22,8 +22,8 @@ import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import type {MemberListResponse} from '../../models/group';
 
 const mockHttpRequest = vi.fn();
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     http: {request: mockHttpRequest},
   }),
 }));

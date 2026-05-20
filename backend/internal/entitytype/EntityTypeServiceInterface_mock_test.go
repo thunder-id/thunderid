@@ -8,8 +8,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewEntityTypeServiceInterfaceMock creates a new instance of EntityTypeServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -668,6 +668,65 @@ func (_c *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call) Return(string
 }
 
 func (_c *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call) RunAndReturn(run func(ctx context.Context, category TypeCategory, entityType string) ([]string, *serviceerror.ServiceError)) *EntityTypeServiceInterfaceMock_GetUniqueAttributes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveEntityTypeHandles provides a mock function for the type EntityTypeServiceInterfaceMock
+func (_mock *EntityTypeServiceInterfaceMock) ResolveEntityTypeHandles(ctx context.Context, entityType *EntityType) *serviceerror.ServiceError {
+	ret := _mock.Called(ctx, entityType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveEntityTypeHandles")
+	}
+
+	var r0 *serviceerror.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *EntityType) *serviceerror.ServiceError); ok {
+		r0 = returnFunc(ctx, entityType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*serviceerror.ServiceError)
+		}
+	}
+	return r0
+}
+
+// EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveEntityTypeHandles'
+type EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call struct {
+	*mock.Call
+}
+
+// ResolveEntityTypeHandles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityType *EntityType
+func (_e *EntityTypeServiceInterfaceMock_Expecter) ResolveEntityTypeHandles(ctx interface{}, entityType interface{}) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
+	return &EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call{Call: _e.mock.On("ResolveEntityTypeHandles", ctx, entityType)}
+}
+
+func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) Run(run func(ctx context.Context, entityType *EntityType)) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *EntityType
+		if args[1] != nil {
+			arg1 = args[1].(*EntityType)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) Return(serviceError *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call) RunAndReturn(run func(ctx context.Context, entityType *EntityType) *serviceerror.ServiceError) *EntityTypeServiceInterfaceMock_ResolveEntityTypeHandles_Call {
 	_c.Call.Return(run)
 	return _c
 }

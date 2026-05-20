@@ -22,7 +22,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/asgardeo/thunder/internal/idp"
+	"github.com/thunder-id/thunderid/internal/idp"
 )
 
 var (

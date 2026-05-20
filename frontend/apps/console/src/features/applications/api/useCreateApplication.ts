@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
@@ -62,7 +62,7 @@ import type {CreateApplicationRequest} from '../models/requests';
  * @public
  */
 export default function useCreateApplication(): UseMutationResult<Application, Error, CreateApplicationRequest> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('applications');

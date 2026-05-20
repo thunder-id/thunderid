@@ -9,8 +9,8 @@ CREATE TABLE "ORGANIZATION_UNIT" (
     THEME_ID    VARCHAR(36),
     LAYOUT_ID   VARCHAR(36),
     METADATA     TEXT,
-    CREATED_AT  TEXT DEFAULT (datetime('now')),
-    UPDATED_AT  TEXT DEFAULT (datetime('now'))
+    CREATED_AT  TEXT NOT NULL,
+    UPDATED_AT  TEXT NOT NULL
 );
 
 -- Composite index for handle-based OU lookups (queryGetRootOrganizationUnitByHandle, queryGetOrganizationUnitByHandle)
@@ -28,8 +28,8 @@ CREATE TABLE "ENTITY" (
     SYSTEM_ATTRIBUTES   TEXT,
     CREDENTIALS         TEXT,
     SYSTEM_CREDENTIALS  TEXT,
-    CREATED_AT          TEXT DEFAULT (datetime('now')),
-    UPDATED_AT          TEXT DEFAULT (datetime('now'))
+    CREATED_AT          TEXT NOT NULL,
+    UPDATED_AT          TEXT NOT NULL
 );
 
 -- Composite index for category-based entity listing
@@ -45,8 +45,8 @@ CREATE TABLE "GROUP" (
     OU_ID       VARCHAR(36)        NOT NULL,
     NAME        VARCHAR(50)        NOT NULL,
     DESCRIPTION VARCHAR(255),
-    CREATED_AT  TEXT DEFAULT (datetime('now')),
-    UPDATED_AT  TEXT DEFAULT (datetime('now'))
+    CREATED_AT  TEXT NOT NULL,
+    UPDATED_AT  TEXT NOT NULL
 );
 
 -- Composite index for name conflict checks within an OU (QueryCheckGroupNameConflict)
@@ -58,8 +58,8 @@ CREATE TABLE "GROUP_MEMBER_REFERENCE" (
     GROUP_ID    VARCHAR(36) NOT NULL,
     MEMBER_TYPE VARCHAR(6)  NOT NULL CHECK (MEMBER_TYPE IN ('entity', 'group')),
     MEMBER_ID   VARCHAR(36) NOT NULL,
-    CREATED_AT  TEXT DEFAULT (datetime('now')),
-    UPDATED_AT  TEXT DEFAULT (datetime('now')),
+    CREATED_AT  TEXT NOT NULL,
+    UPDATED_AT  TEXT NOT NULL,
     PRIMARY KEY (GROUP_ID, MEMBER_TYPE, MEMBER_ID, DEPLOYMENT_ID),
     FOREIGN KEY (GROUP_ID) REFERENCES "GROUP" (ID) ON DELETE CASCADE
 );
@@ -71,7 +71,7 @@ CREATE TABLE "ENTITY_IDENTIFIER" (
     NAME            VARCHAR(255) NOT NULL,
     VALUE           TEXT         NOT NULL,
     SOURCE          VARCHAR(50)  NOT NULL,
-    CREATED_AT      TEXT DEFAULT (datetime('now')),
+    CREATED_AT      TEXT NOT NULL,
     PRIMARY KEY (ENTITY_ID, DEPLOYMENT_ID, NAME),
     FOREIGN KEY (ENTITY_ID) REFERENCES "ENTITY" (ID) ON DELETE CASCADE
 );

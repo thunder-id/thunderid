@@ -19,7 +19,7 @@
 // Package core provides the core structs for flow management and execution.
 package core
 
-import "github.com/asgardeo/thunder/internal/system/cache"
+import "github.com/thunder-id/thunderid/internal/system/cache"
 
 // Initialize initializes the core flow package
 func Initialize(cacheManager cache.CacheManagerInterface) (FlowFactoryInterface, GraphCacheInterface) {

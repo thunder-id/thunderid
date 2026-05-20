@@ -1,0 +1,35 @@
+id: decl-recovery-flow-1
+handle: decl-flow-1
+name: Declarative Test Recovery Flow
+flowType: RECOVERY
+activeVersion: 1
+nodes:
+  - id: start
+    type: START
+    onSuccess: prompt_username
+  - id: prompt_username
+    type: PROMPT
+    prompts:
+      - inputs:
+          - ref: input_username
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+        action:
+          ref: action_submit_username
+          nextNode: identify_user
+  - id: identify_user
+    type: TASK_EXECUTION
+    executor:
+      name: IdentifyingExecutor
+      mode: identify
+    onSuccess: generate_recovery_token
+    onFailure: end
+  - id: generate_recovery_token
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: generate
+    onSuccess: end
+  - id: end
+    type: END

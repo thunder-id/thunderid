@@ -7,9 +7,9 @@ package groupmock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/group"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewGroupServiceInterfaceMock creates a new instance of GroupServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

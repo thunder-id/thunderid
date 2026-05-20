@@ -43,7 +43,7 @@
         "description": "Use AI to generate integration code for your React application",
         "type": "llm",
         "icon": "sparkles",
-        "content": "# Integrate {{productName}} Authentication in React Application (Inbuilt Mode)\n\n## Context\nI have a React application and I want to integrate {{productName}}'s authentication system using the Asgardeo React SDK with {{productName}}-hosted login pages.\n\n## Requirements\n- Use @asgardeo/react SDK for authentication\n- Configure {{productName}}-hosted login, registration, and account management UIs\n- Implement sign-in and sign-out functionality using prebuilt components\n- Display signed-in user's profile information\n- Handle authentication state automatically\n\n## Configuration\n- **Client ID**: {{clientId}}\n- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)\n- **SDK**: @asgardeo/react\n\n## IMPORTANT Configuration Rules\n- DO NOT create a separate config object - pass all configuration as individual props directly to <AsgardeoProvider>\n- Required props: `clientId`, `baseUrl`, and `platform=\"AsgardeoV2\"`\n- Optional props: `afterSignInUrl`, `afterSignOutUrl`, `scopes` (string array)\n- NEVER use property names like `signInRedirectURL` or `signOutRedirectURL`\n- Example: <AsgardeoProvider clientId=\"xxx\" baseUrl=\"xxx\" platform=\"AsgardeoV2\">\n\n## Implementation Steps\n1. Create a React app using Vite by running: `npm create vite@latest react-demo -- --template react --rolldown --no-interactive`\n2. Navigate into the project directory: `cd react-demo`\n3. Install dependencies: `npm install`\n4. Install @asgardeo/react package: `npm install @asgardeo/react`\n5. Wrap your app with <AsgardeoProvider /> and configure clientId, baseUrl, and platform=\"AsgardeoV2\"\n6. Add <SignInButton /> for signed-out users and <SignOutButton /> for signed-in users\n7. Use <SignedIn> and <SignedOut> components to conditionally render UI\n8. Display user profile with <UserDropdown /> component\n9. Run the development server: `npm run dev`\n\nPlease provide complete, working code with proper configuration for {{productName}} authentication using Asgardeo SDK."
+        "content": "# Integrate {{productName}} Authentication in React Application (Inbuilt Mode)\n\n## Context\nI have a React application and I want to integrate {{productName}}'s authentication system using the ThunderID React SDK with {{productName}}-hosted login pages.\n\n## Requirements\n- Use @thunderid/react SDK for authentication\n- Configure {{productName}}-hosted login, registration, and account management UIs\n- Implement sign-in and sign-out functionality using prebuilt components\n- Display signed-in user's profile information\n- Handle authentication state automatically\n\n## Configuration\n- **Client ID**: {{clientId}}\n- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)\n- **SDK**: @thunderid/react\n\n## IMPORTANT Configuration Rules\n- DO NOT create a separate config object - pass all configuration as individual props directly to <ThunderIDProvider>\n- Required props: `clientId` and `baseUrl`\n- Optional props: `afterSignInUrl`, `afterSignOutUrl`, `scopes` (string array)\n- NEVER use property names like `signInRedirectURL` or `signOutRedirectURL`\n- Example: <ThunderIDProvider clientId=\"xxx\" baseUrl=\"xxx\">\n\n## Implementation Steps\n1. Create a React app using Vite by running: `npm create vite@latest react-demo -- --template react --rolldown --no-interactive`\n2. Navigate into the project directory: `cd react-demo`\n3. Install dependencies: `npm install`\n4. Install @thunderid/react package: `npm install @thunderid/react`\n5. Wrap your app with <ThunderIDProvider /> and configure clientId and baseUrl\n6. Add <SignInButton /> for signed-out users and <SignOutButton /> for signed-in users\n7. Use <SignedIn> and <SignedOut> components to conditionally render UI\n8. Display user profile with <UserDropdown /> component\n9. Run the development server: `npm run dev`\n\nPlease provide complete, working code with proper configuration for {{productName}} authentication using the ThunderID React SDK."
       },
       "manual_steps": [
         {
@@ -57,22 +57,22 @@
         },
         {
           "step": 2,
-          "title": "Install @asgardeo/react",
-          "description": "The Asgardeo React SDK provides prebuilt components, hooks, and helpers for {{productName}} authentication.",
+          "title": "Install @thunderid/react",
+          "description": "The ThunderID React SDK provides prebuilt components, hooks, and helpers for {{productName}} authentication.",
           "subDescription": "Run the following command to install the SDK:",
           "code": {
             "language": "terminal",
-            "content": "npm install @asgardeo/react"
+            "content": "npm install @thunderid/react"
           }
         },
         {
           "step": 3,
-          "title": "Add <AsgardeoProvider /> to your app",
-          "description": "In your main.jsx or index.jsx, wrap your application with the AsgardeoProvider component:",
+          "title": "Add <ThunderIDProvider /> to your app",
+          "description": "In your main.jsx or index.jsx, wrap your application with the ThunderIDProvider component:",
           "code": {
             "language": "javascript",
             "filename": "src/main.jsx",
-            "content": "import { StrictMode } from 'react'\nimport { createRoot } from 'react-dom/client'\nimport './index.css'\nimport App from './App.jsx'\nimport { AsgardeoProvider } from '@asgardeo/react'\n\ncreateRoot(document.getElementById('root')).render(\n  <StrictMode>\n    <AsgardeoProvider\n      clientId=\"{{clientId}}\"\n      baseUrl=\"https://localhost:8090\"\n      platform=\"AsgardeoV2\"\n    >\n      <App />\n    </AsgardeoProvider>\n  </StrictMode>\n)"
+            "content": "import { StrictMode } from 'react'\nimport { createRoot } from 'react-dom/client'\nimport './index.css'\nimport App from './App.jsx'\nimport { ThunderIDProvider } from '@thunderid/react'\n\ncreateRoot(document.getElementById('root')).render(\n  <StrictMode>\n    <ThunderIDProvider\n      clientId=\"{{clientId}}\"\n      baseUrl=\"https://localhost:8090\"\n    >\n      <App />\n    </ThunderIDProvider>\n  </StrictMode>\n)"
           }
         },
         {
@@ -82,7 +82,7 @@
           "code": {
             "language": "javascript",
             "filename": "src/App.jsx",
-            "content": "import { SignedIn, SignedOut, SignInButton, SignOutButton } from '@asgardeo/react'\nimport './App.css'\n\nfunction App() {\n  return (\n    <header>\n      <SignedIn>\n        <SignOutButton />\n      </SignedIn>\n      <SignedOut>\n        <SignInButton />\n      </SignedOut>\n    </header>\n  )\n}\n\nexport default App"
+            "content": "import { SignedIn, SignedOut, SignInButton, SignOutButton } from '@thunderid/react'\nimport './App.css'\n\nfunction App() {\n  return (\n    <header>\n      <SignedIn>\n        <SignOutButton />\n      </SignedIn>\n      <SignedOut>\n        <SignInButton />\n      </SignedOut>\n    </header>\n  )\n}\n\nexport default App"
           }
         },
         {
@@ -92,7 +92,7 @@
           "code": {
             "language": "javascript",
             "filename": "src/App.jsx",
-            "content": "import { SignedIn, SignedOut, SignInButton, SignOutButton, UserDropdown } from '@asgardeo/react'\nimport './App.css'\n\nfunction App() {\n  return (\n    <>\n      <header>\n        <SignedIn>\n          <UserDropdown />\n          <SignOutButton />\n        </SignedIn>\n        <SignedOut>\n          <SignInButton />\n        </SignedOut>\n      </header>\n    </>\n  )\n}\n\nexport default App"
+            "content": "import { SignedIn, SignedOut, SignInButton, SignOutButton, UserDropdown } from '@thunderid/react'\nimport './App.css'\n\nfunction App() {\n  return (\n    <>\n      <header>\n        <SignedIn>\n          <UserDropdown />\n          <SignOutButton />\n        </SignedIn>\n        <SignedOut>\n          <SignInButton />\n        </SignedOut>\n      </header>\n    </>\n  )\n}\n\nexport default App"
           }
         },
         {
@@ -113,7 +113,7 @@
         "description": "Use AI to generate integration code for your React application",
         "type": "llm",
         "icon": "sparkles",
-        "content": "# Integrate {{productName}} Authentication in React Application (Custom Mode)\n\n## Context\nI have a React application and I want to integrate {{productName}}'s authentication system using the Asgardeo React SDK with a custom login UI instead of {{productName}}-hosted pages.\n\n## Requirements\n- Use @asgardeo/react SDK for authentication\n- Build custom login UI with the <SignIn /> component\n- Use react-router-dom for routing to the custom sign-in page\n- Configure custom signInUrl in AsgardeoProvider\n- Implement sign-in and sign-out functionality\n- Display signed-in user's profile information\n- Handle authentication state automatically\n\n## Configuration\n- **Application ID**: {{applicationId}}\n- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)\n- **Sign In URL**: http://localhost:5173/signin (custom route)\n- **SDK**: @asgardeo/react\n- **Router**: react-router-dom\n\n## IMPORTANT Configuration Rules\n- DO NOT create a separate config object - pass all configuration as individual props directly to <AsgardeoProvider>\n- Required props: `baseUrl`, `signInUrl`, `applicationId`, and `platform=\"AsgardeoV2\"`\n- Optional props: `afterSignInUrl`, `afterSignOutUrl`, `scopes`\n- NEVER use property names like `signInRedirectURL` or `signOutRedirectURL`\n- Example: <AsgardeoProvider baseUrl=\"xxx\" signInUrl=\"xxx\" applicationId=\"xxx\" platform=\"AsgardeoV2\">\n\n## Available SDK APIs\n\n### Hook: useAsgardeo (ONLY hook available)\n- The SDK provides ONLY ONE hook: `useAsgardeo`\n- No other hooks like useAuth, useSession, useUser, etc. exist\n- Use this hook to access authentication state and methods\n\nExample:\n```javascript\nimport { useAsgardeo } from '@asgardeo/react';\n\nconst MyComponent = () => {\n  const { isSignedIn, user, signIn, signOut } = useAsgardeo();\n\n  return (\n    <div>\n      {isSignedIn ? (\n        <>\n          <p>Welcome, {user.displayName}!</p>\n          <button onClick={signOut}>Sign Out</button>\n        </>\n      ) : (\n        <button onClick={signIn}>Sign In</button>\n      )}\n    </div>\n  );\n};\n```\n\n### User Data Components (use if needed)\n\n1. **User Component** - Render props for user data:\n```javascript\nimport { User } from '@asgardeo/react'\n\n<User fallback={<p>Please sign in</p>}>\n  {(user) => (\n    <div>\n      <h1>Welcome, {user?.displayName}!</h1>\n      <p>Email: {user?.email}</p>\n    </div>\n  )}\n</User>\n```\n\n2. **UserProfile Component** - Pre-built user profile UI:\n```javascript\nimport { UserProfile } from '@asgardeo/react'\n\n<UserProfile />\n```\n\n## Implementation Steps\n1. Create a React app using Vite by running: `npm create vite@latest react-demo -- --template react --rolldown --no-interactive`\n2. Navigate into the project directory: `cd react-demo`\n3. Install dependencies: `npm install`\n4. Install react-router-dom package: `npm install react-router-dom`\n5. Install @asgardeo/react package: `npm install @asgardeo/react`\n6. Wrap your app with <AsgardeoProvider /> and configure baseUrl, signInUrl, applicationId, and platform=\"AsgardeoV2\"\n7. Set up React Router with BrowserRouter\n8. Add <SignInButton /> for signed-out users and <SignOutButton /> for signed-in users\n9. Create a /signin route and integrate the <SignIn /> component\n10. Use <SignedIn> and <SignedOut> components to conditionally render UI\n11. Display user profile with <UserDropdown /> component or use useAsgardeo hook if needed\n12. Run the development server: `npm run dev`\n\nPlease provide complete, working code with:\n- Proper routing configuration\n- Custom sign-in page integration\n- Proper integration with Asgardeo SDK\n- Use of useAsgardeo hook if programmatic access to auth state is needed"
+        "content": "# Integrate {{productName}} Authentication in React Application (Custom Mode)\n\n## Context\nI have a React application and I want to integrate {{productName}}'s authentication system using the ThunderID React SDK with a custom login UI instead of {{productName}}-hosted pages.\n\n## Requirements\n- Use @thunderid/react SDK for authentication\n- Build custom login UI with the <SignIn /> component\n- Use react-router-dom for routing to the custom sign-in page\n- Configure custom signInUrl in ThunderIDProvider\n- Implement sign-in and sign-out functionality\n- Display signed-in user's profile information\n- Handle authentication state automatically\n\n## Configuration\n- **Application ID**: {{applicationId}}\n- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)\n- **Sign In URL**: http://localhost:5173/signin (custom route)\n- **SDK**: @thunderid/react\n- **Router**: react-router-dom\n\n## IMPORTANT Configuration Rules\n- DO NOT create a separate config object - pass all configuration as individual props directly to <ThunderIDProvider>\n- Required props: `baseUrl`, `signInUrl`, and `applicationId`\n- Optional props: `afterSignInUrl`, `afterSignOutUrl`, `scopes`\n- NEVER use property names like `signInRedirectURL` or `signOutRedirectURL`\n- Example: <ThunderIDProvider baseUrl=\"xxx\" signInUrl=\"xxx\" applicationId=\"xxx\">\n\n## Available SDK APIs\n\n### Hook: useThunderID (ONLY hook available)\n- The SDK provides ONLY ONE hook: `useThunderID`\n- No other hooks like useAuth, useSession, useUser, etc. exist\n- Use this hook to access authentication state and methods\n\nExample:\n```javascript\nimport { useThunderID } from '@thunderid/react';\n\nconst MyComponent = () => {\n  const { isSignedIn, user, signIn, signOut } = useThunderID();\n\n  return (\n    <div>\n      {isSignedIn ? (\n        <>\n          <p>Welcome, {user.displayName}!</p>\n          <button onClick={signOut}>Sign Out</button>\n        </>\n      ) : (\n        <button onClick={signIn}>Sign In</button>\n      )}\n    </div>\n  );\n};\n```\n\n### User Data Components (use if needed)\n\n1. **User Component** - Render props for user data:\n```javascript\nimport { User } from '@thunderid/react'\n\n<User fallback={<p>Please sign in</p>}>\n  {(user) => (\n    <div>\n      <h1>Welcome, {user?.displayName}!</h1>\n      <p>Email: {user?.email}</p>\n    </div>\n  )}\n</User>\n```\n\n2. **UserProfile Component** - Pre-built user profile UI:\n```javascript\nimport { UserProfile } from '@thunderid/react'\n\n<UserProfile />\n```\n\n## Implementation Steps\n1. Create a React app using Vite by running: `npm create vite@latest react-demo -- --template react --rolldown --no-interactive`\n2. Navigate into the project directory: `cd react-demo`\n3. Install dependencies: `npm install`\n4. Install react-router-dom package: `npm install react-router-dom`\n5. Install @thunderid/react package: `npm install @thunderid/react`\n6. Wrap your app with <ThunderIDProvider /> and configure baseUrl, signInUrl, and applicationId\n7. Set up React Router with BrowserRouter\n8. Add <SignInButton /> for signed-out users and <SignOutButton /> for signed-in users\n9. Create a /signin route and integrate the <SignIn /> component\n10. Use <SignedIn> and <SignedOut> components to conditionally render UI\n11. Display user profile with <UserDropdown /> component or use useThunderID hook if needed\n12. Run the development server: `npm run dev`\n\nPlease provide complete, working code with:\n- Proper routing configuration\n- Custom sign-in page integration\n- Proper integration with the ThunderID React SDK\n- Use of useThunderID hook if programmatic access to auth state is needed"
       },
       "manual_steps": [
         {
@@ -136,21 +136,21 @@
         },
         {
           "step": 3,
-          "title": "Install @asgardeo/react",
-          "description": "The Asgardeo React SDK provides prebuilt components, hooks, and helpers for {{productName}} authentication:",
+          "title": "Install @thunderid/react",
+          "description": "The ThunderID React SDK provides prebuilt components, hooks, and helpers for {{productName}} authentication:",
           "code": {
             "language": "terminal",
-            "content": "npm install @asgardeo/react"
+            "content": "npm install @thunderid/react"
           }
         },
         {
           "step": 4,
-          "title": "Add <AsgardeoProvider /> to your app",
-          "description": "In your main.jsx or index.jsx, wrap your application with the AsgardeoProvider component and configure the signInUrl:",
+          "title": "Add <ThunderIDProvider /> to your app",
+          "description": "In your main.jsx or index.jsx, wrap your application with the ThunderIDProvider component and configure the signInUrl:",
           "code": {
             "language": "javascript",
             "filename": "src/main.jsx",
-            "content": "import { StrictMode } from 'react'\nimport { createRoot } from 'react-dom/client'\nimport './index.css'\nimport App from './App.jsx'\nimport { AsgardeoProvider } from '@asgardeo/react'\n\ncreateRoot(document.getElementById('root')).render(\n  <StrictMode>\n    <AsgardeoProvider\n      baseUrl=\"https://localhost:8090\"\n      signInUrl=\"http://localhost:5173/signin\"\n      applicationId=\"{{applicationId}}\"\n      platform=\"AsgardeoV2\"\n    >\n      <App />\n    </AsgardeoProvider>\n  </StrictMode>\n)"
+            "content": "import { StrictMode } from 'react'\nimport { createRoot } from 'react-dom/client'\nimport './index.css'\nimport App from './App.jsx'\nimport { ThunderIDProvider } from '@thunderid/react'\n\ncreateRoot(document.getElementById('root')).render(\n  <StrictMode>\n    <ThunderIDProvider\n      baseUrl=\"https://localhost:8090\"\n      signInUrl=\"http://localhost:5173/signin\"\n      applicationId=\"{{applicationId}}\"\n    >\n      <App />\n    </ThunderIDProvider>\n  </StrictMode>\n)"
           }
         },
         {
@@ -160,7 +160,7 @@
           "code": {
             "language": "javascript",
             "filename": "src/App.jsx",
-            "content": "import { SignedIn, SignedOut, SignInButton, SignOutButton } from '@asgardeo/react'\nimport './App.css'\n\nfunction App() {\n  return (\n    <header>\n      <SignedIn>\n        <SignOutButton />\n      </SignedIn>\n      <SignedOut>\n        <SignInButton />\n      </SignedOut>\n    </header>\n  )\n}\n\nexport default App"
+            "content": "import { SignedIn, SignedOut, SignInButton, SignOutButton } from '@thunderid/react'\nimport './App.css'\n\nfunction App() {\n  return (\n    <header>\n      <SignedIn>\n        <SignOutButton />\n      </SignedIn>\n      <SignedOut>\n        <SignInButton />\n      </SignedOut>\n    </header>\n  )\n}\n\nexport default App"
           }
         },
         {
@@ -170,7 +170,7 @@
           "code": {
             "language": "javascript",
             "filename": "src/App.jsx",
-            "content": "import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'\nimport { SignIn, SignedIn, SignedOut, SignInButton, SignOutButton } from '@asgardeo/react'\nimport './App.css'\n\nfunction App() {\n  return (\n    <Router>\n      <header>\n        <SignedIn>\n          <SignOutButton />\n        </SignedIn>\n        <SignedOut>\n          <SignInButton />\n        </SignedOut>\n      </header>\n      <Routes>\n        <Route path=\"/signin\" element={<SignIn />} />\n      </Routes>\n    </Router>\n  )\n}\n\nexport default App"
+            "content": "import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'\nimport { SignIn, SignedIn, SignedOut, SignInButton, SignOutButton } from '@thunderid/react'\nimport './App.css'\n\nfunction App() {\n  return (\n    <Router>\n      <header>\n        <SignedIn>\n          <SignOutButton />\n        </SignedIn>\n        <SignedOut>\n          <SignInButton />\n        </SignedOut>\n      </header>\n      <Routes>\n        <Route path=\"/signin\" element={<SignIn />} />\n      </Routes>\n    </Router>\n  )\n}\n\nexport default App"
           }
         },
         {
@@ -180,7 +180,7 @@
           "code": {
             "language": "javascript",
             "filename": "src/App.jsx",
-            "content": "import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'\nimport { SignIn, SignedIn, SignedOut, SignInButton, SignOutButton, UserDropdown } from '@asgardeo/react'\nimport './App.css'\n\nfunction App() {\n  return (\n    <Router>\n      <header>\n        <SignedIn>\n          <UserDropdown />\n          <SignOutButton />\n        </SignedIn>\n        <SignedOut>\n          <SignInButton />\n        </SignedOut>\n      </header>\n      <Routes>\n        <Route path=\"/signin\" element={<SignIn />} />\n      </Routes>\n    </Router>\n  )\n}\n\nexport default App"
+            "content": "import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'\nimport { SignIn, SignedIn, SignedOut, SignInButton, SignOutButton, UserDropdown } from '@thunderid/react'\nimport './App.css'\n\nfunction App() {\n  return (\n    <Router>\n      <header>\n        <SignedIn>\n          <UserDropdown />\n          <SignOutButton />\n        </SignedIn>\n        <SignedOut>\n          <SignInButton />\n        </SignedOut>\n      </header>\n      <Routes>\n        <Route path=\"/signin\" element={<SignIn />} />\n      </Routes>\n    </Router>\n  )\n}\n\nexport default App"
           }
         },
         {

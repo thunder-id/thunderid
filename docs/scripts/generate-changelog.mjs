@@ -16,53 +16,104 @@
  * under the License.
  */
 
-import {writeFileSync, readFileSync} from 'fs';
+import {existsSync, mkdirSync, writeFileSync} from 'fs';
 import {join, dirname} from 'path';
 import {fileURLToPath} from 'url';
 import {createLogger} from '@thunderid/logger';
+import DocusaurusProductConfig from '../docusaurus.product.config.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const PRODUCT_CONFIG_PATH = join(__dirname, '..', 'docusaurus.product.config.ts');
+const OUTPUT_FILE = join(__dirname, '..', 'static', 'data', 'releases.json');
 
-function readProductConfig(configPath) {
-  const content = readFileSync(configPath, 'utf8');
-  const nameMatch = content.match(/project\s*:\s*\{[^}]*?name\s*:\s*['"]([^'"]+)['"]/s);
-  const projectName = nameMatch ? nameMatch[1] : 'Unknown Project';
-  const fullNameMatch = content.match(/fullName\s*:\s*['"]([^'"]+)['"]/);
-  const githubFullName = fullNameMatch ? fullNameMatch[1] : '';
-  const [githubOwner = '', githubRepoName = projectName.toLowerCase()] = githubFullName.split('/');
-  return {projectName, githubFullName, githubOwner, githubRepoName};
-}
-
-const {projectName, githubFullName, githubOwner, githubRepoName} = readProductConfig(PRODUCT_CONFIG_PATH);
-
-const OUTPUT_FILE = join(__dirname, '..', 'content', 'releases.md');
-const GITHUB_REPO = githubFullName;
-const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
+const GITHUB_REPO = DocusaurusProductConfig.project.source.github.fullName;
+const GITHUB_REPO_URL = DocusaurusProductConfig.project.source.github.url;
+const PROJECT_NAME = DocusaurusProductConfig.project.name;
+const GITHUB_REPO_API_URL = `https://api.github.com/repos/${GITHUB_REPO}`;
+const GITHUB_RELEASES_API_URL = `${GITHUB_REPO_API_URL}/releases`;
 
 const logger = createLogger('generate-changelog');
 
 // Cache for user avatars to avoid repeated API calls.
 const userAvatarCache = {};
+const ignoredContributorUsernames = [
+  '123',
+  'asgardeo',
+  'copilot',
+  'dependabot',
+  'example',
+  'renovate',
+  'thunder',
+  'wso2',
+  '7',
+].map((u) => u.toLowerCase());
+
+function getGitHubHeaders() {
+  return {
+    'User-Agent': 'Thunder-Docs-Changelog-Generator',
+    ...(process.env.GITHUB_TOKEN ? {Authorization: `token ${process.env.GITHUB_TOKEN}`} : {}),
+  };
+}
+
+async function fetchJson(url) {
+  const {body} = await fetchJsonWithHeaders(url);
+
+  return body;
+}
+
+async function fetchJsonWithHeaders(url) {
+  const response = await fetch(url, {
+    headers: getGitHubHeaders(),
+  });
+
+  if (!response.ok) {
+    const error = new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+
+    error.status = response.status;
+    throw error;
+  }
+
+  return {
+    body: await response.json(),
+    headers: response.headers,
+  };
+}
+
+async function fetchRepository() {
+  logger.info(`Fetching repository metadata from ${GITHUB_REPO_API_URL}...`);
+
+  try {
+    return await fetchJson(GITHUB_REPO_API_URL);
+  } catch (error) {
+    logger.error('Error fetching repository metadata:', error);
+
+    return null;
+  }
+}
 
 async function fetchReleases() {
-  logger.info(`Fetching releases from ${GITHUB_API_URL}...`);
-  try {
-    const response = await fetch(GITHUB_API_URL, {
-      headers: {
-        'User-Agent': `${projectName}-Docs-Changelog-Generator`,
-        // Add Authorization header if GITHUB_TOKEN is present to avoid rate limits.
-        ...(process.env.GITHUB_TOKEN ? {Authorization: `token ${process.env.GITHUB_TOKEN}`} : {}),
-      },
-    });
+  logger.info(`Fetching releases from ${GITHUB_RELEASES_API_URL}...`);
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch releases: ${response.status} ${response.statusText}`);
+  try {
+    const releases = [];
+    let nextUrl = `${GITHUB_RELEASES_API_URL}?per_page=100`;
+
+    while (nextUrl) {
+      const {body, headers} = await fetchJsonWithHeaders(nextUrl);
+
+      if (!Array.isArray(body)) {
+        throw new Error(`Failed to fetch ${nextUrl}: unexpected response format`);
+      }
+
+      releases.push(...body);
+
+      const linkHeader = headers.get('link') || '';
+      const nextLinkMatch = linkHeader.match(/<([^>]+)>\s*;\s*rel="next"/i);
+
+      nextUrl = nextLinkMatch ? nextLinkMatch[1] : null;
     }
 
-    const releases = await response.json();
     return releases;
   } catch (error) {
     logger.error('Error fetching releases:', error);
@@ -70,37 +121,30 @@ async function fetchReleases() {
   }
 }
 
-function sanitizeReleaseBody(body, releaseTag) {
-  // Convert HTML img tags to Markdown img syntax and remove p tags.
-  // This prevents MDX compilation errors with mixed HTML and Markdown.
+function sanitizeReleaseBody(body = '', releaseTag) {
   let sanitized = body
     .replace(/<p\s+align="left">\s*<img\s+src="([^"]+)"\s+alt="([^"]*)"\s+width="([^"]+)">\s*<\/p>/g, '![$2]($1)')
     .replace(/<p\s+align="left">/g, '')
     .replace(/<\/p>/g, '')
     .replace(/<img\s+src="([^"]+)"\s+alt="([^"]*)"\s+width="([^"]+)">/g, '![$2]($1)');
 
-  // Convert relative image paths to absolute GitHub URLs.
-  // Matches markdown image syntax: ![alt](path).
   sanitized = sanitized.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, src) => {
-    // If the path is relative (doesn't start with http), convert to GitHub raw content URL.
     if (!src.startsWith('http')) {
-      // Use the tag_name from the release to construct the correct GitHub URL.
-      const githubRawUrl = `https://raw.githubusercontent.com/${githubFullName}/${releaseTag}/${src}`;
+      const githubRawUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/${releaseTag}/${src}`;
+
       return `![${alt}](${githubRawUrl})`;
     }
+
     return match;
   });
 
-  // Escape angle brackets that look like template variables (e.g., <os>, <arch>, <version>).
-  // to prevent MDX parser from treating them as JSX tags.
-  // This regex matches <word> patterns that are not part of valid HTML tags.
   sanitized = sanitized.replace(/<([a-zA-Z_-]+)>/g, (match, word) => {
-    // List of actual HTML tags to preserve
     const htmlTags = ['div', 'img', 'p', 'span', 'a', 'strong', 'em', 'br', 'hr'];
+
     if (!htmlTags.includes(word.toLowerCase())) {
-      // Replace with HTML entities to prevent MDX parser issues.
       return `&lt;${word}&gt;`;
     }
+
     return match;
   });
 
@@ -122,94 +166,65 @@ function sanitizeReleaseBody(body, releaseTag) {
 }
 
 async function fetchUserAvatar(username) {
-  // Return cached avatar if available.
-  if (userAvatarCache[username]) {
+  if (Object.prototype.hasOwnProperty.call(userAvatarCache, username)) {
     return userAvatarCache[username];
   }
 
   try {
-    const response = await fetch(`https://api.github.com/users/${username}`, {
-      headers: {
-        'User-Agent': `${projectName}-Docs-Changelog-Generator`,
-        ...(process.env.GITHUB_TOKEN ? {Authorization: `token ${process.env.GITHUB_TOKEN}`} : {}),
-      },
-    });
+    const data = await fetchJson(`https://api.github.com/users/${username}`);
 
-    if (response.ok) {
-      const data = await response.json();
-      userAvatarCache[username] = {
-        avatar: data.avatar_url,
-        url: data.html_url,
-      };
-      return userAvatarCache[username];
-    }
+    userAvatarCache[username] = {
+      avatarUrl: data.avatar_url,
+      profileUrl: data.html_url,
+      username,
+    };
+
+    return userAvatarCache[username];
   } catch (error) {
-    logger.warn(`Failed to fetch avatar for ${username}: ${error.message}`);
-  }
+    userAvatarCache[username] = null;
 
-  return null;
+    if (error.status !== 404) {
+      logger.warn(`Failed to fetch avatar for ${username}: ${error.message}`);
+    }
+
+    return null;
+  }
 }
 
 function extractContributorsFromBody(body) {
-  // Extract unique usernames mentioned with @ symbol.
   const mentions = body.match(/@([a-zA-Z0-9-]+)/g) || [];
-  const uniqueContributors = [...new Set(mentions.map((m) => m.substring(1)))];
+  const uniqueContributors = [...new Set(mentions.map((mention) => mention.substring(1)))];
 
-  // Filter out common non-user mentions and known non-user references.
-  return uniqueContributors.filter(
-    (username) =>
-      ![
-        'dependabot',
-        'renovate',
-        'example',
-        'wso2',
-        '123',
-        githubOwner.toLowerCase(),
-        githubRepoName.toLowerCase(),
-      ].includes(username.toLowerCase()),
-  );
+  return uniqueContributors.filter((username) => !ignoredContributorUsernames.includes(username.toLowerCase()));
 }
 
 function cleanChangeText(text) {
-  // Remove "by @username in PR_LINK" pattern.
-  // Pattern: " by @<username> in https://github.com/...".
   return text.replace(/\s+by\s+@[\w-]+\s+in\s+https:\/\/github\.com\/\S+/, '').trim();
 }
 
+function isNewContributorLine(text) {
+  return /made their first contribution/i.test(text);
+}
+
 function extractNewContributorUsernames(body) {
-  // Extract usernames from "New Contributors" section.
-  // Pattern: "* @username made their first contribution...".
   const newContributorsMatch = body.match(/New Contributors[\s\S]*?(?=###|$)/);
+
   if (!newContributorsMatch) {
     return [];
   }
 
   const mentions = (newContributorsMatch[0] || '').match(/@([a-zA-Z0-9-]+)/g) || [];
-  const usernames = [...new Set(mentions.map((m) => m.substring(1)))];
+  const usernames = [...new Set(mentions.map((mention) => mention.substring(1)))];
 
-  // Filter out common non-user mentions and known non-user references.
-  return usernames.filter(
-    (username) =>
-      ![
-        'dependabot',
-        'renovate',
-        'example',
-        'wso2',
-        '123',
-        githubOwner.toLowerCase(),
-        githubRepoName.toLowerCase(),
-      ].includes(username.toLowerCase()),
-  );
+  return usernames.filter((username) => !ignoredContributorUsernames.includes(username.toLowerCase()));
 }
 
 function extractChanges(body) {
-  // Extract and categorize changes from the release body.
   const categories = {
     breaking: [],
+    bugs: [],
     features: [],
     improvements: [],
-    bugs: [],
-    contributors: [],
   };
 
   const lines = body.split('\n');
@@ -226,17 +241,14 @@ function extractChanges(body) {
       currentCategory = 'improvements';
     } else if (trimmed.includes('Bug Fixes') || trimmed.includes('🐛')) {
       currentCategory = 'bugs';
-    } else if (trimmed.includes('New Contributors') || trimmed.includes('Contributors')) {
-      currentCategory = 'contributors';
     } else if (trimmed.startsWith('*') && currentCategory) {
       const cleanedText = cleanChangeText(trimmed.substring(1).trim());
-
-      // Filter out unwanted lines.
       const isFullChangelog = cleanedText.toLowerCase().includes('full changelog');
       const isNoteAboutSampleApp = cleanedText.toLowerCase().includes('note the id of the sample app');
       const isEmptyOrLink = !cleanedText || cleanedText.startsWith('http');
+      const isNewContributor = isNewContributorLine(cleanedText);
 
-      if (cleanedText && !isFullChangelog && !isNoteAboutSampleApp && !isEmptyOrLink) {
+      if (cleanedText && !isFullChangelog && !isNoteAboutSampleApp && !isEmptyOrLink && !isNewContributor) {
         categories[currentCategory].push(cleanedText);
       }
     }
@@ -245,103 +257,152 @@ function extractChanges(body) {
   return categories;
 }
 
-async function formatChangelog(releases) {
-  let content = '# Releases\n\n';
-  content += `Explore the latest updates, features, and improvements to **${projectName}**.\n\n`;
-  content += '---\n\n';
-
-  if (releases.length === 0) {
-    content += 'No release notes found.\n';
-    return content;
+function formatBytes(bytes) {
+  if (!bytes) {
+    return '0 B';
   }
 
-  for (const release of releases) {
-    if (release.draft) continue;
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** unitIndex;
 
-    const date = new Date(release.published_at).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function pickPrimaryAsset(assets) {
+  if (assets.length === 0) {
+    return null;
+  }
+
+  return (
+    assets.find((asset) => /thunder(?:id)?-.*\.(zip|tgz|tar\.gz)$/i.test(asset.name)) ||
+    assets.find((asset) => /\.(zip|tgz|tar\.gz)$/i.test(asset.name)) ||
+    assets[0]
+  );
+}
+
+async function buildContributorProfiles(usernames) {
+  const profiles = await Promise.all(
+    usernames.map(async (username) => {
+      const profile = await fetchUserAvatar(username);
+
+      return (
+        profile || {
+          avatarUrl: null,
+          profileUrl: `https://github.com/${username}`,
+          username,
+        }
+      );
+    }),
+  );
+
+  return profiles.filter(Boolean);
+}
+
+async function buildReleaseEntry(release) {
+  const sanitizedBody = sanitizeReleaseBody(release.body, release.tag_name);
+  const contributors = await buildContributorProfiles(extractContributorsFromBody(sanitizedBody));
+  const newContributors = await buildContributorProfiles(extractNewContributorUsernames(sanitizedBody));
+  const changes = extractChanges(sanitizedBody);
+  const assets = (release.assets || []).map((asset) => ({
+    contentType: asset.content_type,
+    downloadCount: asset.download_count,
+    downloadUrl: asset.browser_download_url,
+    id: asset.id,
+    name: asset.name,
+    sizeBytes: asset.size,
+    sizeLabel: formatBytes(asset.size),
+    updatedAt: asset.updated_at,
+  }));
+  const primaryAsset = pickPrimaryAsset(assets);
+
+  return {
+    assets,
+    body: sanitizedBody,
+    changes,
+    contributors,
+    htmlUrl: release.html_url,
+    id: release.id,
+    isDraft: release.draft,
+    isLatest: false,
+    isPrerelease: release.prerelease,
+    name: release.name || release.tag_name,
+    newContributors,
+    primaryDownloadUrl: primaryAsset?.downloadUrl || release.html_url,
+    publishedAt: release.published_at,
+    publishedDateLabel: new Date(release.published_at).toLocaleDateString('en-US', {
       day: 'numeric',
-    });
-    const versionName = release.tag_name; // Use tag_name for shorter TOC entries.
+      month: 'long',
+      year: 'numeric',
+    }),
+    tagName: release.tag_name,
+  };
+}
 
-    // Visual Header for the Release.
-    content += `## ${versionName} {#${release.tag_name.toLowerCase().replace(/\./g, '-')}}\n`;
-    content += `<p style={{ fontSize: '0.9rem', color: '#666', marginTop: '-10px', marginBottom: '20px' }}>\n`;
-    content += `  <span>📅 Published on <strong>${date}</strong></span> • \n`;
-    content += `  <a href="${release.html_url}" target="_blank" style={{ textDecoration: 'none' }}>View on GitHub ↗</a>\n`;
-    content += `</p>\n\n`;
+async function buildChangelogData(repository, releases) {
+  const publishedReleases = releases.filter((release) => !release.draft);
+  const releaseEntries = await Promise.all(publishedReleases.map(buildReleaseEntry));
 
-    const sanitizedBody = sanitizeReleaseBody(release.body, release.tag_name);
-    const changes = extractChanges(sanitizedBody);
-
-    // Render Contributors with a better layout.
-    const contributors = extractContributorsFromBody(sanitizedBody);
-    if (contributors.length > 0) {
-      content += `<div style={{ padding: '15px', marginBottom: '10px',}}>\n`;
-      content += `<span style={{ fontSize: '0.85rem', fontWeight: 'bold', display: 'block', marginBottom: '10px', color: '#555', textTransform: 'uppercase' }}>Contributors</span>\n`;
-      content += `<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>\n`;
-
-      for (const username of contributors) {
-        const userInfo = await fetchUserAvatar(username);
-        if (userInfo) {
-          content += `  <a href="${userInfo.url}" title="${username}" target="_blank" style={{ transition: 'transform 0.2s' }}>\n`;
-          content += `    <img src="${userInfo.avatar}" width="55" height="55" style={{ borderRadius: '50%', border: '2px solid #ff8c00', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} alt="${username}" />\n`;
-          content += `  </a>\n`;
-        }
-      }
-      content += `</div></div>\n\n`;
-    }
-
-    // Render New Contributors section.
-    const newContributors = extractNewContributorUsernames(sanitizedBody);
-    if (newContributors.length > 0) {
-      content += `<div style={{ padding: '15px', marginBottom: '40px',}}>\n`;
-      content += `<span style={{ fontSize: '0.85rem', fontWeight: 'bold', display: 'block', marginBottom: '10px', color: '#555', textTransform: 'uppercase' }}>New Contributors</span>\n`;
-      content += `<div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>\n`;
-
-      for (const username of newContributors) {
-        const userInfo = await fetchUserAvatar(username);
-        if (userInfo) {
-          content += `  <a href="${userInfo.url}" title="${username}" target="_blank" style={{ transition: 'transform 0.2s' }}>\n`;
-          content += `    <img src="${userInfo.avatar}" width="55" height="55" style={{ borderRadius: '50%', border: '2px solid #ff8c00', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} alt="${username}" />\n`;
-          content += `  </a>\n`;
-        }
-      }
-      content += `</div></div>\n\n`;
-    }
-
-    // Categorized Changes with cleaner list styling.
-    const renderCategory = (title, items, icon) => {
-      if (items.length === 0) return '';
-      let section = `#### ${icon} ${title}\n\n`;
-      section += `<div style={{ borderLeft: '3px solid #ff8c00', paddingLeft: '5px', marginLeft: '8px', marginBottom: '24px' }}>\n`;
-      items.forEach((item) => {
-        section += `- ${item}\n`;
-      });
-      section += `</div>\n\n`;
-      return section;
-    };
-
-    content += renderCategory('Breaking Changes', changes.breaking, '⚠️');
-    content += renderCategory('Features', changes.features, '🚀');
-    content += renderCategory('Improvements', changes.improvements, '✨');
-    content += renderCategory('Bug Fixes', changes.bugs, '🐛');
-
-    content += `\n<hr style={{ border: 'none', borderTop: '1px solid #eaeaea', margin: '40px 0' }} />\n\n`;
+  const latestEntry = releaseEntries.find((entry) => !entry.isPrerelease) ?? releaseEntries[0];
+  if (latestEntry) {
+    latestEntry.isLatest = true;
   }
 
-  return content;
+  return {
+    generatedAt: new Date().toISOString(),
+    latestRelease: latestEntry || null,
+    releases: releaseEntries,
+    repository: {
+      description: repository?.description || `${PROJECT_NAME} release notes and downloads.`,
+      forks: repository?.forks_count || 0,
+      fullName: repository?.full_name || GITHUB_REPO,
+      stars: repository?.stargazers_count || 0,
+      subscribers: repository?.subscribers_count || 0,
+      url: repository?.html_url || GITHUB_REPO_URL,
+      releasesUrl: `${repository?.html_url || GITHUB_REPO_URL}/releases`,
+    },
+  };
+}
+
+function buildFallbackChangelogData() {
+  return {
+    generatedAt: new Date().toISOString(),
+    latestRelease: null,
+    releases: [],
+    repository: {
+      description: `${PROJECT_NAME} release notes and downloads.`,
+      forks: 0,
+      fullName: GITHUB_REPO,
+      stars: 0,
+      subscribers: 0,
+      url: GITHUB_REPO_URL,
+      releasesUrl: `${GITHUB_REPO_URL}/releases`,
+    },
+  };
+}
+
+function writeChangelogData(changelogData) {
+  mkdirSync(dirname(OUTPUT_FILE), {recursive: true});
+  writeFileSync(OUTPUT_FILE, `${JSON.stringify(changelogData, null, 2)}\n`, 'utf8');
 }
 
 async function generate() {
   try {
-    const releases = await fetchReleases();
-    const markdown = await formatChangelog(releases);
-    writeFileSync(OUTPUT_FILE, markdown, 'utf8');
-    logger.info(`✅ Changelog generated at ${OUTPUT_FILE}`);
+    const [repository, releases] = await Promise.all([fetchRepository(), fetchReleases()]);
+    const changelogData = await buildChangelogData(repository, releases);
+
+    writeChangelogData(changelogData);
+    logger.info(`Changelog data generated at ${OUTPUT_FILE}`);
   } catch (error) {
-    logger.error('❌ Failed to generate changelog — keeping existing file:', error);
+    if (existsSync(OUTPUT_FILE)) {
+      logger.error('❌ Failed to generate changelog — keeping existing file:', error);
+
+      return;
+    }
+
+    logger.error('❌ Failed to generate changelog — writing fallback release data:', error);
+    writeChangelogData(buildFallbackChangelogData());
+    logger.info(`Fallback changelog data generated at ${OUTPUT_FILE}`);
   }
 }
 

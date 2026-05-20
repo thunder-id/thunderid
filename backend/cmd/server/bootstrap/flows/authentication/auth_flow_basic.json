@@ -51,6 +51,13 @@
                                 "placeholder": "{{ t(signin:forms.credentials.fields.password.placeholder) }}"
                             },
                             {
+                                "category": "DISPLAY",
+                                "id": "rich_text_forgot_password",
+                                "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href=\"{{meta(application.forgot_password_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>",
+                                "resourceType": "ELEMENT",
+                                "type": "RICH_TEXT"
+                            },
+                            {
                                 "type": "ACTION",
                                 "id": "action_001",
                                 "label": "{{ t(signin:forms.credentials.actions.submit.label) }}",
@@ -60,7 +67,7 @@
                             {
                                 "category": "DISPLAY",
                                 "id": "rich_text_signup",
-                                "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Don't have an account? </span><a href=\"{{meta(application.sign_up_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign up</span></a></p>",
+                                "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.sign_up.prefix) }} </span><a href=\"{{meta(application.sign_up_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">{{ t(signin:forms.credentials.links.sign_up.label) }}</span></a></p>",
                                 "resourceType": "ELEMENT",
                                 "type": "RICH_TEXT"
                             }

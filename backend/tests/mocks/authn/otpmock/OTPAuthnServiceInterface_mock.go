@@ -7,10 +7,10 @@ package otpmock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/notification/common"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewOTPAuthnServiceInterfaceMock creates a new instance of OTPAuthnServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

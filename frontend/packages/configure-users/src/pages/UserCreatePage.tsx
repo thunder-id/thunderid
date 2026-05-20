@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useGetChildOrganizationUnits} from '@thunderid/configure-organization-units';
 import {useLogger} from '@thunderid/logger/react';
 import {
@@ -73,11 +73,11 @@ export default function UserCreatePage(): JSX.Element {
     limit: 1,
     offset: 0,
   });
-  const user = useAsgardeo().user as {ouId?: string} | null | undefined;
+  const user = useThunderID().user as {ouId?: string} | null | undefined;
   const tokenOuId = user?.ouId ?? null;
   const isChildOuForbidden = (childOuError as {response?: {status?: number}} | null)?.response?.status === 403;
   const isChildOuProbeFailed = !!childOuError && !isChildOuForbidden;
-  const userTypes = useMemo(() => userTypesData?.schemas ?? [], [userTypesData]);
+  const userTypes = useMemo(() => userTypesData?.types ?? [], [userTypesData]);
   const hasChildOUs = !isChildOuLoading && !childOuError && (childOuData?.totalResults ?? 0) > 0;
 
   const activeSteps = useMemo((): UserCreateFlowStep[] => {

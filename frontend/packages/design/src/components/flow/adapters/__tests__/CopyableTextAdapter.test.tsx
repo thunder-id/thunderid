@@ -26,6 +26,7 @@ import CopyableTextAdapter from '../CopyableTextAdapter';
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 const baseComponent: FlowComponent = {
@@ -115,7 +116,6 @@ describe('CopyableTextAdapter', () => {
     });
 
     it('shows "Copied!" feedback after clicking Copy', async () => {
-      vi.useFakeTimers();
       renderWithProviders(
         <CopyableTextAdapter component={baseComponent} resolve={(s) => s} additionalData={additionalData} />,
       );
@@ -123,14 +123,11 @@ describe('CopyableTextAdapter', () => {
       fireEvent.click(screen.getByRole('button'));
 
       await waitFor(() => {
-        expect(screen.getByRole('button').textContent).toContain('Copied!');
+        expect(screen.getByRole('button').textContent).toContain('actions.copied');
       });
-
-      vi.useRealTimers();
     });
 
     it('resets back to "Copy" label after 3 seconds', async () => {
-      vi.useFakeTimers();
       renderWithProviders(
         <CopyableTextAdapter component={baseComponent} resolve={(s) => s} additionalData={additionalData} />,
       );
@@ -138,17 +135,16 @@ describe('CopyableTextAdapter', () => {
       fireEvent.click(screen.getByRole('button'));
 
       await waitFor(() => {
-        expect(screen.getByRole('button').textContent).toContain('Copied!');
+        expect(screen.getByRole('button').textContent).toContain('actions.copied');
       });
 
-      vi.advanceTimersByTime(3000);
-
-      await waitFor(() => {
-        expect(screen.getByRole('button').textContent).toContain('Copy');
-      });
-
-      vi.useRealTimers();
-    });
+      await waitFor(
+        () => {
+          expect(screen.getByRole('button').textContent).toContain('actions.copy');
+        },
+        {timeout: 5000},
+      );
+    }, 10000);
 
     it('falls back to execCommand when clipboard API throws', async () => {
       Object.defineProperty(navigator, 'clipboard', {

@@ -25,15 +25,18 @@ reviews:
         If ANY of the above are detected and the PR does NOT include corresponding updates
         under `docs/` (content pages in `docs/content/`, API references in `docs/content/apis.mdx`,
         guide updates in `docs/content/guides/`, or SDK docs in `docs/content/sdks/`),
-        flag this as a **major issue** with the following message:
+        post a **single consolidated PR-level comment** (do NOT create separate inline comments for each gap).
+        Collect all missing documentation items across the entire PR and emit them together in one comment
+        using the following format:
 
-        "🔴 **Documentation Required**: This PR introduces a user-facing change
-        (e.g., new/modified API endpoint, configuration option, authentication flow, or SDK behavior)
-        but does not include corresponding documentation updates under `docs/`.
-        Please update the relevant documentation before merging."
+        "🔴 **Documentation Required**
+        This PR introduces user-facing changes that are not covered by documentation updates under `docs/`.
+        Please update the relevant documentation before merging.
 
-        Be specific about WHAT documentation is missing — name the endpoint, config key,
-        or feature that needs to be documented and suggest which doc file should be updated or created.
+        **Missing documentation:**
+        - <item 1>: <what needs to be documented and which file to update or create>
+        - <item 2>: <what needs to be documented and which file to update or create>
+        - ..."
 
     - path: "**/*.ts"
       instructions: |

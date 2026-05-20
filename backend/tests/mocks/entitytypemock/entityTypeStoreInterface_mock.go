@@ -7,8 +7,8 @@ package entitytypemock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/entitytype"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 )
 
 // newEntityTypeStoreInterfaceMock creates a new instance of entityTypeStoreInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

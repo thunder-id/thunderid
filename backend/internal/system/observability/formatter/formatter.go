@@ -20,7 +20,7 @@
 package formatter
 
 import (
-	"github.com/asgardeo/thunder/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
 )
 
 // FormatterInterface is the interface for formatting events into different output formats.

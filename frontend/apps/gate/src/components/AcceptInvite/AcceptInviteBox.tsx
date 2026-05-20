@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {AcceptInvite, useAsgardeo, type EmbeddedFlowComponent} from '@asgardeo/react';
+import {AcceptInvite, useThunderID, type EmbeddedFlowComponent} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
 import {useDesign, FlowComponentRenderer, AuthCardLayout} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
@@ -29,7 +29,7 @@ import ROUTES from '../../constants/routes';
 
 export default function AcceptInviteBox(): JSX.Element {
   const navigate = useNavigate();
-  const {resolveFlowTemplateLiterals} = useAsgardeo();
+  const {resolveFlowTemplateLiterals} = useThunderID();
   const {t} = useTranslation();
   const {getServerUrl} = useConfig();
   const logger = useLogger('AcceptInviteBox');
@@ -37,7 +37,7 @@ export default function AcceptInviteBox(): JSX.Element {
   const {isDesignEnabled} = useDesign();
   const [flowError, setFlowError] = useState<string | null>(null);
 
-  const baseUrl = getServerUrl() ?? (import.meta.env.VITE_ASGARDEO_BASE_URL as string);
+  const baseUrl = getServerUrl() ?? (import.meta.env.VITE_THUNDER_BASE_URL as string);
 
   const handleGoToSignIn = () => {
     const result = navigate(ROUTES.AUTH.SIGN_IN);

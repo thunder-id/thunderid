@@ -22,7 +22,7 @@ import (
 	gocrypto "crypto"
 	"crypto/tls"
 
-	"github.com/asgardeo/thunder/internal/system/cryptolab"
+	"github.com/thunder-id/thunderid/internal/system/cryptolab"
 )
 
 // KeyRef identifies a cryptographic key by its ID.
@@ -38,10 +38,11 @@ type PublicKeyFilter struct {
 
 // PublicKeyInfo describes a public key returned by GetPublicKeys.
 type PublicKeyInfo struct {
-	KeyID      string
-	Algorithm  cryptolab.Algorithm
-	PublicKey  gocrypto.PublicKey
-	Thumbprint string
+	KeyID          string
+	Algorithm      cryptolab.Algorithm
+	PublicKey      gocrypto.PublicKey
+	Thumbprint     string
+	CertificateDER []byte // raw DER-encoded X.509 certificate; nil if not certificate-backed
 }
 
 // TLSMaterial holds the TLS certificate material for a key reference.

@@ -23,8 +23,12 @@ import (
 	"errors"
 	"fmt"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
-	"github.com/asgardeo/thunder/internal/entityprovider"
+	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // getAuthnServiceName returns the authn service name for an executor.
@@ -59,4 +63,99 @@ func GetUserAttribute(user *entityprovider.Entity, attributeKey string) (string,
 	}
 
 	return "", fmt.Errorf("attribute '%s' not found or is empty", attributeKey)
+}
+
+// isAuthenticationWithoutLocalUserAllowed returns the value of the AllowAuthenticationWithoutLocalUser
+// node property, defaulting to false if absent or not a bool.
+// This is used to determine if authentication flow can proceed without a local user account.
+// Idea is to use this in authentication flows which has a ProvisioningExecutor attached at the end
+// to provision the user account and auto login without throwing an error for user not found.
+func isAuthenticationWithoutLocalUserAllowed(ctx *core.NodeContext) bool {
+	if val, ok := ctx.NodeProperties[common.NodePropertyAllowAuthenticationWithoutLocalUser]; ok {
+		if boolVal, ok := val.(bool); ok {
+			return boolVal
+		}
+	}
+	return false
+}
+
+// isRegistrationWithExistingUserAllowed returns the value of the AllowRegistrationWithExistingUser
+// node property, defaulting to false if absent or not a bool.
+// This is used to determine if registration flow can proceed when an existing user account is found.
+// Idea is to use this in registration flows which can continue with the existing user account
+// instead of throwing an error for user already exists and allow the flow to complete successfully.
+func isRegistrationWithExistingUserAllowed(ctx *core.NodeContext) bool {
+	if val, ok := ctx.NodeProperties[common.NodePropertyAllowRegistrationWithExistingUser]; ok {
+		if boolVal, ok := val.(bool); ok {
+			return boolVal
+		}
+	}
+	return false
+}
+
+// isCrossOUProvisioningAllowed returns the value of the AllowCrossOUProvisioning node property,
+// defaulting to false if absent or not a bool.
+// This is used to determine if provisioning can proceed across organizational units (OUs).
+// Idea is to use this in registration flows which can continue even if an existing user account
+// is found, but the provisioning executor is trying to provision the user to a different OU than
+// the one in the existing account.
+func isCrossOUProvisioningAllowed(ctx *core.NodeContext) bool {
+	if val, ok := ctx.NodeProperties[common.NodePropertyAllowCrossOUProvisioning]; ok {
+		if boolVal, ok := val.(bool); ok {
+			return boolVal
+		}
+	}
+	return false
+}
+
+// validateFederatedIdentifierConsistency checks if the federated identifiers from the authentication result
+// are consistent with any existing identifiers in the context (runtime data, user inputs, authenticated
+// user attributes).
+func validateFederatedIdentifierConsistency(ctx *core.NodeContext,
+	basicResult *authnprovidermgr.AuthnBasicResult) bool {
+	if basicResult == nil {
+		return true
+	}
+
+	federatedIdentifiers := map[string]string{
+		userAttributeSub: basicResult.ExternalSub,
+	}
+	if email, ok := basicResult.ExternalClaims[userAttributeEmail]; ok {
+		federatedIdentifiers[userAttributeEmail] = systemutils.ConvertInterfaceValueToString(email)
+	}
+
+	// TODO: Refine this well-known-key comparison when IDP-to-local attribute mapping is supported
+	fedIdfConsistencyKeys := []string{userAttributeEmail, userAttributeSub}
+	for _, key := range fedIdfConsistencyKeys {
+		federatedValue := federatedIdentifiers[key]
+		if federatedValue == "" {
+			continue
+		}
+
+		if value, ok := ctx.RuntimeData[key]; ok && value != "" && value != federatedValue {
+			return false
+		}
+		if value, ok := ctx.UserInputs[key]; ok && value != "" && value != federatedValue {
+			return false
+		}
+		if value := getAuthenticatedIdentifierValue(ctx, key); value != "" && value != federatedValue {
+			return false
+		}
+	}
+
+	return true
+}
+
+// getAuthenticatedIdentifierValue retrieves the value of a specific identifier key from the
+// authenticated user's attributes in the context.
+func getAuthenticatedIdentifierValue(ctx *core.NodeContext, key string) string {
+	if ctx.AuthenticatedUser.Attributes == nil {
+		return ""
+	}
+	value, ok := ctx.AuthenticatedUser.Attributes[key]
+	if !ok {
+		return ""
+	}
+
+	return systemutils.ConvertInterfaceValueToString(value)
 }

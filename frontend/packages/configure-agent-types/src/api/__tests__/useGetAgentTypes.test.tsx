@@ -24,8 +24,8 @@ import useGetAgentTypes from '../useGetAgentTypes';
 const mockHttpRequest = vi.fn();
 const mockGetServerUrl = vi.fn().mockReturnValue('https://api.test.com');
 
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     http: {request: mockHttpRequest},
   }),
 }));
@@ -43,7 +43,7 @@ describe('useGetAgentTypes', () => {
     totalResults: 1,
     startIndex: 1,
     count: 1,
-    schemas: [
+    types: [
       {
         id: 'aaa-bbb-ccc',
         name: 'default',

@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // Event represents a generic analytics or audit event in the system.

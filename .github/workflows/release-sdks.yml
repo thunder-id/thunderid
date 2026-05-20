@@ -1,0 +1,304 @@
+# Entrypoint workflow for releasing SDKs.
+# Jobs are arranged as a DAG matching the SDK dependency graph.
+# SDKs at the same dependency level run concurrently; push conflicts are
+# handled by a retry-with-rebase loop in .github/actions/release-sdk/npm.
+
+name: 🧩 Release SDKs
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+
+      sdk_browser:
+        description: '@thunderid/browser'
+        required: false
+        type: boolean
+        default: false
+
+      sdk_express:
+        description: '@thunderid/express'
+        required: false
+        type: boolean
+        default: false
+
+      sdk_javascript:
+        description: '@thunderid/javascript'
+        required: false
+        type: boolean
+        default: false
+
+      sdk_nextjs:
+        description: '@thunderid/nextjs'
+        required: false
+        type: boolean
+        default: false
+
+      sdk_node:
+        description: '@thunderid/node'
+        required: false
+        type: boolean
+        default: false
+
+      sdk_nuxt:
+        description: '@thunderid/nuxt'
+        required: false
+        type: boolean
+        default: false
+
+      sdk_react:
+        description: '@thunderid/react'
+        required: false
+        type: boolean
+        default: false
+
+      sdk_react_router:
+        description: '@thunderid/react-router'
+        required: false
+        type: boolean
+        default: false
+
+      sdk_tanstack_router:
+        description: '@thunderid/tanstack-router'
+        required: false
+        type: boolean
+        default: false
+
+      sdk_vue:
+        description: '@thunderid/vue'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  # IMPORTANT: DO NOT REMOVE. `id-token` is required for OIDC publishing.
+  id-token: write
+
+env:
+  RELEASE_GIT_USER_NAME: "thunderid-automation-bot"
+  RELEASE_GIT_USER_EMAIL: "thunderid-bot@wso2.com"
+  NODE_VERSION: "lts/*"
+  PNPM_VERSION: "latest"
+
+jobs:
+  # ── Level 0 ────────────────────────────────────────────────────────────────
+  release-javascript:
+    name: 📜 Release @thunderid/javascript
+    if: ${{ github.event.inputs.sdk_javascript == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-sdk/npm
+        with:
+          sdk: javascript
+          bump-type: ${{ github.event.inputs.bump_type }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+  # ── Level 1: depends on javascript ─────────────────────────────────────────
+  release-browser:
+    name: 🌐 Release @thunderid/browser
+    needs: [release-javascript]
+    if: ${{ always() && (needs.release-javascript.result == 'success' || needs.release-javascript.result == 'skipped') && github.event.inputs.sdk_browser == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-sdk/npm
+        with:
+          sdk: browser
+          bump-type: ${{ github.event.inputs.bump_type }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+  release-node:
+    name: 🟢 Release @thunderid/node
+    needs: [release-javascript]
+    if: ${{ always() && (needs.release-javascript.result == 'success' || needs.release-javascript.result == 'skipped') && github.event.inputs.sdk_node == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-sdk/npm
+        with:
+          sdk: node
+          bump-type: ${{ github.event.inputs.bump_type }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+  # ── Level 2: depends on browser / node ─────────────────────────────────────
+  release-express:
+    name: 🚂 Release @thunderid/express
+    needs: [release-node]
+    if: ${{ always() && (needs.release-node.result == 'success' || needs.release-node.result == 'skipped') && github.event.inputs.sdk_express == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-sdk/npm
+        with:
+          sdk: express
+          bump-type: ${{ github.event.inputs.bump_type }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+  release-react:
+    name: ⚛️ Release @thunderid/react
+    needs: [release-browser]
+    if: ${{ always() && (needs.release-browser.result == 'success' || needs.release-browser.result == 'skipped') && github.event.inputs.sdk_react == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-sdk/npm
+        with:
+          sdk: react
+          bump-type: ${{ github.event.inputs.bump_type }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+  release-vue:
+    name: 🟩 Release @thunderid/vue
+    needs: [release-browser]
+    if: ${{ always() && (needs.release-browser.result == 'success' || needs.release-browser.result == 'skipped') && github.event.inputs.sdk_vue == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-sdk/npm
+        with:
+          sdk: vue
+          bump-type: ${{ github.event.inputs.bump_type }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+  # ── Level 3: depends on react / node+react / browser+node+vue ──────────────
+  release-react-router:
+    name: 🔀 Release @thunderid/react-router
+    needs: [release-react]
+    if: ${{ always() && (needs.release-react.result == 'success' || needs.release-react.result == 'skipped') && github.event.inputs.sdk_react_router == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-sdk/npm
+        with:
+          sdk: react-router
+          bump-type: ${{ github.event.inputs.bump_type }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+  release-tanstack-router:
+    name: 🔱 Release @thunderid/tanstack-router
+    needs: [release-react]
+    if: ${{ always() && (needs.release-react.result == 'success' || needs.release-react.result == 'skipped') && github.event.inputs.sdk_tanstack_router == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-sdk/npm
+        with:
+          sdk: tanstack-router
+          bump-type: ${{ github.event.inputs.bump_type }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+  release-nextjs:
+    name: ▲ Release @thunderid/nextjs
+    needs: [release-node, release-react]
+    if: ${{ always() && (needs.release-node.result == 'success' || needs.release-node.result == 'skipped') && (needs.release-react.result == 'success' || needs.release-react.result == 'skipped') && github.event.inputs.sdk_nextjs == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-sdk/npm
+        with:
+          sdk: nextjs
+          bump-type: ${{ github.event.inputs.bump_type }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+
+  release-nuxt:
+    name: 💚 Release @thunderid/nuxt
+    needs: [release-browser, release-node, release-vue]
+    if: ${{ always() && (needs.release-browser.result == 'success' || needs.release-browser.result == 'skipped') && (needs.release-node.result == 'success' || needs.release-node.result == 'skipped') && (needs.release-vue.result == 'success' || needs.release-vue.result == 'skipped') && github.event.inputs.sdk_nuxt == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          token: ${{ secrets.THUNDER_AUTOMATION_BOT }}
+
+      - name: 🚀 Release
+        uses: ./.github/actions/release-sdk/npm
+        with:
+          sdk: nuxt
+          bump-type: ${{ github.event.inputs.bump_type }}
+          git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
+          git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}

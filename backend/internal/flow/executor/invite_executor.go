@@ -22,12 +22,12 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	oauth2const "github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // inviteExecutor generates an invite link for the user to complete registration.
@@ -107,6 +107,7 @@ func (e *inviteExecutor) executeGenerate(ctx *core.NodeContext) (*common.Executo
 
 	execResp.ForwardedData[common.ForwardedDataKeyTemplateData] = map[string]interface{}{
 		"inviteLink": inviteLink,
+		"appName":    ctx.Application.Name,
 	}
 
 	if ctx.FlowType == common.FlowTypeUserOnboarding {

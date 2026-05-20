@@ -14,6 +14,6 @@
     { "id": "GHSA-w7fw-mjwx-w883", "package": "qs", "reason": "arrayLimit bypass (transitive via express, dev-only)" }
   ],
   "sample-apps": [
-    { "id": "GHSA-848j-6mx2-7j84", "package": "elliptic", "reason": "Risky crypto implementation (transitive via @asgardeo/react)" }
+    { "id": "GHSA-848j-6mx2-7j84", "package": "elliptic", "reason": "Risky crypto implementation (transitive via @thunderid/react)" }
   ]
 }

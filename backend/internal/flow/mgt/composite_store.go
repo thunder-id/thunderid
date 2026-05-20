@@ -21,8 +21,8 @@ package flowmgt
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/flow/common"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
 
 // compositeFlowStore implements a composite store that combines file-based (immutable) and database (mutable) stores.

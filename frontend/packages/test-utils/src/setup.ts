@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import '@testing-library/jest-dom';
+import '@testing-library/jest-dom/vitest';
 import {cleanup} from '@testing-library/react';
 import enUS from '@thunderid/i18n/locales/en-US';
 import i18n from 'i18next';
@@ -99,7 +99,7 @@ Object.defineProperty(window.HTMLMediaElement.prototype, 'load', {
 });
 
 // Mock IntersectionObserver
-global.IntersectionObserver = class IntersectionObserver {
+globalThis.IntersectionObserver = class IntersectionObserver {
   readonly root = null;
 
   readonly rootMargin = '';
@@ -124,7 +124,7 @@ global.IntersectionObserver = class IntersectionObserver {
 } as unknown as typeof IntersectionObserver;
 
 // Mock ResizeObserver
-global.ResizeObserver = class ResizeObserver {
+globalThis.ResizeObserver = class ResizeObserver {
   observe() {
     return this;
   }
@@ -138,27 +138,31 @@ global.ResizeObserver = class ResizeObserver {
   }
 } as unknown as typeof ResizeObserver;
 
-// Mock global for Node.js built-ins used by @asgardeo packages
+// Mock global for Node.js built-ins used by @thunderid packages
 if (typeof window !== 'undefined') {
   (window as unknown as {global: Window}).global = window;
 }
 
-// Mock @asgardeo/react to avoid buffer import issues in tests
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: vi.fn(() => ({
-    http: {
-      request: vi.fn(),
-    },
-    signIn: vi.fn(),
-    signOut: vi.fn(),
-    getAccessToken: vi.fn(),
-    getIDToken: vi.fn(),
-    getDecodedIDToken: vi.fn(),
-    isAuthenticated: false,
-    isLoading: false,
-  })),
-  AsgardeoProvider: ({children}: {children: React.ReactNode}) => children,
-}));
+// Mock @thunderid/react to avoid buffer import issues in tests
+vi.mock('@thunderid/react', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    useThunderID: vi.fn(() => ({
+      http: {
+        request: vi.fn(),
+      },
+      signIn: vi.fn(),
+      signOut: vi.fn(),
+      getAccessToken: vi.fn(),
+      getIDToken: vi.fn(),
+      getDecodedIDToken: vi.fn(),
+      isAuthenticated: false,
+      isLoading: false,
+    })),
+    ThunderIDProvider: ({children}: {children: React.ReactNode}) => children,
+  };
+});
 
 // Mock MUI transition components to prevent RAF-based animation hangs in tests.
 vi.mock('@mui/material/Fade', () => ({

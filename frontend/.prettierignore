@@ -1,7 +1,7 @@
-/dist
-/build
-/node_modules
-/coverage
-
+**/dist
+**/build
+node_modules
+coverage
 pnpm-lock.yaml
-/packages/create/src/templates
+packages/create/src/templates
+**/.nx

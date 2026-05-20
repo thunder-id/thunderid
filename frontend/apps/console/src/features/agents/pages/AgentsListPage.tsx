@@ -34,7 +34,7 @@ export default function AgentsListPage(): JSX.Element {
   // Agent types are restricted to a single bootstrap-provisioned `default` schema; the Schema
   // button jumps to its edit page so operators can manage attribute definitions in place.
   const {data: agentTypesData, isLoading: isAgentTypesLoading} = useGetAgentTypes();
-  const defaultAgentType = agentTypesData?.schemas?.find((s) => s.name === DEFAULT_AGENT_TYPE_NAME);
+  const defaultAgentType = agentTypesData?.types?.find((s) => s.name === DEFAULT_AGENT_TYPE_NAME);
 
   const handleSchemaClick = (): void => {
     if (!defaultAgentType) return;

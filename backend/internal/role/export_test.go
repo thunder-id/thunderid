@@ -19,6 +19,8 @@
 package role
 
 // NewRoleExporterForTest creates a new role exporter for testing purposes.
-func NewRoleExporterForTest(service RoleServiceInterface) *roleExporter {
-	return newRoleExporter(service)
+func NewRoleExporterForTest(
+	service RoleServiceInterface, assignmentService RoleAssignmentServiceInterface,
+) *roleExporter {
+	return newRoleExporter(service, assignmentService)
 }

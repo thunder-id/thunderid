@@ -62,6 +62,18 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
       />
       <FormHelperText>{t('flows:core.executions.federation.allowCrossOUProvisioning.hint')}</FormHelperText>
 
+      <FormControlLabel
+        control={
+          <Checkbox
+            checked={!!properties.includeOptionalCredentials}
+            onChange={(e) => handleBooleanPropertyChange('includeOptionalCredentials', e.target.checked)}
+            size="small"
+          />
+        }
+        label={t('flows:core.executions.provisioning.includeOptionalCredentials.label')}
+      />
+      <FormHelperText>{t('flows:core.executions.provisioning.includeOptionalCredentials.hint')}</FormHelperText>
+
       <div>
         <FormLabel htmlFor="assign-group">{t('flows:core.executions.provisioning.assignGroup.label')}</FormLabel>
         <TextField

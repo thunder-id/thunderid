@@ -18,7 +18,7 @@
 
 package assert
 
-import authncm "github.com/asgardeo/thunder/internal/authn/common"
+import authncm "github.com/thunder-id/thunderid/internal/authn/common"
 
 // AssuranceLevel represents the level of assurance for authentication.
 type AssuranceLevel string

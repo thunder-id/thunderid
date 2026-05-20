@@ -23,8 +23,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/asgardeo/thunder/internal/system/database/model"
-	"github.com/asgardeo/thunder/internal/system/database/utils"
+	"github.com/thunder-id/thunderid/internal/system/database/model"
+	"github.com/thunder-id/thunderid/internal/system/database/utils"
 )
 
 const (
@@ -61,8 +61,8 @@ var (
 		ID: "ASQ-ENTITY_MGT-04",
 		Query: `INSERT INTO "ENTITY" ` +
 			`(ID, DEPLOYMENT_ID, CATEGORY, TYPE, STATE, OU_ID, ` +
-			`ATTRIBUTES, SYSTEM_ATTRIBUTES, CREDENTIALS, SYSTEM_CREDENTIALS) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			`ATTRIBUTES, SYSTEM_ATTRIBUTES, CREDENTIALS, SYSTEM_CREDENTIALS, CREATED_AT, UPDATED_AT) ` +
+			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 	}
 	// QueryGetEntityByID is the query to get an entity by ID.
 	QueryGetEntityByID = model.DBQuery{
@@ -73,28 +73,28 @@ var (
 	// QueryUpdateEntity is the query to fully update an entity including system attributes.
 	QueryUpdateEntity = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-06",
-		Query: `UPDATE "ENTITY" SET OU_ID = $2, TYPE = $3, STATE = $4, ATTRIBUTES = $5, SYSTEM_ATTRIBUTES = $6 ` +
-			`WHERE ID = $1 AND DEPLOYMENT_ID = $7`,
+		Query: `UPDATE "ENTITY" SET OU_ID = $2, TYPE = $3, STATE = $4, ATTRIBUTES = $5, SYSTEM_ATTRIBUTES = $6, ` +
+			`UPDATED_AT = $7 WHERE ID = $1 AND DEPLOYMENT_ID = $8`,
 	}
 	// QueryUpdateAttributes is the query to update only the schema attributes of an entity.
 	QueryUpdateAttributes = model.DBQuery{
 		ID:    "ASQ-ENTITY_MGT-07",
-		Query: `UPDATE "ENTITY" SET ATTRIBUTES = $2 WHERE ID = $1 AND DEPLOYMENT_ID = $3`,
+		Query: `UPDATE "ENTITY" SET ATTRIBUTES = $2, UPDATED_AT = $3 WHERE ID = $1 AND DEPLOYMENT_ID = $4`,
 	}
 	// QueryUpdateSystemAttributes is the query to update system attributes.
 	QueryUpdateSystemAttributes = model.DBQuery{
 		ID:    "ASQ-ENTITY_MGT-08",
-		Query: `UPDATE "ENTITY" SET SYSTEM_ATTRIBUTES = $2 WHERE ID = $1 AND DEPLOYMENT_ID = $3`,
+		Query: `UPDATE "ENTITY" SET SYSTEM_ATTRIBUTES = $2, UPDATED_AT = $3 WHERE ID = $1 AND DEPLOYMENT_ID = $4`,
 	}
 	// QueryUpdateCredentials is the query to update credentials.
 	QueryUpdateCredentials = model.DBQuery{
 		ID:    "ASQ-ENTITY_MGT-09",
-		Query: `UPDATE "ENTITY" SET CREDENTIALS = $2 WHERE ID = $1 AND DEPLOYMENT_ID = $3`,
+		Query: `UPDATE "ENTITY" SET CREDENTIALS = $2, UPDATED_AT = $3 WHERE ID = $1 AND DEPLOYMENT_ID = $4`,
 	}
 	// QueryUpdateSystemCredentials is the query to update system credentials.
 	QueryUpdateSystemCredentials = model.DBQuery{
 		ID:    "ASQ-ENTITY_MGT-10",
-		Query: `UPDATE "ENTITY" SET SYSTEM_CREDENTIALS = $2 WHERE ID = $1 AND DEPLOYMENT_ID = $3`,
+		Query: `UPDATE "ENTITY" SET SYSTEM_CREDENTIALS = $2, UPDATED_AT = $3 WHERE ID = $1 AND DEPLOYMENT_ID = $4`,
 	}
 	// QueryDeleteEntity is the query to delete an entity.
 	QueryDeleteEntity = model.DBQuery{
@@ -144,7 +144,7 @@ var (
 	QueryBatchInsertIdentifiers = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-16",
 		Query: `INSERT INTO "ENTITY_IDENTIFIER" ` +
-			`(ENTITY_ID, NAME, VALUE, SOURCE, DEPLOYMENT_ID) VALUES `,
+			`(ENTITY_ID, NAME, VALUE, SOURCE, DEPLOYMENT_ID, CREATED_AT) VALUES `,
 	}
 	// QueryDeleteIdentifiersByEntity is the query to delete all identifiers for an entity.
 	QueryDeleteIdentifiersByEntity = model.DBQuery{

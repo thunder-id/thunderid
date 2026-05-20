@@ -115,16 +115,7 @@ export default function Footer(): JSX.Element {
                 mb: 3,
               }}
             >
-              Work together seamlessly with secure your applications with ease.
-            </Typography>
-            <Typography
-              variant="caption"
-              sx={{
-                color: 'text.disabled',
-                fontSize: '0.75rem',
-              }}
-            >
-              Terms & Policy
+              Work together seamlessly and secure your applications with ease.
             </Typography>
           </Box>
 

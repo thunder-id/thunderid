@@ -27,8 +27,8 @@ import (
 	"github.com/stretchr/testify/suite"
 	_ "modernc.org/sqlite"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 // fakeTransactioner is a test double for transaction.Transactioner
@@ -89,7 +89,7 @@ func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, exporter, err := Initialize(mux, suite.mockOUService)
+	service, exporter, err := Initialize(mux, suite.mockOUService, newDisabledConsentServiceMock(suite.T()))
 
 	// Assert
 	suite.NoError(err)
@@ -317,7 +317,9 @@ func (suite *InitTestSuite) TestNewResourceService() {
 
 	// Execute
 	mockTransactioner := &fakeTransactioner{}
-	service, err := newResourceService(suite.mockOUService, mockStore, mockTransactioner)
+	service, err := newResourceService(
+		suite.mockOUService, newDisabledConsentServiceMock(suite.T()), mockStore, mockTransactioner,
+	)
 
 	// Assert
 	suite.NoError(err)
@@ -387,7 +389,7 @@ func (suite *InitTestSuite) TestInitialize_IntegrationFlow() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, _, err := Initialize(mux, suite.mockOUService)
+	service, _, err := Initialize(mux, suite.mockOUService, newDisabledConsentServiceMock(suite.T()))
 
 	// Assert service is created
 	suite.NoError(err)

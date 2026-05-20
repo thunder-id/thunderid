@@ -18,7 +18,7 @@
 
 package cert
 
-import dbmodel "github.com/asgardeo/thunder/internal/system/database/model"
+import dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 
 var (
 	// queryGetCertificateByID retrieves a certificate by its ID.

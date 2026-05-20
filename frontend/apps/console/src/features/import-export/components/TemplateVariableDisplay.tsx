@@ -51,7 +51,7 @@ function parseEnvData(envData: string | null | undefined): Map<string, string> {
     return envMap;
   }
 
-  const lines = envData.split('\n');
+  const lines = envData.split(/\r?\n|\r/);
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) {

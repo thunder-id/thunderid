@@ -22,8 +22,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {ImportRequest, ImportResponse} from '../../models/import-configuration';
 
 const mockHttpRequest = vi.fn();
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     http: {request: mockHttpRequest},
   }),
 }));

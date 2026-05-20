@@ -22,37 +22,174 @@ import (
 	"fmt"
 	"strings"
 
-	dbmodel "github.com/asgardeo/thunder/internal/system/database/model"
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 )
 
+// ouFilterableColumns maps API attribute names to ORGANIZATION_UNIT table column names.
+var ouFilterableColumns = map[string]string{
+	"name":        "NAME",
+	"handle":      "HANDLE",
+	"description": "DESCRIPTION",
+	"createdAt":   "CREATED_AT",
+	"updatedAt":   "UPDATED_AT",
+}
+
+// ouTextColumns is the set of ORGANIZATION_UNIT columns that hold free-form text.
+// The eq operator on these columns uses LOWER() for case-insensitive matching,
+// keeping the DB store consistent with the in-memory file-based store (strings.EqualFold).
+var ouTextColumns = map[string]bool{
+	"NAME":        true,
+	"HANDLE":      true,
+	"DESCRIPTION": true,
+}
+
+// buildOUFilterGroup generates a SQL WHERE fragment for a FilterGroup and returns the bound args.
+// startParamIdx is the positional parameter index for the first filter value.
+// Returns an empty string and no args when g is nil.
+// For multi-clause groups the fragment is wrapped in AND (...); single-clause groups omit the parens.
+func buildOUFilterGroup(g *filter.FilterGroup, startParamIdx int) (cond string, args []interface{}, err error) {
+	if g == nil || len(g.Clauses) == 0 {
+		return "", nil, nil
+	}
+
+	var sb strings.Builder
+	idx := startParamIdx
+
+	for i, clause := range g.Clauses {
+		col, ok := ouFilterableColumns[clause.Expr.Attribute]
+		if !ok {
+			return "", nil, fmt.Errorf("attribute %q is not filterable", clause.Expr.Attribute)
+		}
+
+		var clauseCond string
+		switch clause.Expr.Operator {
+		case filter.OperatorEq:
+			if ouTextColumns[col] {
+				clauseCond = fmt.Sprintf("LOWER(%s) = LOWER($%d)", col, idx)
+			} else {
+				clauseCond = fmt.Sprintf("%s = $%d", col, idx)
+			}
+		case filter.OperatorGt:
+			clauseCond = fmt.Sprintf("%s > $%d", col, idx)
+		case filter.OperatorLt:
+			clauseCond = fmt.Sprintf("%s < $%d", col, idx)
+		default:
+			return "", nil, fmt.Errorf("unsupported operator %q", clause.Expr.Operator)
+		}
+
+		if i > 0 {
+			sb.WriteString(" ")
+			sb.WriteString(string(clause.Connector))
+			sb.WriteString(" ")
+		}
+		sb.WriteString(clauseCond)
+		args = append(args, clause.Expr.Value)
+		idx++
+	}
+
+	if len(g.Clauses) == 1 {
+		cond = " AND " + sb.String()
+	} else {
+		cond = " AND (" + sb.String() + ")"
+	}
+	return cond, args, nil
+}
+
+// buildRootOUCountQuery constructs a count query for root-level OUs with an optional filter group.
+// Args order: deploymentID=$1 [, filterArgs...]
+func buildRootOUCountQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
+	query := `SELECT COUNT(*) as total FROM "ORGANIZATION_UNIT" WHERE PARENT_ID IS NULL AND DEPLOYMENT_ID = $1`
+
+	filterArgs := []interface{}{}
+	if g != nil {
+		cond, args, err := buildOUFilterGroup(g, 2)
+		if err != nil {
+			return dbmodel.DBQuery{}, nil, err
+		}
+		query += cond
+		filterArgs = append(filterArgs, args...)
+	}
+
+	return dbmodel.DBQuery{ID: "OUQ-OU_MGT-01", Query: query}, filterArgs, nil
+}
+
+// buildRootOUListQuery constructs the paginated root-OU list query with an optional filter group.
+// Args order: limit=$1, offset=$2, deploymentID=$3 [, filterArgs...]
+func buildRootOUListQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
+	query := `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, PARENT_ID, METADATA, CREATED_AT, UPDATED_AT ` +
+		`FROM "ORGANIZATION_UNIT" ` +
+		`WHERE PARENT_ID IS NULL AND DEPLOYMENT_ID = $3`
+
+	filterArgs := []interface{}{}
+	if g != nil {
+		cond, args, err := buildOUFilterGroup(g, 4)
+		if err != nil {
+			return dbmodel.DBQuery{}, nil, err
+		}
+		query += cond
+		filterArgs = append(filterArgs, args...)
+	}
+
+	query += " ORDER BY NAME LIMIT $1 OFFSET $2"
+	return dbmodel.DBQuery{ID: "OUQ-OU_MGT-02", Query: query}, filterArgs, nil
+}
+
+// buildChildrenOUCountQuery constructs a count query for child OUs under a parent with an optional filter group.
+// Args order: parentID=$1, deploymentID=$2 [, filterArgs...]
+func buildChildrenOUCountQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
+	query := `SELECT COUNT(*) as total FROM "ORGANIZATION_UNIT" WHERE PARENT_ID = $1 AND DEPLOYMENT_ID = $2`
+
+	filterArgs := []interface{}{}
+	if g != nil {
+		cond, args, err := buildOUFilterGroup(g, 3)
+		if err != nil {
+			return dbmodel.DBQuery{}, nil, err
+		}
+		query += cond
+		filterArgs = append(filterArgs, args...)
+	}
+
+	return dbmodel.DBQuery{ID: "OUQ-OU_MGT-10", Query: query}, filterArgs, nil
+}
+
+// buildChildrenOUListQuery constructs the paginated child-OU list query with an optional filter group.
+// Args order: parentID=$1, limit=$2, offset=$3, deploymentID=$4 [, filterArgs...]
+func buildChildrenOUListQuery(g *filter.FilterGroup) (dbmodel.DBQuery, []interface{}, error) {
+	query := `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT FROM "ORGANIZATION_UNIT" ` +
+		`WHERE PARENT_ID = $1 AND DEPLOYMENT_ID = $4`
+
+	filterArgs := []interface{}{}
+	if g != nil {
+		cond, args, err := buildOUFilterGroup(g, 5)
+		if err != nil {
+			return dbmodel.DBQuery{}, nil, err
+		}
+		query += cond
+		filterArgs = append(filterArgs, args...)
+	}
+
+	query += " ORDER BY NAME LIMIT $2 OFFSET $3"
+	return dbmodel.DBQuery{ID: "OUQ-OU_MGT-11", Query: query}, filterArgs, nil
+}
+
 var (
-	// queryGetRootOrganizationUnitListCount is the query to get total count of organization units.
-	queryGetRootOrganizationUnitListCount = dbmodel.DBQuery{
-		ID:    "OUQ-OU_MGT-01",
-		Query: `SELECT COUNT(*) as total FROM "ORGANIZATION_UNIT" WHERE PARENT_ID IS NULL AND DEPLOYMENT_ID = $1`,
-	}
-
-	// queryGetRootOrganizationUnitList is the query to get organization units with pagination.
-	queryGetRootOrganizationUnitList = dbmodel.DBQuery{
-		ID: "OUQ-OU_MGT-02",
-		Query: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, PARENT_ID, METADATA FROM "ORGANIZATION_UNIT" ` +
-			`WHERE PARENT_ID IS NULL AND DEPLOYMENT_ID = $3 ORDER BY NAME LIMIT $1 OFFSET $2`,
-	}
-
 	// queryCreateOrganizationUnit is the query to create a new organization unit.
 	queryCreateOrganizationUnit = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-03",
 		Query: `INSERT INTO "ORGANIZATION_UNIT" (
-			OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, THEME_ID, LAYOUT_ID, METADATA, DEPLOYMENT_ID
+			OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, THEME_ID, LAYOUT_ID,
+			METADATA, DEPLOYMENT_ID, CREATED_AT, UPDATED_AT
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
 		)`,
 	}
 
 	// queryGetOrganizationUnitByID is the query to get an organization unit by id.
 	queryGetOrganizationUnitByID = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-04",
-		Query: `SELECT OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, THEME_ID, LAYOUT_ID, METADATA
+		Query: `SELECT OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, THEME_ID, LAYOUT_ID,
+		METADATA, CREATED_AT, UPDATED_AT
 		FROM "ORGANIZATION_UNIT"
 		WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -60,7 +197,8 @@ var (
 	// queryGetRootOrganizationUnitByHandle is the query to get a root organization unit by handle.
 	queryGetRootOrganizationUnitByHandle = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-05",
-		Query: `SELECT OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, THEME_ID, LAYOUT_ID, METADATA
+		Query: `SELECT OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, THEME_ID, LAYOUT_ID,
+		METADATA, CREATED_AT, UPDATED_AT
 		FROM "ORGANIZATION_UNIT"
 		WHERE HANDLE = $1 AND PARENT_ID IS NULL AND DEPLOYMENT_ID = $2`,
 	}
@@ -68,7 +206,8 @@ var (
 	// queryGetOrganizationUnitByHandle is the query to get an organization unit by handle and parent.
 	queryGetOrganizationUnitByHandle = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-06",
-		Query: `SELECT OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, THEME_ID, LAYOUT_ID, METADATA
+		Query: `SELECT OU_ID, PARENT_ID, HANDLE, NAME, DESCRIPTION, THEME_ID, LAYOUT_ID,
+		METADATA, CREATED_AT, UPDATED_AT
 		FROM "ORGANIZATION_UNIT"
 		WHERE HANDLE = $1 AND PARENT_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
@@ -83,26 +222,13 @@ var (
 	queryUpdateOrganizationUnit = dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-08",
 		Query: `UPDATE "ORGANIZATION_UNIT" SET PARENT_ID = $2, HANDLE = $3, NAME = $4, DESCRIPTION = $5, ` +
-			`THEME_ID = $6, LAYOUT_ID = $7, METADATA = $8 WHERE OU_ID = $1 AND DEPLOYMENT_ID = $9`,
+			`THEME_ID = $6, LAYOUT_ID = $7, METADATA = $8, UPDATED_AT = $9 WHERE OU_ID = $1 AND DEPLOYMENT_ID = $10`,
 	}
 
 	// queryDeleteOrganizationUnit is the query to delete an organization unit.
 	queryDeleteOrganizationUnit = dbmodel.DBQuery{
 		ID:    "OUQ-OU_MGT-09",
 		Query: `DELETE FROM "ORGANIZATION_UNIT" WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
-	}
-
-	// queryGetOrganizationUnitChildrenCount is the query to get total count of child organization units.
-	queryGetOrganizationUnitChildrenCount = dbmodel.DBQuery{
-		ID:    "OUQ-OU_MGT-10",
-		Query: `SELECT COUNT(*) as total FROM "ORGANIZATION_UNIT" WHERE PARENT_ID = $1 AND DEPLOYMENT_ID = $2`,
-	}
-
-	// queryGetOrganizationUnitChildrenList is the query to get child organization units with pagination.
-	queryGetOrganizationUnitChildrenList = dbmodel.DBQuery{
-		ID: "OUQ-OU_MGT-11",
-		Query: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA FROM "ORGANIZATION_UNIT" ` +
-			`WHERE PARENT_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY NAME LIMIT $2 OFFSET $3`,
 	}
 
 	// queryCheckOrganizationUnitNameConflict is the query to check if an organization
@@ -161,9 +287,11 @@ func buildGetOrganizationUnitsByIDsQuery(ids []string) dbmodel.DBQuery {
 
 	return dbmodel.DBQuery{
 		ID: "OUQ-OU_MGT-21",
-		PostgresQuery: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA FROM "ORGANIZATION_UNIT" ` +
+		PostgresQuery: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
+			`FROM "ORGANIZATION_UNIT" ` +
 			`WHERE OU_ID IN (` + pgInClause + `) AND DEPLOYMENT_ID = ` + deploymentIDParam + ` ORDER BY NAME`,
-		SQLiteQuery: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA FROM "ORGANIZATION_UNIT" ` +
+		SQLiteQuery: `SELECT OU_ID, HANDLE, NAME, DESCRIPTION, METADATA, CREATED_AT, UPDATED_AT ` +
+			`FROM "ORGANIZATION_UNIT" ` +
 			`WHERE OU_ID IN (` + sqliteInClause + `) AND DEPLOYMENT_ID = ? ORDER BY NAME`,
 	}
 }

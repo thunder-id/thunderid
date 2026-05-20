@@ -80,7 +80,7 @@ export default function EnvVariablesViewer({
 
   // Check if there are any placeholder values
   const hasPlaceholders = content.includes('_placeholder');
-  const variableCount = content.split('\n').filter((line) => line.trim() && !line.trim().startsWith('#')).length;
+  const variableCount = content.split(/\r?\n|\r/).filter((line) => line.trim() && !line.trim().startsWith('#')).length;
 
   const handleEditorChange = (value: string | undefined): void => {
     const newContent = value ?? '';

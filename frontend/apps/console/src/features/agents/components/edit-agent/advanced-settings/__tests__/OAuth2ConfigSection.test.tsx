@@ -27,8 +27,8 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     discovery: {
       wellKnown: {
         grant_types_supported: ['authorization_code', 'refresh_token', 'client_credentials'],

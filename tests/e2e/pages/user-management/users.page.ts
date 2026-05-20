@@ -48,15 +48,19 @@ export class UsersPage extends BasePage {
   readonly searchInput: Locator;
 
   // Wizard Locators (Step 1: Select User Type)
-  readonly wizardHeading: Locator;
+  readonly userTypeHeading: Locator;
+  readonly organizationUnitHeading: Locator;
+  readonly onboardingModeHeading: Locator;
   readonly userTypeSelect: Locator;
   readonly continueButton: Locator;
+  readonly createUserActionButton: Locator;
 
   // Form Locators (Step 2: User Details)
   readonly usernameInput: Locator;
   readonly emailInput: Locator;
   readonly givenNameInput: Locator;
   readonly familyNameInput: Locator;
+  readonly passwordInput: Locator;
   readonly submitButton: Locator;
   readonly cancelButton: Locator;
   readonly formHeading: Locator;
@@ -78,13 +82,22 @@ export class UsersPage extends BasePage {
       .or(page.locator('a:has-text("Add User")'));
 
     // Wizard: Step 1 heading ("Select a user type")
-    this.wizardHeading = page.locator("h1, h2, h3, h4, h5, h6").filter({ hasText: /select.*user.*type/i });
+    this.userTypeHeading = page.locator("h1, h2, h3, h4, h5, h6").filter({ hasText: /select.*user.*type/i });
+    this.organizationUnitHeading = page
+      .locator("h1, h2, h3, h4, h5, h6")
+      .filter({ hasText: /select an organization unit/i });
+    this.onboardingModeHeading = page.locator("h1, h2, h3, h4, h5, h6").filter({ hasText: /^add user$/i });
 
     // Wizard: User type dropdown
-    this.userTypeSelect = page.locator('[data-testid="user-type-select"]').or(page.locator("#user-type-select"));
+    this.userTypeSelect = page
+      .locator('[data-testid="user-type-select"]')
+      .or(page.locator("#user-type-select"))
+      .or(page.getByRole("combobox"))
+      .or(page.locator('[aria-haspopup="listbox"]'));
 
     // Wizard: Continue button
     this.continueButton = page.getByRole("button", { name: /continue/i });
+    this.createUserActionButton = page.getByRole("button", { name: /^create user$/i });
 
     // User table
     this.userTable = page.locator('table, [role="table"], [data-testid*="user-list"]');
@@ -100,6 +113,7 @@ export class UsersPage extends BasePage {
     this.givenNameInput = page.locator('input[name="given_name"]').or(page.getByLabel(/first.*name|given.*name/i));
 
     this.familyNameInput = page.locator('input[name="family_name"]').or(page.getByLabel(/last.*name|family.*name/i));
+    this.passwordInput = page.locator('input[name="password"]').or(page.getByLabel(/^password$/i));
 
     // Form buttons
     this.submitButton = page.getByRole("button", { name: /create.*user|add.*user|submit|save/i });
@@ -147,25 +161,33 @@ export class UsersPage extends BasePage {
 
   /** Wait for the wizard to load (Step 1: Select User Type) */
   async waitForUserForm() {
-    await expect(this.wizardHeading.first()).toBeVisible({ timeout: Timeouts.FORM_LOAD });
+    await this.waitForAnyVisibleLocator(
+      [this.userTypeHeading, this.organizationUnitHeading, this.onboardingModeHeading, this.formHeading],
+      Timeouts.FORM_LOAD,
+    );
   }
 
   /** Select the first available user type and advance to Step 2 */
   async selectUserTypeAndContinue() {
-    // Click the user type dropdown to open it
-    await this.userTypeSelect.first().click();
+    if (await this.isLocatorVisible(this.userTypeSelect)) {
+      await this.userTypeSelect.first().click();
 
-    // Select the first non-disabled option (skip the placeholder)
-    const firstOption = this.page.locator('[role="option"]:not([aria-disabled="true"])').first();
-    await firstOption.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
-    await firstOption.click();
+      const firstOption = this.page.locator('[role="option"]:not([aria-disabled="true"])').first();
+      await firstOption.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+      await firstOption.click();
+    }
 
-    // Click Continue to advance to Step 2
-    await this.continueButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
-    await this.continueButton.first().click();
+    await this.clickContinueButton();
 
-    // Wait for the details form heading to appear
-    await expect(this.formHeading.first()).toBeVisible({ timeout: Timeouts.FORM_LOAD });
+    if (await this.isLocatorVisible(this.organizationUnitHeading)) {
+      await this.clickContinueButton();
+    }
+
+    if (await this.isLocatorVisible(this.createUserActionButton)) {
+      await this.createUserActionButton.first().click();
+    }
+
+    await this.waitForDetailsStep();
   }
 
   /** Fill the user form (Step 2: User Details) */
@@ -226,6 +248,32 @@ export class UsersPage extends BasePage {
   async submitForm() {
     await expect(this.submitButton.first()).toBeEnabled({ timeout: Timeouts.ELEMENT_VISIBILITY });
     await this.submitButton.first().click();
+  }
+
+  private async clickContinueButton() {
+    await this.continueButton.first().waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.continueButton.first().click();
+  }
+
+  private async waitForDetailsStep() {
+    await this.waitForAnyVisibleLocator(
+      [this.formHeading, this.usernameInput, this.emailInput, this.givenNameInput, this.familyNameInput, this.passwordInput],
+      Timeouts.FORM_LOAD,
+    );
+  }
+
+  private async isLocatorVisible(locator: Locator): Promise<boolean> {
+    return locator.first().isVisible();
+  }
+
+  private async waitForAnyVisibleLocator(locators: Locator[], timeout: number) {
+    try {
+      await Promise.any(
+        locators.map((locator) => locator.first().waitFor({ state: "visible", timeout })),
+      );
+    } catch {
+      throw new Error(`Timed out after ${timeout}ms while waiting for the next visible user-creation step.`);
+    }
   }
 
   /** Cancel the form */

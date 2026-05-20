@@ -25,6 +25,9 @@ const (
 	// NamespaceAttribute represents the attribute consent namespace.
 	// Used for managing consent over user attributes (e.g. email, mobile).
 	NamespaceAttribute Namespace = "attribute"
+	// NamespacePermission represents the permission consent namespace.
+	// Used for managing consent over resource action permissions (e.g. booking:reservations:read).
+	NamespacePermission Namespace = "permission"
 )
 
 // ConsentStatus defines the possible statuses for a consent record.
@@ -125,6 +128,8 @@ type ConsentPurposeInput struct {
 	Description string
 	// GroupID is the group ID that owns this purpose (e.g. app id)
 	GroupID string
+	// Namespace is the consent namespace to which this purpose belongs (e.g. "attribute")
+	Namespace Namespace
 	// Elements is the list of consent elements belonging to this purpose
 	Elements []PurposeElement
 }
@@ -140,6 +145,8 @@ type ConsentPurpose struct {
 	Description string
 	// GroupID is the group ID that owns this purpose (e.g. app id)
 	GroupID string
+	// Namespace is the consent namespace to which this purpose belongs (e.g. "attribute")
+	Namespace Namespace
 	// Elements is the list of consent elements belonging to this purpose
 	Elements []PurposeElement
 	// CreatedTime is the Unix timestamp when the purpose was created

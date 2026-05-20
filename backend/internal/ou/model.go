@@ -20,33 +20,38 @@ package ou
 
 import (
 	"context"
+	"time"
 
-	"github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // OrganizationUnitBasic represents the basic information of an organization unit.
 type OrganizationUnitBasic struct {
-	ID          string `json:"id"`
-	Handle      string `json:"handle"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	LogoURL     string `json:"logoUrl,omitempty"`
-	IsReadOnly  bool   `json:"isReadOnly"`
+	ID          string    `json:"id"`
+	Handle      string    `json:"handle"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	LogoURL     string    `json:"logoUrl,omitempty"`
+	IsReadOnly  bool      `json:"isReadOnly"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 // OrganizationUnit represents an organization unit.
 type OrganizationUnit struct {
-	ID              string  `json:"id" yaml:"id"`
-	Handle          string  `json:"handle" yaml:"handle"`
-	Name            string  `json:"name" yaml:"name"`
-	Description     string  `json:"description,omitempty" yaml:"description,omitempty"`
-	Parent          *string `json:"parent" yaml:"parent"`
-	ThemeID         string  `json:"themeId,omitempty" yaml:"theme_id,omitempty"`
-	LayoutID        string  `json:"layoutId,omitempty" yaml:"layout_id,omitempty"`
-	LogoURL         string  `json:"logoUrl,omitempty" yaml:"logo_url,omitempty"`
-	TosURI          string  `json:"tosUri,omitempty" yaml:"tos_uri,omitempty"`
-	PolicyURI       string  `json:"policyUri,omitempty" yaml:"policy_uri,omitempty"`
-	CookiePolicyURI string  `json:"cookiePolicyUri,omitempty" yaml:"cookie_policy_uri,omitempty"`
+	ID              string    `json:"id" yaml:"id"`
+	Handle          string    `json:"handle" yaml:"handle"`
+	Name            string    `json:"name" yaml:"name"`
+	Description     string    `json:"description,omitempty" yaml:"description,omitempty"`
+	Parent          *string   `json:"parent" yaml:"parent"`
+	ThemeID         string    `json:"themeId,omitempty" yaml:"theme_id,omitempty"`
+	LayoutID        string    `json:"layoutId,omitempty" yaml:"layout_id,omitempty"`
+	LogoURL         string    `json:"logoUrl,omitempty" yaml:"logo_url,omitempty"`
+	TosURI          string    `json:"tosUri,omitempty" yaml:"tos_uri,omitempty"`
+	PolicyURI       string    `json:"policyUri,omitempty" yaml:"policy_uri,omitempty"`
+	CookiePolicyURI string    `json:"cookiePolicyUri,omitempty" yaml:"cookie_policy_uri,omitempty"`
+	CreatedAt       time.Time `json:"createdAt" yaml:"created_at"`
+	UpdatedAt       time.Time `json:"updatedAt" yaml:"updated_at"`
 }
 
 // OrganizationUnitRequest represents the request body for creating an organization unit.

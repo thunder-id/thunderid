@@ -25,22 +25,22 @@ import (
 	"errors"
 	"fmt"
 
-	appmodel "github.com/asgardeo/thunder/internal/application/model"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/flow/common"
-	flowmgt "github.com/asgardeo/thunder/internal/flow/mgt"
-	"github.com/asgardeo/thunder/internal/inboundclient"
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-	"github.com/asgardeo/thunder/internal/system/config"
-	sysContext "github.com/asgardeo/thunder/internal/system/context"
-	"github.com/asgardeo/thunder/internal/system/cryptolab"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/kmprovider"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/observability"
-	"github.com/asgardeo/thunder/internal/system/observability/event"
-	"github.com/asgardeo/thunder/internal/system/transaction"
-	sysutils "github.com/asgardeo/thunder/internal/system/utils"
+	appmodel "github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/cryptolab"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/observability"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // FlowExecServiceInterface defines the interface for flow orchestration and acts as the
@@ -55,6 +55,7 @@ const (
 	defaultAuthFlowExpiry           int64 = 1800  // 30 minutes in seconds
 	defaultRegistrationFlowExpiry   int64 = 3600  // 60 minutes in seconds
 	defaultUserOnboardingFlowExpiry int64 = 86400 // 24 hours in seconds
+	defaultRecoveryFlowExpiry       int64 = 1800  // 30 minutes in seconds
 )
 
 // flowExecService is the implementation of FlowExecServiceInterface
@@ -248,6 +249,8 @@ func (s *flowExecService) getFlowExpirySeconds(flowType common.FlowType) int64 {
 		return defaultRegistrationFlowExpiry
 	case common.FlowTypeUserOnboarding:
 		return defaultUserOnboardingFlowExpiry
+	case common.FlowTypeRecovery:
+		return defaultRecoveryFlowExpiry
 	default:
 		// Fallback to auth flow expiry
 		return defaultAuthFlowExpiry
@@ -478,7 +481,7 @@ func (s *flowExecService) encryptEngineContext(ctx context.Context, engineCtx *E
 		return nil, fmt.Errorf("failed to serialize engine context: %w", err)
 	}
 	params := cryptolab.AlgorithmParams{Algorithm: cryptolab.AlgorithmAESGCM}
-	ciphertext, _, err := s.cryptoSvc.Encrypt(ctx, kmprovider.KeyRef{}, params, []byte(serialized.Context))
+	ciphertext, _, err := s.cryptoSvc.Encrypt(ctx, nil, params, []byte(serialized.Context))
 	if err != nil {
 		return nil, fmt.Errorf("failed to encrypt context: %w", err)
 	}
@@ -522,6 +525,17 @@ func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowTy
 		return client.RegistrationFlowID, nil
 	}
 
+	if flowType == common.FlowTypeRecovery {
+		if !client.IsRecoveryFlowEnabled {
+			return "", &ErrorRecoveryFlowDisabled
+		} else if client.RecoveryFlowID == "" {
+			logger.Error("Recovery flow is not configured for the application",
+				log.String("appID", appID))
+			return "", &serviceerror.InternalServerError
+		}
+		return client.RecoveryFlowID, nil
+	}
+
 	// Default to authentication flow ID
 	if client.AuthFlowID == "" {
 		logger.Error("Authentication flow is not configured for the entity",
@@ -535,7 +549,8 @@ func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowTy
 // validateFlowType validates the provided flow type string and returns the corresponding FlowType.
 func validateFlowType(flowTypeStr string) (common.FlowType, *serviceerror.ServiceError) {
 	switch common.FlowType(flowTypeStr) {
-	case common.FlowTypeAuthentication, common.FlowTypeRegistration, common.FlowTypeUserOnboarding:
+	case common.FlowTypeAuthentication, common.FlowTypeRegistration, common.FlowTypeUserOnboarding,
+		common.FlowTypeRecovery:
 		return common.FlowType(flowTypeStr), nil
 	default:
 		return "", &ErrorInvalidFlowType
@@ -660,7 +675,7 @@ func (s *flowExecService) getFlowContext(ctx context.Context, executionID string
 
 	if isContextEncrypted(dbModel.Context) {
 		decryptParams := cryptolab.AlgorithmParams{Algorithm: cryptolab.AlgorithmAESGCM}
-		decrypted, decryptErr := s.cryptoSvc.Decrypt(ctx, kmprovider.KeyRef{}, decryptParams, []byte(dbModel.Context))
+		decrypted, decryptErr := s.cryptoSvc.Decrypt(ctx, nil, decryptParams, []byte(dbModel.Context))
 		if decryptErr != nil {
 			logger.Error("Failed to decrypt flow context",
 				log.String(log.LoggerKeyExecutionID, executionID), log.Error(decryptErr))

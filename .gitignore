@@ -85,8 +85,8 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # NX artifacts
-frontend/.nx/cache
-frontend/.nx/workspace-data
+.nx/cache
+.nx/workspace-data
 frontend/packages/**/.nx/cache
 frontend/packages/**/.nx/workspace-data
 
@@ -117,8 +117,10 @@ samples/apps/*/server/app
 backend/coverage_unit.out
 backend/coverage_unit.html
 
-# Generated API spec (unversioned root-level artifact produced by merge-openapi-specs.mjs)
+# Generated API specs and Postman collections (produced by merge-openapi-specs.mjs)
 docs/static/api/combined.yaml
+docs/static/api/next/combined.yaml
+docs/static/api/next/postman/
 
 # IDE settings
 .cursor/rules/nx-rules.mdc
@@ -129,3 +131,4 @@ docs/static/api/combined.yaml
 
 # Claude Code
 .claude/
+

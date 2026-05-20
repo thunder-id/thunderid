@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "0.37.0",
+  "version": "0.39.0",
   "description": "Sample App Server for ThunderID",
   "bin": "server.js",
   "main": "server.js",

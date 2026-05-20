@@ -22,13 +22,13 @@ import UserTypeQueryKeys from '../../constants/userTypeQueryKeys';
 import type {ApiUserType, CreateUserTypeRequest} from '../../types/user-types';
 import useCreateUserType from '../useCreateUserType';
 
-vi.mock('@asgardeo/react', () => ({useAsgardeo: vi.fn()}));
+vi.mock('@thunderid/react', () => ({useThunderID: vi.fn()}));
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {...actual, useConfig: vi.fn()};
 });
 
-const {useAsgardeo} = await import('@asgardeo/react');
+const {useThunderID} = await import('@thunderid/react');
 const {useConfig} = await import('@thunderid/contexts');
 
 describe('useCreateUserType', () => {
@@ -62,11 +62,11 @@ describe('useCreateUserType', () => {
   beforeEach(() => {
     mockHttpRequest = vi.fn();
 
-    vi.mocked(useAsgardeo).mockReturnValue({
+    vi.mocked(useThunderID).mockReturnValue({
       http: {
         request: mockHttpRequest,
       },
-    } as unknown as ReturnType<typeof useAsgardeo>);
+    } as unknown as ReturnType<typeof useThunderID>);
 
     vi.mocked(useConfig).mockReturnValue({
       getServerUrl: () => 'https://api.test.com',

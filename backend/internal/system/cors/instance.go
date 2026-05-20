@@ -24,7 +24,7 @@
 // InitializeMatcher.
 package cors
 
-import "github.com/asgardeo/thunder/internal/system/log"
+import "github.com/thunder-id/thunderid/internal/system/log"
 
 // instance holds the process-wide compiled CORS matcher. It is populated once
 // at server start by InitializeMatcher (called from the server bootstrap

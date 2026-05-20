@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQueryClient} from '@tanstack/react-query';
 import {ResourceAvatar} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
@@ -227,7 +227,7 @@ export default function OrganizationUnitTreePicker({
   const theme = useTheme();
   const {t} = useTranslation();
   const logger = useLogger('OrganizationUnitTreePicker');
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient = useQueryClient();
   const {data, isLoading} = useGetOrganizationUnits(undefined, !rootOuId);

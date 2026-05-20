@@ -22,15 +22,15 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/asgardeo/thunder/internal/entity"
-	"github.com/asgardeo/thunder/internal/entitytype"
-	"github.com/asgardeo/thunder/internal/group"
-	oupkg "github.com/asgardeo/thunder/internal/ou"
-	resourcepkg "github.com/asgardeo/thunder/internal/resource"
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/middleware"
-	"github.com/asgardeo/thunder/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/group"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
 // Initialize initializes the role service and registers its routes.
@@ -41,22 +41,25 @@ func Initialize(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	resourceService resourcepkg.ResourceServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-) (RoleServiceInterface, declarativeresource.ResourceExporter, error) {
+) (RoleServiceInterface, RoleAssignmentServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Step 1: Initialize store and transactioner based on store mode
 	roleStore, transactioner, err := initializeStore()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// Step 2: Create service with store
 	roleService := newRoleService(
 		roleStore, entityService, groupService, ouService, resourceService,
-		entityTypeService, transactioner,
+		transactioner,
 	)
-	roleHandler := newRoleHandler(roleService)
+	assignmentService := newRoleAssignmentService(
+		roleStore, entityService, groupService, entityTypeService, transactioner,
+	)
+	roleHandler := newRoleHandler(roleService, assignmentService)
 	registerRoutes(mux, roleHandler)
-	exporter := newRoleExporter(roleService)
-	return roleService, exporter, nil
+	exporter := newRoleExporter(roleService, assignmentService)
+	return roleService, assignmentService, exporter, nil
 }
 
 // Store Selection (based on role.store configuration):

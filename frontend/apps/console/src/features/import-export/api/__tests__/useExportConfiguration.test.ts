@@ -22,8 +22,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import type {ExportRequest, JSONExportResponse} from '../../models/export-configuration';
 
 const mockHttpRequest = vi.fn();
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     http: {request: mockHttpRequest},
   }),
 }));

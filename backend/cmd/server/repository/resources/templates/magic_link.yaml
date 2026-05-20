@@ -7,11 +7,11 @@ contentType: "text/html"
 body: |
   <!DOCTYPE html>
   <html>
-  <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
   	<h2>Sign in to your account</h2>
   	<p>Use the secure link below to sign in:</p>
   	<p><a href="{{ctx(magicLink)}}" style="display: inline-block; padding: 10px 20px;
-  		background-color: #ff7300; color: #fff; text-decoration: none;
+  		background-color: #3a87ed; color: #fff; text-decoration: none;
   		border-radius: 4px;">Sign in</a></p>
   	<p>This link expires in {{ctx(expiryMinutes)}} minutes.</p>
   	<p>If the button above doesn't work, copy and paste the following link into your browser:</p>

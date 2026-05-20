@@ -7,11 +7,11 @@ package consentenforcermock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/authn/consent"
-	"github.com/asgardeo/thunder/internal/authnprovider/common"
-	consent0 "github.com/asgardeo/thunder/internal/consent"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/authn/consent"
+	"github.com/thunder-id/thunderid/internal/authnprovider/common"
+	consent0 "github.com/thunder-id/thunderid/internal/consent"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewConsentEnforcerServiceInterfaceMock creates a new instance of ConsentEnforcerServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -142,8 +142,8 @@ func (_c *ConsentEnforcerServiceInterfaceMock_RecordConsent_Call) RunAndReturn(r
 }
 
 // ResolveConsent provides a mock function for the type ConsentEnforcerServiceInterfaceMock
-func (_mock *ConsentEnforcerServiceInterfaceMock) ResolveConsent(ctx context.Context, ouID string, appID string, userID string, essentialAttributes []string, optionalAttributes []string, availableAttributes *common.AttributesResponse) (*consent.ConsentPromptData, *serviceerror.ServiceError) {
-	ret := _mock.Called(ctx, ouID, appID, userID, essentialAttributes, optionalAttributes, availableAttributes)
+func (_mock *ConsentEnforcerServiceInterfaceMock) ResolveConsent(ctx context.Context, ouID string, appID string, appName string, userID string, essentialAttributes []string, optionalAttributes []string, authorizedPermissions []string, availableAttributes *common.AttributesResponse) (*consent.ConsentPromptData, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, ouID, appID, appName, userID, essentialAttributes, optionalAttributes, authorizedPermissions, availableAttributes)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ResolveConsent")
@@ -151,18 +151,18 @@ func (_mock *ConsentEnforcerServiceInterfaceMock) ResolveConsent(ctx context.Con
 
 	var r0 *consent.ConsentPromptData
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, []string, []string, *common.AttributesResponse) (*consent.ConsentPromptData, *serviceerror.ServiceError)); ok {
-		return returnFunc(ctx, ouID, appID, userID, essentialAttributes, optionalAttributes, availableAttributes)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, []string, []string, []string, *common.AttributesResponse) (*consent.ConsentPromptData, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, ouID, appID, appName, userID, essentialAttributes, optionalAttributes, authorizedPermissions, availableAttributes)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, []string, []string, *common.AttributesResponse) *consent.ConsentPromptData); ok {
-		r0 = returnFunc(ctx, ouID, appID, userID, essentialAttributes, optionalAttributes, availableAttributes)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, []string, []string, []string, *common.AttributesResponse) *consent.ConsentPromptData); ok {
+		r0 = returnFunc(ctx, ouID, appID, appName, userID, essentialAttributes, optionalAttributes, authorizedPermissions, availableAttributes)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*consent.ConsentPromptData)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, []string, []string, *common.AttributesResponse) *serviceerror.ServiceError); ok {
-		r1 = returnFunc(ctx, ouID, appID, userID, essentialAttributes, optionalAttributes, availableAttributes)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string, []string, []string, []string, *common.AttributesResponse) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, ouID, appID, appName, userID, essentialAttributes, optionalAttributes, authorizedPermissions, availableAttributes)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -180,15 +180,17 @@ type ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call struct {
 //   - ctx context.Context
 //   - ouID string
 //   - appID string
+//   - appName string
 //   - userID string
 //   - essentialAttributes []string
 //   - optionalAttributes []string
+//   - authorizedPermissions []string
 //   - availableAttributes *common.AttributesResponse
-func (_e *ConsentEnforcerServiceInterfaceMock_Expecter) ResolveConsent(ctx interface{}, ouID interface{}, appID interface{}, userID interface{}, essentialAttributes interface{}, optionalAttributes interface{}, availableAttributes interface{}) *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call {
-	return &ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call{Call: _e.mock.On("ResolveConsent", ctx, ouID, appID, userID, essentialAttributes, optionalAttributes, availableAttributes)}
+func (_e *ConsentEnforcerServiceInterfaceMock_Expecter) ResolveConsent(ctx interface{}, ouID interface{}, appID interface{}, appName interface{}, userID interface{}, essentialAttributes interface{}, optionalAttributes interface{}, authorizedPermissions interface{}, availableAttributes interface{}) *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call {
+	return &ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call{Call: _e.mock.On("ResolveConsent", ctx, ouID, appID, appName, userID, essentialAttributes, optionalAttributes, authorizedPermissions, availableAttributes)}
 }
 
-func (_c *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call) Run(run func(ctx context.Context, ouID string, appID string, userID string, essentialAttributes []string, optionalAttributes []string, availableAttributes *common.AttributesResponse)) *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call {
+func (_c *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call) Run(run func(ctx context.Context, ouID string, appID string, appName string, userID string, essentialAttributes []string, optionalAttributes []string, authorizedPermissions []string, availableAttributes *common.AttributesResponse)) *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -206,17 +208,25 @@ func (_c *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call) Run(run func(
 		if args[3] != nil {
 			arg3 = args[3].(string)
 		}
-		var arg4 []string
+		var arg4 string
 		if args[4] != nil {
-			arg4 = args[4].([]string)
+			arg4 = args[4].(string)
 		}
 		var arg5 []string
 		if args[5] != nil {
 			arg5 = args[5].([]string)
 		}
-		var arg6 *common.AttributesResponse
+		var arg6 []string
 		if args[6] != nil {
-			arg6 = args[6].(*common.AttributesResponse)
+			arg6 = args[6].([]string)
+		}
+		var arg7 []string
+		if args[7] != nil {
+			arg7 = args[7].([]string)
+		}
+		var arg8 *common.AttributesResponse
+		if args[8] != nil {
+			arg8 = args[8].(*common.AttributesResponse)
 		}
 		run(
 			arg0,
@@ -226,6 +236,8 @@ func (_c *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call) Run(run func(
 			arg4,
 			arg5,
 			arg6,
+			arg7,
+			arg8,
 		)
 	})
 	return _c
@@ -236,7 +248,7 @@ func (_c *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call) Return(consen
 	return _c
 }
 
-func (_c *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call) RunAndReturn(run func(ctx context.Context, ouID string, appID string, userID string, essentialAttributes []string, optionalAttributes []string, availableAttributes *common.AttributesResponse) (*consent.ConsentPromptData, *serviceerror.ServiceError)) *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call {
+func (_c *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call) RunAndReturn(run func(ctx context.Context, ouID string, appID string, appName string, userID string, essentialAttributes []string, optionalAttributes []string, authorizedPermissions []string, availableAttributes *common.AttributesResponse) (*consent.ConsentPromptData, *serviceerror.ServiceError)) *ConsentEnforcerServiceInterfaceMock_ResolveConsent_Call {
 	_c.Call.Return(run)
 	return _c
 }

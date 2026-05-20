@@ -1,91 +1,136 @@
 ---
-title: Build a Flow
+title: Build a Sign-In Flow
 sidebar_position: 2
 persona: iam
-description: Create, configure, and manage flows using the Console Flow Builder.
+description: Build a working username and password sign-in flow with the ThunderID Flow Designer — step by step.
 ---
 
-# Build a Flow
+# Build a Sign-in Flow
 
-This guide walks you through creating a flow from scratch using the <ProductName /> Console Flow Builder.
+By the end of this guide you will have a working username and password sign-in flow assigned to your application.
 
 ## Prerequisites
 
-- You have access to the <ProductName /> Console with administrator permissions.
-- You have at least one application configured.
+- <ProductName /> is running. See [Get Started](../../getting-started/get-thunderid).
+- You have created an application. See [Quickstart](../../quick-start/quickstart).
 
 <Stepper>
 
-## Create a Flow
+## Open the Flow Designer
 
-1. Sign in to the <ProductName /> Console and go to **Configure** → **Flows**.
-2. Click **+ Create New Flow** in the top-right corner.
-3. Enter a name for the flow in the left panel.
+1. Sign in to the <ProductName /> Console at [https://localhost:8090/console](https://localhost:8090/console).
+2. Go to **Flows** → **+ Create New Flow**.
+3. Give your flow a name — for example, `Sign In`.
 
-The Flow Builder opens with a default starter flow on the canvas: a **Sign In** View node wired through an **Identifier + Password** executor and an **Auth Assertion Generator** executor to an **END** node.
+The canvas opens with a default starter flow already wired: a **Sign In** view node → **Identifier + Password** executor → **Auth Assertion Generator** executor → **END**. This is exactly the flow you need for username and password authentication.
 
-## Choose a Starting Point
-
-**Use a Starter Template** to replace the canvas with a complete, pre-wired flow:
-
-1. In the left panel, expand **Starter Templates**.
-2. Click **+** next to the template that matches your use case.
-
-Save immediately or continue customizing. Select the **Blank** template to clear the canvas down to just a START node and build from scratch.
-
-## Build the Canvas
-
-Add nodes from the left panel and wire them together.
-
-### Add Nodes
-
-- **Widgets** - expand **Widgets** and click **+** to drop a pre-wired View + Executor pair onto the canvas.
-- **Steps** - expand **Steps** and click **+** to add a View node on its own, then wire it manually.
-- **Components** - select a View node on the canvas, and click **+** to add components (inputs, buttons, OTP fields) inside it.
-- **Executors** - expand **Executors** and click **+** to add a backend operation node.
-
-### Connect Nodes
-
-Drag from the output port of one node to the input port of another:
-
-- **View → Executor** - triggers the Executor when the user submits the form.
-- **Green dot → next node** - the Executor's success path.
-- **Red dot → fallback node** - the Executor's failure path; connect to an error View or retry step.
-- **Final Executor → END** - marks the flow as complete.
-
-:::tip
-Every Executor should have both a success and a failure connection. An unconnected failure path causes the flow to stop with an error.
+:::tip You're almost done
+The default flow is a complete, working username and password sign-in flow. If that's all you need, skip to [Assign the flow to your application](#assign-the-flow-to-your-application).
 :::
 
-### Configure Node Settings
+## Review the Canvas
 
-Click the settings icon on any node:
+The default flow has three nodes:
 
-- **View nodes** - field labels, placeholder text, and input validation.
-- **Executor nodes** - executor-specific options such as OTP length, social login credentials, or attribute mappings.
-- **END nodes** - for registration flows, post-registration behavior such as account activation and auto-login.
+| Node | What it does |
+|---|---|
+| **Sign In** (View) | Renders the sign-in form with username and password fields |
+| **Identifier + Password** (Executor) | Validates the submitted credentials against the user store |
+| **Auth Assertion Generator** (Executor) | Issues the authentication assertion on success |
 
-:::tip
- Refer to the [Flow Reference](./flow-reference#view-and-executor-pairings) for details on what each executor does and its required inputs.
+Each node connects to the next via its **green (success) output**. The final executor connects to **END**.
+
+:::note
+Every executor also has a **red (failure) output**. In the default flow this loops back to the Sign In view, so users see an error and can retry. Don't leave failure paths unconnected — an unconnected failure path stops the flow with an error.
 :::
 
-## Save and Manage Versions
+## Save the Flow
 
-Click **Save** in the top-right corner. <ProductName /> saves the flow and increments the version number.
+Click **Save** in the top-right corner. <ProductName /> saves the flow and assigns it a version number.
 
-To restore a previous version, open the version history from the flow settings menu, select a version to preview, and click **Restore**.
+## Assign the Flow to Your Application
 
-## Assign to an Application
+A flow only activates once assigned to an application.
 
-1. From the <ProductName /> Console, go to **Applications** and open the application you want to configure.
-2. Select the **Flows** tab.
-3. Under **Authentication Flow** or **Registration Flow**, choose the flow you created from the dropdown.
+1. In the Console, go to **Applications** and open the application you created in the Quickstart.
+2. Open the **Flows** tab.
+3. Under **Authentication Flow**, select the flow you just saved from the dropdown.
 4. Click **Save**.
 
-<ProductName /> executes the assigned flow whenever a user starts a session for that application.
+<ProductName /> will now run this flow whenever a user signs in to your application.
 
 </Stepper>
 
-## Related Guides
+## What's Next
 
-- [Flow Concepts](./flow-concepts) - Reference for node types, left panel sections, and canvas connections.
+Your sign-in flow is live. The next step is connecting your app so it can redirect users through this flow.
+
+<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginTop: '1.5rem'}}>
+
+  <a href="../../../quick-start/connect-your-application/react" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Step 4 → Connect your React app</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Install the Asgardeo React SDK, configure your Client ID, and add working sign-in in minutes.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>React quickstart →</div>
+    </div>
+  </a>
+
+</div>
+
+## Go Further
+
+Once you have the baseline working, the Flow Designer lets you add steps to your flow without changing your application code.
+
+<details>
+  <summary>Add multi-factor authentication (MFA)</summary>
+
+1. From the <ProductName /> Console, go to **Applications** and open the application you want to configure.
+2. Select the **Flows** tab.
+3. Under **Authentication Flow**, **Registration Flow**, or **Recovery Flow**, choose the flow you created from the dropdown.
+4. Click **Save**.
+
+<ProductName /> executes the assigned flow when a user initiates the corresponding action (sign in, sign up, or password recovery).
+
+:::note
+For **Recovery Flow**, toggle the switch to enable password recovery before selecting a flow.
+:::
+
+</details>
+
+<details>
+  <summary>Add passkey authentication</summary>
+
+  1. In the left panel under **Widgets**, click **+** next to **Passkey**.
+  2. Wire the passkey executor between your Sign In view and the Auth Assertion Generator.
+  3. To offer passkeys alongside password, connect the Sign In view to both executors and merge the success paths.
+  4. Save and reassign to your application.
+
+</details>
+
+<details>
+  <summary>Add social login</summary>
+
+  1. Configure a social identity provider first — go to **Integrations** → **Identity Providers** and add Google, GitHub, or another provider.
+  2. In the Flow Designer, add a **Social Login** executor from the left panel.
+  3. Wire it in parallel with or as an alternative to the **Identifier + Password** executor.
+  4. Save.
+
+</details>
+
+<details>
+  <summary>Build from scratch</summary>
+
+  To start with a blank canvas instead of the default flow:
+
+  1. In the left panel, expand **Starter Templates**.
+  2. Click **+** next to **Blank** to clear the canvas to a single START node.
+  3. Add nodes from **Widgets** (pre-wired View + Executor pairs) or **Steps** (View nodes you wire manually).
+  4. Connect nodes: drag from an output port to an input port.
+  5. Every flow must end with an **Auth Assertion Generator** → **END** chain.
+
+</details>
+
+## Reference
+
+- [Flow Concepts](./flow-concepts) — Node types, left panel sections, and canvas connection rules.
+- [Flow Reference](./flow-reference) — Every executor, its required inputs, and its outputs.

@@ -22,8 +22,8 @@ import RoleQueryKeys from '../../constants/role-query-keys';
 import useDeleteRole from '../useDeleteRole';
 
 // Mock the dependencies
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: vi.fn(),
+vi.mock('@thunderid/react', () => ({
+  useThunderID: vi.fn(),
 }));
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
@@ -35,7 +35,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
-const {useAsgardeo} = await import('@asgardeo/react');
+const {useThunderID} = await import('@thunderid/react');
 const {useConfig, useToast} = await import('@thunderid/contexts');
 
 describe('useDeleteRole', () => {
@@ -48,11 +48,11 @@ describe('useDeleteRole', () => {
     mockGetServerUrl = vi.fn().mockReturnValue('https://api.test.com');
     mockShowToast = vi.fn();
 
-    vi.mocked(useAsgardeo).mockReturnValue({
+    vi.mocked(useThunderID).mockReturnValue({
       http: {
         request: mockHttpRequest,
       },
-    } as unknown as ReturnType<typeof useAsgardeo>);
+    } as unknown as ReturnType<typeof useThunderID>);
 
     vi.mocked(useConfig).mockReturnValue({
       getServerUrl: mockGetServerUrl,

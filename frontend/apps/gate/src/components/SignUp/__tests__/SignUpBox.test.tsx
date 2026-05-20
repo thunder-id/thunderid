@@ -68,7 +68,7 @@ vi.mock('react-router', () => ({
   useSearchParams: () => [new URLSearchParams(), vi.fn()],
 }));
 
-// Mock Asgardeo SignUp component
+// Mock ThunderID SignUp component
 const mockHandleSubmit = vi.fn().mockResolvedValue(undefined);
 const mockHandleInputChange = vi.fn();
 
@@ -99,8 +99,8 @@ const createMockSignUpRenderProps = (overrides: Partial<MockSignUpRenderProps> =
 let mockSignUpRenderProps: MockSignUpRenderProps = createMockSignUpRenderProps();
 let capturedOnFlowChange: ((response: unknown) => void) | undefined;
 
-vi.mock('@asgardeo/react', async () => {
-  const actual = await vi.importActual('@asgardeo/react');
+vi.mock('@thunderid/react', async () => {
+  const actual = await vi.importActual('@thunderid/react');
   return {
     ...actual,
     SignUp: ({
@@ -111,7 +111,7 @@ vi.mock('@asgardeo/react', async () => {
       onFlowChange?: (response: unknown) => void;
     }) => {
       capturedOnFlowChange = onFlowChange;
-      return <div data-testid="asgardeo-signup">{children(mockSignUpRenderProps)}</div>;
+      return <div data-testid="thunderid-signup">{children(mockSignUpRenderProps)}</div>;
     },
     EmbeddedFlowComponentType: {
       Text: 'TEXT',
@@ -147,7 +147,7 @@ describe('SignUpBox', () => {
       components: null as unknown as unknown[],
     });
     render(<SignUpBox />);
-    expect(screen.getByTestId('asgardeo-signup')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signup')).toBeInTheDocument();
   });
 
   it('shows error alert when error is present', () => {
@@ -631,7 +631,7 @@ describe('SignUpBox', () => {
       components: [{id: 'block', type: 'BLOCK', components: []}],
     });
     render(<SignUpBox />);
-    expect(screen.getByTestId('asgardeo-signup')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signup')).toBeInTheDocument();
   });
 
   it('handles TRIGGER action within form block', async () => {
@@ -1773,12 +1773,12 @@ describe('SignUpBox', () => {
 
   it('renders branded logo with alt fallback', () => {
     render(<SignUpBox />);
-    expect(screen.getByTestId('asgardeo-signup')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signup')).toBeInTheDocument();
   });
 
   it('renders branded logo with custom alt, height, and width', () => {
     render(<SignUpBox />);
-    expect(screen.getByTestId('asgardeo-signup')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signup')).toBeInTheDocument();
   });
 
   it('renders block without components property', () => {
@@ -1791,7 +1791,7 @@ describe('SignUpBox', () => {
       ],
     });
     render(<SignUpBox />);
-    expect(screen.getByTestId('asgardeo-signup')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signup')).toBeInTheDocument();
   });
 
   it('renders social login trigger with missing label and image', () => {
@@ -1811,6 +1811,6 @@ describe('SignUpBox', () => {
       ],
     });
     render(<SignUpBox />);
-    expect(screen.getByTestId('asgardeo-signup')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signup')).toBeInTheDocument();
   });
 });

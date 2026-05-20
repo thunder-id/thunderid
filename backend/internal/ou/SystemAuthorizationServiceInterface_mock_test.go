@@ -7,9 +7,9 @@ package ou
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/security"
-	sysauthz "github.com/asgardeo/thunder/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	sysauthz "github.com/thunder-id/thunderid/internal/system/sysauthz"
 	mock "github.com/stretchr/testify/mock"
 )
 

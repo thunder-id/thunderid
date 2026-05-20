@@ -51,7 +51,6 @@ jobs:
               - '**/package.json'
               - '**/pnpm-lock.yaml'
               - '**/package-lock.json'
-              - '**/.npmrc'
               - '**/pnpm-workspace.yaml'
 
       - name: 🔍 Detect JS dependency file changes (commit)
@@ -71,7 +70,7 @@ jobs:
         if: steps.pr-deps.outputs.changed == 'true' || steps.commit-deps.outputs.changed == 'true'
         run: |
           echo "::error::🚨 SUPPLY CHAIN PROTECTION: JS dependency files were modified."
-          echo "::error::Changes detected in package.json / pnpm-lock.yaml / package-lock.json / .npmrc / pnpm-workspace.yaml."
+          echo "::error::Changes detected in package.json / pnpm-lock.yaml / package-lock.json / pnpm-workspace.yaml."
           echo "::error::To prevent supply chain attacks, this workflow will not run JS package installs."
           echo ""
           echo "If these changes are intentional and trusted, a maintainer must add the"

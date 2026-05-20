@@ -18,7 +18,7 @@
 
 package userinfo
 
-import inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
+import inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 
 // UserInfoResponse represents the structured response returned by the
 // UserInfo service. It supports JSON, JWS, JWE, and NESTED_JWT response types.

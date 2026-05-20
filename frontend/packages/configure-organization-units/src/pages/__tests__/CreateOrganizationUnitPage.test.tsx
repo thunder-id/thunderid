@@ -49,7 +49,7 @@ vi.mock('@thunderid/logger/react', () => ({
 
 // Mock create hook
 const mockMutate = vi.fn();
-vi.mock('../../api/useCreateOrganizationUnit', () => ({
+vi.mock('@/api/useCreateOrganizationUnit', () => ({
   default: () => ({
     mutate: mockMutate,
     isPending: false,
@@ -57,7 +57,7 @@ vi.mock('../../api/useCreateOrganizationUnit', () => ({
 }));
 
 // Mock useOrganizationUnit hook
-vi.mock('../../contexts/useOrganizationUnit', () => ({
+vi.mock('@/contexts/useOrganizationUnit', () => ({
   default: () => ({
     resetTreeState: vi.fn(),
   }),

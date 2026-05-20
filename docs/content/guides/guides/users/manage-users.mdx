@@ -5,9 +5,6 @@ persona: iam
 description: Create and manage users, including profile attributes and group membership.
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
 # Manage Users
 
 A user in <ProductName /> represents an account that can authenticate with your applications. Each user has:
@@ -31,43 +28,28 @@ See [Organization Units](../organization-units/) for more information on how OUs
 
 ## Onboard a User
 
-<ProductName /> gives you two ways to onboard a user, depending on whether you want to create the account directly or let the user complete their own registration.
-
-<Tabs>
-<TabItem value="create" label="Create a User" default>
-
-Use this when you want to create a fully provisioned account on behalf of a user.
+<ProductName /> uses a single **Add User** flow for both direct account creation and invite-based onboarding.
 
 1. Navigate to **Users** in the <ProductName /> Console and click **Add User**.
 2. Select a **User Type** to determine the user's attribute schema.
 3. Select an **Organization Unit** that determines the user's position in the organization hierarchy.
-4. Fill in the user attributes.
-5. Click **Create User**.
+4. Choose how to onboard the user:
+   - **Create User**: Provision the user immediately by providing all required details and credentials.
+   - **Invite User**: Generate an invite and let the user finish onboarding later.
+5. Complete the remaining steps for the selected path.
+
+When you create the account directly, provide the required user details and credentials, then submit the flow to provision the user immediately.
+
+When you invite the user, enter the user's **Email** address and choose an invite method:
+
+- **Send Invite Email**: <ProductName /> generates the invite and sends the email.
+- **Get Invite Link**: <ProductName /> shows a copyable invite link that you can share with the user.
+
+If the email service is unavailable, <ProductName /> still provides a copyable invite link so you can share it manually.
 
 :::tip
-The attributes available depend on the selected user type. See [User Type Reference](./user-type-reference) to understand the defaults, or [User Types](./user-types) to create your own.
+The attributes available during onboarding depend on the selected user type. See [User Type Reference](./user-type-reference) to understand the defaults, or [User Types](./user-types) to create your own.
 :::
-
-</TabItem>
-<TabItem value="invite" label="Invite a User">
-
-Use this when you want the user to complete their own registration. <ProductName /> generates an invite link that you share with them.
-
-1. Navigate to **Users** and click **Invite User**.
-2. Select the **User Type** for the invited user.
-3. Enter the user's **Email** address.
-4. Click **Next**.
-5. Select an invite method:
-    - **Send email invite**: <ProductName /> generates the invite and sends the email.
-    - **Share invite link manually**: <ProductName /> shows **Invite Link Ready** and a copyable invite link.
-6. If the email service is unavailable, <ProductName /> shows **Email service unavailable** and still provides a copyable invite link so you can share it manually.
-
-:::tip
-The attributes available on the registration form depend on the selected user type. See [User Type Reference](./user-type-reference) to understand the default user types. See [User Types](./user-types) to create your own user type.
-:::
-
-</TabItem>
-</Tabs>
 
 ## Update a User
 

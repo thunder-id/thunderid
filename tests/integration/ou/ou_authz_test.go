@@ -25,9 +25,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
-	"github.com/asgardeo/thunder/tests/integration/testutils"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -384,4 +385,61 @@ func (ts *OUAuthzTestSuite) TestDeleteOwnOU() {
 
 	ts.Equal(http.StatusForbidden, resp.StatusCode,
 		"view-only OU-admin must not delete own OU (system:ou required)")
+}
+
+// TestListOUsWithFilterMatch verifies that a filter applied over the restricted
+// OU set returns only the OUs that both the caller is authorized to see AND
+// match the filter expression.
+func (ts *OUAuthzTestSuite) TestListOUsWithFilterMatch() {
+	// "Authz Test OU1" is the name set in SetupSuite for OU1.
+	resp := ts.doWithFilter("/organization-units", `name eq "Authz Test OU1"`)
+	defer closeBody(resp)
+
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp OrganizationUnitListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+
+	ids := make([]string, 0, len(listResp.OrganizationUnits))
+	for _, ou := range listResp.OrganizationUnits {
+		ids = append(ids, ou.ID)
+	}
+
+	ts.Containsf(ids, ts.ou1ID,
+		"filter matching OU1's name should return OU1; got IDs: %v", ids)
+}
+
+// TestListOUsWithFilterNoMatch verifies that a filter that matches no authorized
+// OU returns an empty list, even though the caller is authorized to see OU1.
+func (ts *OUAuthzTestSuite) TestListOUsWithFilterNoMatch() {
+	resp := ts.doWithFilter("/organization-units", `name eq "__no_match__"`)
+	defer closeBody(resp)
+
+	ts.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResp OrganizationUnitListResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResp))
+
+	ts.Equal(0, listResp.TotalResults,
+		"filter that matches no authorized OU should return empty results")
+	ts.Empty(listResp.OrganizationUnits)
+}
+
+// doWithFilter issues a GET request using the scoped OU-admin client with the
+// given filter expression as the "filter" query parameter.
+func (ts *OUAuthzTestSuite) doWithFilter(path, filterExpr string) *http.Response {
+	ts.T().Helper()
+
+	u, err := url.Parse(authzTestServerURL + path)
+	ts.Require().NoError(err)
+	q := u.Query()
+	q.Set("filter", filterExpr)
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	ts.Require().NoError(err)
+
+	resp, err := ts.ouViewClient.Do(req)
+	ts.Require().NoError(err)
+	return resp
 }

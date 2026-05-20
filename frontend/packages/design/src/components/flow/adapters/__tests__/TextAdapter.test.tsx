@@ -48,7 +48,7 @@ describe('TextAdapter', () => {
   it('applies product prefix CSS class names', () => {
     renderWithProviders(<TextAdapter component={baseComponent} resolve={(s) => s} />);
     const el = screen.getByText('Hello World');
-    expect(el.className).toContain('ThunderFlow--text');
+    expect(el.className).toContain('ThunderIDFlow--text');
   });
 
   it('uses center alignment when design mode is enabled and no align prop', () => {
@@ -56,7 +56,7 @@ describe('TextAdapter', () => {
       designContext: {isDesignEnabled: true},
     });
     const el = screen.getByText('Hello World');
-    expect(el.style.textAlign).toBe('center');
+    expect(window.getComputedStyle(el).textAlign).toBe('center');
   });
 
   it('uses component.align when provided, overriding design mode', () => {
@@ -65,7 +65,7 @@ describe('TextAdapter', () => {
       designContext: {isDesignEnabled: false},
     });
     const el = screen.getByText('Hello World');
-    expect(el.style.textAlign).toBe('center');
+    expect(window.getComputedStyle(el).textAlign).toBe('center');
   });
 
   it('falls back to left alignment when no align and design mode is disabled', () => {
@@ -73,6 +73,6 @@ describe('TextAdapter', () => {
       designContext: {isDesignEnabled: false},
     });
     const el = screen.getByText('Hello World');
-    expect(el.style.textAlign).toBe('left');
+    expect(window.getComputedStyle(el).textAlign).toBe('left');
   });
 });

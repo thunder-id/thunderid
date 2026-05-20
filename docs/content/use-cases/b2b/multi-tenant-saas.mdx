@@ -4,162 +4,184 @@ description: Identify when to use for B2B SaaS identity and review the supported
 sidebar_position: 1
 ---
 
-# Multi-Tenant SaaS Identity (B2B)
+import { B2BSaaSIdentityJourneyRoadmap } from '../../../src/components/B2BIdentityJourney';
 
-## When to Choose This Pattern
+# Multi-Tenant SaaS Identity for B2B
 
-Choose this pattern if your application is a B2B SaaS product and you need a reliable identity and access management (IAM) foundation.
+Build B2B SaaS identity where each customer gets its own secure workspace, policies, users, roles, federation, and lifecycle controls.
 
-A B2B SaaS product is software that one business provides services to other businesses through the cloud. Each customer business expects separate users, administrators, policies, and branding. If your product serves multiple customer companies and each company needs its own workspace, your product follows a B2B SaaS model.
+<div className="uc-b2b-intro-panel">
+  <div className="uc-b2b-intro-kicker">When to use this pattern</div>
+  <div className="uc-b2b-intro-text">
+    Use this pattern when each customer needs a secure workspace with its own users, roles, policies, federation, branding, and lifecycle controls.
+  </div>
+</div>
 
-<ProductName /> helps you solve IAM challenges in that model. You can onboard organizations, control access, connect enterprise identity providers, and apply security and governance controls without building each capability from scratch.
+## How the Model Works
 
-## Use Case Scope
+- **SaaS provider**: Owns the platform and manages all customer organizations.
+- **Customer organization**: Each customer gets a workspace (organization) with its own users, roles, policies, and branding.
+- **Organization admin**: The first user, who manages members, invites, and settings.
+- **Members**: Users invited to the workspace, assigned roles and access.
+- **Policies and federation**: Each workspace can set its own login policies, enable SSO/federation, and configure recovery and governance.
 
-From a B2B application owner view, you need to solve the full customer lifecycle, from sign-up to secure sign-in, security, governance, and growth reporting. <ProductName /> provides capabilities for each stage.
 
-### Organization Onboarding (Sign-up)
+## B2B SaaS Identity Journey
+
+From a B2B application owner perspective, you need to solve the full customer lifecycle, from sign-up to secure sign-in, security, governance, and growth reporting. ThunderID provides capabilities for each stage.
+
+<B2BSaaSIdentityJourneyRoadmap />
+
+### Organization Onboarding (Sign-Up)
 
 As a first step, you need a secure and seamless way to subscribe new customer companies to your application. You need one onboarding journey that creates a user identity, creates an organization workspace, and assigns initial ownership without manual intervention.
 
-Beyond just creating accounts, you may need to integrate sign-up with your business operations. Sign-up should support multiple methods so users can choose how to register. During sign-up, you should synchronize new organization data with your billing system, CRM, and other internal tools so teams have accurate customer information. You should also validate prerequisites before completing sign-up, such as checking that billing information is valid or confirming required legal agreements have been accepted.
+Beyond creating accounts, you often need to integrate sign-up with business operations. Sign-up should support multiple methods so users can choose how to register. During sign-up, you should synchronize new organization data with your billing system, CRM, and other internal tools so teams always get accurate customer information. You should also validate prerequisites before completing sign-up, such as billing validity and required legal agreement acceptance.
 
-*For example, a user signs up with Google or GitHub on behalf of a company and provides a name for the organization workspace. During the sign-up flow, you collect payment details for a free trial so you can charge usage when the trial ends. Billing credential validation should happen before the flow completes. After successful sign-up, you publish a sign-up event to Salesforce and Pardot to synchronize customer data for growth tracking and marketing.*
+For example, a user signs up with Google or GitHub on behalf of a company and provides an organization workspace name. During sign-up, you collect payment details for a free trial so you can charge usage when the trial ends. Billing credential validation happens before completion. After successful sign-up, you publish a sign-up event to Salesforce and Pardot to synchronize customer data for growth tracking and marketing.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports multiple sign-up options, including
-- Email and password
-- Email and one-time passcode (OTP)
-- Social sign-up with providers such as Google and GitHub
-
-<ProductName /> can provision the organization workspace during registration and assign the first user as the workspace owner in the same journey.
-
-<ProductName /> also exposes organization lifecycle events so you can synchronize onboarding data with customer relationship management (CRM), marketing automation, billing, and other operational systems.
-
-If your flow requires external checks before finalizing onboarding, you can integrate external API calls during the sign-up journey. <ProductName /> supports this through low-code, no-code GUI-based journey building.
+- Supports multiple sign-up options:
+  - Email and password
+  - Email and one-time passcode (OTP)
+  - Social sign-up with providers such as Google and GitHub
+- Provisions the organization workspace during registration and assigns the first user as workspace owner in the same journey.
+- Exposes organization lifecycle events so you can synchronize onboarding data with CRM, marketing automation, billing, and other operational systems.
+- Supports external API calls during sign-up when your journey requires prerequisite checks before onboarding completes.
+- Provides low-code and no-code GUI-based journey building.
 
 ### Collaboration
 
 As the next step, you want each customer organization to collaborate safely inside its own workspace. You expect organization admins to invite members quickly while your platform keeps invitation handling consistent and secure. You also need predictable invitation lifecycle behavior, including resend control, expiry handling, and seamless onboarding for invited users who do not yet have an account.
 
-*For example, an admin invites a teammate by email, the teammate accepts the invitation, completes user registration, and joins the correct workspace.*
+For example, an admin invites a teammate by email, the teammate accepts the invitation, completes user registration, and joins the correct workspace.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports organization-scoped member invitations by email and manages invitation lifecycle operations such as resend and expiry. You can build the invited user's onboarding journey through <ProductName /> low-code and no-code GUI capabilities.
-<ProductName /> preserves organization workspace boundaries during collaboration flows, so invitations and access grants remain scoped to the correct customer organization.
+- Supports organization-scoped member invitations by email.
+- Manages invitation lifecycle operations such as resend and expiry.
+- Lets you build invited-user onboarding journeys with low-code and no-code GUI capabilities.
+- Preserves workspace boundaries so invitations and access grants stay scoped to the correct organization.
 
 ### Organizational Identity Management
 
-As customer organizations grow, you need identity operations that can evolve from basic onboarding to enterprise federation. You expect each customer organization to adopt the identity model that matches its security posture and operational maturity. You also need continuity across identity methods so users can sign-in through enterprise identity providers without creating fragmented identities in your platform.
+As customer organizations grow, you need identity operations that evolve from basic onboarding to enterprise federation. You expect each organization to adopt the identity model that matches its security posture and operational maturity. You also need continuity across identity methods so users can sign in through enterprise identity providers without creating fragmented identities in your platform.
 
-*For example, a customer starts with direct user onboarding and later enables Microsoft Entra ID federation with just-in-time (JIT) provisioning or linking accounts.*
+For example, a customer starts with direct user onboarding and later enables Microsoft Entra ID federation with just-in-time (JIT) provisioning or account linking.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports direct organization user onboarding, bring-your-own-identity-provider (BYOIdP) integration through OIDC or SAML connections, and enterprise federation patterns. <ProductName /> also supports JIT provisioning to create users during sign-in and account linking to maintain consistent user identities across authentication methods.
+- Supports direct organization user onboarding.
+- Supports bring-your-own-identity-provider (BYOIdP) integration through OIDC and SAML.
+- Supports enterprise federation patterns.
+- Supports JIT provisioning to create users during sign-in.
+- Supports account linking to keep user identities consistent across authentication methods.
 
 These options let customer organizations adopt stronger identity controls over time without requiring your platform team to rebuild identity workflows.
 
 ### Identity Recovery
 
-When users lose access, you need a recovery journey that restores access quickly and securely. You expect recovery options that reduce support load while still enforcing organization security requirements. You also need recovery methods that work across different user contexts, including users with limited email access or mobile-first users.
+When users lose access, you need a recovery journey that restores access quickly and securely. You expect recovery options that reduce support load while enforcing organization security requirements. You also need recovery methods that work across different contexts, including users with limited email access or mobile-first users.
 
-*For example, a user who cannot remember credentials completes account recovery by using email OTP.*
+For example, a user who cannot remember credentials completes account recovery by using email OTP.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports multiple recovery options, including: 
+ThunderID supports multiple recovery options:
+
 - Email magic links
 - Email OTP
 - SMS OTP
 
-You can map these options to your recovery journey design and security policy requirements.
-With these built-in recovery capabilities, your platform can reduce account lockout friction and improve recovery success without custom recovery service development.
+You can map these options to your journey design and security policy requirements. These built-in capabilities reduce lockout friction and improve recovery success without custom recovery service development.
 
 ### Organization Workspace Authorization and Subscription Controls
 
-As your business introduces paid plans, you need authorization and entitlement controls per workspace. You expect feature access, API limits, and privileged operations to align with subscription level and organization role. You also need policy-driven control for resource sharing across workspaces without breaking tenant isolation.
+As your business introduces paid plans, you need authorization and entitlement controls per workspace. You expect feature access, API limits, and privileged operations to align with subscription level and organization role. You also need policy-driven control for resource sharing across workspaces while preserving tenant isolation.
 
-*For example, when a workspace upgrades from a free plan to a premium plan, users gain access to additional features and administrative capabilities.*
+For example, when a workspace upgrades from a free plan to a premium plan, users gain access to additional features and administrative capabilities.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports grouping APIs and granting API access to organization workspaces with policy-based controls, which helps you build subscription-aware authorization patterns.
-
-<ProductName /> also supports role-based access control (RBAC) for workspace users. You can map organization subscription changes to policy-driven API availability and map user capability changes through role management. This model helps you apply upgrades and downgrades in a controlled way.
-
-<ProductName /> supports policy-based resource and configuration sharing models, which helps you enforce business rules while preserving workspace boundaries.
+- Supports grouping APIs and granting API access to organization workspaces with policy-based controls.
+- Supports role-based access control (RBAC) for workspace users.
+- Lets you map subscription changes to policy-driven API availability.
+- Lets you map user capability changes through role management.
+- Supports policy-based resource and configuration sharing models while preserving workspace boundaries.
 
 ### Delegated Administration
 
-As your customer base scales, you want customer organizations to manage day-to-day administration independently. You expect delegation controls that reduce dependency on your support team while keeping administration secure and auditable. You also need clear boundaries so delegated admins can perform only approved actions inside their own organization workspace context.
+As your customer base scales, you want organizations to manage day-to-day administration independently. You expect delegation controls that reduce dependency on your support team while keeping administration secure and auditable. You also need clear boundaries so delegated admins can perform only approved actions within their organization workspace context.
 
-*For example, a customer assigns a workspace admin to manage user access while platform-level controls remain with your central team.*
+For example, a customer assigns a workspace admin to manage user access while platform-level controls remain with your central team.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports fine-grained delegated administration with organization-scoped roles and permission controls. Organization admins can assign administrative roles, manage user access, and handle routine identity operations within workspace boundaries.
-<ProductName /> also provides audit visibility for administrative actions, which helps with compliance reviews and operational traceability.
+- Supports fine-grained delegated administration with organization-scoped roles and permission controls.
+- Lets organization admins assign administrative roles and manage routine identity operations within workspace boundaries.
+- Provides audit visibility for administrative actions to support compliance and traceability.
 
 ### Branding Customization
 
-As a B2B product owner, you want identity journeys to match your platform brand and each customer brand. You expect each workspace to express organization identity without losing platform consistency. You also need control over which branding elements customers can customize and which elements remain centrally managed.
+As a B2B product owner, you want identity journeys to match both your platform brand and each customer brand. You expect each workspace to express organization identity without losing platform consistency. You also need control over what customers can customize and what remains centrally managed.
 
-*For example, one customer sets a custom logo and color theme for workspace sign-in screens.*
+For example, one customer sets a custom logo and color theme for workspace sign-in screens.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports branding customization for user-facing pages such as registration, sign-in, and recovery journeys at organization workspace scope. You can enable configurable elements such as logos, colors, and themes while maintaining global standards for shared user experience elements.
+- Supports branding customization for registration, sign-in, and recovery pages at workspace scope.
+- Supports configurable elements such as logos, colors, and themes while preserving global experience standards.
+- Supports organization-specific subdomains to provide branded access points.
 
-<ProductName /> also supports organization-specific subdomains, which helps enterprise customers provide branded access points for their users.
+### Organizational Sign in
 
-### Organizational Sign-in
+As your customer portfolio diversifies, you need flexibility for both global sign-in and organization-specific sign-in requirements. You expect users to see only sign-in methods that match organization policy. You also need a model that supports simple and advanced organization-specific behavior without duplicating application logic.
 
-As your customer portfolio diversifies, you need flexibility to support both global sign-in and organization-specific sign-in requirements. You expect users to see only the sign-in methods that match their organization policy. You also need a model that supports both simple and advanced organization-specific sign-in behavior without duplicating application logic.
+For example, one organization allows only enterprise single sign-on (SSO), while another allows email and social sign-in.
 
-*For example, one organization allows only enterprise single sign-on (SSO), while another allows email and social sign-in.*
+#### How ThunderID Helps
 
-**How <ProductName /> helps:**
-
-<ProductName /> supports global sign-in flows and organization-aware sign-in controls. You can adapt available sign-in options based on each organization’s configured identity capabilities and policy.
-This flexibility helps you support varied enterprise requirements while preserving a coherent sign-in architecture.
+- Supports global sign-in flows.
+- Supports organization-aware sign-in controls.
+- Lets you adapt available sign-in options based on each organization's configured identity capabilities and policy.
 
 ### Organization Discovery Mechanisms
 
-Before sign-in, you need reliable organization discovery so users land in the correct organization context. You may expect routing based on organization name, user identifier, or email domain.
-You may also need custom discovery logic for specific industry, regional, or product segmentation requirements.
+Before sign-in, you need reliable organization discovery so users land in the correct organization context. You may need routing by organization name, user identifier, or email domain. You may also need custom discovery logic for industry, regional, or product segmentation requirements.
 
-*For example, a user enters a work email address and your platform routes the user to the correct organization workspace.*
+For example, a user enters a work email address and your platform routes the user to the correct organization workspace.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports organization discovery by organization identifier and by email domain mapping.
+- Supports discovery by organization identifier.
+- Supports discovery by email domain mapping.
 
-These discovery options help reduce sign-in confusion and improve first-attempt sign-in success.
+These discovery options reduce sign-in confusion and improve first-attempt success.
 
 ### Privacy and Compliance
 
-As a B2B application owner, you need identity journeys that align with privacy regulations and customer policy requirements. You expect consent and data handling controls that support compliance across organization boundaries. You also need flexibility because different customer organizations can require different consent behavior based on legal or internal governance policies.
+As a B2B application owner, you need identity journeys that align with privacy regulations and customer policy requirements. You expect consent and data handling controls that support compliance across organization boundaries. You also need flexibility because different organizations can require different consent behavior based on legal and governance needs.
 
-*For example, a customer requires explicit user consent before optional profile data processing.*
+For example, a customer requires explicit user consent before optional profile data processing.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports privacy and consent capabilities that help you implement regulation-aware identity flows in multi-tenant environments. You can design consent steps that align with policy expectations and maintain consistent enforcement across workspaces.
+- Supports privacy and consent capabilities for regulation-aware identity flows in multi-tenant environments.
+- Lets you design consent steps that align with policy expectations and keep enforcement consistent across workspaces.
 
-These capabilities help your platform reduce compliance risk while preserving a predictable user experience.
+These capabilities reduce compliance risk while preserving a predictable user experience.
 
 ### Platform Monitoring and Governance
 
-To operate a B2B SaaS platform, you need continuous visibility into usage, risk, and growth at both workspace and platform levels. You expect actionable metrics that support customer health monitoring and governance decisions. You also need governance actions so platform administrators can intervene when a workspace shows risk signals or policy violations.
+To operate a B2B SaaS platform, you need continuous visibility into usage, risk, and growth at workspace and platform levels. You expect actionable metrics that support customer health monitoring and governance decisions. You also need governance actions so platform administrators can intervene when a workspace shows risk signals or policy violations.
 
-*For example, platform admins review failed sign-in trends and deactivate a workspace after repeated suspicious activity.*
+For example, platform admins review failed sign-in trends and deactivate a workspace after repeated suspicious activity.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports monitoring dashboards with key indicators such as 
+ThunderID supports monitoring dashboards with key indicators such as:
+
 - Monthly active users
 - Inactive users
 - Locked users
@@ -169,24 +191,40 @@ To operate a B2B SaaS platform, you need continuous visibility into usage, risk,
 
 These insights support operational planning, risk detection, and growth analysis.
 
-<ProductName /> also supports governance workflows such as viewing workspace metadata, monitoring workspace activity indicators, and deactivating workspaces when intervention is required. Service provider organization can view these insights with workspace-level breakdowns, and workspace admins can also view insights for their own organization workspace.
+ThunderID also supports governance workflows such as viewing workspace metadata, monitoring workspace activity indicators, and deactivating workspaces when intervention is required. Service provider organizations can view workspace-level breakdowns, and workspace admins can view insights for their own organization workspace.
 
 ### Troubleshooting
 
 When a customer reports an access issue, you need fast diagnostics at workspace scope. You expect support teams to identify root causes quickly without searching across unrelated organization data. You also need troubleshooting signals that connect identity events, configuration context, and failure patterns.
 
-*For example, support engineers inspect workspace logs to diagnose repeated sign-in failures after an identity provider change.*
+For example, support engineers inspect workspace logs to diagnose repeated sign-in failures after an identity provider change.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> supports organization-level logging and diagnostics so support teams can investigate authentication and access issues with organization-specific context. These logs help confirm misconfigurations, identify failure points, and validate corrective actions.
+- Supports organization-level logging and diagnostics for authentication and access investigation.
+- Helps teams confirm misconfigurations, identify failure points, and validate corrective actions.
 
-This troubleshooting support helps reduce mean time to resolution and improve customer support outcomes.
+This support reduces mean time to resolution and improves customer outcomes.
 
 ### AI Agents
 
-As AI adoption grows, you may want to speed up customer experience with AI agents that serve B2B SaaS use cases. Managing AI agent identity and lifecycle securely becomes an important requirement.
+As AI adoption grows, you may want to improve customer experience with AI agents in B2B SaaS use cases. Managing AI agent identity and lifecycle securely becomes an important requirement.
 
-**How <ProductName /> helps:**
+#### How ThunderID Helps
 
-<ProductName /> will soon support capabilities to help you secure B2B AI agents.
+ThunderID will soon support capabilities to help you secure B2B AI agents.
+
+---
+
+## Related ThunderID Capabilities
+
+<div className="uc-cap-grid">
+  <div className="uc-cap-card"><h3>Organizations</h3><p>Each customer gets a secure, isolated workspace.</p></div>
+  <div className="uc-cap-card"><h3>Users</h3><p>Manage members, admins, and invited users per workspace.</p></div>
+  <div className="uc-cap-card"><h3>Roles</h3><p>Assign fine-grained access and permissions.</p></div>
+  <div className="uc-cap-card"><h3>Flows</h3><p>Orchestrate onboarding, invitations, recovery, and more.</p></div>
+  <div className="uc-cap-card"><h3>Federation</h3><p>Enable OIDC, SAML, JIT, and account linking per org.</p></div>
+  <div className="uc-cap-card"><h3>Recovery</h3><p>Policy-driven recovery with email, OTP, and SMS.</p></div>
+  <div className="uc-cap-card"><h3>Audit logs</h3><p>Track activity, sign-ins, and admin actions.</p></div>
+  <div className="uc-cap-card"><h3>Agent identity</h3><p>Future support for AI agent and workload access.</p></div>
+</div>

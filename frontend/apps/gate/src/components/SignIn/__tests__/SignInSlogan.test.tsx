@@ -47,7 +47,13 @@ describe('SignInSlogan', () => {
   });
 
   it('renders with default logos', () => {
-    render(<SignInSlogan />);
-    expect(screen.getByText('Flexible Identity Platform')).toBeInTheDocument();
+    const {rerender} = render(<SignInSlogan />);
+    rerender(<SignInSlogan />);
+
+    const logo = screen.getByAltText('Logo (Light)');
+
+    expect(logo).toBeInTheDocument();
+    expect(logo).toHaveAttribute('src', expect.stringContaining('/assets/images/logo.svg'));
+    expect(logo).toHaveStyle({height: '50px'});
   });
 });

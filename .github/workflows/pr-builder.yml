@@ -13,13 +13,14 @@ on:
 
 # Avoid running multiple PR builders for the same PR on subsequent pushes.
 concurrency:
-  group: pr-builder-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   GOFLAGS: "-mod=readonly"
   PRODUCT_NAME: "ThunderID"
   PRODUCT_NAME_LOWER: "thunderid"
+  NODE_VERSION: "lts/*"
 
 jobs:
   dependency-guard:
@@ -33,6 +34,7 @@ jobs:
     name: 🔒 Security Audit
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -40,12 +42,11 @@ jobs:
       - name: ⚙️ Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 'lts/*'
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: 📦 Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
-          version: '10.33.4'
           run_install: false
 
       - name: 🔍 Run pnpm audit (Frontend)
@@ -117,6 +118,7 @@ jobs:
     name: 🔎 Dependency Review
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: write
@@ -130,13 +132,14 @@ jobs:
           fail-on-severity: high
           deny-licenses: GPL-3.0-only,GPL-3.0-or-later,AGPL-3.0-only,AGPL-3.0-or-later
           comment-summary-in-pr: always
-          base-ref: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
-          head-ref: ${{ github.event.merge_group.head_sha || github.event.pull_request.head.sha }}
+          base-ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          head-ref: ${{ github.event_name == 'merge_group' && github.sha || github.event.pull_request.head.sha }}
 
   verify-mocks:
     name: 🔍 Verify Mock Files
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -173,6 +176,7 @@ jobs:
     needs: dependency-guard
     if: ${{ always() && (needs.dependency-guard.result == 'success' || needs.dependency-guard.result == 'skipped') && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -183,7 +187,7 @@ jobs:
       - name: ⚙️ Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 'lts/*'
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: 🔄 Fetch main branch for Nx affected base
         run: git fetch origin main:main --update-head-ok || true
@@ -197,9 +201,8 @@ jobs:
       - name: 📦 Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
-          version: '10.33.4'
           run_install: false
-          cache_dependency_path: frontend/pnpm-lock.yaml
+          cache_dependency_path: pnpm-lock.yaml
 
       - name: ⚙️ Set up Go Environment
         uses: ./.github/actions/setup-go
@@ -212,18 +215,14 @@ jobs:
 
       - name: 🧩 Install Dependencies & Build Frontend
         run: |
-          cd frontend
-          pnpm install --frozen-lockfile
-          pnpm build
+          make build_frontend
 
       - name: 🔍 Run Frontend Linter
         run: |
-          cd frontend
-          pnpm nx affected --target=lint --parallel=3 --base=${{ steps.set-shas.outputs.base }} --head=${{ steps.set-shas.outputs.head }}
+          pnpm nx affected --target=lint --parallel=3 --base=${{ steps.set-shas.outputs.base }} --head=${{ steps.set-shas.outputs.head }} --exclude=@thunderid/docs,sdks/**
 
       - name: 🎨 Check Frontend Formatting
         run: |
-          cd frontend
           pnpm format:check
 
   build:
@@ -231,6 +230,10 @@ jobs:
     needs: dependency-guard
     if: ${{ always() && (needs.dependency-guard.result == 'success' || needs.dependency-guard.result == 'skipped') && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -241,14 +244,13 @@ jobs:
       - name: ⚙️ Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 'lts/*'
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: 📦 Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
-          version: '10.33.4'
           run_install: false
-          cache_dependency_path: frontend/pnpm-lock.yaml
+          cache_dependency_path: pnpm-lock.yaml
 
       - name: 🗄️ Cache Go Modules
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -270,7 +272,6 @@ jobs:
 
       - name: 📦 Install Frontend Dependencies
         run: |
-          cd frontend
           pnpm install --frozen-lockfile
 
       - name: 🧹 Clean Previous Builds
@@ -280,8 +281,7 @@ jobs:
 
       - name: 🔨 Build Frontend
         run: |
-          cd frontend
-          pnpm build
+          make build_frontend
 
       - name: 🔨 Build Product with Coverage
         run: |
@@ -301,9 +301,11 @@ jobs:
           if-no-files-found: error
 
       - name: 📊 Upload Unit Test Coverage Report to Codecov
-        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        uses: codecov/codecov-action@v5
+        timeout-minutes: 5
+        continue-on-error: true
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: backend/coverage_unit.out
           disable_search: true
           flags: backend-unit
@@ -322,6 +324,7 @@ jobs:
     needs: dependency-guard
     if: ${{ always() && (needs.dependency-guard.result == 'success' || needs.dependency-guard.result == 'skipped') && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -333,23 +336,20 @@ jobs:
       - name: ⚙️ Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 'lts/*'
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: 📦 Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
-          version: '10.33.4'
           run_install: false
-          cache_dependency_path: frontend/pnpm-lock.yaml
+          cache_dependency_path: pnpm-lock.yaml
 
       - name: 📦 Install Frontend Dependencies
         run: |
-          cd frontend
           pnpm install --frozen-lockfile
 
       - name: 🔨 Build Frontend Packages
         run: |
-          cd frontend
           pnpm build:packages
 
       - name: 🧪 Run Console Tests with Coverage
@@ -363,6 +363,14 @@ jobs:
           cd frontend/apps/gate
           pnpm test:coverage
 
+      # TODO: Enable package tests in CI once the broken tests are fixed
+
+      # - name: 🧪 Run Packages Tests with Coverage
+      #   if: matrix.shard == 1
+      #   run: |
+      #     cd frontend/packages
+      #     pnpm test:coverage
+
       # Strip branch data (BRDA/BRF/BRH) from frontend LCOV reports before uploading.
       # React Compiler (babel-plugin-react-compiler) generates phantom branch points in compiled
       # output that inflate the partial-line count in Codecov's coverage calculation.
@@ -370,7 +378,7 @@ jobs:
       # Line and function coverage remain unaffected and accurately reflect test quality.
       - name: 🧹 Strip branch data from frontend LCOV reports
         run: |
-          for lcov_file in frontend/apps/console/coverage/lcov.info frontend/apps/gate/coverage/lcov.info; do
+          for lcov_file in frontend/apps/console/coverage/lcov.info frontend/packages/coverage/lcov.info; do
             if [ -f "$lcov_file" ]; then
               sed -i '/^BRDA:/d;/^BRF:/d;/^BRH:/d' "$lcov_file"
             fi
@@ -396,6 +404,10 @@ jobs:
     needs: test-frontend
     if: always() && needs.test-frontend.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -417,9 +429,11 @@ jobs:
           cat coverage/console/console-coverage-shard-*/lcov.info > coverage/console-merged-lcov.info
 
       - name: 📊 Upload `@thunderid/console` Unit Test Coverage Report to Codecov
-        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        uses: codecov/codecov-action@v5
+        timeout-minutes: 5
+        continue-on-error: true
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: coverage/console-merged-lcov.info
           disable_search: true
           flags: frontend-apps-console-unit
@@ -427,9 +441,11 @@ jobs:
           fail_ci_if_error: false
 
       - name: 📊 Upload `@thunderid/gate` Unit Test Coverage Report to Codecov
-        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        uses: codecov/codecov-action@v5
+        timeout-minutes: 5
+        continue-on-error: true
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: coverage/gate/lcov.info
           disable_search: true
           flags: frontend-apps-gate-unit
@@ -441,6 +457,7 @@ jobs:
     needs: dependency-guard
     if: ${{ always() && (needs.dependency-guard.result == 'success' || needs.dependency-guard.result == 'skipped') && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -451,14 +468,13 @@ jobs:
       - name: ⚙️ Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 'lts/*'
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: 📦 Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
-          version: '10.33.4'
           run_install: false
-          cache_dependency_path: frontend/pnpm-lock.yaml
+          cache_dependency_path: pnpm-lock.yaml
 
       - name: 🧩 Build and Package Sample Apps
         run: |
@@ -476,6 +492,10 @@ jobs:
     needs: build
     if: ${{ always() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix:
         database: [sqlite, postgres, redis]
@@ -548,9 +568,11 @@ jobs:
           coverage-enabled: true
 
       - name: 📊 Upload Integration Test Coverage Report to Codecov
-        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+        uses: codecov/codecov-action@v5
+        timeout-minutes: 5
+        continue-on-error: true
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: target/coverage_integration.out
           disable_search: true
           flags: backend-integration-${{ matrix.database }}
@@ -561,7 +583,7 @@ jobs:
       #   run: ./build.sh merge_coverage
 
       # - name: 📊 Upload Combined Coverage Report to Codecov
-      #   uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
+      #   uses: codecov/codecov-action@v4
       #   with:
       #     token: ${{ secrets.CODECOV_TOKEN }}
       #     files: target/coverage_combined.out
@@ -575,6 +597,7 @@ jobs:
     needs: [build, build_samples]
     if: ${{ always() && needs.build.result == 'success' && needs.build_samples.result == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -756,9 +779,17 @@ jobs:
         run: npm ci
         working-directory: tests/e2e
 
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps
+      - name: Install Playwright System Dependencies
+        run: npx playwright install-deps
         working-directory: tests/e2e
+        timeout-minutes: 15
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Install Playwright Browsers
+        run: npx playwright install
+        working-directory: tests/e2e
+        timeout-minutes: 15
 
       - name: Run Playwright tests
         run: npx playwright test
@@ -793,6 +824,7 @@ jobs:
     name: 🔍 Detect PowerShell Changes
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       should-run: ${{ steps.filter.outputs.powershell }}
     steps:
@@ -813,10 +845,38 @@ jobs:
         if: steps.filter.outputs.powershell != 'true'
         run: echo "No PowerShell changes - skipping validation"
 
+  detect-sdk-changes:
+    name: 🔍 Detect SDK Changes
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      should-run: ${{ steps.filter.outputs.sdks }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
+        id: filter
+        with:
+          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          ref: ${{ github.event_name == 'merge_group' && github.sha || github.event.pull_request.head.sha }}
+          filters: |
+            sdks:
+              - 'sdks/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+      - name: ✅ SDK changes detected
+        if: steps.filter.outputs.sdks == 'true'
+        run: echo "SDK files changed - SDK build will run"
+      - name: ⏭️ No SDK changes
+        if: steps.filter.outputs.sdks != 'true'
+        run: echo "No SDK changes - skipping SDK build"
+
   detect-docs-changes:
     name: 🔍 Detect Documentation Changes
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       should-run: ${{ steps.filter.outputs.docs }}
     steps:
@@ -829,9 +889,9 @@ jobs:
           filters: |
             docs:
               - 'docs/**'
-              - 'frontend/package.json'
-              - 'frontend/pnpm-lock.yaml'
-              - 'frontend/pnpm-workspace.yaml'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
       - name: ✅ Documentation changes detected
         if: steps.filter.outputs.docs == 'true'
         run: echo "Documentation files changed - docs build will run"
@@ -839,11 +899,36 @@ jobs:
         if: steps.filter.outputs.docs != 'true'
         run: echo "No documentation changes - skipping docs build"
 
+  build-test-sdks:
+    name: 🔨 Build, Lint & Test SDKs
+    needs: [dependency-guard, detect-sdk-changes]
+    if: ${{ always() && (needs.dependency-guard.result == 'success' || needs.dependency-guard.result == 'skipped') && needs.detect-sdk-changes.outputs.should-run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Node.js
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          run_install: false
+          cache_dependency_path: pnpm-lock.yaml
+
+      - name: 🔨 Build SDKs
+        run: make build_sdks
+
   build-docs:
     name: 📚 Build Documentation
     needs: [dependency-guard, detect-docs-changes]
     if: ${{ always() && (needs.dependency-guard.result == 'success' || needs.dependency-guard.result == 'skipped') && needs.detect-docs-changes.outputs.should-run == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -851,12 +936,11 @@ jobs:
       - name: ⚙️ Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 'lts/*'
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: 📦 Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
-          version: '10.33.4'
           run_install: false
 
       - name: 📚 Build docs

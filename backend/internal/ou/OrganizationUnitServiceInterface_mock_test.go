@@ -7,8 +7,9 @@ package ou
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 )
 
 // NewOrganizationUnitServiceInterfaceMock creates a new instance of OrganizationUnitServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -361,8 +362,8 @@ func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitByPath_Call) R
 }
 
 // GetOrganizationUnitChildren provides a mock function for the type OrganizationUnitServiceInterfaceMock
-func (_mock *OrganizationUnitServiceInterfaceMock) GetOrganizationUnitChildren(ctx context.Context, id string, limit int, offset int) (*OrganizationUnitListResponse, *serviceerror.ServiceError) {
-	ret := _mock.Called(ctx, id, limit, offset)
+func (_mock *OrganizationUnitServiceInterfaceMock) GetOrganizationUnitChildren(ctx context.Context, id string, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, id, limit, offset, f)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitChildren")
@@ -370,18 +371,18 @@ func (_mock *OrganizationUnitServiceInterfaceMock) GetOrganizationUnitChildren(c
 
 	var r0 *OrganizationUnitListResponse
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*OrganizationUnitListResponse, *serviceerror.ServiceError)); ok {
-		return returnFunc(ctx, id, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, id, limit, offset, f)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *OrganizationUnitListResponse); ok {
-		r0 = returnFunc(ctx, id, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *filter.FilterGroup) *OrganizationUnitListResponse); ok {
+		r0 = returnFunc(ctx, id, limit, offset, f)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*OrganizationUnitListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *serviceerror.ServiceError); ok {
-		r1 = returnFunc(ctx, id, limit, offset)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, *filter.FilterGroup) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, id, limit, offset, f)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -400,11 +401,12 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call struc
 //   - id string
 //   - limit int
 //   - offset int
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitChildren(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call {
-	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call{Call: _e.mock.On("GetOrganizationUnitChildren", ctx, id, limit, offset)}
+//   - f *filter.FilterGroup
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitChildren(ctx interface{}, id interface{}, limit interface{}, offset interface{}, f interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call {
+	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call{Call: _e.mock.On("GetOrganizationUnitChildren", ctx, id, limit, offset, f)}
 }
 
-func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call) Run(run func(ctx context.Context, id string, limit int, offset int)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call {
+func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call) Run(run func(ctx context.Context, id string, limit int, offset int, f *filter.FilterGroup)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -422,11 +424,16 @@ func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call)
 		if args[3] != nil {
 			arg3 = args[3].(int)
 		}
+		var arg4 *filter.FilterGroup
+		if args[4] != nil {
+			arg4 = args[4].(*filter.FilterGroup)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -437,14 +444,14 @@ func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call)
 	return _c
 }
 
-func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int) (*OrganizationUnitListResponse, *serviceerror.ServiceError)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call {
+func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildren_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitChildrenByPath provides a mock function for the type OrganizationUnitServiceInterfaceMock
-func (_mock *OrganizationUnitServiceInterfaceMock) GetOrganizationUnitChildrenByPath(ctx context.Context, handlePath string, limit int, offset int) (*OrganizationUnitListResponse, *serviceerror.ServiceError) {
-	ret := _mock.Called(ctx, handlePath, limit, offset)
+func (_mock *OrganizationUnitServiceInterfaceMock) GetOrganizationUnitChildrenByPath(ctx context.Context, handlePath string, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, handlePath, limit, offset, f)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitChildrenByPath")
@@ -452,18 +459,18 @@ func (_mock *OrganizationUnitServiceInterfaceMock) GetOrganizationUnitChildrenBy
 
 	var r0 *OrganizationUnitListResponse
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*OrganizationUnitListResponse, *serviceerror.ServiceError)); ok {
-		return returnFunc(ctx, handlePath, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, handlePath, limit, offset, f)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *OrganizationUnitListResponse); ok {
-		r0 = returnFunc(ctx, handlePath, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *filter.FilterGroup) *OrganizationUnitListResponse); ok {
+		r0 = returnFunc(ctx, handlePath, limit, offset, f)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*OrganizationUnitListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *serviceerror.ServiceError); ok {
-		r1 = returnFunc(ctx, handlePath, limit, offset)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, *filter.FilterGroup) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, handlePath, limit, offset, f)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -482,11 +489,12 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call
 //   - handlePath string
 //   - limit int
 //   - offset int
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitChildrenByPath(ctx interface{}, handlePath interface{}, limit interface{}, offset interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call {
-	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call{Call: _e.mock.On("GetOrganizationUnitChildrenByPath", ctx, handlePath, limit, offset)}
+//   - f *filter.FilterGroup
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitChildrenByPath(ctx interface{}, handlePath interface{}, limit interface{}, offset interface{}, f interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call {
+	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call{Call: _e.mock.On("GetOrganizationUnitChildrenByPath", ctx, handlePath, limit, offset, f)}
 }
 
-func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call) Run(run func(ctx context.Context, handlePath string, limit int, offset int)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call {
+func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call) Run(run func(ctx context.Context, handlePath string, limit int, offset int, f *filter.FilterGroup)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -504,11 +512,16 @@ func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath
 		if args[3] != nil {
 			arg3 = args[3].(int)
 		}
+		var arg4 *filter.FilterGroup
+		if args[4] != nil {
+			arg4 = args[4].(*filter.FilterGroup)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -519,7 +532,7 @@ func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath
 	return _c
 }
 
-func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, limit int, offset int) (*OrganizationUnitListResponse, *serviceerror.ServiceError)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call {
+func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitChildrenByPath_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -759,8 +772,8 @@ func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitHandlesByIDs_C
 }
 
 // GetOrganizationUnitList provides a mock function for the type OrganizationUnitServiceInterfaceMock
-func (_mock *OrganizationUnitServiceInterfaceMock) GetOrganizationUnitList(ctx context.Context, limit int, offset int) (*OrganizationUnitListResponse, *serviceerror.ServiceError) {
-	ret := _mock.Called(ctx, limit, offset)
+func (_mock *OrganizationUnitServiceInterfaceMock) GetOrganizationUnitList(ctx context.Context, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, limit, offset, f)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitList")
@@ -768,18 +781,18 @@ func (_mock *OrganizationUnitServiceInterfaceMock) GetOrganizationUnitList(ctx c
 
 	var r0 *OrganizationUnitListResponse
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) (*OrganizationUnitListResponse, *serviceerror.ServiceError)); ok {
-		return returnFunc(ctx, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, limit, offset, f)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) *OrganizationUnitListResponse); ok {
-		r0 = returnFunc(ctx, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, *filter.FilterGroup) *OrganizationUnitListResponse); ok {
+		r0 = returnFunc(ctx, limit, offset, f)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*OrganizationUnitListResponse)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) *serviceerror.ServiceError); ok {
-		r1 = returnFunc(ctx, limit, offset)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int, *filter.FilterGroup) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, limit, offset, f)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -797,11 +810,12 @@ type OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitList(ctx interface{}, limit interface{}, offset interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call {
-	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call{Call: _e.mock.On("GetOrganizationUnitList", ctx, limit, offset)}
+//   - f *filter.FilterGroup
+func (_e *OrganizationUnitServiceInterfaceMock_Expecter) GetOrganizationUnitList(ctx interface{}, limit interface{}, offset interface{}, f interface{}) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call {
+	return &OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call{Call: _e.mock.On("GetOrganizationUnitList", ctx, limit, offset, f)}
 }
 
-func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call) Run(run func(ctx context.Context, limit int, offset int)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call {
+func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call) Run(run func(ctx context.Context, limit int, offset int, f *filter.FilterGroup)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -815,10 +829,15 @@ func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call) Run
 		if args[2] != nil {
 			arg2 = args[2].(int)
 		}
+		var arg3 *filter.FilterGroup
+		if args[3] != nil {
+			arg3 = args[3].(*filter.FilterGroup)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -829,7 +848,7 @@ func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call) Ret
 	return _c
 }
 
-func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) (*OrganizationUnitListResponse, *serviceerror.ServiceError)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call {
+func (_c *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, f *filter.FilterGroup) (*OrganizationUnitListResponse, *serviceerror.ServiceError)) *OrganizationUnitServiceInterfaceMock_GetOrganizationUnitList_Call {
 	_c.Call.Return(run)
 	return _c
 }

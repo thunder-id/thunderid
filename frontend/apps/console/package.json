@@ -9,16 +9,16 @@
     "app",
     "wso2"
   ],
-  "homepage": "https://github.com/asgardeo/thunder/tree/main/frontend/apps/console#readme",
+  "homepage": "https://github.com/thunder-id/thunderid/tree/main/frontend/apps/console#readme",
   "bugs": {
-    "url": "https://github.com/asgardeo/thunder/issues"
+    "url": "https://github.com/thunder-id/thunderid/issues"
   },
   "author": "WSO2",
   "license": "Apache-2.0",
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "https://github.com/asgardeo/thunder",
+    "url": "https://github.com/thunder-id/thunderid",
     "directory": "frontend/apps/console"
   },
   "scripts": {
@@ -32,8 +32,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@asgardeo/react": "catalog:",
-    "@asgardeo/react-router": "catalog:",
+    "@thunderid/react": "workspace:^",
+    "@thunderid/react-router": "workspace:^",
     "@dnd-kit/abstract": "0.4.0",
     "@dnd-kit/collision": "0.4.0",
     "@dnd-kit/dom": "0.4.0",

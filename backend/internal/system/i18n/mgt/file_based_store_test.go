@@ -22,8 +22,8 @@ import (
 	"context"
 	"testing"
 
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/declarative_resource/entity"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -111,18 +111,18 @@ func (s *FileBasedStoreTestSuite) TestGetTranslations() {
 	assert.NoError(s.T(), err)
 
 	// Verify structure
-	assert.Contains(s.T(), translations, "key1")
-	assert.Contains(s.T(), translations, "key2")
+	assert.Contains(s.T(), translations, "ns1|key1")
+	assert.Contains(s.T(), translations, "ns2|key2")
 
-	assert.Contains(s.T(), translations["key1"], "en-US")
-	assert.Equal(s.T(), "value1-en", translations["key1"]["en-US"].Value)
-	assert.Equal(s.T(), "ns1", translations["key1"]["en-US"].Namespace)
+	assert.Contains(s.T(), translations["ns1|key1"], "en-US")
+	assert.Equal(s.T(), "value1-en", translations["ns1|key1"]["en-US"].Value)
+	assert.Equal(s.T(), "ns1", translations["ns1|key1"]["en-US"].Namespace)
 
-	assert.Contains(s.T(), translations["key1"], "fr-FR")
-	assert.Equal(s.T(), "value1-fr", translations["key1"]["fr-FR"].Value)
+	assert.Contains(s.T(), translations["ns1|key1"], "fr-FR")
+	assert.Equal(s.T(), "value1-fr", translations["ns1|key1"]["fr-FR"].Value)
 
-	assert.Contains(s.T(), translations["key2"], "fr-FR")
-	assert.Equal(s.T(), "value2-fr", translations["key2"]["fr-FR"].Value)
+	assert.Contains(s.T(), translations["ns2|key2"], "fr-FR")
+	assert.Equal(s.T(), "value2-fr", translations["ns2|key2"]["fr-FR"].Value)
 }
 
 func (s *FileBasedStoreTestSuite) TestGetTranslationsByNamespace() {
@@ -145,9 +145,9 @@ func (s *FileBasedStoreTestSuite) TestGetTranslationsByNamespace() {
 	translations, err := s.store.GetTranslationsByNamespace("ns1")
 	assert.NoError(s.T(), err)
 
-	assert.Contains(s.T(), translations, "key1")
-	assert.NotContains(s.T(), translations, "key2")
-	assert.Equal(s.T(), "value1-en", translations["key1"]["en-US"].Value)
+	assert.Contains(s.T(), translations, "ns1|key1")
+	assert.NotContains(s.T(), translations, "ns2|key2")
+	assert.Equal(s.T(), "value1-en", translations["ns1|key1"]["en-US"].Value)
 }
 
 func (s *FileBasedStoreTestSuite) TestGetTranslationsByKey() {

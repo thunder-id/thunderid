@@ -23,14 +23,15 @@ import ManageGroupsSection from '../ManageGroupsSection';
 
 // Mock the useGetOrganizationUnitGroups hook
 const mockUseGetOrganizationUnitGroups = vi.fn();
-vi.mock('../../../../api/useGetOrganizationUnitGroups', () => ({
+vi.mock('@/api/useGetOrganizationUnitGroups', () => ({
   default: (id: string): unknown => mockUseGetOrganizationUnitGroups(id),
 }));
 
 // Mock useDataGridLocaleText hook
-vi.mock('@thunderid/hooks', () => ({
-  useDataGridLocaleText: () => ({}),
-}));
+vi.mock('@thunderid/hooks', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {...(actual as object), useDataGridLocaleText: () => ({})};
+});
 
 // Mock translations
 vi.mock('react-i18next', () => ({

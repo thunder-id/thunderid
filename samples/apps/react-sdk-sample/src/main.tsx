@@ -20,7 +20,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
-import { AsgardeoProvider } from "@asgardeo/react";
+import { ThunderIDProvider } from "@thunderid/react";
 import { ConfigurationError } from "./ConfigurationError.tsx";
 import config from "./config.tsx";
 
@@ -51,13 +51,12 @@ createRoot(document.getElementById("root")!).render(
     {missingConfig.length > 0 ? (
       <ConfigurationError missingConfig={missingConfig} />
     ) : (
-      <AsgardeoProvider
+      <ThunderIDProvider
         baseUrl={baseUrl}
         clientId={clientId}
-        platform="AsgardeoV2"
       >
         <App />
-      </AsgardeoProvider>
+      </ThunderIDProvider>
     )}
   </StrictMode>
 );

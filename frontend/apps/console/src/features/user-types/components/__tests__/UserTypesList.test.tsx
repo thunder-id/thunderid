@@ -177,7 +177,7 @@ describe('UserTypesList', () => {
     totalResults: 2,
     startIndex: 1,
     count: 2,
-    schemas: [
+    types: [
       {id: 'schema1', name: 'Employee Schema', ouId: 'root-ou', ouHandle: 'root', allowSelfRegistration: false},
       {id: 'schema2', name: 'Contractor Schema', ouId: 'child-ou', ouHandle: 'child', allowSelfRegistration: true},
     ],
@@ -232,7 +232,7 @@ describe('UserTypesList', () => {
     mockUseGetUserTypes.mockReturnValueOnce({
       data: {
         ...mockUserTypesData,
-        schemas: [{...mockUserTypesData.schemas[0], ouHandle: undefined}],
+        types: [{...mockUserTypesData.types[0], ouHandle: undefined}],
       },
       isLoading: false,
       error: null,
@@ -247,7 +247,7 @@ describe('UserTypesList', () => {
     mockUseGetUserTypes.mockReturnValueOnce({
       data: {
         ...mockUserTypesData,
-        schemas: [{...mockUserTypesData.schemas[0], ouId: undefined, ouHandle: undefined}],
+        types: [{...mockUserTypesData.types[0], ouId: undefined, ouHandle: undefined}],
       },
       isLoading: false,
       error: null,
@@ -442,7 +442,7 @@ describe('UserTypesList', () => {
         totalResults: 0,
         startIndex: 1,
         count: 0,
-        schemas: [],
+        types: [],
       },
       isLoading: false,
       error: null,

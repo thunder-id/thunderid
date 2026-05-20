@@ -5,6 +5,7 @@ ou_id: decl-ou-1
 template: web
 auth_flow_id: decl-flow-1
 registration_flow_id: decl-reg-flow-1
+recovery_flow_id: decl-recovery-flow-1
 url: https://example.com
 contacts:
   - test@example.com

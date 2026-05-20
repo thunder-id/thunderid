@@ -40,7 +40,7 @@ export default function EditAgentAttributes({agent, onSaved = undefined}: EditAg
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
 
   const {data: agentTypesData} = useGetAgentTypes();
-  const matchedSchema = agentTypesData?.schemas?.find((s) => s.name === agent.type);
+  const matchedSchema = agentTypesData?.types?.find((s) => s.name === agent.type);
   const {data: schemaDetails, isLoading} = useGetAgentType(matchedSchema?.id);
 
   const updateAgent = useUpdateAgent();

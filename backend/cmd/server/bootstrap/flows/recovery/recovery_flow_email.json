@@ -1,0 +1,310 @@
+{
+    "name": "Email Link Password Recovery Flow",
+    "handle": "email-link-based-password-recovery",
+    "flowType": "RECOVERY",
+    "nodes": [
+        {
+            "id": "start",
+            "type": "START",
+            "onSuccess": "prompt_username",
+            "layout": {
+                "size": { "width": 101, "height": 34 },
+                "position": { "x": 0, "y": 400 }
+            }
+        },
+        {
+            "id": "prompt_username",
+            "type": "PROMPT",
+            "meta": {
+                "components": [
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "text_header_username",
+                        "label": "{{ t(recovery:forms.username.title) }}",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "type": "TEXT",
+                        "id": "text_subtitle_username",
+                        "label": "{{ t(recovery:forms.username.subtitle) }}",
+                        "variant": "HEADING_6"
+                    },
+                    {
+                        "type": "BLOCK",
+                        "id": "block_username",
+                        "components": [
+                            {
+                                "id": "input_username",
+                                "ref": "username",
+                                "type": "TEXT_INPUT",
+                                "label": "{{ t(recovery:forms.username.fields.username.label) }}",
+                                "required": true,
+                                "placeholder": "{{ t(recovery:forms.username.fields.username.placeholder) }}"
+                            },
+                            {
+                                "type": "ACTION",
+                                "id": "action_submit_username",
+                                "label": "{{ t(recovery:forms.username.actions.submit.label) }}",
+                                "variant": "PRIMARY",
+                                "eventType": "SUBMIT"
+                            },
+                            {
+                                "category": "DISPLAY",
+                                "id": "rich_text_signup",
+                                "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">{{ t(recovery:forms.username.links.sign_in.prefix) }} </span><a href=\"{{meta(application.sign_in_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">{{ t(recovery:forms.username.links.sign_in.label) }}</span></a></p>",
+                                "resourceType": "ELEMENT",
+                                "type": "RICH_TEXT"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "prompts": [
+                {
+                    "inputs": [
+                        {
+                            "ref": "input_username",
+                            "identifier": "username",
+                            "type": "TEXT_INPUT",
+                            "required": true
+                        }
+                    ],
+                    "action": {
+                        "ref": "action_submit_username",
+                        "nextNode": "identify_user"
+                    }
+                }
+            ],
+            "layout": {
+                "size": { "width": 350, "height": 431 },
+                "position": { "x": 200, "y": 250 }
+            }
+        },
+        {
+            "id": "identify_user",
+            "type": "TASK_EXECUTION",
+            "executor": {
+                "name": "IdentifyingExecutor",
+                "mode": "identify",
+                "inputs": [
+                    {
+                        "ref": "input_username",
+                        "identifier": "username",
+                        "type": "TEXT_INPUT",
+                        "required": true
+                    }
+                ]
+            },
+            "onSuccess": "generate_recovery_token",
+            "onFailure": "email_sent_status",
+            "layout": {
+                "size": { "width": 206, "height": 113 },
+                "position": { "x": 650, "y": 340 }
+            }
+        },
+        {
+            "id": "generate_recovery_token",
+            "type": "TASK_EXECUTION",
+            "executor": {
+                "name": "InviteExecutor",
+                "mode": "generate"
+            },
+            "onSuccess": "send_recovery_email",
+            "layout": {
+                "size": { "width": 206, "height": 113 },
+                "position": { "x": 960, "y": 340 }
+            }
+        },
+        {
+            "id": "send_recovery_email",
+            "type": "TASK_EXECUTION",
+            "properties": {
+                "emailTemplate": "PASSWORD_RECOVERY"
+            },
+            "executor": {
+                "name": "EmailExecutor",
+                "mode": "send"
+            },
+            "onSuccess": "email_sent_status",
+            "onFailure": "email_sent_status",
+            "layout": {
+                "size": { "width": 200, "height": 113 },
+                "position": { "x": 1270, "y": 340 }
+            }
+        },
+        {
+            "id": "email_sent_status",
+            "type": "PROMPT",
+            "meta": {
+                "components": [
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "email_sent_icon",
+                        "label": "✉️",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "email_sent_heading",
+                        "label": "{{ t(recovery:forms.email_sent.title) }}",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "email_sent_message",
+                        "label": "{{ t(recovery:forms.email_sent.message) }}",
+                        "variant": "HEADING_6"
+                    }
+                ]
+            },
+            "message": "Check Your Email",
+            "next": "verify_recovery_token",
+            "layout": {
+                "size": { "width": 350, "height": 340 },
+                "position": { "x": 1580, "y": 250 }
+            }
+        },
+        {
+            "id": "verify_recovery_token",
+            "type": "TASK_EXECUTION",
+            "executor": {
+                "name": "InviteExecutor",
+                "mode": "verify",
+                "inputs": [
+                    {
+                        "ref": "input_recovery_token",
+                        "identifier": "inviteToken",
+                        "type": "HIDDEN",
+                        "required": true
+                    }
+                ]
+            },
+            "onSuccess": "prompt_new_password",
+            "layout": {
+                "size": { "width": 206, "height": 113 },
+                "position": { "x": 2040, "y": 340 }
+            }
+        },
+        {
+            "id": "prompt_new_password",
+            "type": "PROMPT",
+            "meta": {
+                "components": [
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "text_header_password",
+                        "label": "{{ t(recovery:forms.new_password.title) }}",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "type": "TEXT",
+                        "id": "text_subtitle_password",
+                        "label": "{{ t(recovery:forms.new_password.subtitle) }}",
+                        "variant": "HEADING_6"
+                    },
+                    {
+                        "type": "BLOCK",
+                        "id": "block_password",
+                        "components": [
+                            {
+                                "id": "input_new_password",
+                                "ref": "password",
+                                "type": "PASSWORD_INPUT",
+                                "label": "{{ t(recovery:forms.new_password.fields.password.label) }}",
+                                "required": true,
+                                "placeholder": "{{ t(recovery:forms.new_password.fields.password.placeholder) }}"
+                            },
+                            {
+                                "type": "ACTION",
+                                "id": "action_submit_password",
+                                "label": "{{ t(recovery:forms.new_password.actions.submit.label) }}",
+                                "variant": "PRIMARY",
+                                "eventType": "SUBMIT"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "prompts": [
+                {
+                    "inputs": [
+                        {
+                            "ref": "input_new_password",
+                            "identifier": "password",
+                            "type": "PASSWORD_INPUT",
+                            "required": true
+                        }
+                    ],
+                    "action": {
+                        "ref": "action_submit_password",
+                        "nextNode": "set_credential"
+                    }
+                }
+            ],
+            "layout": {
+                "size": { "width": 350, "height": 431 },
+                "position": { "x": 2360, "y": 250 }
+            }
+        },
+        {
+            "id": "set_credential",
+            "type": "TASK_EXECUTION",
+            "executor": {
+                "name": "CredentialSetter"
+            },
+            "onSuccess": "recovery_complete",
+            "layout": {
+                "size": { "width": 206, "height": 113 },
+                "position": { "x": 2820, "y": 340 }
+            }
+        },
+        {
+            "id": "recovery_complete",
+            "type": "PROMPT",
+            "meta": {
+                "components": [
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "recovery_complete_icon",
+                        "label": "✅",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "recovery_complete_heading",
+                        "label": "{{ t(recovery:forms.complete.title) }}",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "recovery_complete_message",
+                        "label": "{{ t(recovery:forms.complete.message) }}",
+                        "variant": "HEADING_6"
+                    }
+                ]
+            },
+            "message": "Password Reset Successful",
+            "next": "end",
+            "layout": {
+                "size": { "width": 350, "height": 340 },
+                "position": { "x": 3140, "y": 250 }
+            }
+        },
+        {
+            "id": "end",
+            "type": "END",
+            "layout": {
+                "size": { "width": 85, "height": 34 },
+                "position": { "x": 3600, "y": 375 }
+            }
+        }
+    ]
+}

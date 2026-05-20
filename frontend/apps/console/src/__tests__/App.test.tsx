@@ -21,7 +21,7 @@ import {describe, it, expect, vi} from 'vitest';
 import App from '../App';
 
 // Mock the ProtectedRoute component
-vi.mock('@asgardeo/react-router', () => ({
+vi.mock('@thunderid/react-router', () => ({
   ProtectedRoute: ({children}: {children: React.ReactNode}) => <div data-testid="protected-route">{children}</div>,
 }));
 

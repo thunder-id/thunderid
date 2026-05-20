@@ -14,6 +14,7 @@ npm
 pnpm
 [Vv]ite
 [Pp]asswordless
+[Pp]rosumer
 [Uu]sernameless
 APIs
 UIs
@@ -29,6 +30,7 @@ OUs
 OU
 [Cc]rypto
 [Oo]nboarding
+[Oo]nboarded
 [Pp]asscode
 [Aa]uditable
 [Mm]isconfigurations
@@ -68,3 +70,9 @@ DCR
 BCP
 [Aa]llowlist
 Memorystore
+[Uu]pdatedAt
+[Cc]reatedAt
+[Aa]gentic
+[Ee]num
+[Uu]serinfo
+[Dd]ev

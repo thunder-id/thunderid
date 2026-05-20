@@ -106,4 +106,4 @@ Common locale codes:
 
 ## Questions?
 
-If you have questions about translations, please open a [discussion](https://github.com/asgardeo/thunder/discussions) or [issue](https://github.com/asgardeo/thunder/issues).
+If you have questions about translations, please open a [discussion](https://github.com/thunder-id/thunderid/discussions) or [issue](https://github.com/thunder-id/thunderid/issues).

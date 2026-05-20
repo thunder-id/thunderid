@@ -21,7 +21,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 
-import {EmbeddedFlowEventType, SignUp, useAsgardeo, type EmbeddedFlowComponent} from '@asgardeo/react';
+import {EmbeddedFlowEventType, SignUp, useThunderID, type EmbeddedFlowComponent} from '@thunderid/react';
 import {FlowComponentRenderer, AuthCardLayout, useDesign} from '@thunderid/design';
 import {Box, Button, Alert, Typography, AlertTitle, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
@@ -32,7 +32,7 @@ import ROUTES from '../../constants/routes';
 
 export default function SignUpBox(): JSX.Element {
   const navigate = useNavigate();
-  const {resolveFlowTemplateLiterals: resolve} = useAsgardeo();
+  const {resolveFlowTemplateLiterals: resolve} = useThunderID();
   const {t} = useTranslation();
   const {isDesignEnabled} = useDesign();
   const [flowError, setFlowError] = useState<string | null>(null);

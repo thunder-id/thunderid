@@ -131,7 +131,7 @@ export default function InviteMembersCard(): JSX.Element {
         'Add collaborators to help manage your organization and act as a backup.',
       )}
       primaryLabel={t('next_steps.invite_members.actions.primary.label', 'Add User')}
-      primaryRoute="/users/create"
+      primaryRoute="/users/invite"
       secondaryLabel={t('next_steps.invite_members.actions.secondary.label', 'Invite User')}
       secondaryRoute="/users?invite=true"
       preview={preview}

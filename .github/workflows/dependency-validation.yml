@@ -1,7 +1,7 @@
 name: Dependency Validation
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened]
     paths:
       - '**/go.mod'
@@ -9,10 +9,11 @@ on:
 
 permissions:
   pull-requests: write
+  issues: write
   contents: read
 
 env: 
-  DEPENDENCY_SCOPE: thunder-id # Change this value based on the repository. See https://github.com/wso2/engineering-governance/blob/main/dependency-registry/README.md#available-scopes
+  DEPENDENCY_SCOPE: thunderid # Change this value based on the repository. See https://github.com/wso2/engineering-governance/blob/main/dependency-registry/README.md#available-scopes
 
 jobs:
   validate-go-dependencies:
@@ -23,6 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Detect modified go.mod files
         id: detect-changes

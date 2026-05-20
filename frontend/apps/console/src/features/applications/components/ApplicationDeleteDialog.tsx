@@ -69,7 +69,7 @@ export default function ApplicationDeleteDialog({
         onSuccess?.();
       },
       onError: (err: Error) => {
-        setError(err.message ?? 'Failed to delete application. Please try again.');
+        setError(err.message ?? t('applications:delete.error', 'Failed to delete application. Please try again.'));
       },
     });
   };

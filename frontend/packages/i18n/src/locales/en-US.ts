@@ -389,6 +389,7 @@ const translations = {
     inviteLinkGenerated: 'Invite Link Generated!',
     inviteLinkDescription: 'Share this link with the user to complete their registration.',
     inviteLink: 'Invite Link',
+    addAnother: 'Add Another User',
     inviteAnother: 'Invite Another User',
     'invite.steps.userdetails': 'User Details',
     'invite.steps.invitelink': 'Invite Link',
@@ -763,6 +764,8 @@ const translations = {
     'edit.page.reset': 'Discard',
     'edit.page.save': 'Save',
     'edit.page.saving': 'Saving…',
+    'update.success': 'Agent updated successfully.',
+    'update.error': 'Failed to update agent. Please try again.',
 
     // Edit page — Attributes tab
     'edit.attributes.title': 'Attributes',
@@ -798,6 +801,45 @@ const translations = {
     'edit.advanced.redirectUris.addUri': 'Add Redirect URI',
     'edit.advanced.redirectUris.error.empty': 'URI cannot be empty',
     'edit.advanced.redirectUris.error.invalid': 'Enter a valid URL',
+    'edit.advanced.redirectUris.required':
+      'At least one valid redirect URI is required for the authorization code grant.',
+
+    // Backend error code translations (per agent service error envelope).
+    'errors.AGT-1001': 'The request body is malformed or contains invalid data.',
+    'errors.AGT-1002': 'One or more redirect URIs are not valid.',
+    'errors.AGT-1003': 'One or more grant types are not supported.',
+    'errors.AGT-1004': 'The agent with the specified id does not exist.',
+    'errors.AGT-1005': 'The specified organization unit does not exist.',
+    'errors.AGT-1008': 'The agent ID is required.',
+    'errors.AGT-1009': 'The agent name must be provided and non-empty.',
+    'errors.AGT-1010': 'The agent type must be provided.',
+    'errors.AGT-1011': 'The limit parameter must be between 1 and 100.',
+    'errors.AGT-1012': 'The offset parameter must be a non-negative integer.',
+    'errors.AGT-1013': 'An agent with the same name already exists.',
+    'errors.AGT-1014': 'An agent with the same unique attribute value already exists.',
+    'errors.AGT-1015': 'The provided attributes failed schema validation.',
+    'errors.AGT-1016': 'The provided credential is invalid.',
+    'errors.AGT-1020': 'The filter format is invalid.',
+    'errors.AGT-1021': 'The provided OAuth configuration is invalid.',
+    'errors.AGT-1022': 'The provided token endpoint authentication method is not supported.',
+    'errors.AGT-1023': 'The public client configuration is invalid.',
+    'errors.AGT-1024': 'The provided certificate type is not supported.',
+    'errors.AGT-1025': 'The provided certificate value is invalid or missing.',
+    'errors.AGT-1026': 'The JWKS URI must be a publicly reachable HTTPS URL.',
+    'errors.AGT-1027': 'Declaratively managed agents cannot be modified via the API.',
+    'errors.AGT-1028': 'The provided authentication flow ID is invalid.',
+    'errors.AGT-1029': 'The provided registration flow ID is invalid.',
+    'errors.AGT-1030': 'An error occurred while retrieving the flow definition.',
+    'errors.AGT-1031': 'One or more specified allowed user types are invalid.',
+    'errors.AGT-1032': 'The specified theme does not exist.',
+    'errors.AGT-1033': 'The specified layout does not exist.',
+    'errors.AGT-1034': 'One or more provided response types are invalid.',
+    'errors.AGT-1035': 'Failed to sync agent attribute changes with the consent service.',
+    'errors.AGT-1036': 'A certificate operation failed due to invalid input.',
+    'errors.AGT-1037': 'An entity with the same client ID already exists.',
+    'errors.AGT-1038': 'An entity may have at most one inbound auth config per protocol.',
+    'errors.AGT-1039': 'The specified owner does not match any known user, application, or agent.',
+    'errors.AGT-1040': 'One or more user attributes are not valid for the configured allowed user types.',
   },
 
   // ============================================================================
@@ -983,6 +1025,9 @@ const translations = {
     'edit.general.sections.quickCopy.copyOrganizationUnitId': 'Copy organization unit ID',
     'edit.general.sections.organizationUnit.title': 'Organization Unit',
     'edit.general.sections.organizationUnit.description': 'The organization unit this group belongs to.',
+    'edit.general.sections.organizationUnit.handleLabel': 'Handle',
+    'edit.general.sections.organizationUnit.idLabel': 'ID',
+    'edit.general.sections.quickCopy.copyOrganizationUnitHandle': 'Copy organization unit handle',
     'edit.general.sections.dangerZone.title': 'Danger Zone',
     'edit.general.sections.dangerZone.description': 'Actions in this section are irreversible. Proceed with caution.',
     'edit.general.sections.dangerZone.deleteGroup': 'Delete this group',
@@ -1363,6 +1408,9 @@ const translations = {
       'Users will sign in or sign up through your app using the UI components or APIs provided by {{product}}. You can customize and brand the flows using the designer or through code.',
     'onboarding.configure.stack.technology.title': 'Technology',
     'onboarding.configure.stack.technology.subtitle': 'What technology are you using to build your application?',
+    'onboarding.configure.stack.technology.express.title': 'Express.js',
+    'onboarding.configure.stack.technology.express.description':
+      'Server-side Node.js application built with Express.js',
     'onboarding.configure.stack.technology.react.title': 'React',
     'onboarding.configure.stack.technology.react.description': 'Single-page application built with React',
     'onboarding.configure.stack.technology.nextjs.title': 'Next.js',
@@ -1379,6 +1427,8 @@ const translations = {
     'onboarding.configure.stack.technology.springboot.description': 'Java backend application with Spring Boot',
     'onboarding.configure.stack.technology.nodejs.title': 'Node.js',
     'onboarding.configure.stack.technology.nodejs.description': 'Backend service built with Node.js',
+    'onboarding.configure.stack.technology.vanillaJs.title': 'JavaScript',
+    'onboarding.configure.stack.technology.vanillaJs.description': 'Browser application built with vanilla JavaScript',
     'onboarding.configure.stack.platform.title': 'Application Type',
     'onboarding.configure.stack.platform.subtitle': 'This helps us configure the right settings for your app',
     'onboarding.configure.stack.dividerLabel': 'OR',
@@ -1709,6 +1759,12 @@ const translations = {
     'edit.flows.registrationFlow.placeholder': 'Select a registration flow',
     'edit.flows.registrationFlow.hint': 'Select the flow that handles user registration for this {{entity}}.',
     'edit.flows.registrationFlow.alert':
+      'To modify the selected flow, <0>open the flow builder</0>. To create a new flow, visit the <1>Flows page</1>.',
+    'edit.flows.labels.recoveryFlow': 'Recovery Flow',
+    'edit.flows.labels.recoveryFlow.description': 'Choose the flow that handles password and account recovery.',
+    'edit.flows.recoveryFlow.placeholder': 'Select a recovery flow',
+    'edit.flows.recoveryFlow.hint': 'Select the flow that handles account recovery for this {{entity}}.',
+    'edit.flows.recoveryFlow.alert':
       'To modify the selected flow, <0>open the flow builder</0>. To create a new flow, visit the <1>Flows page</1>.',
     'edit.flows.editFlow': 'Edit flow',
 
@@ -2129,6 +2185,8 @@ const translations = {
     'create.type.signin.description': 'Authenticate users with passwords, passkeys, or social providers',
     'create.type.signup.label': 'Self Sign-up',
     'create.type.signup.description': 'Let users register themselves with your application',
+    'create.type.recovery.label': 'Password Recovery',
+    'create.type.recovery.description': 'Let users recover their password or account',
     'create.type.onboarding.label': 'Onboarding',
     'create.type.onboarding.description': 'Onboard invited users to your organization',
     'create.template.title': 'Choose a starting template',
@@ -2280,6 +2338,9 @@ const translations = {
 
     // Provisioning executor
     'core.executions.provisioning.description': 'Configure the provisioning executor settings.',
+    'core.executions.provisioning.includeOptionalCredentials.label': 'Include Optional Credentials',
+    'core.executions.provisioning.includeOptionalCredentials.hint':
+      'Prompt for optional credential attributes during dynamic input collection.',
     'core.executions.provisioning.assignGroup.label': 'Assign Group',
     'core.executions.provisioning.assignGroup.placeholder': 'Group ID to assign',
     'core.executions.provisioning.assignRole.label': 'Assign Role',
@@ -2959,6 +3020,29 @@ const translations = {
     // Feature status labels
     'feature_status.new': 'New',
     'feature_status.coming_soon': 'Coming Soon',
+  },
+
+  // ============================================================================
+  // How Solution Works Illustration - Shared illustration translations
+  // ============================================================================
+  howSolutionWorksIllustration: {
+    validateTest: 'Validate / Test',
+    configureProject: 'Configure Project',
+    run: 'Run',
+    console: '{{productName}} Console',
+    runtimeLocal: '{{productName}} Runtime Local',
+    projectEnvConfigs: 'Project + ENV Configs',
+    runtimeHosted: '{{productName}} Runtime Hosted',
+    saveExport: 'Save & Export',
+    import: 'Import',
+    runInProduction: 'Run {{productName}} in Production',
+    runtimeComponentsOnly: '(with required runtime components only)',
+    designConfigure: 'Design / Configure {{productName}} Project',
+    designComponents: '(with design components)',
+    commandProduction: './start.sh project-foo.yml --env production.env',
+    commandStart: './start.sh',
+    adminApp: 'Admin App',
+    loginApp: 'Login App',
   },
 } as const;
 

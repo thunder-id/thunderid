@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import FlowQueryKeys from '../constants/flow-query-keys';
@@ -60,7 +60,7 @@ interface UpdateFlowVariables {
  * ```
  */
 export default function useUpdateFlow(): UseMutationResult<FlowDefinitionResponse, Error, UpdateFlowVariables> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
 

@@ -21,7 +21,7 @@ package middleware
 import (
 	"net/http"
 
-	sysContext "github.com/asgardeo/thunder/internal/system/context"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 )
 
 // CorrelationIDMiddleware extracts or generates a correlation ID (trace ID) for each request.

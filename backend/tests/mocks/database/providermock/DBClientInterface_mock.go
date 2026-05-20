@@ -7,9 +7,9 @@ package providermock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/system/database/model"
-	"github.com/asgardeo/thunder/internal/system/transaction"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/database/model"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
 // NewDBClientInterfaceMock creates a new instance of DBClientInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

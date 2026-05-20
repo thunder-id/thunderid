@@ -22,8 +22,8 @@ import AgentQueryKeys from '../../constants/agent-query-keys';
 import type {Agent} from '../../models/agent';
 import useRegenerateAgentSecret from '../useRegenerateAgentSecret';
 
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: vi.fn(),
+vi.mock('@thunderid/react', () => ({
+  useThunderID: vi.fn(),
 }));
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
@@ -35,7 +35,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
-const {useAsgardeo} = await import('@asgardeo/react');
+const {useThunderID} = await import('@thunderid/react');
 const {useConfig} = await import('@thunderid/contexts');
 
 describe('useRegenerateAgentSecret', () => {
@@ -72,9 +72,9 @@ describe('useRegenerateAgentSecret', () => {
   beforeEach(() => {
     mockHttpRequest = vi.fn();
 
-    vi.mocked(useAsgardeo).mockReturnValue({
+    vi.mocked(useThunderID).mockReturnValue({
       http: {request: mockHttpRequest},
-    } as unknown as ReturnType<typeof useAsgardeo>);
+    } as unknown as ReturnType<typeof useThunderID>);
 
     vi.mocked(useConfig).mockReturnValue({
       getServerUrl: () => 'https://api.test.com',

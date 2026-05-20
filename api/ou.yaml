@@ -33,6 +33,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/filterParam'
       responses:
         "200":
           description: List of root organization units
@@ -85,6 +86,16 @@ paths:
                     description:
                       key: "error.ouservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+                invalid-filter:
+                  summary: Invalid filter parameter
+                  value:
+                    code: "OU-1014"
+                    message:
+                      key: "error.ouservice.invalid_filter"
+                      defaultValue: "Invalid filter parameter"
+                    description:
+                      key: "error.ouservice.invalid_filter_description"
+                      defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
         "500":
           description: Internal server error
 
@@ -384,6 +395,7 @@ paths:
             format: uuid
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/filterParam'
       responses:
         "200":
           description: List of child organization units
@@ -436,6 +448,16 @@ paths:
                     description:
                       key: "error.ouservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+                invalid-filter:
+                  summary: Invalid filter parameter
+                  value:
+                    code: "OU-1014"
+                    message:
+                      key: "error.ouservice.invalid_filter"
+                      defaultValue: "Invalid filter parameter"
+                    description:
+                      key: "error.ouservice.invalid_filter_description"
+                      defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
         "404":
           description: Organization unit not found
           content:
@@ -545,7 +567,6 @@ paths:
             format: uuid
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/includeGroupQueryParam'
       responses:
         "200":
           description: List of groups in the organization unit
@@ -1020,6 +1041,7 @@ paths:
           example: "engineering/frontend"
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/filterParam'
       responses:
         "200":
           description: List of child organization units
@@ -1072,6 +1094,16 @@ paths:
                     description:
                       key: "error.ouservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+                invalid-filter:
+                  summary: Invalid filter parameter
+                  value:
+                    code: "OU-1014"
+                    message:
+                      key: "error.ouservice.invalid_filter"
+                      defaultValue: "Invalid filter parameter"
+                    description:
+                      key: "error.ouservice.invalid_filter_description"
+                      defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
         "404":
           description: Organization unit not found
           content:
@@ -1221,7 +1253,6 @@ paths:
           example: "engineering/frontend"
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
-        - $ref: '#/components/parameters/includeGroupQueryParam'
       responses:
         "200":
           description: List of groups in the organization unit
@@ -1343,22 +1374,33 @@ components:
         type: string
         enum:
           - display
-    includeGroupQueryParam:
+    filterParam:
       in: query
-      name: include
+      name: filter
       required: false
       description: |
-        Optional parameter to include additional display information.
-        - `display` - Include `ouHandle`, the human-readable handle of the organization unit, alongside the `ouId`.
+        Filter organization units by attribute values.
+        Supported operators: `eq`, `gt`, `lt`.
+        Filterable attributes: `name`, `handle`, `description`, `createdAt`, `updatedAt`.
+        Format: `attribute operator "value"`.
+        Examples:
+        - `name eq "Engineering"`
+        - `handle eq "frontend"`
+        - `createdAt gt "2026-01-01T00:00:00Z"`
       schema:
         type: string
-        enum:
-          - display
+      examples:
+        name-filter:
+          summary: Filter by name
+          value: 'name eq "Engineering"'
+        created-at-filter:
+          summary: Filter by creation timestamp
+          value: 'createdAt gt "2026-01-01T00:00:00Z"'
 
   schemas:
     OrganizationUnitBasic:
       type: object
-      required: [id, handle, name]
+      required: [id, handle, name, isReadOnly, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -1373,6 +1415,20 @@ components:
           type: string
           format: uri
           description: "Logo URL for the organization unit"
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: "Whether the organization unit is immutable by clients."
+        createdAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: "Creation timestamp in UTC."
+        updatedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: "Last update timestamp in UTC."
 
     OrganizationUnit:
       allOf:
@@ -1382,6 +1438,26 @@ components:
           type: string
           format: uuid
           nullable: true
+        themeId:
+          type: string
+          format: uuid
+          description: "Theme configuration ID for the organization unit"
+        layoutId:
+          type: string
+          format: uuid
+          description: "Layout configuration ID for the organization unit"
+        tosUri:
+          type: string
+          format: uri
+          description: "Terms of Service URI"
+        policyUri:
+          type: string
+          format: uri
+          description: "Privacy Policy URI"
+        cookiePolicyUri:
+          type: string
+          format: uri
+          description: "Cookie Policy URI"
 
     User:
       type: object
@@ -1390,6 +1466,9 @@ components:
         id:
           type: string
           format: uuid
+        type:
+          type: string
+          description: "User type identifier"
         display:
           type: string
           description: >-
@@ -1407,13 +1486,6 @@ components:
           format: uuid
         name:
           type: string
-        ouId:
-          type: string
-          format: uuid
-        ouHandle:
-          type: string
-          readOnly: true
-          description: "Human-readable handle of the organization unit (only included when include=display query parameter is used)."
 
     Link:
       type: object

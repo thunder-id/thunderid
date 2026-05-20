@@ -22,13 +22,16 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/system/database/provider"
-	"github.com/asgardeo/thunder/tests/mocks/database/providermock"
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
+	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/filter"
+	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
 
 const testDeploymentID = "test-deployment-id"
@@ -283,6 +286,8 @@ func makeOUResultRow(id, handle, name, description string, parent *string) map[s
 		"name":        name,
 		"description": description,
 		"metadata":    nil,
+		"created_at":  "2025-01-01 10:00:00",
+		"updated_at":  "2025-01-01 10:00:00",
 	}
 	if parent != nil {
 		row["parent_id"] = *parent
@@ -307,6 +312,8 @@ func TestBuildOrganizationUnitBasicFromResultRow(t *testing.T) {
 			"handle":      "root",
 			"name":        "Root",
 			"description": "desc",
+			"created_at":  "2025-01-01 10:00:00",
+			"updated_at":  "2025-01-01 10:00:00",
 		}
 
 		ou, err := buildOrganizationUnitBasicFromResultRow(row)
@@ -323,6 +330,8 @@ func TestBuildOrganizationUnitBasicFromResultRow(t *testing.T) {
 			"name":        "Root",
 			"description": "desc",
 			"metadata":    `{"logo_url":"https://example.com/logo.png"}`,
+			"created_at":  "2025-01-01 10:00:00",
+			"updated_at":  "2025-01-01 10:00:00",
 		}
 
 		ou, err := buildOrganizationUnitBasicFromResultRow(row)
@@ -339,6 +348,8 @@ func TestBuildOrganizationUnitBasicFromResultRow(t *testing.T) {
 			"name":        "Root",
 			"description": "desc",
 			"metadata":    nil,
+			"created_at":  "2025-01-01 10:00:00",
+			"updated_at":  "2025-01-01 10:00:00",
 		}
 
 		ou, err := buildOrganizationUnitBasicFromResultRow(row)
@@ -412,6 +423,8 @@ func TestBuildOrganizationUnitFromResultRow(t *testing.T) {
 		"name":        "Child",
 		"description": "",
 		"parent_id":   parentID,
+		"created_at":  "2025-01-01 10:00:00",
+		"updated_at":  "2025-01-01 10:00:00",
 	}
 
 	ou, err := buildOrganizationUnitFromResultRow(row)
@@ -429,6 +442,8 @@ func TestBuildOrganizationUnitFromResultRow(t *testing.T) {
 			"parent_id":   nil,
 			"theme_id":    "theme-abc",
 			"layout_id":   "layout-def",
+			"created_at":  "2025-01-01 10:00:00",
+			"updated_at":  "2025-06-15 12:30:00",
 			"metadata": `{"logo_url":"https://example.com/logo.png","tos_uri":""` +
 				`,"policy_uri":"","cookie_policy_uri":""}`,
 		}
@@ -449,6 +464,8 @@ func TestBuildOrganizationUnitFromResultRow(t *testing.T) {
 			"name":        "Root",
 			"description": "",
 			"parent_id":   123,
+			"created_at":  "2025-01-01 10:00:00",
+			"updated_at":  "2025-01-01 10:00:00",
 		}
 
 		ou, err := buildOrganizationUnitFromResultRow(row)
@@ -498,14 +515,43 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CheckOrganizationUnitHa
 
 func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChildrenCount() {
 	suite.runCountQueryScenario(
-		queryGetOrganizationUnitChildrenCount,
+		mock.Anything,
 		"root",
 		testDeploymentID,
 		5,
 		func() (int, error) {
-			return suite.store.GetOrganizationUnitChildrenCount(context.Background(), "root")
+			return suite.store.GetOrganizationUnitChildrenCount(context.Background(), "root", nil)
 		},
 	)
+
+	suite.Run("build count query error", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		badFilter := &filter.FilterGroup{Clauses: []filter.FilterClause{
+			{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "x"}},
+		}}
+
+		count, err := suite.store.GetOrganizationUnitChildrenCount(context.Background(), "root", badFilter)
+
+		suite.Require().Error(err)
+		suite.Zero(count)
+		suite.Contains(err.Error(), "failed to build count query")
+	})
+
+	suite.Run("missing total field", func() {
+		suite.SetupTest()
+		suite.expectDBClient()
+		suite.dbClientMock.
+			On("QueryContext", mock.Anything, mock.Anything, "root", testDeploymentID).
+			Return([]map[string]interface{}{{}}, nil).
+			Once()
+
+		count, err := suite.store.GetOrganizationUnitChildrenCount(context.Background(), "root", nil)
+
+		suite.Require().Error(err)
+		suite.Zero(count)
+		suite.Contains(err.Error(), "failed to parse count result")
+	})
 }
 
 func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChildrenList() {
@@ -528,7 +574,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 				suite.dbClientMock.
 					On(
 						"QueryContext", mock.Anything,
-						queryGetOrganizationUnitChildrenList, parent, limit, offset, testDeploymentID).
+						mock.Anything, parent, limit, offset, testDeploymentID).
 					Return([]map[string]interface{}{
 						makeOUResultRow("child1", "child1", "Child 1", "", &parent),
 						makeOUResultRow("child2", "child2", "Child 2", "desc", &parent),
@@ -550,7 +596,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 				suite.dbClientMock.
 					On(
 						"QueryContext", mock.Anything,
-						queryGetOrganizationUnitChildrenList, parent, limit, offset, testDeploymentID).
+						mock.Anything, parent, limit, offset, testDeploymentID).
 					Return(nil, errors.New("query err")).
 					Once()
 			},
@@ -566,7 +612,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 				suite.dbClientMock.
 					On(
 						"QueryContext", mock.Anything,
-						queryGetOrganizationUnitChildrenList, parent, limit, offset, testDeploymentID).
+						mock.Anything, parent, limit, offset, testDeploymentID).
 					Return([]map[string]interface{}{{"ou_id": 1}}, nil).
 					Once()
 			},
@@ -585,6 +631,16 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 			},
 			wantErr: "failed to get database client",
 		},
+		{
+			name:   "build list query error",
+			parent: "root",
+			limit:  1,
+			offset: 0,
+			setup: func(parent string, limit, offset int) {
+				suite.expectDBClient()
+			},
+			wantErr: "failed to build list query",
+		},
 	}
 
 	for _, tc := range tests {
@@ -593,8 +649,15 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitChil
 			suite.SetupTest()
 			tc.setup(tc.parent, tc.limit, tc.offset)
 
+			filterExpr := (*filter.FilterGroup)(nil)
+			if tc.name == "build list query error" {
+				filterExpr = &filter.FilterGroup{Clauses: []filter.FilterClause{
+					{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "x"}},
+				}}
+			}
+
 			children, err := suite.store.GetOrganizationUnitChildrenList(
-				context.Background(), tc.parent, tc.limit, tc.offset,
+				context.Background(), tc.parent, tc.limit, tc.offset, filterExpr,
 			)
 
 			if tc.wantErr != "" {
@@ -644,6 +707,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 						ou.ThemeID,
 						ou.LayoutID,
 						`{"cookie_policy_uri":"","logo_url":"","policy_uri":"","tos_uri":""}`,
+						mock.Anything,
 						testDeploymentID,
 					).
 					Return(int64(1), nil).
@@ -680,6 +744,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 						ou.LayoutID,
 						`{"cookie_policy_uri":"","logo_url":"https://example.com/logo.png",`+
 							`"policy_uri":"","tos_uri":""}`,
+						mock.Anything,
 						testDeploymentID,
 					).
 					Return(int64(1), nil).
@@ -703,6 +768,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_UpdateOrganizationUnit(
 						ou.ThemeID,
 						ou.LayoutID,
 						`{"cookie_policy_uri":"","logo_url":"","policy_uri":"","tos_uri":""}`,
+						mock.Anything,
 						testDeploymentID,
 					).
 					Return(int64(0), errors.New("update failed")).
@@ -1312,6 +1378,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 						ou.LayoutID,
 						`{"cookie_policy_uri":"","logo_url":"","policy_uri":"","tos_uri":""}`,
 						testDeploymentID,
+						mock.Anything,
+						mock.Anything,
 					).
 					Return(int64(1), nil).
 					Once()
@@ -1344,6 +1412,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 						`{"cookie_policy_uri":"","logo_url":"https://example.com/logo.png",`+
 							`"policy_uri":"","tos_uri":""}`,
 						testDeploymentID,
+						mock.Anything,
+						mock.Anything,
 					).
 					Return(int64(1), nil).
 					Once()
@@ -1372,6 +1442,8 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_CreateOrganizationUnit(
 						ou.LayoutID,
 						`{"cookie_policy_uri":"","logo_url":"","policy_uri":"","tos_uri":""}`,
 						testDeploymentID,
+						mock.Anything,
+						mock.Anything,
 					).
 					Return(int64(0), errors.New("insert failed")).
 					Once()
@@ -1435,7 +1507,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 				suite.dbClientMock.
 					On(
 						"QueryContext", mock.Anything,
-						queryGetRootOrganizationUnitList, limit, offset, testDeploymentID).
+						mock.Anything, limit, offset, testDeploymentID).
 					Return(rows, nil).
 					Once()
 			},
@@ -1456,7 +1528,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 				suite.dbClientMock.
 					On(
 						"QueryContext", mock.Anything,
-						queryGetRootOrganizationUnitList, limit, offset, testDeploymentID).
+						mock.Anything, limit, offset, testDeploymentID).
 					Return(nil, errors.New("query error")).
 					Once()
 			},
@@ -1471,7 +1543,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 				suite.dbClientMock.
 					On(
 						"QueryContext", mock.Anything,
-						queryGetRootOrganizationUnitList, limit, offset, testDeploymentID).
+						mock.Anything, limit, offset, testDeploymentID).
 					Return([]map[string]interface{}{{"ou_id": 123}}, nil).
 					Once()
 			},
@@ -1489,6 +1561,15 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 			},
 			wantErrString: "failed to get database client",
 		},
+		{
+			name:   "build list query error",
+			limit:  1,
+			offset: 0,
+			setup: func(limit, offset int) {
+				suite.expectDBClient()
+			},
+			wantErrString: "failed to build list query",
+		},
 	}
 
 	for _, tc := range tests {
@@ -1497,7 +1578,14 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 			suite.SetupTest()
 			tc.setup(tc.limit, tc.offset)
 
-			ous, err := suite.store.GetOrganizationUnitList(context.Background(), tc.limit, tc.offset)
+			filterExpr := (*filter.FilterGroup)(nil)
+			if tc.name == "build list query error" {
+				filterExpr = &filter.FilterGroup{Clauses: []filter.FilterClause{
+					{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "x"}},
+				}}
+			}
+
+			ous, err := suite.store.GetOrganizationUnitList(context.Background(), tc.limit, tc.offset, filterExpr)
 
 			if tc.wantErrString != "" {
 				suite.Require().Error(err)
@@ -1527,7 +1615,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
-						"QueryContext", mock.Anything, queryGetRootOrganizationUnitListCount, testDeploymentID).
+						"QueryContext", mock.Anything, mock.Anything, testDeploymentID).
 					Return([]map[string]interface{}{{"total": int64(3)}}, nil).
 					Once()
 			},
@@ -1539,7 +1627,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
-						"QueryContext", mock.Anything, queryGetRootOrganizationUnitListCount, testDeploymentID).
+						"QueryContext", mock.Anything, mock.Anything, testDeploymentID).
 					Return(nil, errors.New("boom")).
 					Once()
 			},
@@ -1551,7 +1639,7 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 				suite.expectDBClient()
 				suite.dbClientMock.
 					On(
-						"QueryContext", mock.Anything, queryGetRootOrganizationUnitListCount, testDeploymentID).
+						"QueryContext", mock.Anything, mock.Anything, testDeploymentID).
 					Return([]map[string]interface{}{{"total": "3"}}, nil).
 					Once()
 			},
@@ -1567,6 +1655,25 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 			},
 			wantErr: "failed to get database client",
 		},
+		{
+			name: "build count query error",
+			setup: func() {
+				suite.expectDBClient()
+			},
+			wantErr: "failed to build count query",
+		},
+		{
+			name: "empty result",
+			setup: func() {
+				suite.expectDBClient()
+				suite.dbClientMock.
+					On(
+						"QueryContext", mock.Anything, mock.Anything, testDeploymentID).
+					Return([]map[string]interface{}{}, nil).
+					Once()
+			},
+			want: 0,
+		},
 	}
 
 	for _, tc := range tests {
@@ -1575,7 +1682,14 @@ func (suite *OrganizationUnitStoreTestSuite) TestOUStore_GetOrganizationUnitList
 			suite.SetupTest()
 			tc.setup()
 
-			count, err := suite.store.GetOrganizationUnitListCount(context.Background())
+			filterExpr := (*filter.FilterGroup)(nil)
+			if tc.name == "build count query error" {
+				filterExpr = &filter.FilterGroup{Clauses: []filter.FilterClause{
+					{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "x"}},
+				}}
+			}
+
+			count, err := suite.store.GetOrganizationUnitListCount(context.Background(), filterExpr)
 
 			if tc.wantErr != "" {
 				suite.Require().Error(err)
@@ -1729,4 +1843,520 @@ func TestNewOrganizationUnitStore_TransactionerError(t *testing.T) {
 
 	_, _, err := newOrganizationUnitStore()
 	require.Error(t, err)
+}
+
+func TestParseTimeField(t *testing.T) {
+	t.Run("parses custom time with suffix", func(t *testing.T) {
+		parsed, err := parseTimeField("2025-01-01 10:00:00.123456789 +0000 UTC", "created_at")
+
+		require.NoError(t, err)
+		require.Equal(t, 2025, parsed.Year())
+		require.Equal(t, time.January, parsed.Month())
+		require.Equal(t, 1, parsed.Day())
+	})
+
+	t.Run("parses rfc3339", func(t *testing.T) {
+		parsed, err := parseTimeField("2025-01-01T10:00:00Z", "updated_at")
+
+		require.NoError(t, err)
+		require.Equal(t, 10, parsed.Hour())
+	})
+
+	t.Run("accepts time type", func(t *testing.T) {
+		now := time.Now().UTC()
+		parsed, err := parseTimeField(now, "created_at")
+
+		require.NoError(t, err)
+		require.Equal(t, now, parsed)
+	})
+
+	t.Run("errors on invalid string", func(t *testing.T) {
+		_, err := parseTimeField("bad-time", "created_at")
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "error parsing created_at")
+	})
+
+	t.Run("errors on nil", func(t *testing.T) {
+		_, err := parseTimeField(nil, "created_at")
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "created_at is nil")
+	})
+
+	t.Run("errors on unsupported type", func(t *testing.T) {
+		_, err := parseTimeField(42, "created_at")
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unexpected type for created_at")
+	})
+}
+
+func TestTrimTimeString(t *testing.T) {
+	require.Equal(t, "2025-01-01 10:00:00.123456789", trimTimeString("2025-01-01 10:00:00.123456789 +0000 UTC"))
+	require.Equal(t, "2025-01-01T10:00:00Z", trimTimeString("2025-01-01T10:00:00Z"))
+}
+
+func TestParseOUMetadata(t *testing.T) {
+	t.Run("missing metadata key", func(t *testing.T) {
+		data, err := parseOUMetadata(map[string]interface{}{})
+
+		require.NoError(t, err)
+		require.Empty(t, data)
+	})
+
+	t.Run("nil metadata", func(t *testing.T) {
+		data, err := parseOUMetadata(map[string]interface{}{"metadata": nil})
+
+		require.NoError(t, err)
+		require.Empty(t, data)
+	})
+
+	t.Run("empty metadata string", func(t *testing.T) {
+		data, err := parseOUMetadata(map[string]interface{}{"metadata": ""})
+
+		require.NoError(t, err)
+		require.Empty(t, data)
+	})
+
+	t.Run("metadata as bytes", func(t *testing.T) {
+		data, err := parseOUMetadata(map[string]interface{}{
+			"metadata": []byte(`{"logo_url":"https://example.com/logo.png"}`),
+		})
+
+		require.NoError(t, err)
+		require.Equal(t, "https://example.com/logo.png", data["logo_url"])
+	})
+
+	t.Run("invalid metadata type", func(t *testing.T) {
+		_, err := parseOUMetadata(map[string]interface{}{"metadata": 123})
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to parse metadata as string or []byte")
+	})
+
+	t.Run("invalid metadata json", func(t *testing.T) {
+		_, err := parseOUMetadata(map[string]interface{}{"metadata": "{"})
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to unmarshal OU Metadata")
+	})
+}
+
+func TestExtractStringFromOUMetadata(t *testing.T) {
+	t.Run("returns empty for missing key", func(t *testing.T) {
+		value, err := extractStringFromOUMetadata(map[string]interface{}{}, "logo_url")
+
+		require.NoError(t, err)
+		require.Equal(t, "", value)
+	})
+
+	t.Run("returns empty for nil key", func(t *testing.T) {
+		value, err := extractStringFromOUMetadata(map[string]interface{}{"logo_url": nil}, "logo_url")
+
+		require.NoError(t, err)
+		require.Equal(t, "", value)
+	})
+
+	t.Run("returns value for string", func(t *testing.T) {
+		value, err := extractStringFromOUMetadata(
+			map[string]interface{}{"logo_url": "https://example.com/logo.png"},
+			"logo_url",
+		)
+
+		require.NoError(t, err)
+		require.Equal(t, "https://example.com/logo.png", value)
+	})
+
+	t.Run("errors on non string", func(t *testing.T) {
+		_, err := extractStringFromOUMetadata(map[string]interface{}{"logo_url": 1}, "logo_url")
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to parse logo_url from OU Metadata")
+	})
+}
+
+func TestBuildOrganizationUnitBasicFromResultRow_MetadataAndTimeErrors(t *testing.T) {
+	t.Run("metadata field type error", func(t *testing.T) {
+		row := map[string]interface{}{
+			"ou_id":       "ou1",
+			"handle":      "root",
+			"name":        "Root",
+			"description": "desc",
+			"metadata":    `{"logo_url":1}`,
+			"created_at":  "2025-01-01 10:00:00",
+			"updated_at":  "2025-01-01 10:00:00",
+		}
+
+		_, err := buildOrganizationUnitBasicFromResultRow(row)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to parse logo_url from OU Metadata")
+	})
+
+	t.Run("created_at parse error", func(t *testing.T) {
+		row := map[string]interface{}{
+			"ou_id":       "ou1",
+			"handle":      "root",
+			"name":        "Root",
+			"description": "desc",
+			"metadata":    nil,
+			"created_at":  nil,
+			"updated_at":  "2025-01-01 10:00:00",
+		}
+
+		_, err := buildOrganizationUnitBasicFromResultRow(row)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to parse created_at")
+	})
+
+	t.Run("updated_at parse error", func(t *testing.T) {
+		row := map[string]interface{}{
+			"ou_id":       "ou1",
+			"handle":      "root",
+			"name":        "Root",
+			"description": "desc",
+			"metadata":    nil,
+			"created_at":  "2025-01-01 10:00:00",
+			"updated_at":  true,
+		}
+
+		_, err := buildOrganizationUnitBasicFromResultRow(row)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "failed to parse updated_at")
+	})
+}
+
+func TestBuildOrganizationUnitFromResultRow_MetadataFieldErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata string
+		wantErr  string
+	}{
+		{
+			name:     "tos_uri type error",
+			metadata: `{"logo_url":"https://example.com/logo.png","tos_uri":1}`,
+			wantErr:  "failed to parse tos_uri from OU Metadata",
+		},
+		{
+			name:     "policy_uri type error",
+			metadata: `{"logo_url":"https://example.com/logo.png","tos_uri":"","policy_uri":1}`,
+			wantErr:  "failed to parse policy_uri from OU Metadata",
+		},
+		{
+			name:     "cookie_policy_uri type error",
+			metadata: `{"logo_url":"https://example.com/logo.png","tos_uri":"","policy_uri":"","cookie_policy_uri":1}`,
+			wantErr:  "failed to parse cookie_policy_uri from OU Metadata",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			row := map[string]interface{}{
+				"ou_id":       "ou1",
+				"handle":      "root",
+				"name":        "Root",
+				"description": "desc",
+				"metadata":    tc.metadata,
+				"created_at":  "2025-01-01 10:00:00",
+				"updated_at":  "2025-01-01 10:00:00",
+			}
+
+			_, err := buildOrganizationUnitFromResultRow(row)
+
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
+
+func TestBuildOrganizationUnitFromResultRow_NonStringThemeAndLayout(t *testing.T) {
+	row := map[string]interface{}{
+		"ou_id":       "ou1",
+		"handle":      "root",
+		"name":        "Root",
+		"description": "desc",
+		"parent_id":   nil,
+		"theme_id":    123,
+		"layout_id":   true,
+		"metadata":    []byte(`{"logo_url":"https://example.com/logo.png"}`),
+		"created_at":  "2025-01-01 10:00:00",
+		"updated_at":  "2025-01-01 10:00:00",
+	}
+
+	ou, err := buildOrganizationUnitFromResultRow(row)
+
+	require.NoError(t, err)
+	require.Equal(t, "", ou.ThemeID)
+	require.Equal(t, "", ou.LayoutID)
+	require.Equal(t, "https://example.com/logo.png", ou.LogoURL)
+}
+
+func TestBuildOUFilterGroup(t *testing.T) {
+	sg := func(attr string, op filter.Operator, val interface{}) *filter.FilterGroup {
+		return &filter.FilterGroup{Clauses: []filter.FilterClause{
+			{Expr: filter.FilterExpression{Attribute: attr, Operator: op, Value: val}},
+		}}
+	}
+	twoClause := func(
+		attr1 string, op1 filter.Operator, val1 interface{},
+		conn filter.LogicalOperator,
+		attr2 string, op2 filter.Operator, val2 interface{},
+	) *filter.FilterGroup {
+		return &filter.FilterGroup{Clauses: []filter.FilterClause{
+			{Expr: filter.FilterExpression{Attribute: attr1, Operator: op1, Value: val1}},
+			{Connector: conn, Expr: filter.FilterExpression{Attribute: attr2, Operator: op2, Value: val2}},
+		}}
+	}
+
+	tests := []struct {
+		name      string
+		g         *filter.FilterGroup
+		startIdx  int
+		wantCond  string
+		wantArgs  []interface{}
+		wantError string
+	}{
+		{
+			name:     "eq on text column uses LOWER",
+			g:        sg("name", filter.OperatorEq, "Finance"),
+			startIdx: 2,
+			wantCond: " AND LOWER(NAME) = LOWER($2)",
+			wantArgs: []interface{}{"Finance"},
+		},
+		{
+			name:     "eq on timestamp column uses plain equals",
+			g:        sg("createdAt", filter.OperatorEq, "2025-01-01"),
+			startIdx: 3,
+			wantCond: " AND CREATED_AT = $3",
+			wantArgs: []interface{}{"2025-01-01"},
+		},
+		{
+			name:     "gt operator",
+			g:        sg("createdAt", filter.OperatorGt, "2025-01-01"),
+			startIdx: 4,
+			wantCond: " AND CREATED_AT > $4",
+			wantArgs: []interface{}{"2025-01-01"},
+		},
+		{
+			name:     "lt operator",
+			g:        sg("updatedAt", filter.OperatorLt, "2026-01-01"),
+			startIdx: 5,
+			wantCond: " AND UPDATED_AT < $5",
+			wantArgs: []interface{}{"2026-01-01"},
+		},
+		{
+			name: "two AND clauses wrapped in parens",
+			g: twoClause(
+				"name", filter.OperatorEq, "Eng", filter.LogicalAnd, "createdAt", filter.OperatorGt, "2024"),
+			startIdx: 2,
+			wantCond: " AND (LOWER(NAME) = LOWER($2) AND CREATED_AT > $3)",
+			wantArgs: []interface{}{"Eng", "2024"},
+		},
+		{
+			name:     "two OR clauses wrapped in parens",
+			g:        twoClause("name", filter.OperatorEq, "A", filter.LogicalOr, "handle", filter.OperatorEq, "a"),
+			startIdx: 2,
+			wantCond: " AND (LOWER(NAME) = LOWER($2) OR LOWER(HANDLE) = LOWER($3))",
+			wantArgs: []interface{}{"A", "a"},
+		},
+		{
+			name:      "non filterable attribute",
+			g:         sg("id", filter.OperatorEq, "ou1"),
+			startIdx:  2,
+			wantError: `attribute "id" is not filterable`,
+		},
+		{
+			name:      "unsupported operator",
+			g:         sg("name", filter.Operator("co"), "Finance"),
+			startIdx:  2,
+			wantError: `unsupported operator "co"`,
+		},
+		{
+			name:     "nil group returns empty cond and nil args",
+			g:        nil,
+			startIdx: 2,
+			wantCond: "",
+			wantArgs: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			cond, args, err := buildOUFilterGroup(tc.g, tc.startIdx)
+
+			if tc.wantError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.wantError)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tc.wantCond, cond)
+			require.Equal(t, tc.wantArgs, args)
+		})
+	}
+}
+
+func TestBuildOUCountQueries(t *testing.T) {
+	type countQueryCase struct {
+		name           string
+		buildFn        func(*filter.FilterGroup) (dbmodel.DBQuery, []interface{}, error)
+		queryID        string
+		noFilterClause string
+		withFilter     *filter.FilterGroup
+		wantClause     string
+		wantArgs       []interface{}
+	}
+
+	cases := []countQueryCase{
+		{
+			name:           "root OU count",
+			buildFn:        buildRootOUCountQuery,
+			queryID:        "OUQ-OU_MGT-01",
+			noFilterClause: "PARENT_ID IS NULL AND DEPLOYMENT_ID = $1",
+			withFilter: &filter.FilterGroup{Clauses: []filter.FilterClause{
+				{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.OperatorEq, Value: "Finance"}},
+			}},
+			wantClause: "LOWER(NAME) = LOWER($2)",
+			wantArgs:   []interface{}{"Finance"},
+		},
+		{
+			name:           "children OU count",
+			buildFn:        buildChildrenOUCountQuery,
+			queryID:        "OUQ-OU_MGT-10",
+			noFilterClause: "PARENT_ID = $1 AND DEPLOYMENT_ID = $2",
+			withFilter: &filter.FilterGroup{Clauses: []filter.FilterClause{
+				{Expr: filter.FilterExpression{Attribute: "description", Operator: filter.OperatorEq, Value: "desc"}},
+			}},
+			wantClause: "LOWER(DESCRIPTION) = LOWER($3)",
+			wantArgs:   []interface{}{"desc"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name+"/without filter", func(t *testing.T) {
+			q, args, err := tc.buildFn(nil)
+			require.NoError(t, err)
+			require.Equal(t, tc.queryID, q.ID)
+			require.Contains(t, q.Query, tc.noFilterClause)
+			require.Empty(t, args)
+		})
+		t.Run(tc.name+"/with filter", func(t *testing.T) {
+			q, args, err := tc.buildFn(tc.withFilter)
+			require.NoError(t, err)
+			require.Contains(t, q.Query, tc.wantClause)
+			require.Equal(t, tc.wantArgs, args)
+		})
+		t.Run(tc.name+"/filter error", func(t *testing.T) {
+			badF := &filter.FilterGroup{Clauses: []filter.FilterClause{
+				{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "x"}},
+			}}
+			_, _, err := tc.buildFn(badF)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "unsupported operator")
+		})
+	}
+}
+
+func TestBuildRootOUListQuery(t *testing.T) {
+	t.Run("without filter", func(t *testing.T) {
+		q, args, err := buildRootOUListQuery(nil)
+
+		require.NoError(t, err)
+		require.Equal(t, "OUQ-OU_MGT-02", q.ID)
+		require.Contains(t, q.Query, "PARENT_ID IS NULL AND DEPLOYMENT_ID = $3")
+		require.Contains(t, q.Query, "ORDER BY NAME LIMIT $1 OFFSET $2")
+		require.Empty(t, args)
+	})
+
+	t.Run("with filter", func(t *testing.T) {
+		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
+			{Expr: filter.FilterExpression{Attribute: "handle", Operator: filter.OperatorEq, Value: "root"}},
+		}}
+		q, args, err := buildRootOUListQuery(f)
+
+		require.NoError(t, err)
+		require.Contains(t, q.Query, "LOWER(HANDLE) = LOWER($4)")
+		require.Equal(t, []interface{}{"root"}, args)
+	})
+
+	t.Run("filter error", func(t *testing.T) {
+		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
+			{Expr: filter.FilterExpression{Attribute: "invalid", Operator: filter.OperatorEq, Value: "x"}},
+		}}
+		_, _, err := buildRootOUListQuery(f)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "is not filterable")
+	})
+}
+
+func TestBuildChildrenOUCountQuery(t *testing.T) {
+	t.Run("without filter", func(t *testing.T) {
+		q, args, err := buildChildrenOUCountQuery(nil)
+
+		require.NoError(t, err)
+		require.Equal(t, "OUQ-OU_MGT-10", q.ID)
+		require.Contains(t, q.Query, "PARENT_ID = $1 AND DEPLOYMENT_ID = $2")
+		require.Empty(t, args)
+	})
+
+	t.Run("with filter", func(t *testing.T) {
+		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
+			{Expr: filter.FilterExpression{Attribute: "description", Operator: filter.OperatorEq, Value: "desc"}},
+		}}
+		q, args, err := buildChildrenOUCountQuery(f)
+
+		require.NoError(t, err)
+		require.Contains(t, q.Query, "LOWER(DESCRIPTION) = LOWER($3)")
+		require.Equal(t, []interface{}{"desc"}, args)
+	})
+
+	t.Run("filter error", func(t *testing.T) {
+		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
+			{Expr: filter.FilterExpression{Attribute: "name", Operator: filter.Operator("co"), Value: "Finance"}},
+		}}
+		_, _, err := buildChildrenOUCountQuery(f)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unsupported operator")
+	})
+}
+
+func TestBuildChildrenOUListQuery(t *testing.T) {
+	t.Run("without filter", func(t *testing.T) {
+		q, args, err := buildChildrenOUListQuery(nil)
+
+		require.NoError(t, err)
+		require.Equal(t, "OUQ-OU_MGT-11", q.ID)
+		require.Contains(t, q.Query, "PARENT_ID = $1 AND DEPLOYMENT_ID = $4")
+		require.Contains(t, q.Query, "ORDER BY NAME LIMIT $2 OFFSET $3")
+		require.Empty(t, args)
+	})
+
+	t.Run("with filter", func(t *testing.T) {
+		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
+			{Expr: filter.FilterExpression{Attribute: "createdAt", Operator: filter.OperatorGt, Value: "2025-01-01"}},
+		}}
+		q, args, err := buildChildrenOUListQuery(f)
+
+		require.NoError(t, err)
+		require.Contains(t, q.Query, "AND CREATED_AT > $5")
+		require.Equal(t, []interface{}{"2025-01-01"}, args)
+	})
+
+	t.Run("filter error", func(t *testing.T) {
+		f := &filter.FilterGroup{Clauses: []filter.FilterClause{
+			{Expr: filter.FilterExpression{Attribute: "updatedAt", Operator: filter.Operator("co"), Value: "x"}},
+		}}
+		_, _, err := buildChildrenOUListQuery(f)
+
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "unsupported operator")
+	})
 }

@@ -1,15 +1,15 @@
 ---
 title: Accessing Protected APIs
-description: Learn how to make authenticated API requests using the Asgardeo React SDK
+description: Learn how to make authenticated API requests using the React SDK
 ---
 
 # Accessing Protected APIs
 
-When building applications with Asgardeo, you'll often need to call protected APIs that require authentication. This guide shows you how to make authenticated HTTP requests using the Asgardeo React SDK.
+When building applications with <ProductName />, you'll often need to call protected APIs that require authentication. This guide shows you how to make authenticated HTTP requests using the <ProductName /> React SDK.
 
 ## Using SDK Built-in HTTP Client
 
-When your application is wrapped with `AsgardeoProvider`, you can use the `useAsgardeo` hook to access the authenticated `http` module. This module has the following features:
+When your application is wrapped with `ThunderIDProvider`, you can use the `useThunderID` hook to access the authenticated `http` module. This module has the following features:
 
 - Includes the necessary authentication headers (Bearer token)
 - Handles token refresh when tokens expire
@@ -18,29 +18,29 @@ When your application is wrapped with `AsgardeoProvider`, you can use the `useAs
 :::tip Accessing the HTTP Client
 There are two ways to access the `http` client:
 
-1. **Inside a component**: Use the `useAsgardeo` hook to get the `http` instance
+1. **Inside a component**: Use the `useThunderID` hook to get the `http` instance
    ```jsx
-   const { http } = useAsgardeo()
+   const { http } = useThunderID()
    ```
 
 2. **Outside a component** (e.g., in utility functions or services): Import `http` directly
    ```jsx
-   import { http } from '@asgardeo/react'
+   import { http } from '@thunderid/react'
    ```
 :::
 
 ### Basic API Request
 
-The following examples demonstrate how to use the Asgardeo SDK's `http` module to call a protected API endpoint.
+The following examples demonstrate how to use the <ProductName /> SDK's `http` module to call a protected API endpoint.
 
 #### Using the Hook Inside a Component
 
 ```jsx title="src/UserProfile.jsx" showLineNumbers
 import React, { useEffect, useState } from 'react'
-import { useAsgardeo } from '@asgardeo/react'
+import { useThunderID } from '@thunderid/react'
 
 export default function UserProfile() {
-  const { http, isSignedIn } = useAsgardeo()
+  const { http, isSignedIn } = useThunderID()
   const [userData, setUserData] = useState(null)
 
   useEffect(() => {
@@ -82,7 +82,7 @@ export default function UserProfile() {
 #### Using Direct Import Outside a Component
 
 ```jsx title="src/services/userService.js" showLineNumbers
-import { http } from '@asgardeo/react'
+import { http } from '@thunderid/react'
 
 export async function fetchUser(userId) {
   try {
@@ -105,11 +105,11 @@ export async function fetchUser(userId) {
 
 ```jsx title="src/UserProfile.jsx" showLineNumbers
 import React, { useEffect, useState } from 'react'
-import { useAsgardeo } from '@asgardeo/react'
+import { useThunderID } from '@thunderid/react'
 import { fetchUser } from './services/userService'
 
 export default function UserProfile() {
-  const { isSignedIn } = useAsgardeo()
+  const { isSignedIn } = useThunderID()
   const [userData, setUserData] = useState(null)
 
   useEffect(() => {
@@ -160,10 +160,10 @@ The following code snippet shows how to send multiple network requests in parall
 
 ```jsx title="src/UserProfile.jsx" showLineNumbers
 import React, { useEffect, useState } from 'react'
-import { useAsgardeo } from '@asgardeo/react'
+import { useThunderID } from '@thunderid/react'
 
 export default function UserProfile() {
-  const { http, isSignedIn } = useAsgardeo()
+  const { http, isSignedIn } = useThunderID()
   const [ userData, setUserData ] = useState({
     profile: null,
     applications: [],
@@ -249,7 +249,7 @@ export function createAuthenticatedClient(accessToken) {
 
 ```jsx title="src/UserProfile.jsx" showLineNumbers
 import React, { useEffect, useState } from 'react'
-import { useAsgardeo } from '@asgardeo/react'
+import { useThunderID } from '@thunderid/react'
 import { gql } from '@apollo/client'
 import { createAuthenticatedClient } from './graphql/client'
 
@@ -266,7 +266,7 @@ const GET_USER = gql`
 `
 
 export default function UserProfile() {
-  const { isSignedIn, getAccessToken } = useAsgardeo()
+  const { isSignedIn, getAccessToken } = useThunderID()
   const [userData, setUserData] = useState(null)
 
   useEffect(() => {

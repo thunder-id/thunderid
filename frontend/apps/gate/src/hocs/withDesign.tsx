@@ -16,13 +16,13 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {DesignProvider, type DesignResolveResponse} from '@thunderid/design';
 import type {JSX, ComponentType} from 'react';
 
 export default function withDesign<P extends object>(WrappedComponent: ComponentType<P>) {
   return function WithDesign(props: P): JSX.Element {
-    const {meta} = useAsgardeo();
+    const {meta} = useThunderID();
     return (
       <DesignProvider
         shouldResolveDesignInternally={false}

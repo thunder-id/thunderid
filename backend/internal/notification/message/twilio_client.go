@@ -25,9 +25,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/asgardeo/thunder/internal/notification/common"
-	syshttp "github.com/asgardeo/thunder/internal/system/http"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/notification/common"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 const (

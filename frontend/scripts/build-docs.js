@@ -21,7 +21,7 @@
 /* eslint-disable @thunderid/copyright-header */
 
 // TODO: We can remove this once NX sorts out their current limitations for including folder outside the workspace.
-// Tracker: https://github.com/asgardeo/thunder/issues/1199
+// Tracker: https://github.com/thunder-id/thunderid/issues/1199
 
 import {spawn} from 'node:child_process';
 import {resolve, join} from 'node:path';

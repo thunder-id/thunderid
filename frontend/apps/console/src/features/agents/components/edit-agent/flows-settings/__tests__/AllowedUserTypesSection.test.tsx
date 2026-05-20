@@ -51,7 +51,7 @@ describe('AllowedUserTypesSection', () => {
     vi.clearAllMocks();
     mockUseGetUserTypes.mockReturnValue({
       data: {
-        schemas: [
+        types: [
           {id: 'ut-1', name: 'employee'},
           {id: 'ut-2', name: 'customer'},
         ],
@@ -137,7 +137,7 @@ describe('AllowedUserTypesSection', () => {
   });
 
   it('handles missing user-type schemas gracefully', () => {
-    mockUseGetUserTypes.mockReturnValueOnce({data: {schemas: undefined}, isLoading: false});
+    mockUseGetUserTypes.mockReturnValueOnce({data: {types: undefined}, isLoading: false});
     render(<AllowedUserTypesSection agent={agent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
     expect(screen.getByText('employee')).toBeInTheDocument();

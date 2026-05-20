@@ -42,7 +42,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/asgardeo/thunder/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/config"
 )
 
 // HTTPClientInterface defines the interface for HTTP client operations.

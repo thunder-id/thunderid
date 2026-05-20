@@ -20,7 +20,7 @@
 package serviceerror
 
 import (
-	"github.com/asgardeo/thunder/internal/system/i18n/core"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 // ServiceErrorType defines the type of service error.

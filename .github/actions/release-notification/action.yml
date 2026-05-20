@@ -72,7 +72,7 @@ runs:
                       "text": "VIEW CONTAINER",
                       "onClick": {
                         "openLink": {
-                          "url": "https://github.com/asgardeo/thunder/pkgs/container/thunderid"
+                          "url": "https://github.com/thunder-id/thunderid/pkgs/container/thunderid"
                         }
                       }
                     }

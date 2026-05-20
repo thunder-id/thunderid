@@ -7,10 +7,6 @@ inputs:
     description: 'Node.js version to use'
     required: false
     default: 'lts/*'
-  pnpm-version:
-    description: 'pnpm version to use'
-    required: false
-    default: 'latest'
   download-certificates:
     description: 'Whether to download shared certificates'
     required: false
@@ -36,7 +32,6 @@ runs:
     - name: 📦 Install pnpm
       uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
       with:
-        version: ${{ inputs.pnpm-version }}
         run_install: false
 
     - name: 📥 Download Shared Certificates

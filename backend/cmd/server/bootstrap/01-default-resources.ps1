@@ -54,7 +54,7 @@ Write-Host ""
 
 # System resource server configuration from environment variables.
 $SYSTEM_RS_HANDLE = if ($env:SYSTEM_RS_HANDLE) { $env:SYSTEM_RS_HANDLE } else { "" }
-$SYSTEM_RS_IDENTIFIER = if ($env:SYSTEM_RS_IDENTIFIER) { $env:SYSTEM_RS_IDENTIFIER } else { "system" }
+$SYSTEM_RS_IDENTIFIER = if ($env:SYSTEM_RS_IDENTIFIER) { $env:SYSTEM_RS_IDENTIFIER } else { "https://localhost:8090/mcp" }
 
 # Derive the system permission root based on the configured handle.
 if ($SYSTEM_RS_HANDLE) {
@@ -915,9 +915,10 @@ Log-Info "Creating default flows..."
 $AUTH_FLOWS_DIR = Join-Path $PSScriptRoot "flows" "authentication"
 $REG_FLOWS_DIR = Join-Path $PSScriptRoot "flows" "registration"
 $USER_ONBOARDING_FLOWS_DIR = Join-Path $PSScriptRoot "flows" "user_onboarding"
+$RECOVERY_FLOWS_DIR = Join-Path $PSScriptRoot "flows" "recovery"
 
 # Check if flows directories exist
-if (-not (Test-Path $AUTH_FLOWS_DIR) -and -not (Test-Path $REG_FLOWS_DIR) -and -not (Test-Path $USER_ONBOARDING_FLOWS_DIR)) {
+if (-not (Test-Path $AUTH_FLOWS_DIR) -and -not (Test-Path $REG_FLOWS_DIR) -and -not (Test-Path $USER_ONBOARDING_FLOWS_DIR) -and -not (Test-Path $RECOVERY_FLOWS_DIR)) {
     Log-Warning "Flow definitions directories not found, skipping flow creation"
 }
 else {
@@ -1099,6 +1100,60 @@ else {
         }
     }
 
+    # Process recovery flows
+    if (Test-Path $RECOVERY_FLOWS_DIR) {
+        $recoveryFlowFiles = Get-ChildItem -Path $RECOVERY_FLOWS_DIR -Filter "*.json" -File -ErrorAction SilentlyContinue
+
+        if ($recoveryFlowFiles.Count -gt 0) {
+            Log-Info "Processing recovery flows..."
+
+            # Fetch existing recovery flows
+            $listResponse = Invoke-Api -Method GET -Endpoint "/flows?flowType=RECOVERY&limit=200"
+
+            # Store existing recovery flows by handle in a hashtable
+            $existingRecoveryFlows = @{}
+            if ($listResponse.StatusCode -eq 200) {
+                $listBody = $listResponse.Body | ConvertFrom-Json
+                foreach ($flow in $listBody.flows) {
+                    $existingRecoveryFlows[$flow.handle] = $flow.id
+                }
+            }
+
+            foreach ($flowFile in $recoveryFlowFiles) {
+                $flowCount++
+
+                # Get flow handle and name from file
+                $flowContent = Get-Content -Path $flowFile.FullName -Raw | ConvertFrom-Json
+                $flowHandle = $flowContent.handle
+                $flowName = $flowContent.name
+
+                # Check if flow exists by handle
+                if ($existingRecoveryFlows.ContainsKey($flowHandle)) {
+                    # Update existing flow
+                    $flowId = $existingRecoveryFlows[$flowHandle]
+                    Log-Info "Updating existing recovery flow: $flowName (handle: $flowHandle)"
+                    $result = Update-Flow -FlowId $flowId -FlowFilePath $flowFile.FullName
+                    if ($result) {
+                        $flowSuccess++
+                    }
+                }
+                else {
+                    # Create new flow
+                    $flowId = Create-Flow -FlowFilePath $flowFile.FullName
+                    if ($flowId) {
+                        $flowSuccess++
+                    }
+                    elseif ($flowId -eq "") {
+                        $flowSkipped++
+                    }
+                }
+            }
+        }
+        else {
+            Log-Info "No recovery flow files found"
+        }
+    }
+
     if ($flowCount -gt 0) {
         Log-Info "Flow creation summary: $flowSuccess created/updated, $flowSkipped skipped, $($flowCount - $flowSuccess - $flowSkipped) failed"
     }
@@ -1141,24 +1196,35 @@ if (Test-Path $APPS_FLOWS_DIR) {
         }
     }
 
+    # Get recovery flows
+    $recoveryResponse = Invoke-Api -Method GET -Endpoint "/flows?flowType=RECOVERY&limit=200"
+    $existingAppRecoveryFlows = @{}
+    if ($recoveryResponse.StatusCode -eq 200) {
+        $recoveryBody = $recoveryResponse.Body | ConvertFrom-Json
+        foreach ($flow in $recoveryBody.flows) {
+            $existingAppRecoveryFlows[$flow.handle] = $flow.id
+        }
+    }
+
     $appDirs = Get-ChildItem -Path $APPS_FLOWS_DIR -Directory -ErrorAction SilentlyContinue
-    
+
     foreach ($appDir in $appDirs) {
         $appName = $appDir.Name
         $appAuthFlowId = ""
         $appRegFlowId = ""
-        
+        $appRecoveryFlowId = ""
+
         Log-Info "Processing flows for application: $appName"
-        
+
         # Process authentication flow for app
         $authFlowFiles = Get-ChildItem -Path $appDir.FullName -Filter "auth_*.json" -File -ErrorAction SilentlyContinue
-        
+
         if ($authFlowFiles.Count -gt 0) {
             $authFlowFile = $authFlowFiles[0]
             $flowContent = Get-Content -Path $authFlowFile.FullName -Raw | ConvertFrom-Json
             $flowHandle = $flowContent.handle
             $flowName = $flowContent.name
-            
+
             # Check if auth flow exists by handle
             if ($existingAppAuthFlows.ContainsKey($flowHandle)) {
                 # Update existing flow
@@ -1170,7 +1236,7 @@ if (Test-Path $APPS_FLOWS_DIR) {
                 # Create new flow
                 $appAuthFlowId = Create-Flow -FlowFilePath $authFlowFile.FullName
             }
-            
+
             # Re-fetch registration flows after creating auth flow
             if ($appAuthFlowId) {
                 $response = Invoke-Api -Method GET -Endpoint "/flows?flowType=REGISTRATION&limit=200"
@@ -1189,13 +1255,13 @@ if (Test-Path $APPS_FLOWS_DIR) {
 
         # Process registration flow for app
         $regFlowFiles = Get-ChildItem -Path $appDir.FullName -Filter "registration_*.json" -File -ErrorAction SilentlyContinue
-        
+
         if ($regFlowFiles.Count -gt 0) {
             $regFlowFile = $regFlowFiles[0]
             $flowContent = Get-Content -Path $regFlowFile.FullName -Raw | ConvertFrom-Json
             $flowHandle = $flowContent.handle
             $flowName = $flowContent.name
-            
+
             # Check if registration flow exists by handle
             if ($existingAppRegFlows.ContainsKey($flowHandle)) {
                 # Update existing flow
@@ -1211,11 +1277,37 @@ if (Test-Path $APPS_FLOWS_DIR) {
         else {
             Log-Warning "No registration flow file found for app: $appName"
         }
-        
+
+        # Process recovery flow for app
+        $recoveryFlowFiles = Get-ChildItem -Path $appDir.FullName -Filter "recovery_*.json" -File -ErrorAction SilentlyContinue
+
+        if ($recoveryFlowFiles.Count -gt 0) {
+            $recoveryFlowFile = $recoveryFlowFiles[0]
+            $flowContent = Get-Content -Path $recoveryFlowFile.FullName -Raw | ConvertFrom-Json
+            $flowHandle = $flowContent.handle
+            $flowName = $flowContent.name
+
+            # Check if recovery flow exists by handle
+            if ($existingAppRecoveryFlows.ContainsKey($flowHandle)) {
+                # Update existing flow
+                $appRecoveryFlowId = $existingAppRecoveryFlows[$flowHandle]
+                Log-Info "Updating existing recovery flow: $flowName (handle: $flowHandle)"
+                Update-Flow -FlowId $appRecoveryFlowId -FlowFilePath $recoveryFlowFile.FullName
+            }
+            else {
+                # Create new flow
+                $appRecoveryFlowId = Create-Flow -FlowFilePath $recoveryFlowFile.FullName
+            }
+        }
+        else {
+            Log-Debug "No recovery flow file found for app: $appName"
+        }
+
         # Store the flow IDs for this app
         $APP_FLOW_IDS[$appName] = @{
-            authFlowId = $appAuthFlowId
-            regFlowId = $appRegFlowId
+            authFlowId     = $appAuthFlowId
+            regFlowId      = $appRegFlowId
+            recoveryFlowId = $appRecoveryFlowId
         }
     }
 }
@@ -1234,10 +1326,12 @@ Log-Info "Creating Console application..."
 # Get flow IDs for console app from the APP_FLOW_IDS created/found during flow processing
 $CONSOLE_AUTH_FLOW_ID = ""
 $CONSOLE_REG_FLOW_ID = ""
+$CONSOLE_RECOVERY_FLOW_ID = ""
 
 if ($APP_FLOW_IDS.ContainsKey("console")) {
     $CONSOLE_AUTH_FLOW_ID = $APP_FLOW_IDS["console"].authFlowId
     $CONSOLE_REG_FLOW_ID = $APP_FLOW_IDS["console"].regFlowId
+    $CONSOLE_RECOVERY_FLOW_ID = $APP_FLOW_IDS["console"].recoveryFlowId
 }
 
 # Validate that flow IDs are available
@@ -1250,6 +1344,9 @@ if (-not $CONSOLE_REG_FLOW_ID) {
     Log-Error "Console registration flow ID not found, cannot create Console application"
     Log-Error "Make sure flows/apps/console/registration_flow_console.json exists"
     exit 1
+}
+if (-not $CONSOLE_RECOVERY_FLOW_ID) {
+    Log-Warning "Console recovery flow ID not found, recovery flow will be disabled"
 }
 
 # Use PUBLIC_URL for redirect URIs, fallback to API_BASE if not set
@@ -1306,7 +1403,15 @@ $appData = @{
             }
         }
     )
-} | ConvertTo-Json -Depth 10
+}
+
+# Add recovery flow fields only if recovery flow ID is provided
+if ($CONSOLE_RECOVERY_FLOW_ID) {
+    $appData["recoveryFlowId"] = $CONSOLE_RECOVERY_FLOW_ID
+    $appData["isRecoveryFlowEnabled"] = $false
+}
+
+$appData = $appData | ConvertTo-Json -Depth 10
 
 $response = Invoke-Api -Method POST -Endpoint "/applications" -Data $appData
 

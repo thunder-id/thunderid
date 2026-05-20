@@ -18,7 +18,7 @@
 
 package notification
 
-import dbmodel "github.com/asgardeo/thunder/internal/system/database/model"
+import dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 
 var (
 	// queryCreateNotificationSender is the query to create a new notification sender.

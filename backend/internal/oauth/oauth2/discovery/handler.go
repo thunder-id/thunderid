@@ -21,8 +21,9 @@ package discovery
 import (
 	"net/http"
 
-	"github.com/asgardeo/thunder/internal/system/log"
-	sysutils "github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // DiscoveryHandlerInterface defines the interface for discovery handlers
@@ -59,7 +60,11 @@ func (dh *discoveryHandler) HandleOIDCDiscovery(w http.ResponseWriter, r *http.R
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DiscoveryHandler"))
 
-	metadata := dh.discoveryService.GetOIDCMetadata(ctx)
+	metadata, err := dh.discoveryService.GetOIDCMetadata(ctx)
+	if err != nil {
+		sysutils.WriteErrorResponse(w, http.StatusInternalServerError, apierror.ErrorResponse{})
+		return
+	}
 
 	sysutils.WriteSuccessResponse(w, http.StatusOK, metadata)
 	logger.Debug("OIDC discovery response sent successfully")

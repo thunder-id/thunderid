@@ -20,6 +20,7 @@
 package jwks
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
@@ -29,10 +30,10 @@ import (
 	// Use crypto/sha1 only for JWKS x5t as required by spec for thumbprint.
 	"crypto/sha1" //nolint:gosec
 
-	"github.com/asgardeo/thunder/internal/system/cryptolab/hash"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/kmprovider/defaultkm/pkiservice"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/cryptolab/hash"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // JWKSServiceInterface defines the interface for JWKS service.
@@ -42,57 +43,53 @@ type JWKSServiceInterface interface {
 
 // jwksService implements the JWKSServiceInterface.
 type jwksService struct {
-	pkiService pkiservice.PKIServiceInterface
-	logger     *log.Logger
+	cryptoProvider kmprovider.RuntimeCryptoProvider
+	logger         *log.Logger
 }
 
 // newJWKSService creates a new instance of JWKSService.
-func newJWKSService(pkiService pkiservice.PKIServiceInterface) JWKSServiceInterface {
+func newJWKSService(cryptoProvider kmprovider.RuntimeCryptoProvider) JWKSServiceInterface {
 	return &jwksService{
-		pkiService: pkiService,
-		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "JWKSService")),
+		cryptoProvider: cryptoProvider,
+		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "JWKSService")),
 	}
 }
 
-// GetJWKS retrieves the JSON Web Key Set (JWKS) from all server certificates.
+// GetJWKS retrieves the JSON Web Key Set (JWKS) from the runtime crypto provider.
 func (s *jwksService) GetJWKS() (*JWKSResponse, *serviceerror.ServiceError) {
-	// Get all certificates
-	allCerts, err := s.pkiService.GetAllX509Certificates()
+	publicKeys, err := s.cryptoProvider.GetPublicKeys(context.Background(), kmprovider.PublicKeyFilter{})
 	if err != nil {
-		return nil, err
+		s.logger.Error("Failed to retrieve public keys", log.Error(err))
+		return nil, &serviceerror.InternalServerError
 	}
 
-	if len(allCerts) == 0 {
+	if len(publicKeys) == 0 {
 		return nil, &serviceerror.InternalServerError
 	}
 
 	var jwksKeys []JWKS
 
-	for certID, parsedCert := range allCerts {
-		// Generate KID from certificate thumbprint
-		kid := s.pkiService.GetCertThumbprint(certID)
+	for _, keyInfo := range publicKeys {
+		kid := keyInfo.Thumbprint
 
-		// x5c: base64 DER encoding
-		x5c := []string{base64.StdEncoding.EncodeToString(parsedCert.Raw)}
+		var x5c []string
+		var x5t, x5tS256 string
+		if len(keyInfo.CertificateDER) > 0 {
+			x5c = []string{base64.StdEncoding.EncodeToString(keyInfo.CertificateDER)}
+			sha1Sum := sha1.Sum(keyInfo.CertificateDER) //nolint:gosec // x5t (SHA-1 thumbprint) is required by spec
+			x5t = encodeBase64URL(sha1Sum[:])
+			x5tS256 = hash.GenerateThumbprint(keyInfo.CertificateDER)
+		}
 
-		// x5t: SHA-1 thumbprint, x5t#S256: SHA-256 thumbprint
-		sha1Sum := sha1.Sum(parsedCert.Raw) //nolint:gosec // x5t (SHA-1 thumbprint) is required by spec
-		x5t := base64.StdEncoding.EncodeToString(sha1Sum[:])
-		x5tS256 := hash.GenerateThumbprint(parsedCert.Raw)
-
-		switch pub := parsedCert.PublicKey.(type) {
+		switch pub := keyInfo.PublicKey.(type) {
 		case *rsa.PublicKey:
-			jwk := getRSAPublicKeyJWKS(pub, kid, x5c, x5t, x5tS256)
-			jwksKeys = append(jwksKeys, jwk)
+			jwksKeys = append(jwksKeys, getRSAPublicKeyJWKS(pub, kid, x5c, x5t, x5tS256))
 		case *ecdsa.PublicKey:
-			jwk := getECDSAPublicKeyJWKS(pub, kid, x5c, x5t, x5tS256)
-			jwksKeys = append(jwksKeys, jwk)
+			jwksKeys = append(jwksKeys, getECDSAPublicKeyJWKS(pub, kid, x5c, x5t, x5tS256))
 		case ed25519.PublicKey:
-			jwk := getEdDSAPublicKeyJWKS(pub, kid, x5c, x5t, x5tS256)
-			jwksKeys = append(jwksKeys, jwk)
+			jwksKeys = append(jwksKeys, getEdDSAPublicKeyJWKS(pub, kid, x5c, x5t, x5tS256))
 		default:
-			s.logger.Debug("Unsupported public key type for JWKS", log.String("certID", certID))
-			// Skip unsupported public key types
+			s.logger.Debug("Unsupported public key type for JWKS", log.String("keyID", keyInfo.KeyID))
 			continue
 		}
 	}

@@ -65,7 +65,7 @@ export interface ClientConfig {
 
   /**
    * Unique identifier for the client application, used for authentication
-   * and authorization with identity providers like Asgardeo.
+   * and authorization with identity providers like ThunderID.
    * @example "CONSOLE", "my-app-client-id"
    */
   client_id: string;

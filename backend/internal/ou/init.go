@@ -22,20 +22,26 @@ import (
 	"net/http"
 	"strings"
 
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/middleware"
-	"github.com/asgardeo/thunder/internal/system/sysauthz"
-	"github.com/asgardeo/thunder/internal/system/transaction"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/thunder-id/thunderid/internal/system/cache"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
 // Initialize initializes the organization unit service and registers its routes.
 // It returns the service, a hierarchy resolver (for injection into the authz service to
 // avoid an import cycle), and the declarative resource exporter.
 func Initialize(
-	mux *http.ServeMux, authzService sysauthz.SystemAuthorizationServiceInterface,
+	mux *http.ServeMux,
+	mcpServer *mcp.Server,
+	cacheManager cache.CacheManagerInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) (ConfigurableOUService, sysauthz.OUHierarchyResolver, declarativeresource.ResourceExporter, error) {
-	ouStore, transactioner, err := initializeStore()
+	ouStore, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -44,6 +50,10 @@ func Initialize(
 
 	ouHandler := newOrganizationUnitHandler(ouService)
 	registerRoutes(mux, ouHandler)
+
+	if mcpServer != nil {
+		registerMCPTools(mcpServer, ouService)
+	}
 
 	// Create the hierarchy resolver backed directly by the store (no authz checks) so
 	// the authz service can traverse the OU tree without recursive authorization calls.
@@ -81,7 +91,9 @@ func Initialize(
 // - If organization_unit.store is not specified, falls back to global immutable_resources.enabled:
 //   - If immutable_resources.enabled = true: behaves as IMMUTABLE mode
 //   - If immutable_resources.enabled = false: behaves as MUTABLE mode
-func initializeStore() (organizationUnitStoreInterface, transaction.Transactioner, error) {
+func initializeStore(
+	cacheManager cache.CacheManagerInterface,
+) (organizationUnitStoreInterface, transaction.Transactioner, error) {
 	storeMode := getOrganizationUnitStoreMode()
 
 	switch storeMode {
@@ -91,8 +103,9 @@ func initializeStore() (organizationUnitStoreInterface, transaction.Transactione
 		if err != nil {
 			return nil, nil, err
 		}
-		ouStore := newCompositeOUStore(fileStore, dbStore)
-		if err := loadDeclarativeResources(fileStore, dbStore); err != nil {
+		cachedDBStore := wrapWithCache(dbStore, cacheManager)
+		ouStore := newCompositeOUStore(fileStore, cachedDBStore)
+		if err := loadDeclarativeResources(fileStore, cachedDBStore); err != nil {
 			return nil, nil, err
 		}
 		return ouStore, transactioner, nil
@@ -105,8 +118,24 @@ func initializeStore() (organizationUnitStoreInterface, transaction.Transactione
 		return fileStore, transactioner, nil
 
 	default:
-		return newOrganizationUnitStore()
+		dbStore, transactioner, err := newOrganizationUnitStore()
+		if err != nil {
+			return nil, nil, err
+		}
+		return wrapWithCache(dbStore, cacheManager), transactioner, nil
 	}
+}
+
+// wrapWithCache wraps the given store with a cache-backed store if a cache manager is provided.
+func wrapWithCache(
+	store organizationUnitStoreInterface, cacheManager cache.CacheManagerInterface,
+) organizationUnitStoreInterface {
+	if cacheManager == nil {
+		return store
+	}
+	ouByIDCache := cache.GetCache[*OrganizationUnit](cacheManager, "OUByIDCache")
+	ouByHandleParentCache := cache.GetCache[*OrganizationUnit](cacheManager, "OUByHandleParentCache")
+	return newCacheBackedOUStore(store, ouByIDCache, ouByHandleParentCache)
 }
 
 // registerRoutes registers the routes for organization unit management operations.

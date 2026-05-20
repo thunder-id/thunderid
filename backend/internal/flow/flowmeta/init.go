@@ -21,12 +21,12 @@ package flowmeta
 import (
 	"net/http"
 
-	"github.com/asgardeo/thunder/internal/design/resolve"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/inboundclient"
-	"github.com/asgardeo/thunder/internal/ou"
-	i18nmgt "github.com/asgardeo/thunder/internal/system/i18n/mgt"
-	"github.com/asgardeo/thunder/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/design/resolve"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
+	"github.com/thunder-id/thunderid/internal/ou"
+	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
 // Initialize creates and configures the flow metadata service components.

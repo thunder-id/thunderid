@@ -26,7 +26,7 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@asgardeo/react": "catalog:",
+    "@thunderid/react": "workspace:^",
     "@tanstack/react-query": "catalog:",
     "@thunderid/contexts": "workspace:^",
     "i18next": "catalog:",
@@ -37,6 +37,7 @@
   "devDependencies": {
     "@thunderid/eslint-plugin": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
+    "@vitest/browser-playwright": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "eslint": "catalog:",

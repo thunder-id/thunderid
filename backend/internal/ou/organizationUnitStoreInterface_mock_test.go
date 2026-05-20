@@ -8,6 +8,7 @@ import (
 	"context"
 
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 )
 
 // newOrganizationUnitStoreInterfaceMock creates a new instance of organizationUnitStoreInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -500,8 +501,8 @@ func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitByPath_Call) Run
 }
 
 // GetOrganizationUnitChildrenCount provides a mock function for the type organizationUnitStoreInterfaceMock
-func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitChildrenCount(ctx context.Context, id string) (int, error) {
-	ret := _mock.Called(ctx, id)
+func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitChildrenCount(ctx context.Context, id string, f *filter.FilterGroup) (int, error) {
+	ret := _mock.Called(ctx, id, f)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitChildrenCount")
@@ -509,16 +510,16 @@ func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitChildrenCoun
 
 	var r0 int
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int, error)); ok {
-		return returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *filter.FilterGroup) (int, error)); ok {
+		return returnFunc(ctx, id, f)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int); ok {
-		r0 = returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *filter.FilterGroup) int); ok {
+		r0 = returnFunc(ctx, id, f)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, id)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *filter.FilterGroup) error); ok {
+		r1 = returnFunc(ctx, id, f)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -533,11 +534,12 @@ type organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call st
 // GetOrganizationUnitChildrenCount is a helper method to define mock.On call
 //   - ctx context.Context
 //   - id string
-func (_e *organizationUnitStoreInterfaceMock_Expecter) GetOrganizationUnitChildrenCount(ctx interface{}, id interface{}) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call {
-	return &organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call{Call: _e.mock.On("GetOrganizationUnitChildrenCount", ctx, id)}
+//   - f *filter.FilterGroup
+func (_e *organizationUnitStoreInterfaceMock_Expecter) GetOrganizationUnitChildrenCount(ctx interface{}, id interface{}, f interface{}) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call {
+	return &organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call{Call: _e.mock.On("GetOrganizationUnitChildrenCount", ctx, id, f)}
 }
 
-func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call) Run(run func(ctx context.Context, id string)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call {
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call) Run(run func(ctx context.Context, id string, f *filter.FilterGroup)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -547,9 +549,14 @@ func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Ca
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 *filter.FilterGroup
+		if args[2] != nil {
+			arg2 = args[2].(*filter.FilterGroup)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -560,14 +567,14 @@ func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Ca
 	return _c
 }
 
-func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call) RunAndReturn(run func(ctx context.Context, id string) (int, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call {
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call) RunAndReturn(run func(ctx context.Context, id string, f *filter.FilterGroup) (int, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenCount_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitChildrenList provides a mock function for the type organizationUnitStoreInterfaceMock
-func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitChildrenList(ctx context.Context, id string, limit int, offset int) ([]OrganizationUnitBasic, error) {
-	ret := _mock.Called(ctx, id, limit, offset)
+func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitChildrenList(ctx context.Context, id string, limit int, offset int, f *filter.FilterGroup) ([]OrganizationUnitBasic, error) {
+	ret := _mock.Called(ctx, id, limit, offset, f)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitChildrenList")
@@ -575,18 +582,18 @@ func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitChildrenList
 
 	var r0 []OrganizationUnitBasic
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) ([]OrganizationUnitBasic, error)); ok {
-		return returnFunc(ctx, id, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *filter.FilterGroup) ([]OrganizationUnitBasic, error)); ok {
+		return returnFunc(ctx, id, limit, offset, f)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) []OrganizationUnitBasic); ok {
-		r0 = returnFunc(ctx, id, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, *filter.FilterGroup) []OrganizationUnitBasic); ok {
+		r0 = returnFunc(ctx, id, limit, offset, f)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]OrganizationUnitBasic)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) error); ok {
-		r1 = returnFunc(ctx, id, limit, offset)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, *filter.FilterGroup) error); ok {
+		r1 = returnFunc(ctx, id, limit, offset, f)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -603,11 +610,12 @@ type organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call str
 //   - id string
 //   - limit int
 //   - offset int
-func (_e *organizationUnitStoreInterfaceMock_Expecter) GetOrganizationUnitChildrenList(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call {
-	return &organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call{Call: _e.mock.On("GetOrganizationUnitChildrenList", ctx, id, limit, offset)}
+//   - f *filter.FilterGroup
+func (_e *organizationUnitStoreInterfaceMock_Expecter) GetOrganizationUnitChildrenList(ctx interface{}, id interface{}, limit interface{}, offset interface{}, f interface{}) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call {
+	return &organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call{Call: _e.mock.On("GetOrganizationUnitChildrenList", ctx, id, limit, offset, f)}
 }
 
-func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call) Run(run func(ctx context.Context, id string, limit int, offset int)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call {
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call) Run(run func(ctx context.Context, id string, limit int, offset int, f *filter.FilterGroup)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -625,11 +633,16 @@ func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Cal
 		if args[3] != nil {
 			arg3 = args[3].(int)
 		}
+		var arg4 *filter.FilterGroup
+		if args[4] != nil {
+			arg4 = args[4].(*filter.FilterGroup)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
 			arg3,
+			arg4,
 		)
 	})
 	return _c
@@ -640,14 +653,14 @@ func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Cal
 	return _c
 }
 
-func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int) ([]OrganizationUnitBasic, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call {
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int, f *filter.FilterGroup) ([]OrganizationUnitBasic, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitChildrenList_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitList provides a mock function for the type organizationUnitStoreInterfaceMock
-func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitList(ctx context.Context, limit int, offset int) ([]OrganizationUnitBasic, error) {
-	ret := _mock.Called(ctx, limit, offset)
+func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitList(ctx context.Context, limit int, offset int, f *filter.FilterGroup) ([]OrganizationUnitBasic, error) {
+	ret := _mock.Called(ctx, limit, offset, f)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitList")
@@ -655,18 +668,18 @@ func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitList(ctx con
 
 	var r0 []OrganizationUnitBasic
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) ([]OrganizationUnitBasic, error)); ok {
-		return returnFunc(ctx, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, *filter.FilterGroup) ([]OrganizationUnitBasic, error)); ok {
+		return returnFunc(ctx, limit, offset, f)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) []OrganizationUnitBasic); ok {
-		r0 = returnFunc(ctx, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int, *filter.FilterGroup) []OrganizationUnitBasic); ok {
+		r0 = returnFunc(ctx, limit, offset, f)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]OrganizationUnitBasic)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) error); ok {
-		r1 = returnFunc(ctx, limit, offset)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int, *filter.FilterGroup) error); ok {
+		r1 = returnFunc(ctx, limit, offset, f)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -682,11 +695,12 @@ type organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call struct {
 //   - ctx context.Context
 //   - limit int
 //   - offset int
-func (_e *organizationUnitStoreInterfaceMock_Expecter) GetOrganizationUnitList(ctx interface{}, limit interface{}, offset interface{}) *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call {
-	return &organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call{Call: _e.mock.On("GetOrganizationUnitList", ctx, limit, offset)}
+//   - f *filter.FilterGroup
+func (_e *organizationUnitStoreInterfaceMock_Expecter) GetOrganizationUnitList(ctx interface{}, limit interface{}, offset interface{}, f interface{}) *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call {
+	return &organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call{Call: _e.mock.On("GetOrganizationUnitList", ctx, limit, offset, f)}
 }
 
-func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call) Run(run func(ctx context.Context, limit int, offset int)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call {
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call) Run(run func(ctx context.Context, limit int, offset int, f *filter.FilterGroup)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -700,10 +714,15 @@ func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call) Run(r
 		if args[2] != nil {
 			arg2 = args[2].(int)
 		}
+		var arg3 *filter.FilterGroup
+		if args[3] != nil {
+			arg3 = args[3].(*filter.FilterGroup)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -714,14 +733,14 @@ func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call) Retur
 	return _c
 }
 
-func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) ([]OrganizationUnitBasic, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call {
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, f *filter.FilterGroup) ([]OrganizationUnitBasic, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitList_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetOrganizationUnitListCount provides a mock function for the type organizationUnitStoreInterfaceMock
-func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitListCount(ctx context.Context) (int, error) {
-	ret := _mock.Called(ctx)
+func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitListCount(ctx context.Context, f *filter.FilterGroup) (int, error) {
+	ret := _mock.Called(ctx, f)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetOrganizationUnitListCount")
@@ -729,16 +748,16 @@ func (_mock *organizationUnitStoreInterfaceMock) GetOrganizationUnitListCount(ct
 
 	var r0 int
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) (int, error)); ok {
-		return returnFunc(ctx)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *filter.FilterGroup) (int, error)); ok {
+		return returnFunc(ctx, f)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context) int); ok {
-		r0 = returnFunc(ctx)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *filter.FilterGroup) int); ok {
+		r0 = returnFunc(ctx, f)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = returnFunc(ctx)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *filter.FilterGroup) error); ok {
+		r1 = returnFunc(ctx, f)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -752,18 +771,24 @@ type organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call struct
 
 // GetOrganizationUnitListCount is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *organizationUnitStoreInterfaceMock_Expecter) GetOrganizationUnitListCount(ctx interface{}) *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call {
-	return &organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call{Call: _e.mock.On("GetOrganizationUnitListCount", ctx)}
+//   - f *filter.FilterGroup
+func (_e *organizationUnitStoreInterfaceMock_Expecter) GetOrganizationUnitListCount(ctx interface{}, f interface{}) *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call {
+	return &organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call{Call: _e.mock.On("GetOrganizationUnitListCount", ctx, f)}
 }
 
-func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call) Run(run func(ctx context.Context)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call {
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call) Run(run func(ctx context.Context, f *filter.FilterGroup)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
+		var arg1 *filter.FilterGroup
+		if args[1] != nil {
+			arg1 = args[1].(*filter.FilterGroup)
+		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -774,7 +799,7 @@ func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call) 
 	return _c
 }
 
-func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call {
+func (_c *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call) RunAndReturn(run func(ctx context.Context, f *filter.FilterGroup) (int, error)) *organizationUnitStoreInterfaceMock_GetOrganizationUnitListCount_Call {
 	_c.Call.Return(run)
 	return _c
 }

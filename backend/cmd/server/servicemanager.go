@@ -24,64 +24,64 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/asgardeo/thunder/internal/agent"
-	"github.com/asgardeo/thunder/internal/application"
-	"github.com/asgardeo/thunder/internal/attributecache"
-	"github.com/asgardeo/thunder/internal/authn"
-	authnAssert "github.com/asgardeo/thunder/internal/authn/assert"
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
-	authnConsent "github.com/asgardeo/thunder/internal/authn/consent"
-	"github.com/asgardeo/thunder/internal/authn/github"
-	"github.com/asgardeo/thunder/internal/authn/google"
-	"github.com/asgardeo/thunder/internal/authn/magiclink"
-	authnOAuth "github.com/asgardeo/thunder/internal/authn/oauth"
-	authnOIDC "github.com/asgardeo/thunder/internal/authn/oidc"
-	"github.com/asgardeo/thunder/internal/authn/otp"
-	"github.com/asgardeo/thunder/internal/authn/passkey"
-	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
-	"github.com/asgardeo/thunder/internal/authz"
-	"github.com/asgardeo/thunder/internal/cert"
-	"github.com/asgardeo/thunder/internal/consent"
-	layoutmgt "github.com/asgardeo/thunder/internal/design/layout/mgt"
-	"github.com/asgardeo/thunder/internal/design/resolve"
-	thememgt "github.com/asgardeo/thunder/internal/design/theme/mgt"
-	"github.com/asgardeo/thunder/internal/entity"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/entitytype"
-	flowcore "github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/flow/executor"
-	"github.com/asgardeo/thunder/internal/flow/flowexec"
-	"github.com/asgardeo/thunder/internal/flow/flowmeta"
-	flowmgt "github.com/asgardeo/thunder/internal/flow/mgt"
-	"github.com/asgardeo/thunder/internal/group"
-	"github.com/asgardeo/thunder/internal/idp"
-	"github.com/asgardeo/thunder/internal/inboundclient"
-	"github.com/asgardeo/thunder/internal/notification"
-	"github.com/asgardeo/thunder/internal/oauth"
-	"github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/resource"
-	"github.com/asgardeo/thunder/internal/role"
-	"github.com/asgardeo/thunder/internal/system/cache"
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/cryptolab/hash"
-	dbprovider "github.com/asgardeo/thunder/internal/system/database/provider"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/email"
-	"github.com/asgardeo/thunder/internal/system/export"
-	healthcheckservice "github.com/asgardeo/thunder/internal/system/healthcheck/service"
-	i18nmgt "github.com/asgardeo/thunder/internal/system/i18n/mgt"
-	"github.com/asgardeo/thunder/internal/system/importer"
-	"github.com/asgardeo/thunder/internal/system/jose"
-	"github.com/asgardeo/thunder/internal/system/jose/jwt"
-	"github.com/asgardeo/thunder/internal/system/kmprovider/defaultkm"
-	"github.com/asgardeo/thunder/internal/system/kmprovider/defaultkm/pkiservice"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/mcp"
-	"github.com/asgardeo/thunder/internal/system/observability"
-	"github.com/asgardeo/thunder/internal/system/services"
-	"github.com/asgardeo/thunder/internal/system/sysauthz"
-	"github.com/asgardeo/thunder/internal/system/template"
-	"github.com/asgardeo/thunder/internal/user"
+	"github.com/thunder-id/thunderid/internal/agent"
+	"github.com/thunder-id/thunderid/internal/application"
+	"github.com/thunder-id/thunderid/internal/attributecache"
+	"github.com/thunder-id/thunderid/internal/authn"
+	authnAssert "github.com/thunder-id/thunderid/internal/authn/assert"
+	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnConsent "github.com/thunder-id/thunderid/internal/authn/consent"
+	"github.com/thunder-id/thunderid/internal/authn/github"
+	"github.com/thunder-id/thunderid/internal/authn/google"
+	"github.com/thunder-id/thunderid/internal/authn/magiclink"
+	authnOAuth "github.com/thunder-id/thunderid/internal/authn/oauth"
+	authnOIDC "github.com/thunder-id/thunderid/internal/authn/oidc"
+	"github.com/thunder-id/thunderid/internal/authn/otp"
+	"github.com/thunder-id/thunderid/internal/authn/passkey"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/authz"
+	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/consent"
+	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
+	"github.com/thunder-id/thunderid/internal/design/resolve"
+	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowcore "github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/flowexec"
+	"github.com/thunder-id/thunderid/internal/flow/flowmeta"
+	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
+	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/oauth"
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/system/cache"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/cryptolab/hash"
+	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/email"
+	"github.com/thunder-id/thunderid/internal/system/export"
+	healthcheckservice "github.com/thunder-id/thunderid/internal/system/healthcheck/service"
+	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	"github.com/thunder-id/thunderid/internal/system/importer"
+	"github.com/thunder-id/thunderid/internal/system/jose"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pkiservice"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/mcp"
+	"github.com/thunder-id/thunderid/internal/system/observability"
+	"github.com/thunder-id/thunderid/internal/system/services"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/internal/system/template"
+	"github.com/thunder-id/thunderid/internal/user"
 )
 
 // observabilitySvc is the observability service instance. This is used for graceful shutdown.
@@ -110,6 +110,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	observabilitySvc = observability.Initialize()
 
+	// Initialize MCP server early so packages initializing below can register tools.
+	mcpServer := mcp.Initialize(mux, jwtService)
+
 	// List to collect exporters from each package
 	var exporters []declarativeresource.ResourceExporter
 
@@ -126,7 +129,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		logger.Fatal("Failed to initialize system authorization service", log.Error(err))
 	}
 
-	ouService, ouHierarchyResolver, ouExporter, err := ou.Initialize(mux, ouAuthzService)
+	ouService, ouHierarchyResolver, ouExporter, err := ou.Initialize(mux, mcpServer, cacheManager, ouAuthzService)
 	if err != nil {
 		logger.Fatal("Failed to initialize OrganizationUnitService", log.Error(err))
 	}
@@ -151,7 +154,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize user type service
 	entityTypeService, entityTypeExporter, err := entitytype.Initialize(
-		mux, cacheManager, ouService, ouAuthzService, consentService)
+		mux, mcpServer, cacheManager, ouService, ouAuthzService, consentService)
 	if err != nil {
 		logger.Fatal("Failed to initialize EntityTypeService", log.Error(err))
 	}
@@ -186,12 +189,12 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	ouService.SetOUUserResolver(ouUserResolver)
 	ouService.SetOUGroupResolver(ouGroupResolver)
 
-	resourceService, resourceExporter, err := resource.Initialize(mux, ouService)
+	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, consentService)
 	if err != nil {
 		logger.Fatal("Failed to initialize Resource Service", log.Error(err))
 	}
 	exporters = append(exporters, resourceExporter)
-	roleService, roleExporter, err := role.Initialize(
+	roleService, roleAssignmentService, roleExporter, err := role.Initialize(
 		mux, entityService, groupService, ouService, resourceService, entityTypeService,
 	)
 	if err != nil {
@@ -217,9 +220,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		logger.Fatal("Failed to initialize NotificationService", log.Error(err))
 	}
 	exporters = append(exporters, notificationExporter)
-
-	// Initialize MCP server
-	mcpServer := mcp.Initialize(mux, jwtService)
 
 	// Initialize passkey service
 	passkeyService := passkey.Initialize(entityService)
@@ -267,8 +267,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 	execRegistry := executor.Initialize(flowFactory, ouService, idpService, notifSenderSvc, jwtService, authAssertGen,
 		consentEnforcer, authnProvider, otpCoreService, passkeyService, magicLinkService, authZService,
-		entityTypeService, groupService, roleService, entityProvider, attributeCacheService, emailClient,
-		templateService, oauthAuthnService, oidcAuthnService, githubAuthnService, googleAuthnService)
+		entityTypeService, groupService, roleService, roleAssignmentService, entityProvider,
+		attributeCacheService, emailClient, templateService, oauthAuthnService, oidcAuthnService,
+		githubAuthnService, googleAuthnService)
 
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, graphCache)
@@ -282,7 +283,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 
 	// Initialize theme and layout services
-	themeMgtService, themeExporter, err := thememgt.Initialize(mux)
+	themeMgtService, themeExporter, err := thememgt.Initialize(mux, mcpServer)
 	if err != nil {
 		logger.Fatal("Failed to initialize ThemeMgtService", log.Error(err))
 	}
@@ -331,6 +332,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		ouService,
 		entityTypeService,
 		roleService,
+		roleAssignmentService,
 		groupService,
 		resourceService,
 		themeMgtService,
@@ -347,8 +349,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize OAuth services.
 	err = oauth.Initialize(mux, applicationService, inboundClientService, authnProvider, jwtService, jweService,
-		flowExecService, observabilitySvc, pkiService, ouService, attributeCacheService, authZService, entityProvider,
-		resourceService, i18nService, idpService)
+		flowExecService, observabilitySvc, runtimeCryptoSvc, ouService, attributeCacheService, authZService,
+		entityProvider, resourceService, i18nService, idpService)
 	if err != nil {
 		logger.Fatal("Failed to initialize OAuth services", log.Error(err))
 	}

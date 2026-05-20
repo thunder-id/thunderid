@@ -23,6 +23,7 @@ import "encoding/json"
 // FlowMetadataResponse represents the aggregated metadata for a flow.
 type FlowMetadataResponse struct {
 	IsRegistrationFlowEnabled bool                 `json:"isRegistrationFlowEnabled"`
+	IsRecoveryFlowEnabled     bool                 `json:"isRecoveryFlowEnabled"`
 	Application               *ApplicationMetadata `json:"application,omitempty"`
 	OU                        *OUMetadata          `json:"ou,omitempty"`
 	Design                    DesignMetadata       `json:"design"`

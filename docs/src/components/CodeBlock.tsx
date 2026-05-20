@@ -49,7 +49,7 @@ interface CodeBlockProps {
  * @example
  * ```tsx
  * <CodeBlock lang="bash" label="npm">
- *   npm install @asgardeo/react
+ *   npm install @example/react
  * </CodeBlock>
  * ```
  */

@@ -37,7 +37,7 @@ export class SampleAppLoginPage extends BasePage {
    * @param url - Sample app URL (default: https://localhost:3000)
    */
   async goto(url: string = "https://localhost:3000") {
-    await this.page.goto(url, { waitUntil: "domcontentloaded" });
+    await this.page.goto(url, { waitUntil: "commit" });
   }
 
   /**
@@ -45,14 +45,14 @@ export class SampleAppLoginPage extends BasePage {
    */
   async verifyHomePageLoaded() {
     // Wait for login form to be visible
-    await this.page.waitForSelector('span.asgardeo-button__content:has-text("Sign In")', {
+    await this.page.waitForSelector('span.thunderid-button__content:has-text("Sign In")', {
       timeout: Timeouts.NETWORK_IDLE,
       state: "visible",
     });
   }
 
   async clickSignInButton() {
-    const signInButton = this.page.locator('span.asgardeo-button__content:has-text("Sign In")').first();
+    const signInButton = this.page.locator('span.thunderid-button__content:has-text("Sign In")').first();
     await signInButton.waitFor({ state: "visible", timeout: Timeouts.DEFAULT_ACTION });
     await signInButton.click();
   }

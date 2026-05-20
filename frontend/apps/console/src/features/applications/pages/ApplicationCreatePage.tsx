@@ -61,6 +61,7 @@ import {
 import type {OAuth2Config} from '../models/oauth';
 import type {CreateApplicationRequest} from '../models/requests';
 import getConfigurationTypeFromTemplate from '../utils/getConfigurationTypeFromTemplate';
+import resolveCreationFlow from '../utils/resolveCreationFlow';
 import GatePreview from '@/components/GatePreview/GatePreview';
 import buildPreviewMock from '@/components/GatePreview/mocks/buildPreviewMock';
 
@@ -100,12 +101,12 @@ export default function ApplicationCreatePage(): JSX.Element {
 
   const steps: Record<ApplicationCreateFlowStep, {label: string; order: number}> = useMemo(
     () => ({
-      NAME: {label: t('applications:onboarding.steps.name'), order: 1},
-      ORGANIZATION_UNIT: {label: t('applications:onboarding.steps.organizationUnit'), order: 2},
-      DESIGN: {label: t('applications:onboarding.steps.design'), order: 3},
-      OPTIONS: {label: t('applications:onboarding.steps.options'), order: 4},
-      EXPERIENCE: {label: t('applications:onboarding.steps.experience'), order: 5},
-      STACK: {label: t('applications:onboarding.steps.stack'), order: 6},
+      STACK: {label: t('applications:onboarding.steps.stack'), order: 1},
+      NAME: {label: t('applications:onboarding.steps.name'), order: 2},
+      ORGANIZATION_UNIT: {label: t('applications:onboarding.steps.organizationUnit'), order: 3},
+      DESIGN: {label: t('applications:onboarding.steps.design'), order: 4},
+      OPTIONS: {label: t('applications:onboarding.steps.options'), order: 5},
+      EXPERIENCE: {label: t('applications:onboarding.steps.experience'), order: 6},
       CONFIGURE: {label: t('applications:onboarding.steps.configure'), order: 7},
       COMPLETE: {label: t('applications:onboarding.steps.complete'), order: 8},
     }),
@@ -124,12 +125,12 @@ export default function ApplicationCreatePage(): JSX.Element {
   const {data: idpData} = useIdentityProviders();
 
   const [stepReady, setStepReady] = useState<Record<ApplicationCreateFlowStep, boolean>>({
+    STACK: true,
     NAME: false,
     ORGANIZATION_UNIT: false,
     DESIGN: true,
     OPTIONS: true,
     EXPERIENCE: true,
-    STACK: true,
     CONFIGURE: true,
     COMPLETE: true,
   });
@@ -141,6 +142,31 @@ export default function ApplicationCreatePage(): JSX.Element {
       oauthConfig && callbackUrlFromConfig ? {...oauthConfig, redirectUris: [callbackUrlFromConfig]} : oauthConfig,
     [oauthConfig, callbackUrlFromConfig],
   );
+
+  const creationFlow = useMemo(() => resolveCreationFlow(selectedTemplateConfig), [selectedTemplateConfig]);
+
+  const needsConfigure = useMemo((): boolean => {
+    const isPasskeyEnabled = !selectedAuthFlow && (integrations[AuthenticatorTypes.PASSKEY] ?? false);
+    if (signInApproach === ApplicationCreateFlowSignInApproach.EMBEDDED) {
+      return isPasskeyEnabled;
+    }
+    return (
+      getConfigurationTypeFromTemplate(selectedTemplateConfig) !== ApplicationCreateFlowConfiguration.NONE ||
+      isPasskeyEnabled
+    );
+  }, [selectedTemplateConfig, integrations, signInApproach, selectedAuthFlow]);
+
+  const visibleSteps = useMemo((): ApplicationCreateFlowStep[] => {
+    return creationFlow.steps.filter((step) => {
+      if (step === ApplicationCreateFlowStep.ORGANIZATION_UNIT) return hasMultipleOUs;
+      if (step === ApplicationCreateFlowStep.CONFIGURE) return needsConfigure;
+      // COMPLETE step is dynamic — only shown when an app with a client secret is created.
+      // It's filtered out of visibleSteps here and is only set explicitly via setCurrentStep
+      // when the creation succeeds with a client secret.
+      if (step === ApplicationCreateFlowStep.COMPLETE) return false;
+      return true;
+    });
+  }, [creationFlow, hasMultipleOUs, needsConfigure]);
 
   const handleClose = (): void => {
     (async () => {
@@ -162,57 +188,49 @@ export default function ApplicationCreatePage(): JSX.Element {
   const handleCreateApplication = (skipOAuthConfig = false, overrideFlowId?: string): void => {
     setError(null);
 
+    const includesOptions = creationFlow.steps.includes(ApplicationCreateFlowStep.OPTIONS);
+    const includesDesign = creationFlow.steps.includes(ApplicationCreateFlowStep.DESIGN);
+    const includesExperience = creationFlow.steps.includes(ApplicationCreateFlowStep.EXPERIENCE);
+
     const authFlowId: string | undefined = overrideFlowId ?? selectedAuthFlow?.id;
 
-    // Validate that we have a valid flow selected
-    if (!authFlowId) {
+    // authFlowId is only required when the flow has user-facing sign-in steps
+    if (includesOptions && !authFlowId) {
       setError(t('onboarding.configure.SignInOptions.noFlowFound'));
-
       return;
     }
 
-    const userTypes = userTypesData?.schemas ?? [];
+    const userTypes = userTypesData?.types ?? [];
     const allowedUserTypes = (() => {
-      // If there's exactly 1 user type, automatically include it
-      if (userTypes.length === 1) {
-        return [userTypes[0].name];
-      }
-
-      // If there are multiple user types, use the selected ones
-      if (userTypes.length > 1) {
-        return selectedUserTypes.length > 0 ? selectedUserTypes : undefined;
-      }
-
-      // If there are no user types, don't include the field
+      if (userTypes.length === 1) return [userTypes[0].name];
+      if (userTypes.length > 1) return selectedUserTypes.length > 0 ? selectedUserTypes : undefined;
       return undefined;
     })();
 
     const effectiveOuId = hasMultipleOUs ? ouId : ouList[0]?.id;
 
+    const templateId = selectedTemplateConfig?.id;
+    const finalTemplateId =
+      templateId && includesExperience && signInApproach === ApplicationCreateFlowSignInApproach.EMBEDDED
+        ? `${templateId}${TemplateConstants.EMBEDDED_SUFFIX}`
+        : templateId;
+
     const applicationData: CreateApplicationRequest = {
       name: appName,
-      logoUrl: appLogo ?? undefined,
-      authFlowId,
-      userAttributes: ['given_name', 'family_name', 'email', 'groups'],
-      ...(themeId && {themeId}),
-      isRegistrationFlowEnabled: true,
-      ...(allowedUserTypes && {allowedUserTypes}),
+      ...(authFlowId && {authFlowId}),
       ...(effectiveOuId && {ouId: effectiveOuId}),
-      // Include template if available, append '-embedded' suffix for CUSTOM approach
-      ...(selectedTemplateConfig?.id && {
-        template:
-          signInApproach === ApplicationCreateFlowSignInApproach.EMBEDDED
-            ? `${selectedTemplateConfig.id}${TemplateConstants.EMBEDDED_SUFFIX}`
-            : selectedTemplateConfig.id,
+      ...(finalTemplateId && {template: finalTemplateId}),
+      ...(includesDesign && {
+        logoUrl: appLogo ?? undefined,
+        ...(themeId && {themeId}),
       }),
-      // Only include OAuth config if not skipping
+      ...(includesOptions && {
+        userAttributes: ['given_name', 'family_name', 'email', 'groups'],
+        isRegistrationFlowEnabled: true,
+      }),
+      ...(includesExperience && allowedUserTypes && {allowedUserTypes}),
       ...(!skipOAuthConfig && {
-        inboundAuthConfig: [
-          {
-            type: 'oauth2',
-            config: effectiveOauthConfig,
-          },
-        ],
+        inboundAuthConfig: [{type: 'oauth2', config: effectiveOauthConfig}],
       }),
     };
 
@@ -223,11 +241,9 @@ export default function ApplicationCreatePage(): JSX.Element {
         );
 
         if (hasClientSecret) {
-          // Store the application and show the COMPLETE step
           setCreatedApplication(createdApp);
           setCurrentStep(ApplicationCreateFlowStep.COMPLETE);
         } else {
-          // No client secret, navigate directly to the application details page
           (async () => {
             await navigate(`/applications/${createdApp.id}`);
           })().catch((_error: unknown) => {
@@ -285,110 +301,49 @@ export default function ApplicationCreatePage(): JSX.Element {
   };
 
   const handleNextStep = (): void => {
-    switch (currentStep) {
-      case ApplicationCreateFlowStep.NAME:
-        if (isOuLoading) return;
-        if (hasMultipleOUs) {
-          setCurrentStep(ApplicationCreateFlowStep.ORGANIZATION_UNIT);
-        } else {
-          setCurrentStep(ApplicationCreateFlowStep.DESIGN);
-        }
-        break;
-      case ApplicationCreateFlowStep.ORGANIZATION_UNIT:
-        setCurrentStep(ApplicationCreateFlowStep.DESIGN);
-        break;
-      case ApplicationCreateFlowStep.DESIGN:
-        setCurrentStep(ApplicationCreateFlowStep.OPTIONS);
-        break;
-      case ApplicationCreateFlowStep.OPTIONS:
-        setCurrentStep(ApplicationCreateFlowStep.EXPERIENCE);
-        break;
-      case ApplicationCreateFlowStep.EXPERIENCE:
-        // Always go to technology selection to set selectedTemplateConfig
-        setCurrentStep(ApplicationCreateFlowStep.STACK);
-        break;
-      case ApplicationCreateFlowStep.STACK: {
-        // For INBUILT approach and EMBEDDED approach, check if passkey configuration is needed
-        const isPasskeyConfigEnabled: boolean =
-          !selectedAuthFlow && (integrations[AuthenticatorTypes.PASSKEY] ?? false);
-
-        // For CUSTOM approach, create app immediately after technology selection, unless passkey config is needed
-        if (signInApproach === ApplicationCreateFlowSignInApproach.EMBEDDED) {
-          if (isPasskeyConfigEnabled) {
-            setCurrentStep(ApplicationCreateFlowStep.CONFIGURE);
-          } else {
-            ensureFlowAndCreateApplication(true); // Skip OAuth for custom
-          }
-          break;
-        }
-
-        const configurationType: ApplicationCreateFlowConfiguration =
-          getConfigurationTypeFromTemplate(selectedTemplateConfig);
-
-        const needsConfiguration: boolean =
-          configurationType !== ApplicationCreateFlowConfiguration.NONE || isPasskeyConfigEnabled;
-
-        if (needsConfiguration) {
-          setCurrentStep(ApplicationCreateFlowStep.CONFIGURE);
-        } else {
-          // Skip configure step for technologies/platforms that don't need it
-          ensureFlowAndCreateApplication(false);
-        }
-        break;
-      }
-      case ApplicationCreateFlowStep.CONFIGURE:
-        // Configuration complete, create application
-        if (signInApproach === ApplicationCreateFlowSignInApproach.EMBEDDED) {
-          ensureFlowAndCreateApplication(true);
-        } else {
-          ensureFlowAndCreateApplication(false);
-        }
-        break;
-      case ApplicationCreateFlowStep.COMPLETE:
-        // Navigate to the application details page
-        if (createdApplication) {
-          (async () => {
-            await navigate(`/applications/${createdApplication.id}`);
-          })().catch((_error: unknown) => {
-            logger.error('Failed to navigate to application details', {
-              error: _error,
-              applicationId: createdApplication.id,
-            });
+    // COMPLETE is a terminal step after creation — handled separately
+    if (currentStep === ApplicationCreateFlowStep.COMPLETE) {
+      if (createdApplication) {
+        (async () => {
+          await navigate(`/applications/${createdApplication.id}`);
+        })().catch((_error: unknown) => {
+          logger.error('Failed to navigate to application details', {
+            error: _error,
+            applicationId: createdApplication.id,
           });
-        }
-        break;
-      default:
-        break;
+        });
+      }
+      return;
+    }
+
+    // NAME has a special wait condition for OU loading
+    if (currentStep === ApplicationCreateFlowStep.NAME && isOuLoading) return;
+
+    const idx = visibleSteps.indexOf(currentStep);
+    const next = visibleSteps[idx + 1];
+
+    if (next === undefined) {
+      // No more visible steps → create the application
+      const includesOptions = creationFlow.steps.includes(ApplicationCreateFlowStep.OPTIONS);
+      const includesExperience = creationFlow.steps.includes(ApplicationCreateFlowStep.EXPERIENCE);
+      const skipOAuth = includesExperience && signInApproach === ApplicationCreateFlowSignInApproach.EMBEDDED;
+
+      if (includesOptions) {
+        // user-facing flow → may need to generate the auth flow from integrations
+        ensureFlowAndCreateApplication(skipOAuth);
+      } else {
+        // m2m flow → no integrations; server assigns default flow
+        handleCreateApplication(false);
+      }
+    } else {
+      setCurrentStep(next);
     }
   };
 
   const handlePrevStep = (): void => {
-    switch (currentStep) {
-      case ApplicationCreateFlowStep.ORGANIZATION_UNIT:
-        setCurrentStep(ApplicationCreateFlowStep.NAME);
-        break;
-      case ApplicationCreateFlowStep.DESIGN:
-        if (hasMultipleOUs) {
-          setCurrentStep(ApplicationCreateFlowStep.ORGANIZATION_UNIT);
-        } else {
-          setCurrentStep(ApplicationCreateFlowStep.NAME);
-        }
-        break;
-      case ApplicationCreateFlowStep.OPTIONS:
-        setCurrentStep(ApplicationCreateFlowStep.DESIGN);
-        break;
-      case ApplicationCreateFlowStep.EXPERIENCE:
-        setCurrentStep(ApplicationCreateFlowStep.OPTIONS);
-        break;
-      case ApplicationCreateFlowStep.STACK:
-        setCurrentStep(ApplicationCreateFlowStep.EXPERIENCE);
-        break;
-      case ApplicationCreateFlowStep.CONFIGURE:
-        setCurrentStep(ApplicationCreateFlowStep.STACK);
-        break;
-      default:
-        break;
-    }
+    const idx = visibleSteps.indexOf(currentStep);
+    const prev = visibleSteps[idx - 1];
+    if (prev) setCurrentStep(prev);
   };
 
   const handleStepReadyChange = useCallback((step: ApplicationCreateFlowStep, isReady: boolean): void => {
@@ -493,7 +448,7 @@ export default function ApplicationCreatePage(): JSX.Element {
             selectedApproach={signInApproach}
             onApproachChange={setSignInApproach}
             onReadyChange={handleApproachStepReadyChange}
-            userTypes={userTypesData?.schemas ?? []}
+            userTypes={userTypesData?.types ?? []}
             selectedUserTypes={selectedUserTypes}
             onUserTypesChange={setSelectedUserTypes}
           />
@@ -526,13 +481,21 @@ export default function ApplicationCreatePage(): JSX.Element {
         }
 
         const oauth2Config = createdApplication.inboundAuthConfig?.find((config) => config.type === 'oauth2');
+        const clientId = oauth2Config?.config?.clientId;
         const clientSecret = oauth2Config?.config?.clientSecret;
 
         if (!clientSecret) {
           return null;
         }
 
-        return <ShowClientSecret appName={appName} clientSecret={clientSecret} onContinue={handleNextStep} />;
+        return (
+          <ShowClientSecret
+            appName={appName}
+            clientId={clientId}
+            clientSecret={clientSecret}
+            onContinue={handleNextStep}
+          />
+        );
       }
 
       default:
@@ -546,33 +509,9 @@ export default function ApplicationCreatePage(): JSX.Element {
   };
 
   const getBreadcrumbSteps = (): ApplicationCreateFlowStep[] => {
-    const allSteps: ApplicationCreateFlowStep[] = [ApplicationCreateFlowStep.NAME];
-
-    if (hasMultipleOUs) {
-      allSteps.push(ApplicationCreateFlowStep.ORGANIZATION_UNIT);
-    }
-
-    allSteps.push(
-      ApplicationCreateFlowStep.DESIGN,
-      ApplicationCreateFlowStep.OPTIONS,
-      ApplicationCreateFlowStep.EXPERIENCE,
-    );
-
-    // Only show technology and configure steps for inbuilt approach
-    if (signInApproach === ApplicationCreateFlowSignInApproach.INBUILT) {
-      allSteps.push(ApplicationCreateFlowStep.STACK);
-
-      // Show configure step if template requires configuration (has empty redirectUris)
-      const needsConfiguration: boolean =
-        getConfigurationTypeFromTemplate(selectedTemplateConfig) !== ApplicationCreateFlowConfiguration.NONE;
-
-      if (needsConfiguration) {
-        allSteps.push(ApplicationCreateFlowStep.CONFIGURE);
-      }
-    }
-
-    const currentIndex = allSteps.indexOf(currentStep);
-    return allSteps.slice(0, currentIndex + 1);
+    const idx = visibleSteps.indexOf(currentStep);
+    if (idx < 0) return visibleSteps;
+    return visibleSteps.slice(0, idx + 1);
   };
 
   return (
@@ -584,6 +523,7 @@ export default function ApplicationCreatePage(): JSX.Element {
         <Box
           sx={{
             flex:
+              currentStep === ApplicationCreateFlowStep.STACK ||
               currentStep === ApplicationCreateFlowStep.NAME ||
               currentStep === ApplicationCreateFlowStep.ORGANIZATION_UNIT ||
               currentStep === ApplicationCreateFlowStep.COMPLETE
@@ -636,6 +576,7 @@ export default function ApplicationCreatePage(): JSX.Element {
                 py: 8,
                 px: 20,
                 mx:
+                  currentStep === ApplicationCreateFlowStep.STACK ||
                   currentStep === ApplicationCreateFlowStep.NAME ||
                   currentStep === ApplicationCreateFlowStep.ORGANIZATION_UNIT
                     ? 'auto'
@@ -665,21 +606,20 @@ export default function ApplicationCreatePage(): JSX.Element {
                   sx={{
                     mt: 4,
                     display: 'flex',
-                    justifyContent: currentStep === ApplicationCreateFlowStep.NAME ? 'flex-end' : 'space-between',
+                    justifyContent: visibleSteps.indexOf(currentStep) === 0 ? 'flex-end' : 'space-between',
                     gap: 2,
                   }}
                 >
-                  {currentStep !== ApplicationCreateFlowStep.NAME &&
-                    currentStep !== ApplicationCreateFlowStep.COMPLETE && (
-                      <Button
-                        variant="outlined"
-                        onClick={handlePrevStep}
-                        sx={{minWidth: 100}}
-                        disabled={createApplication.isPending}
-                      >
-                        {t('common:actions.back')}
-                      </Button>
-                    )}
+                  {visibleSteps.indexOf(currentStep) !== 0 && currentStep !== ApplicationCreateFlowStep.COMPLETE && (
+                    <Button
+                      variant="outlined"
+                      onClick={handlePrevStep}
+                      sx={{minWidth: 100}}
+                      disabled={createApplication.isPending}
+                    >
+                      {t('common:actions.back')}
+                    </Button>
+                  )}
 
                   {currentStep !== ApplicationCreateFlowStep.COMPLETE && (
                     <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
@@ -705,7 +645,8 @@ export default function ApplicationCreatePage(): JSX.Element {
           </Box>
         </Box>
         {/* Right side - Preview (show from design step onwards, but hide on complete step) */}
-        {currentStep !== ApplicationCreateFlowStep.NAME &&
+        {currentStep !== ApplicationCreateFlowStep.STACK &&
+          currentStep !== ApplicationCreateFlowStep.NAME &&
           currentStep !== ApplicationCreateFlowStep.ORGANIZATION_UNIT &&
           currentStep !== ApplicationCreateFlowStep.COMPLETE && (
             <Box sx={{flex: '0 0 50%', display: 'flex', flexDirection: 'column', p: 5}}>

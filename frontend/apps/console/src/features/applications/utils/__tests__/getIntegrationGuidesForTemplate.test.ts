@@ -26,6 +26,35 @@ vi.mock('../../config/TechnologyBasedApplicationTemplateMetadata', () => ({
   default: [
     {
       template: {
+        id: 'express',
+        integrationGuides: {
+          inbuilt: {
+            llm_prompt: {
+              id: 'express-llm',
+              title: 'AI-Assisted Integration',
+              description: 'Express integration guide',
+              type: 'llm' as const,
+              icon: 'express',
+              content: 'LLM prompt content',
+            },
+            manual_steps: [
+              {
+                step: 1,
+                title: 'Step E1',
+                description: 'First step description',
+              },
+              {
+                step: 2,
+                title: 'Step E2',
+                description: 'Second step description',
+              },
+            ],
+          },
+        },
+      },
+    },
+    {
+      template: {
         id: 'react',
         integrationGuides: {
           inbuilt: {
@@ -162,6 +191,31 @@ const mockReactGuides: IntegrationGuides = {
   },
 };
 
+const mockExpressGuides: IntegrationGuides = {
+  inbuilt: {
+    llm_prompt: {
+      id: 'express-llm',
+      title: 'AI-Assisted Integration',
+      description: 'Express integration guide',
+      type: 'llm' as const,
+      icon: 'express',
+      content: 'LLM prompt content',
+    },
+    manual_steps: [
+      {
+        step: 1,
+        title: 'Step E1',
+        description: 'First step description',
+      },
+      {
+        step: 2,
+        title: 'Step E2',
+        description: 'Second step description',
+      },
+    ],
+  },
+};
+
 const mockNextjsGuides: IntegrationGuides = {
   inbuilt: {
     llm_prompt: {
@@ -214,6 +268,12 @@ const mockBrowserGuides: IntegrationGuides = {
 
 describe('getIntegrationGuidesForTemplate', () => {
   describe('Technology-Based Templates', () => {
+    it('should return integration guides for express template', () => {
+      const result = getIntegrationGuidesForTemplate('express');
+
+      expect(result).toEqual(mockExpressGuides);
+    });
+
     it('should return integration guides for react template', () => {
       const result = getIntegrationGuidesForTemplate('react');
 

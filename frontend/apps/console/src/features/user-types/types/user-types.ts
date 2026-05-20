@@ -140,7 +140,7 @@ export interface UserTypeListResponse {
   totalResults: number;
   startIndex: number;
   count: number;
-  schemas: UserTypeListItem[];
+  types: UserTypeListItem[];
   links?: ApiPaginationLink[];
 }
 

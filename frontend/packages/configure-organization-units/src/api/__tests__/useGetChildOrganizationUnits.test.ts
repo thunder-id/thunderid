@@ -21,10 +21,10 @@ import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import type {OrganizationUnitListResponse} from '../../models/responses';
 import useGetChildOrganizationUnits from '../useGetChildOrganizationUnits';
 
-// Mock useAsgardeo
+// Mock useThunderID
 const mockHttpRequest = vi.fn();
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     http: {
       request: mockHttpRequest,
     },

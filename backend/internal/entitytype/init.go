@@ -21,19 +21,22 @@ package entitytype
 import (
 	"net/http"
 
-	"github.com/asgardeo/thunder/internal/consent"
-	oupkg "github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/system/cache"
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/middleware"
-	"github.com/asgardeo/thunder/internal/system/sysauthz"
-	"github.com/asgardeo/thunder/internal/system/transaction"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/thunder-id/thunderid/internal/consent"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/cache"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
 // Initialize initializes the entity type service and registers its routes.
 func Initialize(
 	mux *http.ServeMux,
+	mcpServer *mcp.Server,
 	cacheManager cache.CacheManagerInterface,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
@@ -52,7 +55,7 @@ func Initialize(
 
 	// Step 3: Load declarative resources into store (if applicable)
 	if storeMode == serverconst.StoreModeComposite || storeMode == serverconst.StoreModeDeclarative {
-		if err := loadDeclarativeResources(entityTypeStore, ouService); err != nil {
+		if err := loadDeclarativeResources(entityTypeStore, entityTypeService); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -61,6 +64,10 @@ func Initialize(
 	agentTypeHandler := newEntityTypeHandler(entityTypeService, TypeCategoryAgent)
 	registerUserTypeRoutes(mux, userTypeHandler)
 	registerAgentTypeRoutes(mux, agentTypeHandler)
+
+	if mcpServer != nil {
+		registerMCPTools(mcpServer, entityTypeService)
+	}
 
 	exporter := newEntityTypeExporter(entityTypeService)
 	return entityTypeService, exporter, nil

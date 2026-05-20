@@ -23,14 +23,14 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
-	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/system/cryptolab"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/tests/mocks/flow/coremock"
-	"github.com/asgardeo/thunder/tests/mocks/observability/observabilitymock"
+	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/cryptolab"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
 )
 
 type EngineTestSuite struct {
@@ -222,6 +222,50 @@ func (s *EngineTestSuite) TestUpdateContextWithNodeResponse_PreservesActionOnInc
 	fe.updateContextWithNodeResponse(ctx, nodeResp)
 
 	s.Equal("passkeyChallenge", ctx.CurrentAction)
+}
+
+func (s *EngineTestSuite) TestTrackPresentedOptionalInputs_MergesOptionalInputIdentifiers() {
+	fe := &flowEngine{}
+	ctx := &EngineContext{
+		RuntimeData: map[string]string{
+			common.RuntimeKeyPresentedOptionalInputs: "nickname",
+		},
+	}
+	nodeResp := &common.NodeResponse{
+		Status: common.NodeStatusIncomplete,
+		Type:   common.NodeResponseTypeView,
+		Inputs: []common.Input{
+			{Identifier: "given_name", Required: false},
+			{Identifier: "username", Required: true},
+		},
+	}
+
+	fe.trackPresentedOptionalInputs(ctx, nodeResp)
+
+	presented := core.ParsePresentedOptionalInputIdentifiers(
+		nodeResp.RuntimeData[common.RuntimeKeyPresentedOptionalInputs])
+	s.Contains(presented, "nickname")
+	s.Contains(presented, "given_name")
+}
+
+func (s *EngineTestSuite) TestTrackPresentedOptionalInputs_SkipsNonPromptResponses() {
+	fe := &flowEngine{}
+	ctx := &EngineContext{
+		RuntimeData: map[string]string{
+			common.RuntimeKeyPresentedOptionalInputs: "nickname",
+		},
+	}
+	nodeResp := &common.NodeResponse{
+		Status: common.NodeStatusForward,
+		Type:   common.NodeResponseTypeView,
+		Inputs: []common.Input{
+			{Identifier: "given_name", Required: false},
+		},
+	}
+
+	fe.trackPresentedOptionalInputs(ctx, nodeResp)
+
+	s.Nil(nodeResp.RuntimeData)
 }
 
 func (s *EngineTestSuite) TestResolveStepForRedirection_WithAdditionalData() {

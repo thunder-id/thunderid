@@ -1,0 +1,67 @@
+---
+title: Connect to Services
+description: Secure how your AI agent calls APIs and services — on its own or on behalf of a user.
+sidebar_position: 2
+---
+
+# Connect to Services
+
+Your agent needs to do things. It calls APIs, queries databases, reads from knowledge bases, invokes tools on MCP servers. The services it calls are not open — they sit behind authentication and authorization. The agent needs credentials, and those credentials need to carry the right identity.
+
+The question is: whose identity should the agent carry when it makes a call?
+
+Sometimes the answer is simple. A background agent running a nightly data sync has no user behind it. It acts on its own, with its own permissions. The service it calls needs to know "this is Agent X, and Agent X is allowed to read this data."
+
+Other times, the answer depends on context. An agent responding to a user's request should only access what that user can access. If a junior employee asks the agent to pull a report, the agent should not return data the employee is not authorized to see — even if the agent itself has broader access. The service needs to know "this is Agent X acting on behalf of User Y, and User Y is allowed to read this data."
+
+Getting this wrong has real consequences. An agent with its own broad permissions acting on behalf of any user becomes a privilege escalation path. An agent with no identity at all relies on shared API keys that cannot be scoped, rotated, or revoked per agent.
+
+## What needs to be solved
+
+### The agent acts on its own
+
+The agent operates without a user session — running scheduled tasks, processing queues, monitoring systems, or performing maintenance. No user triggered the action, and no user's permissions should apply.
+
+- **The agent needs its own identity.** It cannot rely on a user's credentials or a shared API key. It needs its own verifiable identity so that services can distinguish it from other agents and other callers.
+
+- **Permissions must be pre-provisioned and scoped.** The agent should only access what it needs for its specific function. A monitoring agent does not need write access. A reporting agent does not need access to user management APIs. Permissions should be assigned ahead of time, not inherited or implied.
+
+- **Credentials must be managed.** The agent's credentials need a lifecycle — issuance, rotation, and revocation. When an agent is decommissioned or compromised, its credentials should be invalidated without affecting other agents.
+
+### The agent acts on behalf of a user
+
+The agent is triggered by a user interaction — a chat message, a button click, a scheduled task the user configured. The agent needs to access services using the user's permissions, not its own.
+
+- **The agent must carry the user's identity.** The services the agent calls need to know which user authorized the action. The token should identify both the user and the agent, so the service can make access decisions based on the user's permissions while knowing the agent is the intermediary.
+
+- **The user must authorize the delegation.** The agent should not silently inherit the user's access. The user needs to explicitly grant the agent permission to act on their behalf, with clear boundaries on what the agent can do and for how long.
+
+- **The agent's access must not exceed the user's.** Even if the agent has broad capabilities, the token it carries when acting on behalf of a user should be constrained to what that user is allowed to do. The intersection of the agent's permissions and the user's permissions defines what the agent can access — not the union.
+
+- **Background agents need a way to request approval.** Not every agent has the user sitting in front of a browser. A background agent that reaches a point where it needs user authorization — accessing sensitive data, performing a high-risk action — needs a way to request approval without requiring the user to be in the same session.
+
+## How to solve it
+
+### Autonomous agent access
+
+Register the agent in ThunderID as a first-class identity with its own credentials. The agent authenticates directly and receives a token scoped to its pre-provisioned permissions. No user context is involved.
+
+1. **Register the agent.** Create the agent in ThunderID. This gives the agent its own Client ID and Client Secret — an identity it uses to authenticate with ThunderID. See [Manage Agents](/docs/next/guides/guides/agents/manage-agents).
+2. **Assign roles and scopes.** Define what the agent is allowed to access by assigning it to groups and roles that carry the appropriate scopes. The token ThunderID issues will contain only these scopes. See [Authorization](/docs/next/guides/key-concepts/authorization).
+3. **Authenticate and call the service.** The agent presents its credentials to ThunderID's token endpoint using the client credentials grant, receives a token, and includes that token when calling the service. The service validates the token and checks the scopes before processing the request. See [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication) for the full M2M token flow.
+
+### Delegated agent access — interactive
+
+When a user is present, the agent obtains authorization through a standard consent flow. The user authenticates, approves the agent's access, and ThunderID issues a token that identifies both the user and the agent.
+
+1. **Redirect the user for authorization.** The agent initiates an authorization flow that sends the user to ThunderID. The user authenticates and sees a consent prompt describing what the agent is requesting access to. See [Consent](/docs/next/guides/guides/consent).
+2. **Receive a delegated token.** After the user approves, ThunderID issues a token that carries the user's identity as the subject and the agent's identity as the actor. Services that receive this token can enforce access based on the user's permissions while knowing the agent is the intermediary. See [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication) for the OBO token exchange flow.
+3. **Enforce the permission intersection.** The token's effective permissions are the intersection of what the agent is allowed to do and what the user is allowed to do. ThunderID handles this at issuance — the agent cannot request scopes the user does not have.
+
+### Delegated agent access — background
+
+When the agent operates without the user present, it cannot redirect the user for consent. Instead, it sends an authorization request through a back channel and waits for the user to approve on a separate device.
+
+:::note[Coming soon]
+ThunderID will support backchannel authorization (CIBA) for background agents that need user approval without an active browser session. The agent will send an authorization request, the user will receive a notification on a separate device, and upon approval, the agent will receive a delegated token.
+:::

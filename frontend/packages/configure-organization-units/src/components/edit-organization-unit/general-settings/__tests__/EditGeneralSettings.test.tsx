@@ -22,7 +22,7 @@ import type {OrganizationUnit} from '../../../../models/organization-unit';
 import EditGeneralSettings from '../EditGeneralSettings';
 
 // Mock child components
-vi.mock('../QuickCopySection', () => ({
+vi.mock('@/components/edit-organization-unit/general-settings/QuickCopySection', () => ({
   default: ({
     organizationUnit,
     copiedField,
@@ -42,13 +42,13 @@ vi.mock('../QuickCopySection', () => ({
   ),
 }));
 
-vi.mock('../ParentSettingsSection', () => ({
+vi.mock('@/components/edit-organization-unit/general-settings/ParentSettingsSection', () => ({
   default: ({organizationUnit}: {organizationUnit: OrganizationUnit}) => (
     <div data-testid="parent-settings-section">ParentSettingsSection - {organizationUnit.name}</div>
   ),
 }));
 
-vi.mock('../DangerZoneSection', () => ({
+vi.mock('@/components/edit-organization-unit/general-settings/DangerZoneSection', () => ({
   default: ({onDeleteClick}: {onDeleteClick: () => void}) => (
     <div data-testid="danger-zone-section">
       DangerZoneSection

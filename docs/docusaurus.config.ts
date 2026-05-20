@@ -50,25 +50,29 @@ function replaceProductNameInObject(value: unknown, productName: string, product
   return value;
 }
 
-const baseUrl = `/${productConfig.documentation.deployment.production.baseUrl}/`;
+const baseUrl =
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+  process.env.DOCUSAURUS_BASE_URL ||
+  (productConfig.documentation.deployment.production.baseUrl
+    ? `/${productConfig.documentation.deployment.production.baseUrl}/`
+    : '/');
+
+// eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+const siteUrl = process.env.DOCUSAURUS_URL || productConfig.documentation.deployment.production.url;
 
 const config: Config = {
   title: productConfig.project.name,
   tagline: productConfig.project.description,
   favicon: 'assets/images/favicon.ico',
 
-  // Prevent search engine indexing
-  // TODO: Remove this flag when the docs are ready for public access
-  // Tracker: https://github.com/asgardeo/thunder/issues/1209
-  noIndex: true,
+  noIndex: false,
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
   future: {
     v4: true, // Improve compatibility with the upcoming Docusaurus v4
   },
 
-  url: productConfig.documentation.deployment.production.url,
-  // Since we use GitHub pages, the base URL is the repository name.
+  url: siteUrl,
   baseUrl,
 
   // GitHub pages deployment config.
@@ -106,6 +110,35 @@ const config: Config = {
       },
     },
   },
+
+  clientModules: [require.resolve('./src/clientModules/tabTocSync.js')],
+
+  headTags: [
+    {
+      tagName: 'script',
+      attributes: {},
+      innerHTML: `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-PTKWJGJL');`,
+    },
+    {
+      tagName: 'script',
+      attributes: {
+        src: 'https://cookie-cdn.cookiepro.com/scripttemplates/otSDKStub.js',
+        type: 'text/javascript',
+        charset: 'UTF-8',
+        'data-domain-script': '019e40cb-79a0-7395-aa5d-5d887b4b8d2d',
+      },
+    },
+    {
+      tagName: 'script',
+      attributes: {type: 'text/javascript'},
+      innerHTML: 'function OptanonWrapper() { }',
+    },
+  ],
+
 
   plugins: [webpackPlugin, personaPlugin],
 
@@ -165,21 +198,11 @@ const config: Config = {
       },
       items: [
         {
-          type: 'custom-PersonaDropdown',
-          position: 'left',
-        },
-        {
           type: 'docSidebar',
           sidebarId: 'docsSidebar',
           position: 'right',
           label: 'Docs',
           className: 'navbar__link--docs',
-        },
-        {
-          type: 'docSidebar',
-          sidebarId: 'useCasesSidebar',
-          position: 'right',
-          label: 'Use Cases',
         },
         {
           type: 'doc',
@@ -199,17 +222,16 @@ const config: Config = {
           position: 'right',
         },
         {
+          label: 'Releases',
+          to: productConfig.project.source.github.releasesUrl,
+          position: 'right',
+        },
+        {
           label: 'Resources',
           type: 'dropdown',
           position: 'right',
           className: 'navbar__link--dropdown',
           items: [
-            {
-              type: 'doc',
-              docId: 'releases',
-              label: 'Releases',
-              className: 'navbar-resources__releases',
-            },
             {
               label: 'Discussions',
               href: productConfig.project.source.github.discussionsUrl,
@@ -229,6 +251,10 @@ const config: Config = {
           label: 'Community',
         },
         {
+          type: 'custom-GitHubStarButton',
+          position: 'right',
+        },
+        {
           href: `https://github.com/${productConfig.project.source.github.fullName}`,
           position: 'right',
           className: 'navbar__github--link',
@@ -245,7 +271,7 @@ const config: Config = {
               value: '<hr style="margin: 0.3rem 0;">',
             },
             {
-              href: 'https://github.com/asgardeo/thunder/issues/1912',
+              href: 'https://github.com/thunder-id/thunderid/issues/1912',
               label: '🌍 Help translate',
             },
           ],

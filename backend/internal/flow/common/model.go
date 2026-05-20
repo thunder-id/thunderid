@@ -21,8 +21,8 @@ package common
 import (
 	"slices"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
-	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
+	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 )
 
 // Input represents the inputs required for a node

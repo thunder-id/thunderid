@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "module": "commonjs",
+    "types": ["vitest/globals"]
+  },
+  "include": [
+    "test-configs",
+    "vitest.config.ts",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.test.js",
+    "**/*.spec.js",
+    "**/*.d.ts"
+  ]
+}

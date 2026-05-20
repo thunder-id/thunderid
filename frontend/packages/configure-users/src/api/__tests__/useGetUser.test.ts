@@ -26,8 +26,8 @@ const mockHttpRequest = vi.fn();
 const mockGetServerUrl = vi.fn().mockReturnValue('https://api.test.com');
 
 // Mock the dependencies
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     http: {
       request: mockHttpRequest,
     },

@@ -2,123 +2,85 @@
 title: Quickstart
 sidebar_position: 1
 persona: app
-description: Get started — register your first application, create a user, and test sign-in in minutes.
+description: Register your first application in ThunderID and create a test user — then you're ready to build a sign-in flow.
 ---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
 
 # Quickstart
 
-You can get started with <ProductName /> in minutes. This guide walks you through registering an application and creating a test user so you are ready to integrate <ProductName /> into your app.
+By the end of this guide you will have:
+- A registered application in ThunderID with a **Client ID**
+- A test user you can sign in with
+- Everything ready to [build your sign-in flow](../guides/flows/build-a-flow) and [connect your app](connect-your-application/react)
 
 ## Prerequisites
 
-- <ProductName /> is up and running. See [Get <ProductName />](../getting-started/get-thunderid) to get started.
-- You have access to the <ProductName /> Console.
+- ThunderID is running. If not, [get ThunderID first](../getting-started/get-thunderid).
+- You can reach the ThunderID Console at [https://localhost:8090/console](https://localhost:8090/console).
 
 <Stepper>
 
-## Step 1: Create an Application
+## Create an application
 
-An application in <ProductName /> defines how your users authenticate and what they can access. Register one to get a **Client ID** and use it to integrate your own application with <ProductName />.
+An application in ThunderID represents your product. When you register one, you get a **Client ID** — this is what links your frontend or backend to ThunderID's authentication layer.
 
-1. Sign in to the <ProductName /> Console at [https://localhost:8090/console](https://localhost:8090/console).
-2. Navigate to **Applications** → **New Application**.
-3. Enter an **Application Name**.
-4. Select the **Sign-In Options**. Users will use these methods to sign in to your application (for example, Username & Password or social login).
-5. Configure the **Sign-In Experience**. Select how and who can access your application:
+1. Sign in to the Console at [https://localhost:8090/console](https://localhost:8090/console) using the default admin credentials (`admin` / `admin`).
+2. Go to **Applications** → **New Application**.
+3. Enter an **Application Name** (for example, `my-app`).
+4. Choose your **Sign-In Options** — the methods users will use to authenticate (for example, Username & Password).
+5. Under **Sign-In Experience**, set the **Sign-In Approach**:
+   - Choose **Redirect to ThunderID sign-in pages** — this is the recommended approach and the one this guide follows. Users are sent to ThunderID-hosted pages you control with the Flow Designer.
+6. Under **User Access**, select **Customer** (for self-service end users) or **Person** (for admin-managed accounts). Select both if unsure.
+7. Select your **Application Type**:
 
-   - **Sign-In Approach** - choose how your users reach the sign-in experience.
-     - **Redirect to <ProductName /> sign-in/sign-up handling pages** (recommended) - When signing in, users are taken to <ProductName />-hosted pages that you can customize with the Flow Designer and wire up with your app in just a few steps.
-     - **Embedded sign-in/sign-up components in your app** - bring the sign-in experience right into your app using <ProductName />'s UI components or APIs.
+   | Type | Use when |
+   |---|---|
+   | **Browser App** | React, Angular, Vue, or any SPA running in the browser |
+   | **Full-stack App** | Server-rendered apps (Next.js, Express, Spring) where the backend handles token exchange |
+   | **Mobile App** | Native or cross-platform mobile (React Native, Flutter, Swift, Kotlin) |
+   | **Backend Service** | Server-to-server calls with no user sign-in |
 
-   - **User Access**: Select which user types can access this application. **Customer**, **Person**, or both.
+   For the React quickstart, choose **Browser App** and set the **Authorized Redirect URL** to `http://localhost:5173`.
 
-      <details>
-        <summary>User Types</summary>
+8. Click **Create Application**.
 
-        User types define the profile and attributes for different categories of users. <ProductName /> includes the following default user types:
-
-        - **Customer**: End users who interact with your application. This type allows self-registration.
-        - **Person**: Administrator-managed general-purpose user accounts. <br/><br/>
-        
-        You can also create your own custom user types. Learn more in [User Types](../guides/users/user-types).
-      </details>
-
-6. Select the **Application Type** and provide a redirect URL if prompted.
-
-    <details>
-      <summary>Application Types</summary>
-      
-      <ProductName /> supports the following application types. The application type decides the configuration
-
-      | Application Type       | Description                                                                                                                                                                             |
-      | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-      | ⚛️ **Browser App**     | For single-page applications (React, Angular, Vue) that run in the browser. Set an **Authorized Redirect URL** (for example, `http://localhost:3000/callback`) to receive the sign-in response.  |
-      | 🌐 **Full-stack App**  | For server-rendered web apps (Express, Spring, .NET) where the backend handles token exchange. Set an **Authorized Redirect URL** on your server to receive the authentication response. |
-      | 📱 **Mobile App**      | For native or cross-platform mobile apps (Swift, Kotlin, React Native, Flutter). Set a **Deep Link** (for example, `com.example.app://auth/callback`) or **Universal Link** as the redirect. |
-      | 🤖 **Backend Service** | For server-to-server communication with no user sign-in — background jobs, internal APIs, or microservices. No redirect URL needed. Authenticate using the **Client ID** and **Client Secret**. |
-
-    </details>
-
-7. Click **Create Application**.
-
-:::tip
-Note the **Client ID** from the application details page. You need it to configure your integration.
+:::tip Save your Client ID
+Open the application details page and note the **Client ID**. You will need it when configuring the React SDK.
 :::
 
-## Step 2: Create a User
+## Create a Test User
 
-Now that you have created an application, you'll need a user to test sign-in flows with your application.
+You need at least one user to verify that sign-in works end-to-end.
 
-1. In the <ProductName /> Console, navigate to the **Users** section.
-2. Click **Add User** and select a **User Type**.
-3. Fill in the user attributes. For example, `username`, `email`, `given_name`, `family_name`, `password`.
+1. In the Console, go to **Users** → **Add User**.
+2. Select a **User Type** — choose **Customer** to match the access setting above.
+3. Fill in the user details: `username`, `email`, `given_name`, `family_name`, and `password`.
 4. Click **Create User**.
 
 </Stepper>
 
-## Next Steps
+## What's Next
 
-Now that you have an application and a user, choose your framework to add sign-in to your app.
+You have a registered application and a test user. The next step is building the sign-in flow that controls how that user authenticates.
 
-<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1.5rem', marginTop: '1.5rem'}}>
+<div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginTop: '1.5rem'}}>
 
-  <a href="../quick-start/connect-your-application/react" style={{textDecoration: 'none', color: 'inherit'}}>
-    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '8px', padding: '1.5rem', height: '100%', cursor: 'pointer'}}>
-      <Box sx={{display: 'inline-flex', padding: '8px', borderRadius: 'var(--oxygen-shape-borderRadius)', backgroundColor: 'background.paper', marginBottom: '1rem'}}>
-        <ColorSchemeSVG width={32} height={32} viewBox="0 0 24 24">
-          <circle cx="12" cy="12" r="1" stroke="primary" fill="none"/>
-          <path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z" stroke="primary" fill="none"/>
-          <path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z" stroke="primary" fill="none"/>
-        </ColorSchemeSVG>
-      </Box>
-      <div style={{fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem'}}>React</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add sign-in to a React app using the Asgardeo React SDK. Includes Authorization Code flow with PKCE.</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)'}}>Get started →</div>
+  <a href="../guides/flows/build-a-flow" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Step 3 → Build a sign-in flow</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Use the visual flow designer to configure how users authenticate — password, passkeys, social login, or any combination.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>Build your flow →</div>
     </div>
   </a>
 
-  <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '8px', padding: '1.5rem'}}>
-    <Box sx={{display: 'inline-flex', padding: '8px', borderRadius: 'var(--oxygen-shape-borderRadius)', backgroundColor: 'background.paper', marginBottom: '1rem'}}>
-      <ColorSchemeSVG width={32} height={32} viewBox="0 0 24 24">
-        <polyline points="16 18 22 12 16 6" stroke="primary" fill="none"/>
-        <polyline points="8 6 2 12 8 18" stroke="primary" fill="none"/>
-      </ColorSchemeSVG>
-    </Box>
-    <div style={{fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem'}}>Other Frameworks</div>
-    <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Vue, Angular, Next.js, SvelteKit, and more.</div>
-    <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-500)'}}>Coming soon</div>
-  </div>
-
-  <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '8px', padding: '1.5rem'}}>
-    <Box sx={{display: 'inline-flex', padding: '8px', borderRadius: 'var(--oxygen-shape-borderRadius)', backgroundColor: 'background.paper', marginBottom: '1rem'}}>
-      <ColorSchemeSVG width={32} height={32} viewBox="0 0 24 24">
-        <rect width="14" height="20" x="5" y="2" rx="2" ry="2" stroke="primary" fill="none"/>
-        <path d="M12 18h.01" stroke="primary" fill="none"/>
-      </ColorSchemeSVG>
-    </Box>
-    <div style={{fontSize: '1.1rem', fontWeight: '600', marginBottom: '0.5rem'}}>Mobile</div>
-    <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>React Native, Flutter, Swift, and Kotlin.</div>
-    <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-500)'}}>Coming soon</div>
-  </div>
+  <a href="connect-your-application/react" style={{textDecoration: 'none', color: 'inherit'}}>
+    <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
+      <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Step 4 → Connect your React app</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Install the Asgardeo React SDK and add working sign-in to your app using your Client ID.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>React quickstart →</div>
+    </div>
+  </a>
 
 </div>

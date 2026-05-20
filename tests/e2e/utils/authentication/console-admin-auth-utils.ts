@@ -167,7 +167,7 @@ export async function verifyAuthState(page: Page, debug: boolean = false): Promi
     return items;
   });
 
-  const isSessionActive = localStorage["asgardeo-session-active"] === "true";
+  const isSessionActive = localStorage["thunderid-session-active"] === "true";
   const hasSessionData = Object.keys(sessionStorage).some(key => key.includes("session_data-instance_0"));
 
   // Check if tokens exist and are not expired

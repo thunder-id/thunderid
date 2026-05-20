@@ -7,9 +7,9 @@ package templatemock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/template"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/template"
 )
 
 // NewTemplateServiceInterfaceMock creates a new instance of TemplateServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

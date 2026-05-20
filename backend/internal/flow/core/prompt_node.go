@@ -22,9 +22,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 const failureReasonInvalidAction = "Invalid action selected"
@@ -379,37 +379,15 @@ func (n *promptNode) hasRequiredInputs(ctx *NodeContext, nodeResp *common.NodeRe
 	return !n.appendMissingInputs(ctx, nodeResp, n.getAllInputs())
 }
 
-// appendMissingInputs appends the missing required inputs to the node response.
-// Returns true if any required data is found missing, otherwise false.
+// appendMissingInputs appends the missing prompt inputs to the node response.
+// Returns true when the prompt should pause for user input.
 func (n *promptNode) appendMissingInputs(ctx *NodeContext, nodeResp *common.NodeResponse,
 	requiredInputs []common.Input) bool {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	requireInputs := false
-	for _, input := range requiredInputs {
-		if _, ok := ctx.UserInputs[input.Identifier]; !ok {
-			if _, ok := ctx.RuntimeData[input.Identifier]; ok {
-				logger.Debug("Input available in runtime data, skipping",
-					log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
-				continue
-			}
-			if value, ok := ctx.ForwardedData[input.Identifier]; ok {
-				if _, isString := value.(string); isString {
-					logger.Debug("Input available in forwarded data, skipping",
-						log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
-					continue
-				}
-			}
-			if input.Required {
-				requireInputs = true
-			}
-			nodeResp.Inputs = append(nodeResp.Inputs, input)
-			logger.Debug("Input not available in the context",
-				log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
-		}
-	}
-
-	return requireInputs
+	missing := collectMissingInputs(ctx, GetPresentedOptionalInputs(ctx.RuntimeData), requiredInputs, logger)
+	nodeResp.Inputs = append(nodeResp.Inputs, missing...)
+	return len(missing) > 0
 }
 
 // enrichInputsFromForwardedData enriches the inputs in the node response with dynamic data

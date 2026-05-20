@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asgardeo/thunder/tests/integration/flow/common"
-	"github.com/asgardeo/thunder/tests/integration/testutils"
+	"github.com/thunder-id/thunderid/tests/integration/flow/common"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -881,8 +881,8 @@ func (ts *OURegistrationFlowTestSuite) TestSMSRegistrationFlowWithOUCreationDupl
 			// Wait for OTP to be sent
 			time.Sleep(1 * time.Second)
 
-			flowStep, err = common.CompleteFlow(flowStep.ExecutionID, inputs, "action_001",
-				flowStep.ChallengeToken)
+			flowStep, err = 
+				common.CompleteFlow(flowStep.ExecutionID, inputs, "action_001", flowStep.ChallengeToken)
 			ts.Require().NoError(err)
 			ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
 
@@ -926,5 +926,5 @@ func generateUniqueHandle(prefix string) string {
 
 // Helper function to generate unique mobile numbers
 func generateUniqueMobileNumber() string {
-	return fmt.Sprintf("+1234567%d", time.Now().UnixNano()%10000)
+	return fmt.Sprintf("+1%d", time.Now().UnixNano())
 }

@@ -72,7 +72,7 @@ vi.mock('../../api/useCreateApplication', () => ({
 vi.mock('../../../user-types/api/useGetUserTypes', () => ({
   default: () => ({
     data: {
-      schemas: [
+      types: [
         {name: 'customer', displayName: 'Customer'},
         {name: 'employee', displayName: 'Employee'},
       ],
@@ -257,12 +257,36 @@ vi.mock('../../components/create-application/ConfigureExperience', () => ({
   },
 }));
 
-vi.mock('../../components/create-application/ConfigureStack', () => ({
-  default: ({onReadyChange}: {onReadyChange: (ready: boolean) => void}) => {
-    setTimeout(() => onReadyChange(true), 0);
-    return <div data-testid="application-configure-stack">Configure Stack</div>;
-  },
-}));
+vi.mock('../../components/create-application/ConfigureStack', async () => {
+  const useApplicationCreateContextModule = await import('../../hooks/useApplicationCreateContext');
+
+  return {
+    default: ({onReadyChange}: {onReadyChange: (ready: boolean) => void}) => {
+      const {setSelectedPlatform, setSelectedTemplateConfig} = useApplicationCreateContextModule.default();
+
+      setTimeout(() => onReadyChange(true), 0);
+
+      const handleSelectBackend = () => {
+        setSelectedPlatform('BACKEND');
+        setSelectedTemplateConfig({
+          id: 'backend',
+          creationFlow: {
+            steps: ['STACK', 'NAME', 'ORGANIZATION_UNIT', 'COMPLETE'],
+          },
+        });
+      };
+
+      return (
+        <div data-testid="application-configure-stack">
+          Configure Stack
+          <button type="button" data-testid="select-backend-platform" onClick={handleSelectBackend}>
+            Select Backend
+          </button>
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock('../../components/create-application/ConfigureDetails', () => ({
   default: ({
@@ -336,11 +360,11 @@ describe('ApplicationCreatePage', () => {
   });
 
   describe('Initial Rendering', () => {
-    it('should render the name step by default', () => {
+    it('should render the stack step by default', () => {
       renderWithProviders();
 
-      expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
-      expect(screen.queryByTestId('application-configure-design')).not.toBeInTheDocument();
+      expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
+      expect(screen.queryByTestId('application-configure-name')).not.toBeInTheDocument();
     });
 
     it('should not show preview on first step', () => {
@@ -359,20 +383,27 @@ describe('ApplicationCreatePage', () => {
     it('should show breadcrumb with current step', () => {
       renderWithProviders();
 
-      expect(screen.getByText('Create an Application')).toBeInTheDocument();
+      expect(screen.getByText('Technology Stack')).toBeInTheDocument();
     });
   });
 
   describe('Step Navigation', () => {
-    it('should disable Continue button when name is empty', () => {
+    it('should disable Continue button when name is empty', async () => {
       renderWithProviders();
 
+      // Navigate from STACK to NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
       const continueButton = screen.getByRole('button', {name: /continue/i});
       expect(continueButton).toBeDisabled();
     });
 
     it('should enable Continue button when name is entered', async () => {
       renderWithProviders();
+
+      // Navigate from STACK to NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
 
       const nameInput = screen.getByTestId('app-name-input');
       await user.type(nameInput, 'My App');
@@ -384,11 +415,14 @@ describe('ApplicationCreatePage', () => {
     it('should navigate to design step from name step', async () => {
       renderWithProviders();
 
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
       const nameInput = screen.getByTestId('app-name-input');
       await user.type(nameInput, 'My App');
 
-      const continueButton = screen.getByRole('button', {name: /continue/i});
-      await user.click(continueButton);
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
 
       expect(screen.getByTestId('application-configure-design')).toBeInTheDocument();
       expect(screen.queryByTestId('application-configure-name')).not.toBeInTheDocument();
@@ -397,8 +431,13 @@ describe('ApplicationCreatePage', () => {
     it('should show preview from design step onwards', async () => {
       renderWithProviders();
 
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
       const nameInput = screen.getByTestId('app-name-input');
       await user.type(nameInput, 'My App');
+
+      // NAME → DESIGN
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       expect(screen.getByTestId('preview')).toBeInTheDocument();
@@ -407,29 +446,27 @@ describe('ApplicationCreatePage', () => {
     it('should navigate through all steps', async () => {
       renderWithProviders();
 
-      // Step 1: Name
+      // Step 1: Stack
+      expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      // Step 2: Name
       await user.type(screen.getByTestId('app-name-input'), 'My App');
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
-      // Step 2: Design
+      // Step 3: Design
       expect(screen.getByTestId('application-configure-design')).toBeInTheDocument();
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
-      // Step 3: Sign In Options
+      // Step 4: Sign In Options
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
-      // Step 4: Experience
+      // Step 5: Experience
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
-      });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      // Step 5: Stack
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
       });
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
@@ -439,10 +476,10 @@ describe('ApplicationCreatePage', () => {
       });
     });
 
-    it('should show Back button from design step onwards', async () => {
+    it('should show Back button from name step onwards', async () => {
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       expect(screen.getByRole('button', {name: /back/i})).toBeInTheDocument();
@@ -451,12 +488,13 @@ describe('ApplicationCreatePage', () => {
     it('should navigate back to previous step', async () => {
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      // NAME → STACK (back)
       await user.click(screen.getByRole('button', {name: /back/i}));
 
-      expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
-      expect(screen.queryByTestId('application-configure-design')).not.toBeInTheDocument();
+      expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
+      expect(screen.queryByTestId('application-configure-name')).not.toBeInTheDocument();
     });
   });
 
@@ -464,13 +502,19 @@ describe('ApplicationCreatePage', () => {
     it('should update breadcrumb as user progresses', async () => {
       renderWithProviders();
 
+      expect(screen.getByText('Technology Stack')).toBeInTheDocument();
+
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
       expect(screen.getByText('Create an Application')).toBeInTheDocument();
 
       await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       expect(screen.getByText('Design')).toBeInTheDocument();
 
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       expect(screen.getByText('Sign In Options')).toBeInTheDocument();
@@ -479,14 +523,18 @@ describe('ApplicationCreatePage', () => {
     it('should allow clicking on previous breadcrumb steps', async () => {
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
-      const firstBreadcrumb = screen.getByText('Create an Application');
+      const firstBreadcrumb = screen.getByText('Technology Stack');
       await user.click(firstBreadcrumb);
 
-      expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
+      expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
     });
   });
 
@@ -508,6 +556,9 @@ describe('ApplicationCreatePage', () => {
     it('should update app name state', async () => {
       renderWithProviders();
 
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
       const nameInput = screen.getByTestId('app-name-input');
       await user.type(nameInput, 'Test App');
 
@@ -517,10 +568,15 @@ describe('ApplicationCreatePage', () => {
     it('should preserve app name when navigating between steps', async () => {
       renderWithProviders();
 
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
       const nameInput = screen.getByTestId('app-name-input');
       await user.type(nameInput, 'My App');
 
+      // NAME → DESIGN
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → NAME (back)
       await user.click(screen.getByRole('button', {name: /back/i}));
 
       expect(screen.getByTestId('app-name-input')).toHaveValue('My App');
@@ -529,7 +585,10 @@ describe('ApplicationCreatePage', () => {
     it('should update logo in state', async () => {
       renderWithProviders();
 
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
       await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       const logoButton = screen.getByTestId('logo-select-btn');
@@ -548,28 +607,30 @@ describe('ApplicationCreatePage', () => {
       renderWithProviders();
 
       // Navigate through all steps
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
       });
+      // CONFIGURE → Create
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
@@ -591,28 +652,30 @@ describe('ApplicationCreatePage', () => {
       renderWithProviders();
 
       // Navigate through all steps
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
       });
+      // CONFIGURE → Create
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
@@ -632,14 +695,18 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
-      // Navigate to experience step
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Select embedded approach
@@ -648,12 +715,7 @@ describe('ApplicationCreatePage', () => {
       });
       const selectEmbeddedBtn = screen.getByTestId('select-embedded-approach');
       await user.click(selectEmbeddedBtn);
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      // Continue from stack - should create app immediately
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → Create (embedded skips configure)
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
@@ -675,24 +737,25 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
       await user.click(screen.getByTestId('select-embedded-approach'));
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → Create (embedded skips configure)
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Should NOT show configure details step
@@ -711,28 +774,30 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
       });
+      // CONFIGURE → Create
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(
@@ -750,28 +815,30 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
       });
+      // CONFIGURE → Create
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(
@@ -798,33 +865,35 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
       await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Select a theme
       const selectThemeBtn = screen.getByTestId('select-theme-btn');
       await user.click(selectThemeBtn);
 
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
       });
+      // CONFIGURE → Create
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
@@ -841,8 +910,12 @@ describe('ApplicationCreatePage', () => {
     it('should allow toggling integrations', async () => {
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
@@ -860,23 +933,24 @@ describe('ApplicationCreatePage', () => {
     it('should update OAuth config when callback URL changes', async () => {
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
@@ -911,28 +985,30 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
       });
+      // CONFIGURE → Create
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Should show COMPLETE step with client secret
@@ -955,28 +1031,30 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
       });
+      // CONFIGURE → Create
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Should navigate directly to application details page
@@ -1008,28 +1086,30 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
       });
+      // CONFIGURE → Create
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Should show COMPLETE step
@@ -1067,28 +1147,30 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
-      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
       });
+      // CONFIGURE → Create
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Should show COMPLETE step
@@ -1120,7 +1202,10 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
       await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Preview should be visible on DESIGN step
@@ -1128,26 +1213,25 @@ describe('ApplicationCreatePage', () => {
         expect(screen.getByTestId('preview')).toBeInTheDocument();
       });
 
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
       });
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
       });
-      await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      await waitFor(() => {
-        expect(screen.getByTestId('application-configure-stack')).toBeInTheDocument();
-      });
+      // EXPERIENCE → CONFIGURE
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
       });
+      // CONFIGURE → Create
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Should show COMPLETE step
@@ -1157,6 +1241,187 @@ describe('ApplicationCreatePage', () => {
 
       // Preview should not be visible on COMPLETE step
       expect(screen.queryByTestId('preview')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Backend Platform (BACKEND / M2M) Flow', () => {
+    it('should skip DESIGN, OPTIONS, EXPERIENCE and create app directly from NAME step', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'backend-app-1', name: 'My Backend App'} as Application);
+      });
+
+      renderWithProviders();
+
+      // Select BACKEND platform in STACK step
+      await user.click(screen.getByTestId('select-backend-platform'));
+
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      // Enter app name
+      await user.type(screen.getByTestId('app-name-input'), 'My Backend App');
+
+      // NAME → [create immediately]
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      // Should not have visited DESIGN, OPTIONS or EXPERIENCE
+      expect(screen.queryByTestId('application-configure-design')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('application-configure-sign-in')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('application-configure-experience')).not.toBeInTheDocument();
+    });
+
+    it('should create backend app without userAttributes, isRegistrationFlowEnabled, or themeId', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'backend-app-2', name: 'My Backend App'} as Application);
+      });
+
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-backend-platform'));
+
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My Backend App');
+
+      // NAME → create
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      const createAppCall = mockCreateApplication.mock.calls[0][0] as Record<string, unknown>;
+      expect(createAppCall.userAttributes).toBeUndefined();
+      expect(createAppCall.isRegistrationFlowEnabled).toBeUndefined();
+      expect(createAppCall.themeId).toBeUndefined();
+      expect(createAppCall.logoUrl).toBeUndefined();
+    });
+
+    it('should include the backend template id in the create request', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'backend-app-3', name: 'My Backend App'} as Application);
+      });
+
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-backend-platform'));
+
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My Backend App');
+
+      // NAME → create
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      const createAppCall = mockCreateApplication.mock.calls[0][0] as Record<string, unknown>;
+      expect(createAppCall.template).toBe('backend');
+    });
+
+    it('should include inboundAuthConfig (OAuth) in the backend create request', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'backend-app-4', name: 'My Backend App'} as Application);
+      });
+
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-backend-platform'));
+
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My Backend App');
+
+      // NAME → create
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      const createAppCall = mockCreateApplication.mock.calls[0][0] as Record<string, unknown>;
+      expect(createAppCall.inboundAuthConfig).toBeDefined();
+    });
+
+    it('should show COMPLETE step with client secret after backend app creation', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({
+          id: 'backend-app-5',
+          name: 'My Backend App',
+          inboundAuthConfig: [
+            {
+              type: 'oauth2',
+              config: {
+                clientId: 'backend-client-id',
+                clientSecret: 'backend_secret_xyz',
+                redirectUris: [] as string[],
+              },
+            },
+          ],
+        } as Application);
+      });
+
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-backend-platform'));
+
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My Backend App');
+
+      // NAME → create → COMPLETE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-show-client-secret')).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId('application-client-secret-value')).toHaveTextContent('backend_secret_xyz');
+    });
+
+    it('should show only STACK and NAME in breadcrumb for backend platform', async () => {
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-backend-platform'));
+
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      // On NAME step breadcrumb should show STACK (clickable) and NAME (current)
+      expect(screen.getByText('Technology Stack')).toBeInTheDocument();
+      expect(screen.getByText('Create an Application')).toBeInTheDocument();
+      // Design/Options/Experience should NOT appear in breadcrumb
+      expect(screen.queryByText('Design')).not.toBeInTheDocument();
+      expect(screen.queryByText('Sign In Options')).not.toBeInTheDocument();
+    });
+
+    it('should not show a flow-not-found error when creating a backend app without a selected auth flow', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'backend-app-6', name: 'My Backend App'} as Application);
+      });
+
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-backend-platform'));
+
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My Backend App');
+
+      // NAME → create (no auth flow selected)
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+
+      expect(screen.queryByText(/no.*flow/i)).not.toBeInTheDocument();
     });
   });
 
@@ -1206,9 +1471,13 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
       // Navigate to options step
       await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
       await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // At Options step
@@ -1219,12 +1488,12 @@ describe('ApplicationCreatePage', () => {
       // Trigger setup
       await user.click(screen.getByTestId('setup-flow-generation'));
 
+      // OPTIONS → EXPERIENCE
       await user.click(screen.getByRole('button', {name: /continue/i}));
-
-      // Experience -> Stack -> Configure
-      await user.click(screen.getByRole('button', {name: /continue/i})); // Experience
-      await user.click(screen.getByRole('button', {name: /continue/i})); // Stack
-      await user.click(screen.getByRole('button', {name: /continue/i})); // Configure Details
+      // EXPERIENCE → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // CONFIGURE → Create
+      await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Verify generateFlowGraph called
       await waitFor(() => {
@@ -1272,10 +1541,14 @@ describe('ApplicationCreatePage', () => {
 
       renderWithProviders();
 
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
       // Navigate to trigger point
       await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
       await user.click(screen.getByRole('button', {name: /continue/i}));
-      await user.click(screen.getByRole('button', {name: /continue/i})); // Design
+      // DESIGN → OPTIONS
+      await user.click(screen.getByRole('button', {name: /continue/i}));
 
       // Options step
       await waitFor(() => {
@@ -1285,10 +1558,12 @@ describe('ApplicationCreatePage', () => {
       // Trigger setup
       await user.click(screen.getByTestId('setup-flow-generation-error'));
 
-      await user.click(screen.getByRole('button', {name: /continue/i})); // Options -> Experience
-      await user.click(screen.getByRole('button', {name: /continue/i})); // Experience -> Stack
-      await user.click(screen.getByRole('button', {name: /continue/i})); // Stack -> Configure
-      await user.click(screen.getByRole('button', {name: /continue/i})); // Configure -> Create
+      // OPTIONS → EXPERIENCE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // EXPERIENCE → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // CONFIGURE → Create
+      await user.click(screen.getByRole('button', {name: /continue/i}));
 
       await waitFor(() => {
         expect(screen.getByText('Flow generation failed')).toBeInTheDocument();

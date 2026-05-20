@@ -24,17 +24,17 @@ import (
 	"fmt"
 	"slices"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
-	authnoauth "github.com/asgardeo/thunder/internal/authn/oauth"
-	authnprovidermgr "github.com/asgardeo/thunder/internal/authnprovider/manager"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/entitytype"
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/idp"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/log"
-	systemutils "github.com/asgardeo/thunder/internal/system/utils"
+	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -127,12 +127,6 @@ func (o *oAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
-	}
-
-	if ctx.FlowType != common.FlowTypeAuthentication && ctx.FlowType != common.FlowTypeRegistration {
-		logger.Warn("Invalid flow type for OAuth executor. Skipping execution")
-		execResp.Status = common.ExecComplete
-		return execResp, nil
 	}
 
 	if !o.HasRequiredInputs(ctx, execResp) {
@@ -256,6 +250,17 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return errors.New("federated authentication failed")
 	}
 
+	if basicResult == nil {
+		logger.Error("authnProvider.AuthenticateUser returned nil result")
+		return errors.New("OAuth authentication failed")
+	}
+
+	if !validateFederatedIdentifierConsistency(ctx, basicResult) {
+		execResp.Status = common.ExecFailure
+		execResp.FailureReason = "Invalid federated user"
+		return nil
+	}
+
 	sub := basicResult.ExternalSub
 
 	if basicResult.IsAmbiguousUser {
@@ -353,14 +358,7 @@ func (o *oAuthExecutor) getContextUserForAuthentication(ctx *core.NodeContext,
 
 	// If no local user is found, check if authentication without local user is allowed
 	if internalUser == nil {
-		allowAuthWithoutLocalUser := false
-		if val, ok := ctx.NodeProperties[common.NodePropertyAllowAuthenticationWithoutLocalUser]; ok {
-			if boolVal, ok := val.(bool); ok {
-				allowAuthWithoutLocalUser = boolVal
-			}
-		}
-
-		if allowAuthWithoutLocalUser {
+		if isAuthenticationWithoutLocalUserAllowed(ctx) {
 			if execResp.RuntimeData == nil {
 				execResp.RuntimeData = make(map[string]string)
 			}
@@ -428,6 +426,20 @@ func (o *oAuthExecutor) getContextUserForRegistration(ctx *core.NodeContext,
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	if isAmbiguous {
+		// An ambiguous user (exists in multiple OUs) can still be provisioned into a new target
+		// OU when cross-OU provisioning is explicitly allowed. The ProvisioningExecutor enforces
+		// the same-OU duplicate guard, so we don't need to fail here.
+		if isRegistrationWithExistingUserAllowed(ctx) && isCrossOUProvisioningAllowed(ctx) {
+			logger.Debug("Ambiguous user detected, proceeding with cross-OU provisioning eligibility")
+			execResp.Status = common.ExecComplete
+			execResp.FailureReason = ""
+			execResp.RuntimeData[userAttributeSub] = sub
+
+			return &authncm.AuthenticatedUser{
+				IsAuthenticated: false,
+			}, nil
+		}
+
 		logger.Debug("Ambiguous user detected in registration flow, cannot proceed with registration")
 		execResp.Status = common.ExecFailure
 		execResp.FailureReason = "User identity is ambiguous and cannot be registered."
@@ -447,23 +459,8 @@ func (o *oAuthExecutor) getContextUserForRegistration(ctx *core.NodeContext,
 	}
 
 	// If a local user is found, check if registration with existing user is allowed
-	allowRegistrationWithExistingUser := false
-	if val, ok := ctx.NodeProperties[common.NodePropertyAllowRegistrationWithExistingUser]; ok {
-		if boolVal, ok := val.(bool); ok {
-			allowRegistrationWithExistingUser = boolVal
-		}
-	}
-
-	if allowRegistrationWithExistingUser {
-		// Check if cross-OU provisioning is enabled
-		allowCrossOUProvisioning := false
-		if val, ok := ctx.NodeProperties[common.NodePropertyAllowCrossOUProvisioning]; ok {
-			if boolVal, ok := val.(bool); ok {
-				allowCrossOUProvisioning = boolVal
-			}
-		}
-
-		if allowCrossOUProvisioning {
+	if isRegistrationWithExistingUserAllowed(ctx) {
+		if isCrossOUProvisioningAllowed(ctx) {
 			// Allow the flow to continue so the ProvisioningExecutor can create the user in
 			// the target OU. The same-OU duplicate guard is enforced by the ProvisioningExecutor
 			// itself, which has access to the target OU context. We intentionally do not set

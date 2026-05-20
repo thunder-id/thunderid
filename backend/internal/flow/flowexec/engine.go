@@ -24,15 +24,15 @@ import (
 	"maps"
 	"time"
 
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/flow/executor"
-	"github.com/asgardeo/thunder/internal/system/cryptolab"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/observability"
-	"github.com/asgardeo/thunder/internal/system/observability/event"
-	sysutils "github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/system/cryptolab"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/observability"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // flowEngineInterface defines the interface for the flow engine.
@@ -178,6 +178,7 @@ func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *serviceerror.Servi
 			return flowStep, nodeErr
 		}
 
+		fe.trackPresentedOptionalInputs(ctx, nodeResp)
 		fe.updateContextWithNodeResponse(ctx, nodeResp)
 
 		nextNode, continueExecution, svcErr := fe.processNodeResponse(ctx, nodeResp, &flowStep, logger)
@@ -216,6 +217,37 @@ func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *serviceerror.Servi
 	publishFlowCompletedEvent(ctx, flowStartTime, flowEndTime, fe.observabilitySvc)
 
 	return flowStep, nil
+}
+
+// trackPresentedOptionalInputs records the optional inputs presented in an incomplete view response
+// into the node response's runtime data so they can be skipped in subsequent execution steps.
+func (fe *flowEngine) trackPresentedOptionalInputs(ctx *EngineContext, nodeResp *common.NodeResponse) {
+	if nodeResp == nil || nodeResp.Status != common.NodeStatusIncomplete ||
+		nodeResp.Type != common.NodeResponseTypeView || len(nodeResp.Inputs) == 0 {
+		return
+	}
+
+	optionalIdentifiers := make([]string, 0, len(nodeResp.Inputs))
+	for _, input := range nodeResp.Inputs {
+		if !input.Required {
+			optionalIdentifiers = append(optionalIdentifiers, input.Identifier)
+		}
+	}
+	if len(optionalIdentifiers) == 0 {
+		return
+	}
+
+	if nodeResp.RuntimeData == nil {
+		nodeResp.RuntimeData = make(map[string]string)
+	}
+
+	raw := nodeResp.RuntimeData[common.RuntimeKeyPresentedOptionalInputs]
+	if raw == "" && ctx != nil {
+		raw = ctx.RuntimeData[common.RuntimeKeyPresentedOptionalInputs]
+	}
+
+	nodeResp.RuntimeData[common.RuntimeKeyPresentedOptionalInputs] =
+		core.MergePresentedOptionalInputIdentifiers(raw, optionalIdentifiers)
 }
 
 // setCurrentExecutionNode sets the current execution node in the context.
@@ -460,6 +492,11 @@ func (fe *flowEngine) shouldUpdateAuthenticatedUser(engineCtx *EngineContext) bo
 	if engineCtx.FlowType == common.FlowTypeUserOnboarding {
 		return executorInst.GetType() == common.ExecutorTypeAuthentication ||
 			executorInst.GetName() == executor.ExecutorNameProvisioning
+	}
+
+	// For recovery flows, update from authentication executors (e.g., OTP verification).
+	if engineCtx.FlowType == common.FlowTypeRecovery {
+		return executorInst.GetType() == common.ExecutorTypeAuthentication
 	}
 
 	return false

@@ -23,28 +23,27 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
-	"strings"
 
-	authncm "github.com/asgardeo/thunder/internal/authn/common"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/entitytype"
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/group"
-	"github.com/asgardeo/thunder/internal/role"
-	"github.com/asgardeo/thunder/internal/system/log"
+	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // provisioningExecutor implements the ExecutorInterface for user provisioning in a flow.
 type provisioningExecutor struct {
 	core.ExecutorInterface
 	identifyingExecutorInterface
-	entityProvider    entityprovider.EntityProviderInterface
-	groupService      group.GroupServiceInterface
-	roleService       role.RoleServiceInterface
-	entityTypeService entitytype.EntityTypeServiceInterface
-	logger            *log.Logger
+	entityProvider        entityprovider.EntityProviderInterface
+	groupService          group.GroupServiceInterface
+	roleService           role.RoleServiceInterface
+	roleAssignmentService role.RoleAssignmentServiceInterface
+	entityTypeService     entitytype.EntityTypeServiceInterface
+	logger                *log.Logger
 }
 
 var _ core.ExecutorInterface = (*provisioningExecutor)(nil)
@@ -55,6 +54,7 @@ func newProvisioningExecutor(
 	flowFactory core.FlowFactoryInterface,
 	groupService group.GroupServiceInterface,
 	roleService role.RoleServiceInterface,
+	roleAssignmentService role.RoleAssignmentServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 ) *provisioningExecutor {
@@ -73,6 +73,7 @@ func newProvisioningExecutor(
 		entityProvider:               entityProvider,
 		groupService:                 groupService,
 		roleService:                  roleService,
+		roleAssignmentService:        roleAssignmentService,
 		entityTypeService:            entityTypeService,
 		logger:                       logger,
 	}
@@ -126,6 +127,17 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 		execResp.FailureReason = failureReasonFailedToIdentifyUser
 		return execResp, nil
 	}
+	if execResp.Status == common.ExecFailure &&
+		execResp.FailureReason == failureReasonAmbiguousUser &&
+		isCrossOUProvisioningAllowed(ctx) {
+		resolved, err := p.resolveAmbiguousUserForProvisioning(ctx, identifyingAttrs)
+		if err != nil {
+			return nil, err
+		}
+		userID = resolved
+		execResp.Status = ""
+		execResp.FailureReason = ""
+	}
 	if execResp.Status == common.ExecFailure && execResp.FailureReason != failureReasonUserNotFound {
 		return execResp, nil
 	}
@@ -139,7 +151,7 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 		}
 	}
 
-	// Merge identifying and credential attributes for user creation.
+	// Merge identifying and credential attributes for user creation
 	userAttributes := make(map[string]interface{}, len(identifyingAttrs)+len(credentialAttrs))
 	for k, v := range identifyingAttrs {
 		userAttributes[k] = v
@@ -219,15 +231,8 @@ func (p *provisioningExecutor) handleExistingUser(ctx *core.NodeContext, userID 
 		}
 	}
 
-	// Check if cross-OU provisioning is explicitly enabled for this node.
-	allowCrossOUProvisioning := false
-	if val, ok := ctx.NodeProperties[common.NodePropertyAllowCrossOUProvisioning]; ok {
-		if boolVal, ok := val.(bool); ok {
-			allowCrossOUProvisioning = boolVal
-		}
-	}
-
-	if !allowCrossOUProvisioning {
+	// Check if cross-OU provisioning is explicitly enabled for this node
+	if !isCrossOUProvisioningAllowed(ctx) {
 		if ctx.FlowType == common.FlowTypeRegistration {
 			execResp.Status = common.ExecUserInputRequired
 			execResp.Inputs = p.GetRequiredInputs(ctx)
@@ -268,6 +273,34 @@ func (p *provisioningExecutor) handleExistingUser(ctx *core.NodeContext, userID 
 	return true, nil
 }
 
+// resolveAmbiguousUserForProvisioning is called when IdentifyUser reports ambiguity and cross-OU
+// provisioning is allowed. It searches for all matching users and returns the ID of the one in the
+// target OU, or nil if none exists there.
+func (p *provisioningExecutor) resolveAmbiguousUserForProvisioning(ctx *core.NodeContext,
+	identifyingAttrs map[string]interface{}) (*string, error) {
+	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+
+	matches, searchErr := p.entityProvider.SearchEntities(identifyingAttrs)
+	if searchErr != nil {
+		return nil, fmt.Errorf("failed to search for matching users: code=%s, description=%s",
+			searchErr.Code, searchErr.Description)
+	}
+
+	targetOUID := p.getOUID(ctx)
+	for _, m := range matches {
+		if m == nil || m.OUID == "" {
+			return nil, fmt.Errorf("ambiguous user search returned an entity with missing OUID")
+		}
+		if m.OUID == targetOUID {
+			logger.Debug("Ambiguous user has a match in the target OU", log.MaskedString(log.LoggerKeyUserID, m.ID))
+			return &m.ID, nil
+		}
+	}
+
+	logger.Debug("Ambiguous user has no match in target OU", log.Int("matchCount", len(matches)))
+	return nil, nil
+}
+
 // HasRequiredInputs checks whether all schema-driven provisioning inputs are satisfied and appends
 // any missing promptable schema attrs to the executor response. Node inputs influence requiredness
 // and prompt metadata for schema attrs, but schema-absent node inputs are ignored.
@@ -303,13 +336,8 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *core.NodeContext,
 		return true
 	}
 
-	// Load the set of optional attrs already prompted in previous iterations so they are not
-	// re-prompted even when the user left them empty.
-	alreadyPromptedOptionalAttrs := p.getPresentedOptionalAttrs(ctx)
-	promptOptional := p.isPromptOptionalAttributesEnabled(ctx)
-
 	credRequiredMissing, credOptionalMissing, ncRequiredMissing, ncOptionalMissing :=
-		p.buildMissingInputs(ctx, allSchemaAttrs, nodeInputMap, alreadyPromptedOptionalAttrs, promptOptional)
+		p.buildMissingInputs(ctx, allSchemaAttrs, nodeInputMap)
 
 	// Build the full schema missing list: required non-creds first, then optional non-creds,
 	// followed by required creds, then optional creds.
@@ -332,10 +360,6 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *core.NodeContext,
 		toForward = toForward[:maxInputs]
 	}
 
-	// Record which optional schema attrs are being presented this iteration so future
-	// iterations know not to re-prompt them if the user left them empty.
-	p.storePresentedOptionalAttrs(execResp, toForward, alreadyPromptedOptionalAttrs)
-
 	execResp.Inputs = allSchemaMissing
 	if execResp.ForwardedData == nil {
 		execResp.ForwardedData = make(map[string]interface{})
@@ -352,11 +376,13 @@ func (p *provisioningExecutor) buildMissingInputs(
 	ctx *core.NodeContext,
 	schemaAttrs []entitytype.AttributeInfo,
 	nodeInputMap map[string]common.Input,
-	alreadyPromptedOptionalAttrs map[string]bool,
-	promptOptional bool,
 ) (credRequired, credOptional, ncRequired, ncOptional []common.Input) {
+	promptOptional := p.isPromptOptionalAttributesEnabled(ctx)
+	promptOptionalCredentials := p.isPromptOptionalCredentialsEnabled(ctx)
+	presentedOptionalInputs := core.GetPresentedOptionalInputs(ctx.RuntimeData)
+
 	for _, attr := range schemaAttrs {
-		if p.isAttrSatisfied(ctx, attr.Attribute) {
+		if p.isAttrSatisfied(ctx, attr.Attribute, attr.Credential) {
 			continue
 		}
 		nodeInp, inNodeInputs := nodeInputMap[attr.Attribute]
@@ -366,10 +392,10 @@ func (p *provisioningExecutor) buildMissingInputs(
 		}
 
 		if attr.Credential {
-			if !attr.Required && !inNodeInputs {
+			if !effectiveRequired && !promptOptionalCredentials && !inNodeInputs {
 				continue
 			}
-			if !effectiveRequired && alreadyPromptedOptionalAttrs[attr.Attribute] {
+			if !effectiveRequired && core.IsOptionalInputPrompted(presentedOptionalInputs, attr.Attribute) {
 				continue
 			}
 			input := common.Input{
@@ -387,7 +413,7 @@ func (p *provisioningExecutor) buildMissingInputs(
 			if !attr.Required && !promptOptional && !inNodeInputs {
 				continue
 			}
-			if !effectiveRequired && alreadyPromptedOptionalAttrs[attr.Attribute] {
+			if !effectiveRequired && core.IsOptionalInputPrompted(presentedOptionalInputs, attr.Attribute) {
 				continue
 			}
 			input := common.Input{
@@ -449,6 +475,17 @@ func (p *provisioningExecutor) isPromptOptionalAttributesEnabled(ctx *core.NodeC
 	return false
 }
 
+// isPromptOptionalCredentialsEnabled reads the includeOptionalCredentials node property.
+// Returns false when the property is absent. Only the required credentials are prompted by default.
+func (p *provisioningExecutor) isPromptOptionalCredentialsEnabled(ctx *core.NodeContext) bool {
+	if val, ok := ctx.NodeProperties[propertyKeyDynamicInputsIncludeOptionalCredentials]; ok {
+		if boolVal, ok := val.(bool); ok {
+			return boolVal
+		}
+	}
+	return false
+}
+
 // getMaxDynamicInputs reads the maxPerPrompt node property.
 // Returns 0 when absent, meaning all missing inputs are prompted at once (current default behavior).
 func (p *provisioningExecutor) getMaxDynamicInputs(ctx *core.NodeContext) int {
@@ -463,56 +500,21 @@ func (p *provisioningExecutor) getMaxDynamicInputs(ctx *core.NodeContext) int {
 	return 0
 }
 
-// getPresentedOptionalAttrs returns the set of optional attr identifiers that have already been
-// prompted to the user in previous iterations, loaded from RuntimeData.
-func (p *provisioningExecutor) getPresentedOptionalAttrs(ctx *core.NodeContext) map[string]bool {
-	result := make(map[string]bool)
-	raw, ok := ctx.RuntimeData[common.RuntimeKeyPresentedOptionalAttrs]
-	if !ok || raw == "" {
-		return result
-	}
-	for _, id := range strings.Split(raw, " ") {
-		if id != "" {
-			result[id] = true
-		}
-	}
-	return result
-}
-
-// storePresentedOptionalAttrs accumulates the optional attrs being shown in this iteration into
-// RuntimeData so the next iteration can skip them.
-func (p *provisioningExecutor) storePresentedOptionalAttrs(
-	execResp *common.ExecutorResponse,
-	toPrompt []common.Input,
-	alreadyPresented map[string]bool,
-) {
-	for _, inp := range toPrompt {
-		if !inp.Required {
-			alreadyPresented[inp.Identifier] = true
-		}
-	}
-	if len(alreadyPresented) == 0 {
-		return
-	}
-	ids := make([]string, 0, len(alreadyPresented))
-	for id := range alreadyPresented {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	execResp.RuntimeData[common.RuntimeKeyPresentedOptionalAttrs] = strings.Join(ids, " ")
-}
-
-// isAttrSatisfied returns true if the attribute has a non-empty usable value in any context source.
-func (p *provisioningExecutor) isAttrSatisfied(ctx *core.NodeContext, attr string) bool {
+// isAttrSatisfied returns true if the attribute has a non-empty usable value.
+// Credential attrs are satisfied only by UserInputs or RuntimeData.
+// Non-credential attrs also fall back to AuthenticatedUser.Attributes.
+func (p *provisioningExecutor) isAttrSatisfied(ctx *core.NodeContext, attr string, credential bool) bool {
 	if val, ok := ctx.UserInputs[attr]; ok && val != "" {
 		return true
 	}
 	if val, ok := ctx.RuntimeData[attr]; ok && val != "" {
 		return true
 	}
-	if val, ok := ctx.AuthenticatedUser.Attributes[attr]; ok {
-		if strVal, ok := val.(string); ok && strVal != "" {
-			return true
+	if !credential {
+		if val, ok := ctx.AuthenticatedUser.Attributes[attr]; ok {
+			if strVal, ok := val.(string); ok && strVal != "" {
+				return true
+			}
 		}
 	}
 	return false
@@ -521,7 +523,7 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *core.NodeContext, attr strin
 // getAttributesForProvisioning collects user attributes from context in a single schema pass,
 // returning identifying (non-credential) and credential attributes as separate maps.
 // Schema is the whitelist for both maps.
-// Credential values are resolved from UserInputs then RuntimeData only.
+// Credential values are resolved from non-empty UserInputs then non-empty RuntimeData only.
 // Non-credential values additionally fall back to AuthenticatedUser.Attributes.
 func (p *provisioningExecutor) getAttributesForProvisioning(
 	ctx *core.NodeContext,
@@ -540,9 +542,9 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 
 	for _, a := range schemaAttrs {
 		if a.Credential {
-			if value, exists := ctx.UserInputs[a.Attribute]; exists {
+			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
 				credentialAttrs[a.Attribute] = value
-			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists {
+			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				credentialAttrs[a.Attribute] = runtimeValue
 			}
 		} else {
@@ -750,6 +752,13 @@ func (p *provisioningExecutor) assignToGroup(
 // assignToRole adds the user to the specified role.
 func (p *provisioningExecutor) assignToRole(
 	ctx context.Context, userID string, roleID string, logger *log.Logger) error {
+	if p.roleAssignmentService == nil {
+		logger.Error("Role assignment service is not configured",
+			log.String("roleID", roleID),
+			log.MaskedString(log.LoggerKeyUserID, userID))
+		return fmt.Errorf("role assignment service not configured")
+	}
+
 	logger.Debug("Adding user to role",
 		log.MaskedString(log.LoggerKeyUserID, userID),
 		log.String("roleID", roleID))
@@ -762,7 +771,7 @@ func (p *provisioningExecutor) assignToRole(
 		},
 	}
 
-	svcErr := p.roleService.AddAssignments(ctx, roleID, assignments)
+	svcErr := p.roleAssignmentService.AddAssignments(ctx, roleID, assignments)
 	if svcErr != nil {
 		logger.Error("Failed to add role assignment",
 			log.String("roleID", roleID),

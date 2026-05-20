@@ -23,8 +23,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/asgardeo/thunder/internal/entity"
-	"github.com/asgardeo/thunder/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 type defaultEntityProvider struct {

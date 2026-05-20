@@ -266,7 +266,8 @@ export default function ApplicationEditPage() {
                 onChange={(e) => setTempDescription(e.target.value)}
                 onBlur={() => {
                   const trimmedDescription = tempDescription.trim();
-                  if (trimmedDescription || trimmedDescription !== (application.description ?? '')) {
+                  const currentValue = editedApp.description ?? application.description ?? '';
+                  if (trimmedDescription !== currentValue) {
                     handleFieldChange('description', trimmedDescription);
                   }
                   setIsEditingDescription(false);
@@ -274,7 +275,8 @@ export default function ApplicationEditPage() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && e.ctrlKey) {
                     const trimmedDescription = tempDescription.trim();
-                    if (trimmedDescription || trimmedDescription !== (application.description ?? '')) {
+                    const currentValue = editedApp.description ?? application.description ?? '';
+                    if (trimmedDescription !== currentValue) {
                       handleFieldChange('description', trimmedDescription);
                     }
                     setIsEditingDescription(false);

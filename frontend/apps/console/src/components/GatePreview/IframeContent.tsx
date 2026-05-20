@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type {EmbeddedFlowComponent} from '@asgardeo/react';
+import type {EmbeddedFlowComponent} from '@thunderid/react';
 import createCache from '@emotion/cache';
 import {CacheProvider} from '@emotion/react';
 import {

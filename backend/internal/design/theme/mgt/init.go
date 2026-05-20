@@ -21,13 +21,18 @@ package thememgt
 import (
 	"net/http"
 
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/middleware"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
 // Initialize initializes the theme management service and registers its routes.
-func Initialize(mux *http.ServeMux) (ThemeMgtServiceInterface, declarativeresource.ResourceExporter, error) {
+func Initialize(
+	mux *http.ServeMux,
+	mcpServer *mcp.Server,
+) (ThemeMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Step 1: Initialize store based on configuration
 	themeMgtStore, err := initializeStore()
 	if err != nil {
@@ -38,6 +43,10 @@ func Initialize(mux *http.ServeMux) (ThemeMgtServiceInterface, declarativeresour
 	themeMgtService := newThemeMgtService(themeMgtStore)
 	themeMgtHandler := newThemeMgtHandler(themeMgtService)
 	registerRoutes(mux, themeMgtHandler)
+
+	if mcpServer != nil {
+		registerMCPTools(mcpServer, themeMgtService)
+	}
 
 	exporter := newThemeExporter(themeMgtService)
 	return themeMgtService, exporter, nil

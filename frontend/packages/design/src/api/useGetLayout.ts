@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import DesignQueryKeys from '../constants/design-query-keys';
@@ -29,7 +29,7 @@ import type {LayoutResponse} from '../models/responses';
  * @returns TanStack Query result object with layout data
  */
 export default function useGetLayout(layoutId: string): UseQueryResult<LayoutResponse> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
   return useQuery<LayoutResponse>({

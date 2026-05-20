@@ -23,11 +23,11 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/asgardeo/thunder/internal/entitytype"
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 const (
@@ -244,7 +244,7 @@ func (u *userTypeResolver) handleUserOnboardingFlows(ctx *core.NodeContext,
 		return execResp, nil
 	}
 
-	if len(schemas.Schemas) == 0 {
+	if len(schemas.Types) == 0 {
 		logger.Debug("No user types available")
 		execResp.Status = common.ExecFailure
 		execResp.FailureReason = "No user types available"
@@ -252,7 +252,7 @@ func (u *userTypeResolver) handleUserOnboardingFlows(ctx *core.NodeContext,
 	}
 
 	// Build the list of available schema names, filtering by allowedUserTypes if configured
-	availableSchemas := u.filterSchemasByAllowedTypes(schemas.Schemas, allowedUserTypes)
+	availableSchemas := u.filterSchemasByAllowedTypes(schemas.Types, allowedUserTypes)
 
 	// If an OU was already selected (OU-first onboarding flow), filter schemas to those valid for that OU.
 	// This only applies to USER_ONBOARDING flows where OUResolver with "promptAll" runs first.

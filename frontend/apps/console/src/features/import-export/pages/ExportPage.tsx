@@ -76,7 +76,7 @@ export default function ExportPage(): JSX.Element {
       <LinearProgress variant="determinate" value={100} sx={{height: 6}} />
 
       <Box sx={{p: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0}}>
-        <Stack direction="row" alignItems="center" spacing={2}>
+        <Stack direction="row" spacing={2} sx={{alignItems: 'center'}}>
           <IconButton
             aria-label={t('common:actions.close')}
             onClick={handleClose}
@@ -96,7 +96,7 @@ export default function ExportPage(): JSX.Element {
           display: 'flex',
           flexDirection: 'column',
           py: 8,
-          px: 20,
+          px: {xs: 2, sm: 3, md: 8, lg: 20},
           alignItems: 'flex-start',
         }}
       >
@@ -110,7 +110,7 @@ export default function ExportPage(): JSX.Element {
         >
           {isPending && (
             <Box sx={{display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400}}>
-              <Stack spacing={2} alignItems="center">
+              <Stack spacing={2} sx={{alignItems: 'center'}}>
                 <CircularProgress />
                 <Typography variant="body2" color="text.secondary">
                   {t('export.page.loading')}
@@ -120,11 +120,13 @@ export default function ExportPage(): JSX.Element {
           )}
 
           {isError && (
-            <Alert severity="error" sx={{mb: 3}}>
-              <Typography variant="body2">
-                {t('export.page.loadError', {message: error?.message ?? t('common:dictionary.unknown')})}
-              </Typography>
-            </Alert>
+            <Box sx={{mb: 3}}>
+              <Alert severity="error">
+                <Typography variant="body2">
+                  {t('export.page.loadError', {message: error?.message ?? t('common:dictionary.unknown')})}
+                </Typography>
+              </Alert>
+            </Box>
           )}
 
           {data && !isPending && <ConfigureExport resources={resources} environmentVariables={environmentVariables} />}

@@ -1,0 +1,110 @@
+{
+  "id": "vanilla-js",
+  "displayName": "JavaScript",
+  "description": "Browser application built with vanilla JavaScript",
+  "defaults": {
+    "name": "JavaScript Application",
+    "inboundAuthConfig": [
+      {
+        "type": "oauth2",
+        "config": {
+          "grantTypes": ["authorization_code", "refresh_token"],
+          "responseTypes": ["code"],
+          "redirectUris": ["http://localhost:5173"],
+          "pkceRequired": true,
+          "tokenEndpointAuthMethod": "none",
+          "publicClient": true
+        }
+      }
+    ],
+    "allowedUserTypes": []
+  },
+  "fieldConstraints": {
+    "oauth2": {
+      "publicClient": {
+        "readOnly": true,
+        "value": true
+      },
+      "pkceRequired": {
+        "readOnly": true,
+        "value": true
+      },
+      "tokenEndpointAuthMethod": {
+        "readOnly": true,
+        "value": "none"
+      }
+    }
+  },
+  "integrationGuides": {
+    "INBUILT": {
+      "llm_prompt": {
+        "id": "llm-prompt",
+        "title": "Integrate with a Coding Agent Prompt",
+        "description": "Use AI to generate integration code for your JavaScript application",
+        "type": "llm",
+        "icon": "sparkles",
+        "content": "# Integrate {{productName}} Authentication in Vanilla JavaScript Application\n\n## Context\nI have a vanilla JavaScript application and I want to integrate {{productName}}'s authentication system using the ThunderID Browser SDK with {{productName}}-hosted login pages.\n\n## Requirements\n- Use @thunderid/browser SDK for authentication\n- Configure {{productName}}-hosted login pages\n- Implement sign-in and sign-out functionality\n- Display signed-in user's profile information\n- Handle authentication state\n\n## Configuration\n- **Client ID**: {{clientId}}\n- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)\n- **SDK**: @thunderid/browser\n\n## IMPORTANT Configuration Rules\n- Create a ThunderIDBrowserClient instance and call initialize() with a config object\n- Required config properties: `clientId` and `baseUrl`\n- Optional config properties: `afterSignInUrl`, `afterSignOutUrl`, `scopes` (string array), `storage`\n- Storage options: 'sessionStorage' (default), 'localStorage', 'browserMemory'\n- NEVER use property names like `signInRedirectURL` or `signOutRedirectURL`\n\n## Available SDK APIs\n\n### ThunderIDBrowserClient\n- `initialize(config)` - Initialize the client with configuration\n- `signIn()` - Redirect to {{productName}} sign-in page\n- `signOut()` - Sign out and clear session\n- `isSignedIn()` - Check if user is signed in (returns Promise<boolean>)\n- `getUser()` - Get authenticated user profile (returns Promise<User>)\n- `getAccessToken()` - Get current access token\n- `getIdToken()` - Get ID token\n- `getDecodedIdToken()` - Get decoded ID token claims\n- `httpRequest(config)` - Make authenticated HTTP request\n- `on(hook, callback)` - Register event callbacks (Hooks.SignIn, Hooks.SignOut, etc.)\n\n### User Object Properties\n- `displayName` - User's display name\n- `username` - Username\n- `email` - Email address\n- `given_name` - First name\n- `family_name` - Last name\n- `picture` - Profile picture URL\n\n## Implementation Steps\n1. Create a vanilla JS app using Vite by running: `npm create vite@latest js-demo -- --template vanilla`\n2. Navigate into the project directory: `cd js-demo`\n3. Install dependencies: `npm install`\n4. Install @thunderid/browser package: `npm install @thunderid/browser`\n5. Create src/auth.js to initialize ThunderIDBrowserClient with clientId and baseUrl\n6. Update src/main.js to check isSignedIn(), show sign-in button or user profile\n7. Add event listeners for sign-in and sign-out buttons\n8. Run the development server: `npm run dev`\n\nPlease provide complete, working code with proper configuration for {{productName}} authentication using the ThunderID Browser SDK."
+      },
+      "manual_steps": [
+        {
+          "step": 1,
+          "title": "Create a JavaScript app using Vite",
+          "description": "Run the following command to create a new vanilla JavaScript app with Vite:",
+          "code": {
+            "language": "terminal",
+            "content": "npm create vite@latest js-demo -- --template vanilla\ncd js-demo\nnpm install"
+          }
+        },
+        {
+          "step": 2,
+          "title": "Install @thunderid/browser",
+          "description": "The ThunderID Browser SDK provides a framework-agnostic authentication client for browser applications.",
+          "subDescription": "Run the following command to install the SDK:",
+          "code": {
+            "language": "terminal",
+            "content": "npm install @thunderid/browser"
+          }
+        },
+        {
+          "step": 3,
+          "title": "Initialize the SDK",
+          "description": "Create a new file src/auth.js to initialize and export the ThunderIDBrowserClient:",
+          "code": {
+            "language": "javascript",
+            "filename": "src/auth.js",
+            "content": "import { ThunderIDBrowserClient } from '@thunderid/browser'\n\nconst auth = new ThunderIDBrowserClient()\n\nawait auth.initialize({\n  clientId: '{{clientId}}',\n  baseUrl: 'https://localhost:8090',\n  afterSignInUrl: window.location.origin,\n  afterSignOutUrl: window.location.origin,\n})\n\nexport default auth"
+          }
+        },
+        {
+          "step": 4,
+          "title": "Add sign-in and sign-out",
+          "description": "Replace the content of src/main.js with the following to add authentication:",
+          "code": {
+            "language": "javascript",
+            "filename": "src/main.js",
+            "content": "import './style.css'\nimport auth from './auth.js'\n\nasync function renderApp() {\n  const isSignedIn = await auth.isSignedIn()\n\n  if (isSignedIn) {\n    const user = await auth.getUser()\n\n    document.querySelector('#app').innerHTML = `\n      <div>\n        <h1>ThunderID Auth Demo</h1>\n        <div class=\"card\">\n          <h2>Welcome, ${user.displayName || user.username}!</h2>\n          <p><strong>Email:</strong> ${user.email || 'N/A'}</p>\n          <button id=\"sign-out-btn\" type=\"button\">Sign Out</button>\n        </div>\n      </div>\n    `\n\n    document.querySelector('#sign-out-btn')\n      .addEventListener('click', () => auth.signOut())\n  } else {\n    document.querySelector('#app').innerHTML = `\n      <div>\n        <h1>ThunderID Auth Demo</h1>\n        <div class=\"card\">\n          <p>You are not signed in.</p>\n          <button id=\"sign-in-btn\" type=\"button\">Sign In</button>\n        </div>\n      </div>\n    `\n\n    document.querySelector('#sign-in-btn')\n      .addEventListener('click', () => auth.signIn())\n  }\n}\n\nrenderApp()"
+          }
+        },
+        {
+          "step": 5,
+          "title": "Display signed-in user's profile information",
+          "description": "Update src/main.js to display additional user profile details:",
+          "code": {
+            "language": "javascript",
+            "filename": "src/main.js",
+            "content": "import './style.css'\nimport auth from './auth.js'\n\nasync function renderApp() {\n  const isSignedIn = await auth.isSignedIn()\n\n  if (isSignedIn) {\n    const user = await auth.getUser()\n\n    document.querySelector('#app').innerHTML = `\n      <div>\n        <h1>ThunderID Auth Demo</h1>\n        <div class=\"card\">\n          ${user.picture ? `<img src=\"${user.picture}\" alt=\"Avatar\" style=\"width:80px;height:80px;border-radius:50%\" />` : ''}\n          <h2>Welcome, ${user.displayName || user.username}!</h2>\n          <div class=\"user-details\">\n            <p><strong>Email:</strong> ${user.email || 'N/A'}</p>\n            <p><strong>First Name:</strong> ${user.given_name || 'N/A'}</p>\n            <p><strong>Last Name:</strong> ${user.family_name || 'N/A'}</p>\n          </div>\n          <button id=\"sign-out-btn\" type=\"button\">Sign Out</button>\n        </div>\n      </div>\n    `\n\n    document.querySelector('#sign-out-btn')\n      .addEventListener('click', () => auth.signOut())\n  } else {\n    document.querySelector('#app').innerHTML = `\n      <div>\n        <h1>ThunderID Auth Demo</h1>\n        <div class=\"card\">\n          <p>You are not signed in.</p>\n          <button id=\"sign-in-btn\" type=\"button\">Sign In</button>\n        </div>\n      </div>\n    `\n\n    document.querySelector('#sign-in-btn')\n      .addEventListener('click', () => auth.signIn())\n  }\n}\n\nrenderApp()"
+          }
+        },
+        {
+          "step": 6,
+          "title": "Run the app",
+          "description": "Start your development server and test the authentication flow:",
+          "code": {
+            "language": "terminal",
+            "content": "npm run dev"
+          }
+        }
+      ]
+    }
+  }
+}

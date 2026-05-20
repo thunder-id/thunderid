@@ -25,7 +25,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	oupkg "github.com/asgardeo/thunder/internal/ou"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 )
 
 func TestOUGroupResolver_GetGroupCountByOUID(t *testing.T) {

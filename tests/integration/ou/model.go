@@ -19,31 +19,37 @@
 package ou
 
 import (
-	"github.com/asgardeo/thunder/tests/integration/testutils"
+	"time"
+
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 // OrganizationUnitBasic represents the basic information of an organization unit.
 type OrganizationUnitBasic struct {
-	ID          string `json:"id"`
-	Handle      string `json:"handle"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	LogoURL     string `json:"logoUrl,omitempty"`
+	ID          string    `json:"id"`
+	Handle      string    `json:"handle"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	LogoURL     string    `json:"logoUrl,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 // OrganizationUnit represents an organization unit.
 type OrganizationUnit struct {
-	ID              string  `json:"id"`
-	Handle          string  `json:"handle"`
-	Name            string  `json:"name"`
-	Description     string  `json:"description,omitempty"`
-	Parent          *string `json:"parent"`
-	LogoURL         string  `json:"logoUrl,omitempty"`
-	TosURI          string  `json:"tosUri,omitempty"`
-	PolicyURI       string  `json:"policyUri,omitempty"`
-	CookiePolicyURI string  `json:"cookiePolicyUri,omitempty"`
-	ThemeID         string  `json:"themeId,omitempty"`
-	LayoutID        string  `json:"layoutId,omitempty"`
+	ID              string    `json:"id"`
+	Handle          string    `json:"handle"`
+	Name            string    `json:"name"`
+	Description     string    `json:"description,omitempty"`
+	Parent          *string   `json:"parent"`
+	LogoURL         string    `json:"logoUrl,omitempty"`
+	TosURI          string    `json:"tosUri,omitempty"`
+	PolicyURI       string    `json:"policyUri,omitempty"`
+	CookiePolicyURI string    `json:"cookiePolicyUri,omitempty"`
+	ThemeID         string    `json:"themeId,omitempty"`
+	LayoutID        string    `json:"layoutId,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 // CreateOURequest represents the request body for creating an organization unit.

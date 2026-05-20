@@ -47,8 +47,10 @@ type Application struct {
 	Name                      string                   `json:"name"`
 	Description               string                   `json:"description"`
 	IsRegistrationFlowEnabled bool                     `json:"isRegistrationFlowEnabled"`
+	IsRecoveryFlowEnabled     bool                     `json:"isRecoveryFlowEnabled,omitempty"`
 	AuthFlowID                string                   `json:"authFlowId,omitempty"`
 	RegistrationFlowID        string                   `json:"registrationFlowId,omitempty"`
+	RecoveryFlowID            string                   `json:"recoveryFlowId,omitempty"`
 	ClientID                  string                   `json:"clientId,omitempty"`
 	ClientSecret              string                   `json:"clientSecret,omitempty"`
 	RedirectURIs              []string                 `json:"redirectUris,omitempty"`

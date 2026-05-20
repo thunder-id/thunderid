@@ -5,9 +5,9 @@
 package coremock
 
 import (
-	"github.com/asgardeo/thunder/internal/flow/common"
-	"github.com/asgardeo/thunder/internal/flow/core"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 )
 
 // NewFlowFactoryInterfaceMock creates a new instance of FlowFactoryInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

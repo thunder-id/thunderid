@@ -1,28 +1,28 @@
 ---
 title: React Router
-description: Protect routes in React Router v6 applications with Asgardeo authentication
+description: Protect routes in React Router v6 applications with authentication
 ---
 
 # React Router
 
-`@asgardeo/react-router` is a supplementary package that provides seamless integration between Asgardeo authentication and React Router. It offers components to easily protect routes and handle authentication flows in your React applications.
+`@thunderid/react-router` is a supplementary package that provides seamless integration between <ProductName /> authentication and React Router. It offers components to easily protect routes and handle authentication flows in your React applications.
 
 ## Installation
 
 <CodeGroup>
 <CodeBlock icon="npm" label="npm">
 ```bash
-npm install @asgardeo/react-router
+npm install @thunderid/react-router
 ```
 </CodeBlock>
 <CodeBlock icon="yarn" label="yarn">
 ```bash
-yarn add @asgardeo/react-router
+yarn add @thunderid/react-router
 ```
 </CodeBlock>
 <CodeBlock icon="pnpm" label="pnpm">
 ```bash
-pnpm add @asgardeo/react-router
+pnpm add @thunderid/react-router
 ```
 </CodeBlock>
 </CodeGroup>
@@ -32,18 +32,17 @@ pnpm add @asgardeo/react-router
 ```tsx title="src/App.tsx" showLineNumbers
 import React from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { AsgardeoProvider } from '@asgardeo/react'
-import { ProtectedRoute } from '@asgardeo/react-router'
+import { ThunderIDProvider } from '@thunderid/react'
+import { ProtectedRoute } from '@thunderid/react-router'
 import Dashboard from './components/Dashboard'
 import Profile from './components/Profile'
 import SignIn from './components/SignIn'
 
 function App() {
   return (
-    <AsgardeoProvider
-      baseUrl="https://api.asgardeo.io/t/your-org"
+    <ThunderIDProvider
+      baseUrl="https://localhost:8090"
       clientId="your-client-id"
-      platform="AsgardeoV2"
     >
       <BrowserRouter>
         <Routes>
@@ -67,7 +66,7 @@ function App() {
           />
         </Routes>
       </BrowserRouter>
-    </AsgardeoProvider>
+    </ThunderIDProvider>
   )
 }
 
@@ -79,7 +78,7 @@ export default App
 You can customize the behavior of `ProtectedRoute` with custom fallback components and loading states:
 
 ```tsx title="src/App.tsx" showLineNumbers
-import { ProtectedRoute } from '@asgardeo/react-router'
+import { ProtectedRoute } from '@thunderid/react-router'
 
 // Redirect to custom login page
 <Route
@@ -124,7 +123,7 @@ import { ProtectedRoute } from '@asgardeo/react-router'
 Protect multiple routes using a shared layout:
 
 ```tsx title="src/App.tsx" showLineNumbers
-import { ProtectedRoute } from '@asgardeo/react-router'
+import { ProtectedRoute } from '@thunderid/react-router'
 
 function App() {
   return (

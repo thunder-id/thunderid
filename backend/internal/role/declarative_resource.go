@@ -24,10 +24,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/log"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 const (
@@ -37,12 +37,13 @@ const (
 
 // roleExporter implements declarativeresource.ResourceExporter for roles.
 type roleExporter struct {
-	service RoleServiceInterface
+	service           RoleServiceInterface
+	assignmentService RoleAssignmentServiceInterface
 }
 
 // newRoleExporter creates a new role exporter.
-func newRoleExporter(service RoleServiceInterface) *roleExporter {
-	return &roleExporter{service: service}
+func newRoleExporter(service RoleServiceInterface, assignmentService RoleAssignmentServiceInterface) *roleExporter {
+	return &roleExporter{service: service, assignmentService: assignmentService}
 }
 
 // GetResourceType returns the resource type for roles.
@@ -286,7 +287,7 @@ func (e *roleExporter) getAllRoleAssignments(
 	assignments := []RoleAssignment{}
 
 	for {
-		list, err := e.service.GetRoleAssignments(ctx, roleID, limit, offset, false)
+		list, err := e.assignmentService.GetRoleAssignments(ctx, roleID, limit, offset, false)
 		if err != nil {
 			return nil, err
 		}

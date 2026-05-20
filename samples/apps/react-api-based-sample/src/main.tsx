@@ -18,7 +18,7 @@
 
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { RouterProvider } from "@tanstack/react-router";
+import { RouterProvider } from "react-router";
 import { OxygenUIThemeProvider } from "@wso2/oxygen-ui";
 import { router } from "./router";
 import { loadConfig } from "./config";

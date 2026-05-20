@@ -30,10 +30,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	"github.com/asgardeo/thunder/internal/system/error/apierror"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 type OrganizationUnitHandlerTestSuite struct {
@@ -189,7 +189,10 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_RegisterRoutes() {
 			path:   "/organization-units/ou-123/ous",
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
-					On("GetOrganizationUnitChildren", mock.Anything, "ou-123", serverconst.DefaultPageSize, 0).
+					On(
+						"GetOrganizationUnitChildren", mock.Anything, "ou-123",
+						serverconst.DefaultPageSize, 0, mock.Anything,
+					).
 					Return(&OrganizationUnitListResponse{}, nil).
 					Once()
 			},
@@ -270,7 +273,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUListRequest
 			url:  "/organization-units?limit=3&offset=2",
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
-					On("GetOrganizationUnitList", mock.Anything, 3, 2).
+					On("GetOrganizationUnitList", mock.Anything, 3, 2, mock.Anything).
 					Return(&OrganizationUnitListResponse{
 						TotalResults: 4,
 						Count:        2,
@@ -295,7 +298,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUListRequest
 			url:  "/organization-units?offset=1",
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
-					On("GetOrganizationUnitList", mock.Anything, serverconst.DefaultPageSize, 1).
+					On("GetOrganizationUnitList", mock.Anything, serverconst.DefaultPageSize, 1, mock.Anything).
 					Return(&OrganizationUnitListResponse{}, nil).
 					Once()
 			},
@@ -330,11 +333,24 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUListRequest
 			},
 		},
 		{
+			name: "invalid filter",
+			url:  "/organization-units?filter=invalid",
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusBadRequest, recorder.Code)
+				var body apierror.ErrorResponse
+				suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &body))
+				suite.Equal(ErrorInvalidFilter.Code, body.Code)
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.AssertNotCalled(suite.T(), "GetOrganizationUnitList", mock.Anything)
+			},
+		},
+		{
 			name: "service error",
 			url:  "/organization-units",
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
-					On("GetOrganizationUnitList", mock.Anything, serverconst.DefaultPageSize, 0).
+					On("GetOrganizationUnitList", mock.Anything, serverconst.DefaultPageSize, 0, mock.Anything).
 					Return((*OrganizationUnitListResponse)(nil), &serviceerror.InternalServerError).
 					Once()
 			},
@@ -351,7 +367,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUListRequest
 			useFlaky: true,
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
-					On("GetOrganizationUnitList", mock.Anything, serverconst.DefaultPageSize, 0).
+					On("GetOrganizationUnitList", mock.Anything, serverconst.DefaultPageSize, 0, mock.Anything).
 					Return(&OrganizationUnitListResponse{}, nil).
 					Once()
 			},
@@ -1078,6 +1094,28 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUChildrenLis
 			},
 		},
 		{
+			name:           "invalid filter",
+			url:            "/organization-units/" + defaultOURequestID + "/ous?filter=invalid",
+			pathParamKey:   "id",
+			pathParamValue: defaultOURequestID,
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusBadRequest, recorder.Code)
+				var resp apierror.ErrorResponse
+				suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &resp))
+				suite.Equal(ErrorInvalidFilter.Code, resp.Code)
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.AssertNotCalled(
+					suite.T(),
+					"GetOrganizationUnitChildren",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				)
+			},
+		},
+		{
 			name:           "service error",
 			url:            "/organization-units/" + defaultOURequestID + "/ous",
 			pathParamKey:   "id",
@@ -1085,7 +1123,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUChildrenLis
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
 					On("GetOrganizationUnitChildren", mock.Anything,
-						defaultOURequestID, serverconst.DefaultPageSize, 0).
+						defaultOURequestID, serverconst.DefaultPageSize, 0, mock.Anything).
 					Return((*OrganizationUnitListResponse)(nil), &serviceerror.InternalServerError).
 					Once()
 			},
@@ -1105,7 +1143,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUChildrenLis
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
 					On("GetOrganizationUnitChildren", mock.Anything,
-						defaultOURequestID, serverconst.DefaultPageSize, 0).
+						defaultOURequestID, serverconst.DefaultPageSize, 0, mock.Anything).
 					Return(&OrganizationUnitListResponse{}, nil).
 					Once()
 			},
@@ -1121,7 +1159,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUChildrenLis
 			pathParamValue: defaultOURequestID,
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
-					On("GetOrganizationUnitChildren", mock.Anything, defaultOURequestID, 2, 1).
+					On("GetOrganizationUnitChildren", mock.Anything, defaultOURequestID, 2, 1, mock.Anything).
 					Return(&OrganizationUnitListResponse{TotalResults: 1}, nil).
 					Once()
 			},
@@ -1163,6 +1201,28 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUChildrenLis
 			},
 		},
 		{
+			name:           "path invalid filter",
+			url:            "/organization-units/tree/" + defaultOUPath + "/ous?filter=invalid",
+			pathParamKey:   "path",
+			pathParamValue: defaultOUPath,
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusBadRequest, recorder.Code)
+				var resp apierror.ErrorResponse
+				suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &resp))
+				suite.Equal(ErrorInvalidFilter.Code, resp.Code)
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.AssertNotCalled(
+					suite.T(),
+					"GetOrganizationUnitChildrenByPath",
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				)
+			},
+		},
+		{
 			name:           "path success",
 			url:            "/organization-units/tree/" + defaultOUPath + "/ous",
 			pathParamKey:   "path",
@@ -1170,7 +1230,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUChildrenLis
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
 					On("GetOrganizationUnitChildrenByPath", mock.Anything,
-						defaultOUPath, serverconst.DefaultPageSize, 0).
+						defaultOUPath, serverconst.DefaultPageSize, 0, mock.Anything).
 					Return(&OrganizationUnitListResponse{TotalResults: 2, Count: 2}, nil).
 					Once()
 			},
@@ -1866,4 +1926,54 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUGroupsListR
 		func(handler *organizationUnitHandler, writer http.ResponseWriter, req *http.Request) {
 			handler.HandleOUGroupsListRequest(writer, req)
 		})
+}
+
+func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_handleErrorStatusMapping() {
+	handler := newOrganizationUnitHandler(NewOrganizationUnitServiceInterfaceMock(suite.T()))
+
+	tests := []struct {
+		name       string
+		err        *serviceerror.ServiceError
+		wantStatus int
+	}{
+		{
+			name:       "not found maps 404",
+			err:        &ErrorOrganizationUnitNotFound,
+			wantStatus: http.StatusNotFound,
+		},
+		{
+			name:       "name conflict maps 409",
+			err:        &ErrorOrganizationUnitNameConflict,
+			wantStatus: http.StatusConflict,
+		},
+		{
+			name:       "unauthorized maps 403",
+			err:        &serviceerror.ErrorUnauthorized,
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "invalid filter maps 400",
+			err:        &ErrorInvalidFilter,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "server error maps 500",
+			err:        &serviceerror.InternalServerError,
+			wantStatus: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		suite.Run(tc.name, func() {
+			recorder := httptest.NewRecorder()
+
+			handler.handleError(recorder, tc.err)
+
+			suite.Equal(tc.wantStatus, recorder.Code)
+			var body apierror.ErrorResponse
+			suite.NoError(json.Unmarshal(recorder.Body.Bytes(), &body))
+			suite.Equal(tc.err.Code, body.Code)
+		})
+	}
 }

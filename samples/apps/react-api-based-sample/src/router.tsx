@@ -16,56 +16,22 @@
  * under the License.
  */
 
-import {
-  createRootRoute,
-  createRoute,
-  createRouter,
-} from "@tanstack/react-router";
+import { createBrowserRouter } from "react-router";
 import Layout from "./components/Layout";
 import HomePage from "./pages/HomePage";
 import DashboardPage from "./pages/DashboardPage";
 import SignInPage from "./pages/SignInPage";
 import SignUpPage from "./pages/SignUpPage";
 
-const rootRoute = createRootRoute({
-  component: Layout,
-});
-
-const indexRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/",
-  component: HomePage,
-});
-
-const dashboardRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/dashboard",
-  component: DashboardPage,
-});
-
-const signInRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/sign-in",
-  component: SignInPage,
-});
-
-const signUpRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/sign-up",
-  component: SignUpPage,
-});
-
-const routeTree = rootRoute.addChildren([
-  indexRoute,
-  dashboardRoute,
-  signInRoute,
-  signUpRoute,
+export const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <Layout />,
+    children: [
+      { index: true, element: <HomePage /> },
+      { path: "dashboard", element: <DashboardPage /> },
+      { path: "sign-in", element: <SignInPage /> },
+      { path: "sign-up", element: <SignUpPage /> },
+    ],
+  },
 ]);
-
-export const router = createRouter({ routeTree });
-
-declare module "@tanstack/react-router" {
-  interface Register {
-    router: typeof router;
-  }
-}

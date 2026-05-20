@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, useQueryClient} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import {I18nQueryKeys} from '@thunderid/i18n';
@@ -68,7 +68,7 @@ export interface I18nProviderProps {
  */
 function I18nProvider({children}: I18nProviderProps): ReactElement {
   const {i18n} = useTranslation();
-  const {http} = useAsgardeo() as unknown as {
+  const {http} = useThunderID() as unknown as {
     http: {
       request: (config: {
         url: string;

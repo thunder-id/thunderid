@@ -21,26 +21,34 @@ package mgt
 import (
 	"net/http"
 
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/middleware"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
 // Initialize initializes the i18n service and registers its routes.
 func Initialize(mux *http.ServeMux) (I18nServiceInterface, declarativeresource.ResourceExporter, error) {
 	var store i18nStoreInterface
-	if declarativeresource.IsDeclarativeModeEnabled() {
-		store = newFileBasedStore()
-	} else {
+
+	storeMode := getI18nStoreMode()
+	switch storeMode {
+	case serverconst.StoreModeDeclarative:
+		fileStore := newFileBasedStore()
+		if err := loadDeclarativeResources(fileStore); err != nil {
+			return nil, nil, err
+		}
+		store = fileStore
+	case serverconst.StoreModeComposite:
+		fileStore := newFileBasedStore()
+		if err := loadDeclarativeResources(fileStore); err != nil {
+			return nil, nil, err
+		}
+		store = newCompositeI18nStore(fileStore, newI18nStore())
+	default:
 		store = newI18nStore()
 	}
 
 	service := newI18nService(store)
-
-	if declarativeresource.IsDeclarativeModeEnabled() {
-		if err := loadDeclarativeResources(store); err != nil {
-			return nil, nil, err
-		}
-	}
 
 	handler := newI18nHandler(service)
 	registerRoutes(mux, handler)

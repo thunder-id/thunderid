@@ -1,0 +1,125 @@
+---
+title: Event Hooks
+displayed_sidebar: browserSdkSidebar
+description: Register callbacks for authentication lifecycle events
+---
+
+# Event Hooks
+
+The Browser SDK provides an event-driven system for reacting to authentication lifecycle events. Register callbacks using the `on()` method to respond to sign-in, sign-out, HTTP request events, and more.
+
+## Usage
+
+```js
+import { Hooks } from '@thunderid/browser'
+
+auth.on(Hooks.SignIn, (user) => {
+  console.log('User signed in:', user.displayName)
+})
+
+auth.on(Hooks.SignOut, () => {
+  console.log('User signed out')
+  window.location.href = '/'
+})
+```
+
+## `on(hook, callback, id?)`
+
+Register a callback for an authentication lifecycle event.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `hook` | `string` | The event hook name (use the `Hooks` enum) |
+| `callback` | `(response?) => void` | Function to call when the event fires |
+| `id` | `string` | Optional identifier, required for `Hooks.CustomGrant` to distinguish between multiple grants |
+
+**Returns:** `Promise<void>`
+
+## Available Hooks
+
+| Hook | Callback Signature | Description |
+|------|-------------------|-------------|
+| `Hooks.SignIn` | `(user: User) => void` | Fires when a user signs in |
+| `Hooks.SignOut` | `() => void` | Fires when a user signs out |
+| `Hooks.SignOutFailed` | `(error: SignOutError) => void` | Fires when a sign-out attempt fails |
+| `Hooks.Initialize` | `(success: boolean) => void` | Fires when the SDK completes initialization |
+| `Hooks.HttpRequestStart` | `() => void` | Fires when an authenticated HTTP request begins |
+| `Hooks.HttpRequestFinish` | `() => void` | Fires when an authenticated HTTP request completes |
+| `Hooks.HttpRequestError` | `(error: HttpError) => void` | Fires when an authenticated HTTP request fails |
+| `Hooks.RevokeAccessToken` | `(response) => void` | Fires when an access token is revoked |
+| `Hooks.CustomGrant` | `(response) => void` | Fires when a custom grant exchange completes |
+
+## Examples
+
+### Handle Sign-In
+
+```js
+import { Hooks } from '@thunderid/browser'
+
+auth.on(Hooks.SignIn, (user) => {
+  document.querySelector('#welcome').textContent =
+    `Welcome, ${user.displayName}!`
+})
+```
+
+### Handle Sign-Out
+
+```js
+auth.on(Hooks.SignOut, () => {
+  window.location.href = '/signed-out'
+})
+```
+
+### Handle Sign-Out Failures
+
+```js
+auth.on(Hooks.SignOutFailed, (error) => {
+  console.error('Sign-out failed:', error)
+})
+```
+
+### Track HTTP Requests
+
+```js
+auth.on(Hooks.HttpRequestStart, () => {
+  document.querySelector('#spinner').style.display = 'block'
+})
+
+auth.on(Hooks.HttpRequestFinish, () => {
+  document.querySelector('#spinner').style.display = 'none'
+})
+
+auth.on(Hooks.HttpRequestError, (error) => {
+  console.error('API request failed:', error)
+})
+```
+
+### Handle Initialization
+
+```js
+auth.on(Hooks.Initialize, (success) => {
+  if (success) {
+    console.log('SDK initialized')
+  }
+})
+```
+
+## Hook Constants
+
+Import the `Hooks` enum for type-safe hook names:
+
+```js
+import { Hooks } from '@thunderid/browser'
+```
+
+| Enum Value | String Value |
+|------------|-------------|
+| `Hooks.SignIn` | `'sign-in'` |
+| `Hooks.SignOut` | `'sign-out'` |
+| `Hooks.SignOutFailed` | `'sign-out-failed'` |
+| `Hooks.Initialize` | `'initialize'` |
+| `Hooks.HttpRequestStart` | `'http-request-start'` |
+| `Hooks.HttpRequestFinish` | `'http-request-finish'` |
+| `Hooks.HttpRequestError` | `'http-request-error'` |
+| `Hooks.RevokeAccessToken` | `'revoke-access-token'` |
+| `Hooks.CustomGrant` | `'custom-grant'` |

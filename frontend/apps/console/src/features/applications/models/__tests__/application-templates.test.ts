@@ -22,6 +22,10 @@ import type {IntegrationGuide, IntegrationStepCode} from '../application-templat
 
 describe('Application Templates Models', () => {
   describe('TechnologyApplicationTemplate', () => {
+    it('should have EXPRESS template', () => {
+      expect(TechnologyApplicationTemplate.EXPRESS).toBe('EXPRESS');
+    });
+
     it('should have REACT template', () => {
       expect(TechnologyApplicationTemplate.REACT).toBe('REACT');
     });
@@ -30,12 +34,16 @@ describe('Application Templates Models', () => {
       expect(TechnologyApplicationTemplate.NEXTJS).toBe('NEXTJS');
     });
 
+    it('should have VANILLA_JS template', () => {
+      expect(TechnologyApplicationTemplate.VANILLA_JS).toBe('VANILLA_JS');
+    });
+
     it('should have OTHER template', () => {
       expect(TechnologyApplicationTemplate.OTHER).toBe('OTHER');
     });
 
     it('should have all expected properties', () => {
-      const expectedKeys = ['REACT', 'NEXTJS', 'OTHER'];
+      const expectedKeys = ['REACT', 'EXPRESS', 'NEXTJS', 'VANILLA_JS', 'OTHER'];
 
       expect(Object.keys(TechnologyApplicationTemplate)).toEqual(expectedKeys);
     });

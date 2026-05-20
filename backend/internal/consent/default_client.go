@@ -29,12 +29,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	sysconst "github.com/asgardeo/thunder/internal/system/constants"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	httpservice "github.com/asgardeo/thunder/internal/system/http"
-	"github.com/asgardeo/thunder/internal/system/log"
-	sysutils "github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	sysconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // External service endpoints.
@@ -887,10 +887,63 @@ func (c *defaultClient) dtoToConsentPurpose(dto *purposeResponseDTO) ConsentPurp
 		Name:        dto.Name,
 		Description: dto.Description,
 		GroupID:     dto.ClientID,
+		Namespace:   NamespaceFromPurposeName(dto.Name),
 		Elements:    elements,
 		CreatedTime: dto.CreatedTime,
 		UpdatedTime: dto.UpdatedTime,
 	}
+}
+
+// Consent-purpose name prefixes. Each server-owned purpose is named `<prefix><appID>`; the prefix
+// doubles as the namespace discriminator on reads since the upstream consent service has no
+// `namespace` field on purposes.
+const (
+	attributesPurposeNamePrefix  = "attributes:"
+	permissionsPurposeNamePrefix = "permissions:"
+)
+
+// AttributesPurposeName returns the canonical name of the attribute consent purpose for an app.
+func AttributesPurposeName(appID string) string {
+	return attributesPurposeNamePrefix + appID
+}
+
+// PermissionsPurposeName returns the canonical name of the permission consent purpose for an app.
+func PermissionsPurposeName(appID string) string {
+	return permissionsPurposeNamePrefix + appID
+}
+
+// NamespaceFromPurposeName derives the purpose namespace from the name prefix. Returns empty
+// for names without a recognized prefix; callers filter such purposes out.
+func NamespaceFromPurposeName(name string) Namespace {
+	switch {
+	case strings.HasPrefix(name, permissionsPurposeNamePrefix):
+		return NamespacePermission
+	case strings.HasPrefix(name, attributesPurposeNamePrefix):
+		return NamespaceAttribute
+	default:
+		return ""
+	}
+}
+
+// FilterAttributePurposes returns only the attribute-namespace consent purposes.
+func FilterAttributePurposes(purposes []ConsentPurpose) []ConsentPurpose {
+	return filterPurposesByNamespace(purposes, NamespaceAttribute)
+}
+
+// FilterPermissionPurposes returns only the permission-namespace consent purposes.
+func FilterPermissionPurposes(purposes []ConsentPurpose) []ConsentPurpose {
+	return filterPurposesByNamespace(purposes, NamespacePermission)
+}
+
+// filterPurposesByNamespace returns the subset of purposes whose Namespace matches ns.
+func filterPurposesByNamespace(purposes []ConsentPurpose, ns Namespace) []ConsentPurpose {
+	out := make([]ConsentPurpose, 0, len(purposes))
+	for _, p := range purposes {
+		if p.Namespace == ns {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // consentAuthorizationRequestToDTO converts a ConsentAuthorizationRequest to authorizationRequestDTO for API requests.

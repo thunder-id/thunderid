@@ -21,9 +21,9 @@ package ou
 import (
 	"errors"
 
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/i18n/core"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 // Client errors for organization unit management operations.
@@ -195,6 +195,19 @@ var (
 		ErrorDescription: core.I18nMessage{
 			Key:          "error.ouservice.result_limit_exceeded_description",
 			DefaultValue: serverconst.CompositeStoreLimitWarning,
+		},
+	}
+	// ErrorInvalidFilter is the error returned when the filter parameter is invalid.
+	ErrorInvalidFilter = serviceerror.ServiceError{
+		Type: serviceerror.ClientErrorType,
+		Code: "OU-1014",
+		Error: core.I18nMessage{
+			Key:          "error.ouservice.invalid_filter",
+			DefaultValue: "Invalid filter parameter",
+		},
+		ErrorDescription: core.I18nMessage{
+			Key:          "error.ouservice.invalid_filter_description",
+			DefaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\"",
 		},
 	}
 )

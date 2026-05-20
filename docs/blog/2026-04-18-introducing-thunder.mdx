@@ -1,0 +1,78 @@
+---
+slug: introducing-{{productSlug}}
+title: "ThunderID: The Open Source IAM Stack Built for Agents, Ready for Quantum, Open by Design"
+authors: [sagara]
+tags: [thunderid, identity, security, "2026"]
+---
+
+Open source IAM has shaped identity infrastructure for decades. It gave real alternatives to proprietary software, made identity tooling free and accessible to anyone. That work mattered, and it still does.
+
+Most of the open source IAM projects out there started more than a decade ago, in a world where humans were the only intelligent actors in a system, machines followed instructions without reasoning about them, quantum computing was a research topic, distributed identity  infrastructure was still emerging, and deployment practices like GitOps didn't exist yet. The design decisions made then reflected that world well.
+
+That world has changed. AI agents are running in production, holding credentials, calling APIs, and acting on behalf of users and services. Cyberattacks such as **harvest-now-decrypt-later** and **trust-now-forge-later** are real. Digital wallet ecosystems are maturing, and modern teams use containerized deployments and practice GitOps. Open source IAM hasn't caught up, and that gap is real. <ProductName /> is our attempt to close it: a new open source IAM stack built from scratch, designed for the identity problems of this decade and the one that follows.
+
+<img src="/assets/images/logo-inverted.svg" alt="ThunderID Logo" style={{height: '75px', margin: '2rem 0'}} />
+
+The team at <a href="https://wso2.com" target="_blank" rel="noopener noreferrer">WSO2</a>, drawing on more than 15 years of experience building and running IAM software at scale, including <a href="https://github.com/wso2/product-is" target="_blank" rel="noopener noreferrer">WSO2 Identity Server</a>, started <ProductName />.
+
+<ProductName /> is designed around four pillars that address the gaps the current generation of open source IAM doesn't cover well. 
+
+## Agent-native Identity
+
+AI agents deserve their own notion of identity. Most existing IAM solutions treat an agent as a machine credential, a service account, or an application. <ProductName /> models AI agents as a distinct identity type, built into the foundation rather than added on top.
+
+What this means in practice:
+
+- Agents are modelled as a distinct identity type with their own lifecycle, supporting delegated authority, consent-aware access, and full traceability. 
+
+- IAM operations are exposed through APIs and MCP, so agent-driven workflows can interact with identity services programmatically.
+
+## Post-quantum-safe by Design
+
+RSA and ECDSA are the algorithms that form the backbone of today's PKI. Cyberattacks such as harvest-now-decrypt-later and trust-now-forge-later mean credentials and signed assertions issued today may need to remain valid and unforgeable well into the post-quantum window. <ProductName /> is crypto-agile by design: algorithms are configurable, not baked in.
+
+What this means in practice:
+
+- Post-quantum-safe algorithms including ML-KEM, ML-DSA, and SLH-DSA are supported as first-class options, with a hybrid mode for running classical and post-quantum algorithms in parallel during transition. 
+
+- Crypto-agility applies across the full runtime: key management, credential issuance, signed assertions, and service-to-service communication.
+
+## Decentralized Identity Integration
+
+Decentralized Identifiers (DID), verifiable credentials (VC), digital wallets, and trust registries are moving from specification into production. Among them, digital wallets are increasingly being adopted across personal and enterprise use cases, becoming an integral part of our lives. <ProductName /> is built to integrate with this ecosystem from the start, not to bolt it on later.
+
+What this means in practice:
+
+- Verifiable credential issuance and presentation, so you can issue credentials to digital wallets and accept presentations for authentication and registration without becoming a credential-format expert. 
+
+- Standard APIs covering issuer-verifier-holder interaction patterns for integration with DIDs, digital wallets, and trust registries.
+
+## Lightweight, high-performance runtime with GitOps support
+
+<ProductName /> is written in Go: high performance, low latency, small runtime footprint. It is headless and API-first, with built-in GitOps support.
+
+What this means in practice:
+
+- Headless and API-first: the console UI, SDKs, and end-user flows sit on top and are replaceable or white-labelable.  
+
+- Declarative configuration with built-in GitOps support: IAM definitions are versioned and deployed through the same pipelines as the rest of your platform, on-premises or in the cloud
+
+## Developer Experience
+
+<ProductName /> aims to provide an opinionated developer experience, with tools and SDKs targeting specific development roles such as application and API developers, AI agent developers, and IAM developers and architects.
+
+<ProductName /> ships framework-specific SDKs for React, Next.js, Vue.js, and Nuxt.js with pre-built components you can drop into an application like any other framework component, style with the rest of your UI, and use without dealing with the wire-level mechanics of OAuth 2.0, OpenID Connect, or token handling.
+
+If you work directly at the protocol level, the same flows are available through standard OAuth 2.0 and OpenID Connect. SDKs provide a quicker integration path; the underlying standards define the contract. Both approaches are supported equally.
+
+Beyond SDKs, <ProductName /> provides a console UI, RESTful APIs, server-side and client-side SDKs, and a flow engine and a visual flow designer for building login, registration, account recovery, and step-up authentication experiences without implementing each flow from scratch.
+
+AI agents in <ProductName /> are not only identities managed by the system. They are also actors that interact with it, performing development and operational tasks with a human in the loop. Core IAM operations such as issuing credentials, granting consent, evaluating policies, and executing flows are available through standard APIs and MCP, allowing agents to discover and invoke identity functions programmatically. These capabilities are also packaged as reusable skills, so agents can consume them without requiring each operation to be individually wrapped by the application.
+
+## Get Involved
+
+<ProductName /> is in active development and openly built. The best way to understand what it is and where it's going is to try it. 
+
+Start with the [getting started guide](/docs/next/guides/getting-started/get-thunderid). If you run into something that doesn't work, open a <RepoLink path="/issues">GitHub issue</RepoLink>. If you have questions, thoughts on the design, or want to follow the project's direction, join the conversation on <RepoLink path="/discussions">GitHub Discussions</RepoLink>.
+
+This project is shaped by the people who use it and contribute to it. We're glad you're here.

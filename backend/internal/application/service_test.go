@@ -21,7 +21,6 @@ package application
 import (
 	"context"
 	"encoding/json"
-
 	"errors"
 	"testing"
 
@@ -30,19 +29,20 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/application/model"
-	"github.com/asgardeo/thunder/internal/cert"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/inboundclient"
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-	oauth2const "github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	i18ncore "github.com/asgardeo/thunder/internal/system/i18n/core"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/tests/mocks/entityprovidermock"
-	"github.com/asgardeo/thunder/tests/mocks/inboundclientmock"
-	"github.com/asgardeo/thunder/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/internal/application/model"
+	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 const testServiceAppID = "app123"
@@ -153,6 +153,7 @@ func (suite *ServiceTestSuite) setupTestService() (
 	mockEntityProvider.On("UpdateSystemAttributes", mock.Anything, mock.Anything).Maybe().Return(noEPErr)
 	mockEntityProvider.On("UpdateSystemCredentials", mock.Anything, mock.Anything).Maybe().Return(noEPErr)
 	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
+	mockStore.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).Maybe().Return(nil)
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	mockOUService.On("IsOrganizationUnitExists", mock.Anything, mock.Anything).Maybe().Return(true, nil)
 	service := &applicationService{
@@ -892,7 +893,8 @@ func (suite *ServiceTestSuite) TestDeleteApplication_StoreError() {
 
 	service, mockStore := suite.setupTestService()
 
-	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(errors.New("store error"))
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).
+		Return(errors.New("internal server error"))
 
 	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
 
@@ -932,20 +934,26 @@ func (suite *ServiceTestSuite) TestDeleteApplication_CertError() {
 
 	service, mockStore := suite.setupTestService()
 
-	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).
-		Return(&inboundclient.CertOperationError{
-			Operation:  inboundclient.CertOpDelete,
-			RefType:    cert.CertificateReferenceTypeApplication,
-			Underlying: &serviceerror.ServiceError{Type: serviceerror.ClientErrorType},
-		})
+	certOpErr := &inboundclient.CertOperationError{
+		Operation: inboundclient.CertOpDelete,
+		RefType:   cert.CertificateReferenceTypeApplication,
+		Underlying: &serviceerror.ServiceError{
+			Type: serviceerror.ClientErrorType,
+			ErrorDescription: i18ncore.I18nMessage{
+				DefaultValue: "underlying",
+			},
+		},
+	}
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(certOpErr)
 
 	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
 
 	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), ErrorCertificateClientError.Code, svcErr.Code)
 }
 
-// TestDeleteApplication_OAuthCertError verifies that when OAuth app certificate deletion fails,
-// the error is properly propagated from DeleteApplication (covers deleteOAuthAppCertificate).
+// TestDeleteApplication_OAuthCertError verifies that when the inbound-client layer reports an
+// internal error from a certificate operation, DeleteApplication surfaces an internal server error.
 func (suite *ServiceTestSuite) TestDeleteApplication_OAuthCertError() {
 	testConfig := &config.Config{
 		DeclarativeResources: config.DeclarativeResources{
@@ -960,11 +968,7 @@ func (suite *ServiceTestSuite) TestDeleteApplication_OAuthCertError() {
 	service, mockStore := suite.setupTestService()
 
 	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).
-		Return(&inboundclient.CertOperationError{
-			Operation:  inboundclient.CertOpDelete,
-			RefType:    cert.CertificateReferenceTypeOAuthApp,
-			Underlying: &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, Code: "CERT-5001"},
-		})
+		Return(errors.New("internal server error"))
 
 	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
 
@@ -972,8 +976,8 @@ func (suite *ServiceTestSuite) TestDeleteApplication_OAuthCertError() {
 	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
 }
 
-// TestDeleteApplication_OAuthCertError_ClientError verifies that when OAuth app certificate deletion fails
-// with a client error, the error is properly propagated from DeleteApplication.
+// TestDeleteApplication_OAuthCertError_ClientError verifies that when the inbound-client layer
+// surfaces a cert operation client error, DeleteApplication maps it to ErrorCertificateClientError.
 func (suite *ServiceTestSuite) TestDeleteApplication_OAuthCertError_ClientError() {
 	testConfig := &config.Config{
 		DeclarativeResources: config.DeclarativeResources{
@@ -987,13 +991,18 @@ func (suite *ServiceTestSuite) TestDeleteApplication_OAuthCertError_ClientError(
 
 	service, mockStore := suite.setupTestService()
 
-	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).
-		Return(&inboundclient.CertOperationError{
-			Operation: inboundclient.CertOpDelete,
-			RefType:   cert.CertificateReferenceTypeOAuthApp,
-			Underlying: &serviceerror.ServiceError{Type: serviceerror.ClientErrorType,
-				Code: "CERT-1001", ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Invalid client ID"}},
-		})
+	certOpErr := &inboundclient.CertOperationError{
+		Operation: inboundclient.CertOpDelete,
+		RefType:   cert.CertificateReferenceTypeOAuthApp,
+		Underlying: &serviceerror.ServiceError{
+			Type: serviceerror.ClientErrorType,
+			ErrorDescription: i18ncore.I18nMessage{
+				Key:          "error.test.invalid_client_id",
+				DefaultValue: "Invalid client ID",
+			},
+		},
+	}
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(certOpErr)
 
 	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
 
@@ -1380,7 +1389,7 @@ func (suite *ServiceTestSuite) runCreateApplicationStoreErrorTest() {
 
 	mockStore.On("CreateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(errors.New("store error"))
+		mock.Anything, mock.Anything, mock.Anything).Return(errors.New("internal server error"))
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -1555,7 +1564,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_StoreErrorWithRollback() {
 	mockStore.On("UpdateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(errors.New("store error"))
+		Return(errors.New("internal server error"))
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, app)
 
@@ -1615,15 +1624,10 @@ func (suite *ServiceTestSuite) TestCreateApplication_CertificateCreationError() 
 		},
 	}
 
-	svcErrExpected := &serviceerror.ServiceError{Type: serviceerror.ServerErrorType}
 	mockStore.On("CreateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(&inboundclient.CertOperationError{
-			Operation:  inboundclient.CertOpCreate,
-			RefType:    cert.CertificateReferenceTypeApplication,
-			Underlying: svcErrExpected,
-		})
+		Return(errors.New("internal server error"))
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -1728,7 +1732,7 @@ func (suite *ServiceTestSuite) TestCreateApplication_StoreErrorWithOAuthCertRoll
 	// Store creation fails
 	mockStore.On("CreateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(errors.New("store error"))
+		mock.Anything, mock.Anything, mock.Anything).Return(errors.New("internal server error"))
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -1782,7 +1786,7 @@ func (suite *ServiceTestSuite) TestCreateApplication_StoreErrorWithBothAppAndOAu
 	// Store creation fails
 	mockStore.On("CreateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything).Return(errors.New("store error"))
+		mock.Anything, mock.Anything, mock.Anything).Return(errors.New("internal server error"))
 
 	result, svcErr := service.CreateApplication(context.Background(), app)
 
@@ -1939,23 +1943,12 @@ func (suite *ServiceTestSuite) TestUpdateApplication_AppCertificateUpdateError()
 		},
 	}
 
-	certServerError := &serviceerror.ServiceError{
-		Type:             serviceerror.ServerErrorType,
-		Code:             "CERT-5001",
-		Error:            i18ncore.I18nMessage{DefaultValue: "Database error"},
-		ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Failed to retrieve certificate from database"},
-	}
-
 	mockStore.On("IsDeclarative", mock.Anything, testServiceAppID).Maybe().Return(false)
 	mockLoadFullApplication(mockStore, service, existingApp)
 	mockStore.On("UpdateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&inboundclient.CertOperationError{
-			Operation:  inboundclient.CertOpRetrieve,
-			RefType:    cert.CertificateReferenceTypeApplication,
-			Underlying: certServerError,
-		})
+		Return(errors.New("internal server error"))
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, app)
 
@@ -2121,7 +2114,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_StoreFails_RollbackCertFail
 	mockStore.On("UpdateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(errors.New("store error"))
+		Return(errors.New("internal server error"))
 
 	result, svcErr := service.UpdateApplication(context.Background(), "app123", app)
 
@@ -2517,96 +2510,8 @@ func (suite *ServiceTestSuite) TestUpdateApplication_OAuthClientIDConflict() {
 
 // TestUpdateApplication_OAuthInvalidRedirectURI tests updating with an invalid redirect URI.
 
-// TestUpdateApplication_OAuthCertUpdateError tests when certificate update fails.
-func (suite *ServiceTestSuite) TestUpdateApplication_OAuthCertUpdateError() {
-	testConfig := &config.Config{
-		DeclarativeResources: config.DeclarativeResources{
-			Enabled: false,
-		},
-		JWT: config.JWTConfig{
-			ValidityPeriod: 3600,
-		},
-	}
-	config.ResetServerRuntime()
-	err := config.InitializeServerRuntime("/tmp/test", testConfig)
-	require.NoError(suite.T(), err)
-	defer config.ResetServerRuntime()
-
-	service, mockStore := suite.setupTestService()
-
-	existingApp := &model.ApplicationProcessedDTO{
-		ID:   testServiceAppID,
-		Name: "Test App",
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
-			AuthFlowID:         "auth-flow-id",
-			RegistrationFlowID: "reg-flow-id",
-		},
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigProcessed{
-			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthClient{
-					ClientID:                testClientID,
-					RedirectURIs:            []string{"https://example.com/callback"},
-					GrantTypes:              []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
-					ResponseTypes:           []oauth2const.ResponseType{oauth2const.ResponseTypeCode},
-					TokenEndpointAuthMethod: oauth2const.TokenEndpointAuthMethodPrivateKeyJWT,
-				},
-			},
-		},
-	}
-
-	updatedApp := &model.ApplicationDTO{
-		ID:   testServiceAppID,
-		Name: "Test App",
-		OUID: testOUID,
-		InboundAuthProfile: inboundmodel.InboundAuthProfile{
-			AuthFlowID:         "auth-flow-id",
-			RegistrationFlowID: "reg-flow-id",
-		},
-		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
-			{
-				Type: inboundmodel.OAuthInboundAuthType,
-				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
-					ClientID:                testClientID,
-					RedirectURIs:            []string{"https://example.com/callback"},
-					GrantTypes:              []oauth2const.GrantType{oauth2const.GrantTypeAuthorizationCode},
-					ResponseTypes:           []oauth2const.ResponseType{oauth2const.ResponseTypeCode},
-					TokenEndpointAuthMethod: oauth2const.TokenEndpointAuthMethodPrivateKeyJWT,
-					Certificate: &inboundmodel.Certificate{
-						Type:  cert.CertificateTypeJWKS,
-						Value: `{"keys":[{"kty":"RSA"}]}`,
-					},
-				},
-			},
-		},
-	}
-
-	certError := &serviceerror.ServiceError{
-		Type:             serviceerror.ServerErrorType,
-		Code:             "CERT-500",
-		Error:            i18ncore.I18nMessage{DefaultValue: "Internal certificate error"},
-		ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Failed to retrieve certificate"},
-	}
-
-	mockStore.On("IsDeclarative", mock.Anything, testServiceAppID).Maybe().Return(false)
-	mockLoadFullApplication(mockStore, service, existingApp)
-	mockStore.On("UpdateInboundClient",
-		mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(&inboundclient.CertOperationError{
-			Operation:  inboundclient.CertOpRetrieve,
-			RefType:    cert.CertificateReferenceTypeOAuthApp,
-			Underlying: certError,
-		})
-
-	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, updatedApp)
-
-	assert.Nil(suite.T(), result)
-	assert.NotNil(suite.T(), svcErr)
-	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
-}
-
-// TestUpdateApplication_OAuthStoreErrorWithRollback tests when store update fails with OAuth cert rollback.
+// TestUpdateApplication_OAuthStoreErrorWithRollback tests when the inbound-client update fails for an
+// OAuth application and the service surfaces an internal-server error.
 func (suite *ServiceTestSuite) TestUpdateApplication_OAuthStoreErrorWithRollback() {
 	testConfig := &config.Config{
 		DeclarativeResources: config.DeclarativeResources{
@@ -2677,7 +2582,7 @@ func (suite *ServiceTestSuite) TestUpdateApplication_OAuthStoreErrorWithRollback
 	mockStore.On("UpdateInboundClient",
 		mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(errors.New("store error"))
+		Return(errors.New("internal server error"))
 
 	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, updatedApp)
 
@@ -2842,50 +2747,56 @@ func (suite *ServiceTestSuite) TestValidateApplication_ErrorFromProcessInboundAu
 	assert.Equal(suite.T(), &ErrorInvalidInboundAuthConfig, svcErr)
 }
 
-// TestTranslateUserInfoValidationError_IDTokenUnsupportedEncryptionAlg tests the translation of
+// TestTranslateIDTokenValidationError_UnsupportedEncryptionAlg tests the translation of
 // ErrOAuthIDTokenUnsupportedEncryptionAlg to a ServiceError.
-func (suite *ServiceTestSuite) TestTranslateUserInfoValidationError_IDTokenUnsupportedEncryptionAlg() {
-	svcErr := translateUserInfoValidationError(inboundclient.ErrOAuthIDTokenUnsupportedEncryptionAlg)
+func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_UnsupportedEncryptionAlg() {
+	svcErr := (&applicationService{}).
+		translateInboundClientError(inboundclient.ErrOAuthIDTokenUnsupportedEncryptionAlg)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 }
 
-// TestTranslateUserInfoValidationError_IDTokenUnsupportedEncryptionEnc tests the translation of
+// TestTranslateIDTokenValidationError_UnsupportedEncryptionEnc tests the translation of
 // ErrOAuthIDTokenUnsupportedEncryptionEnc to a ServiceError.
-func (suite *ServiceTestSuite) TestTranslateUserInfoValidationError_IDTokenUnsupportedEncryptionEnc() {
-	svcErr := translateUserInfoValidationError(inboundclient.ErrOAuthIDTokenUnsupportedEncryptionEnc)
+func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_UnsupportedEncryptionEnc() {
+	svcErr := (&applicationService{}).
+		translateInboundClientError(inboundclient.ErrOAuthIDTokenUnsupportedEncryptionEnc)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 }
 
-// TestTranslateUserInfoValidationError_IDTokenEncryptionAlgRequiresEnc tests the translation of
+// TestTranslateIDTokenValidationError_EncryptionAlgRequiresEnc tests the translation of
 // ErrOAuthIDTokenEncryptionAlgRequiresEnc to a ServiceError.
-func (suite *ServiceTestSuite) TestTranslateUserInfoValidationError_IDTokenEncryptionAlgRequiresEnc() {
-	svcErr := translateUserInfoValidationError(inboundclient.ErrOAuthIDTokenEncryptionAlgRequiresEnc)
+func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_EncryptionAlgRequiresEnc() {
+	svcErr := (&applicationService{}).
+		translateInboundClientError(inboundclient.ErrOAuthIDTokenEncryptionAlgRequiresEnc)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 }
 
-// TestTranslateUserInfoValidationError_IDTokenEncryptionEncRequiresAlg tests the translation of
+// TestTranslateIDTokenValidationError_EncryptionEncRequiresAlg tests the translation of
 // ErrOAuthIDTokenEncryptionEncRequiresAlg to a ServiceError.
-func (suite *ServiceTestSuite) TestTranslateUserInfoValidationError_IDTokenEncryptionEncRequiresAlg() {
-	svcErr := translateUserInfoValidationError(inboundclient.ErrOAuthIDTokenEncryptionEncRequiresAlg)
+func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_EncryptionEncRequiresAlg() {
+	svcErr := (&applicationService{}).
+		translateInboundClientError(inboundclient.ErrOAuthIDTokenEncryptionEncRequiresAlg)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 }
 
-// TestTranslateUserInfoValidationError_IDTokenEncryptionRequiresCertificate tests the translation of
+// TestTranslateIDTokenValidationError_EncryptionRequiresCertificate tests the translation of
 // ErrOAuthIDTokenEncryptionRequiresCertificate to a ServiceError.
-func (suite *ServiceTestSuite) TestTranslateUserInfoValidationError_IDTokenEncryptionRequiresCertificate() {
-	svcErr := translateUserInfoValidationError(inboundclient.ErrOAuthIDTokenEncryptionRequiresCertificate)
+func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_EncryptionRequiresCertificate() {
+	svcErr := (&applicationService{}).translateInboundClientError(
+		inboundclient.ErrOAuthIDTokenEncryptionRequiresCertificate)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 }
 
-// TestTranslateUserInfoValidationError_IDTokenJWKSURINotSSRFSafe tests the translation of
+// TestTranslateIDTokenValidationError_JWKSURINotSSRFSafe tests the translation of
 // ErrOAuthIDTokenJWKSURINotSSRFSafe to a ServiceError.
-func (suite *ServiceTestSuite) TestTranslateUserInfoValidationError_IDTokenJWKSURINotSSRFSafe() {
-	svcErr := translateUserInfoValidationError(inboundclient.ErrOAuthIDTokenJWKSURINotSSRFSafe)
+func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_JWKSURINotSSRFSafe() {
+	svcErr := (&applicationService{}).
+		translateInboundClientError(inboundclient.ErrOAuthIDTokenJWKSURINotSSRFSafe)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 	assert.Equal(suite.T(),
@@ -3004,4 +2915,466 @@ func (s *AcrValidationTestSuite) TestIsValidACR_EmptyMapping() {
 	s.initRegistry(config.AuthClassConfig{})
 
 	s.False(isValidACR("urn:thunder:acr:password"))
+}
+
+func (suite *ServiceTestSuite) TestTranslateOAuthValidationError() {
+	cases := []struct {
+		name        string
+		err         error
+		wantCode    string
+		wantDescKey string
+	}{
+		{
+			name:     "InvalidRedirectURI",
+			err:      inboundclient.ErrOAuthInvalidRedirectURI,
+			wantCode: ErrorInvalidRedirectURI.Code,
+		},
+		{
+			name:        "RedirectURIFragmentNotAllowed",
+			err:         inboundclient.ErrOAuthRedirectURIFragmentNotAllowed,
+			wantCode:    ErrorInvalidRedirectURI.Code,
+			wantDescKey: "error.applicationservice.redirect_uri_fragment_not_allowed_description",
+		},
+		{
+			name:        "AuthCodeRequiresRedirectURIs",
+			err:         inboundclient.ErrOAuthAuthCodeRequiresRedirectURIs,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.auth_code_requires_redirect_uris_description",
+		},
+		{
+			name:     "InvalidGrantType",
+			err:      inboundclient.ErrOAuthInvalidGrantType,
+			wantCode: ErrorInvalidGrantType.Code,
+		},
+		{
+			name:     "InvalidResponseType",
+			err:      inboundclient.ErrOAuthInvalidResponseType,
+			wantCode: ErrorInvalidResponseType.Code,
+		},
+		{
+			name:        "ClientCredentialsCannotUseResponseTypes",
+			err:         inboundclient.ErrOAuthClientCredentialsCannotUseResponseTypes,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.client_credentials_cannot_use_response_types_description",
+		},
+		{
+			name:        "AuthCodeRequiresCodeResponseType",
+			err:         inboundclient.ErrOAuthAuthCodeRequiresCodeResponseType,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.auth_code_requires_code_response_type_description",
+		},
+		{
+			name:        "RefreshTokenCannotBeSoleGrant",
+			err:         inboundclient.ErrOAuthRefreshTokenCannotBeSoleGrant,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.refresh_token_cannot_be_sole_grant_description",
+		},
+		{
+			name:        "PKCERequiresAuthCode",
+			err:         inboundclient.ErrOAuthPKCERequiresAuthCode,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.pkce_requires_authorization_code_description",
+		},
+		{
+			name:        "ResponseTypesRequireAuthCode",
+			err:         inboundclient.ErrOAuthResponseTypesRequireAuthCode,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.response_types_require_authorization_code_description",
+		},
+		{
+			name:     "InvalidTokenEndpointAuthMethod",
+			err:      inboundclient.ErrOAuthInvalidTokenEndpointAuthMethod,
+			wantCode: ErrorInvalidTokenEndpointAuthMethod.Code,
+		},
+		{
+			name:        "PrivateKeyJWTRequiresCertificate",
+			err:         inboundclient.ErrOAuthPrivateKeyJWTRequiresCertificate,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.private_key_jwt_requires_certificate_description",
+		},
+		{
+			name:        "PrivateKeyJWTCannotHaveClientSecret",
+			err:         inboundclient.ErrOAuthPrivateKeyJWTCannotHaveClientSecret,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.private_key_jwt_cannot_have_client_secret_description",
+		},
+		{
+			name:        "ClientSecretCannotHaveCertificate",
+			err:         inboundclient.ErrOAuthClientSecretCannotHaveCertificate,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.client_secret_cannot_have_certificate_description",
+		},
+		{
+			name:        "NoneAuthRequiresPublicClient",
+			err:         inboundclient.ErrOAuthNoneAuthRequiresPublicClient,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.none_auth_method_requires_public_client_description",
+		},
+		{
+			name:        "NoneAuthCannotHaveCertOrSecret",
+			err:         inboundclient.ErrOAuthNoneAuthCannotHaveCertOrSecret,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.none_auth_method_cannot_have_cert_or_secret_description",
+		},
+		{
+			name:        "ClientCredentialsCannotUseNoneAuth",
+			err:         inboundclient.ErrOAuthClientCredentialsCannotUseNoneAuth,
+			wantCode:    ErrorInvalidOAuthConfiguration.Code,
+			wantDescKey: "error.applicationservice.client_credentials_cannot_use_none_auth_description",
+		},
+		{
+			name:        "PublicClientMustUseNoneAuth",
+			err:         inboundclient.ErrOAuthPublicClientMustUseNoneAuth,
+			wantCode:    ErrorInvalidPublicClientConfiguration.Code,
+			wantDescKey: "error.applicationservice.public_client_must_use_none_auth_description",
+		},
+		{
+			name:        "PublicClientMustHavePKCE",
+			err:         inboundclient.ErrOAuthPublicClientMustHavePKCE,
+			wantCode:    ErrorInvalidPublicClientConfiguration.Code,
+			wantDescKey: "error.applicationservice.public_client_must_have_pkce_description",
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svcErr := translateOAuthValidationError(tc.err)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.wantCode, svcErr.Code)
+			if tc.wantDescKey != "" {
+				suite.Equal(tc.wantDescKey, svcErr.ErrorDescription.Key)
+			}
+		})
+	}
+	suite.Nil(translateOAuthValidationError(errors.New("unknown")))
+}
+
+func (suite *ServiceTestSuite) TestTranslateUserInfoValidationError() {
+	cases := []struct {
+		name        string
+		err         error
+		wantDescKey string
+	}{
+		{
+			name:        "UnsupportedSigningAlg",
+			err:         inboundclient.ErrOAuthUserInfoUnsupportedSigningAlg,
+			wantDescKey: "error.applicationservice.userinfo_unsupported_signing_alg_description",
+		},
+		{
+			name:        "UnsupportedEncryptionAlg",
+			err:         inboundclient.ErrOAuthUserInfoUnsupportedEncryptionAlg,
+			wantDescKey: "error.applicationservice.userinfo_unsupported_encryption_alg_description",
+		},
+		{
+			name:        "UnsupportedEncryptionEnc",
+			err:         inboundclient.ErrOAuthUserInfoUnsupportedEncryptionEnc,
+			wantDescKey: "error.applicationservice.userinfo_unsupported_encryption_enc_description",
+		},
+		{
+			name:        "EncryptionAlgRequiresEnc",
+			err:         inboundclient.ErrOAuthUserInfoEncryptionAlgRequiresEnc,
+			wantDescKey: "error.applicationservice.userinfo_encryption_alg_requires_enc_description",
+		},
+		{
+			name:        "EncryptionEncRequiresAlg",
+			err:         inboundclient.ErrOAuthUserInfoEncryptionEncRequiresAlg,
+			wantDescKey: "error.applicationservice.userinfo_encryption_enc_requires_alg_description",
+		},
+		{
+			name:        "EncryptionRequiresCertificate",
+			err:         inboundclient.ErrOAuthUserInfoEncryptionRequiresCertificate,
+			wantDescKey: "error.applicationservice.userinfo_encryption_requires_certificate_description",
+		},
+		{
+			name:        "JWKSURINotSSRFSafe",
+			err:         inboundclient.ErrOAuthUserInfoJWKSURINotSSRFSafe,
+			wantDescKey: "error.applicationservice.userinfo_jwks_uri_not_ssrf_safe_description",
+		},
+		{
+			name:        "UnsupportedResponseType",
+			err:         inboundclient.ErrOAuthUserInfoUnsupportedResponseType,
+			wantDescKey: "error.applicationservice.userinfo_unsupported_response_type_description",
+		},
+		{
+			name:        "JWSRequiresSigningAlg",
+			err:         inboundclient.ErrOAuthUserInfoJWSRequiresSigningAlg,
+			wantDescKey: "error.applicationservice.userinfo_jws_requires_signing_alg_description",
+		},
+		{
+			name:        "JWERequiresEncryption",
+			err:         inboundclient.ErrOAuthUserInfoJWERequiresEncryption,
+			wantDescKey: "error.applicationservice.userinfo_jwe_requires_encryption_description",
+		},
+		{
+			name:        "NestedJWTRequiresAll",
+			err:         inboundclient.ErrOAuthUserInfoNestedJWTRequiresAll,
+			wantDescKey: "error.applicationservice.userinfo_nested_jwt_requires_all_description",
+		},
+		{
+			name:        "AlgRequiresResponseType",
+			err:         inboundclient.ErrOAuthUserInfoAlgRequiresResponseType,
+			wantDescKey: "error.applicationservice.userinfo_alg_requires_response_type_description",
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svcErr := translateUserInfoValidationError(tc.err)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
+			suite.Equal(tc.wantDescKey, svcErr.ErrorDescription.Key)
+		})
+	}
+	suite.Nil(translateUserInfoValidationError(errors.New("unknown")))
+}
+
+func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError() {
+	cases := []struct {
+		name        string
+		err         error
+		wantDescKey string
+	}{
+		{
+			name:        "EncryptionFieldsNotAllowed",
+			err:         inboundclient.ErrOAuthIDTokenEncryptionFieldsNotAllowed,
+			wantDescKey: "error.applicationservice.idtoken_encryption_fields_not_allowed_description",
+		},
+		{
+			name:        "UnsupportedResponseType",
+			err:         inboundclient.ErrOAuthIDTokenUnsupportedResponseType,
+			wantDescKey: "error.applicationservice.idtoken_unsupported_response_type_description",
+		},
+		{
+			name:        "UnsupportedEncryptionAlg",
+			err:         inboundclient.ErrOAuthIDTokenUnsupportedEncryptionAlg,
+			wantDescKey: "error.applicationservice.idtoken_unsupported_encryption_alg_description",
+		},
+		{
+			name:        "UnsupportedEncryptionEnc",
+			err:         inboundclient.ErrOAuthIDTokenUnsupportedEncryptionEnc,
+			wantDescKey: "error.applicationservice.idtoken_unsupported_encryption_enc_description",
+		},
+		{
+			name:        "EncryptionAlgRequiresEnc",
+			err:         inboundclient.ErrOAuthIDTokenEncryptionAlgRequiresEnc,
+			wantDescKey: "error.applicationservice.idtoken_encryption_alg_requires_enc_description",
+		},
+		{
+			name:        "EncryptionEncRequiresAlg",
+			err:         inboundclient.ErrOAuthIDTokenEncryptionEncRequiresAlg,
+			wantDescKey: "error.applicationservice.idtoken_encryption_enc_requires_alg_description",
+		},
+		{
+			name:        "EncryptionRequiresCertificate",
+			err:         inboundclient.ErrOAuthIDTokenEncryptionRequiresCertificate,
+			wantDescKey: "error.applicationservice.idtoken_encryption_requires_certificate_description",
+		},
+		{
+			name:        "JWKSURINotSSRFSafe",
+			err:         inboundclient.ErrOAuthIDTokenJWKSURINotSSRFSafe,
+			wantDescKey: "error.applicationservice.idtoken_jwks_uri_not_ssrf_safe_description",
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svcErr := translateIDTokenValidationError(tc.err)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
+			suite.Equal(tc.wantDescKey, svcErr.ErrorDescription.Key)
+		})
+	}
+	suite.Nil(translateIDTokenValidationError(errors.New("unknown")))
+}
+
+func (suite *ServiceTestSuite) TestTranslateInboundClientFKError() {
+	cases := []struct {
+		name     string
+		err      error
+		wantCode string
+	}{
+		{
+			name:     "InvalidAuthFlow",
+			err:      inboundclient.ErrFKInvalidAuthFlow,
+			wantCode: ErrorInvalidAuthFlowID.Code,
+		},
+		{
+			name:     "InvalidRegistrationFlow",
+			err:      inboundclient.ErrFKInvalidRegistrationFlow,
+			wantCode: ErrorInvalidRegistrationFlowID.Code,
+		},
+		{
+			name:     "FlowDefinitionRetrievalFailed",
+			err:      inboundclient.ErrFKFlowDefinitionRetrievalFailed,
+			wantCode: ErrorWhileRetrievingFlowDefinition.Code,
+		},
+		{
+			name:     "FlowServerError",
+			err:      inboundclient.ErrFKFlowServerError,
+			wantCode: serviceerror.InternalServerError.Code,
+		},
+		{
+			name:     "ThemeNotFound",
+			err:      inboundclient.ErrFKThemeNotFound,
+			wantCode: ErrorThemeNotFound.Code,
+		},
+		{
+			name:     "LayoutNotFound",
+			err:      inboundclient.ErrFKLayoutNotFound,
+			wantCode: ErrorLayoutNotFound.Code,
+		},
+		{
+			name:     "InvalidUserType",
+			err:      inboundclient.ErrFKInvalidUserType,
+			wantCode: ErrorInvalidUserType.Code,
+		},
+		{
+			name:     "UserSchemaLookupFailed",
+			err:      inboundclient.ErrUserSchemaLookupFailed,
+			wantCode: serviceerror.InternalServerError.Code,
+		},
+		{
+			name:     "InvalidUserAttribute",
+			err:      inboundclient.ErrInvalidUserAttribute,
+			wantCode: ErrorInvalidUserAttribute.Code,
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svcErr := translateInboundClientFKError(tc.err)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.wantCode, svcErr.Code)
+		})
+	}
+	suite.Nil(translateInboundClientFKError(errors.New("unknown")))
+}
+
+func (suite *ServiceTestSuite) TestTranslateCertValidationError() {
+	cases := []struct {
+		name     string
+		err      error
+		wantCode string
+	}{
+		{
+			name:     "ValueRequired",
+			err:      inboundclient.ErrCertValueRequired,
+			wantCode: ErrorInvalidCertificateValue.Code,
+		},
+		{
+			name:     "InvalidJWKSURI",
+			err:      inboundclient.ErrCertInvalidJWKSURI,
+			wantCode: ErrorInvalidJWKSURI.Code,
+		},
+		{
+			name:     "InvalidType",
+			err:      inboundclient.ErrCertInvalidType,
+			wantCode: ErrorInvalidCertificateType.Code,
+		},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svcErr := translateCertValidationError(tc.err)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.wantCode, svcErr.Code)
+		})
+	}
+	suite.Nil(translateCertValidationError(errors.New("unknown")))
+}
+
+func (suite *ServiceTestSuite) TestTranslateConsentSyncError() {
+	clientErr := &inboundclient.ConsentSyncError{
+		Underlying: &serviceerror.ServiceError{Type: serviceerror.ClientErrorType, Code: "CONSENT-1234"},
+	}
+	svcErr := translateConsentSyncError(clientErr)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorConsentSyncFailed.Code, svcErr.Code)
+	suite.Equal("error.applicationservice.consent_sync_failed_description", svcErr.ErrorDescription.Key)
+	suite.Contains(svcErr.ErrorDescription.DefaultValue, "CONSENT-1234")
+
+	serverErr := &inboundclient.ConsentSyncError{
+		Underlying: &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, Code: "CONSENT-9000"},
+	}
+	suite.Equal(serviceerror.InternalServerError.Code, translateConsentSyncError(serverErr).Code)
+}
+
+// ----- validateApplicationFields handle resolution -----
+
+func (suite *ServiceTestSuite) TestValidateApplicationFields_OUHandleResolved() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	}
+	config.ResetServerRuntime()
+	require.NoError(suite.T(), config.InitializeServerRuntime("/tmp/test", testConfig))
+	defer config.ResetServerRuntime()
+
+	service, mockStore := suite.setupTestService()
+
+	ouMock := service.ouService.(*oumock.OrganizationUnitServiceInterfaceMock)
+	ouMock.On("GetOrganizationUnitByPath", mock.Anything, "default").
+		Return(oupkg.OrganizationUnit{ID: testOUID}, nil).Once()
+
+	app := &model.ApplicationDTO{
+		Name:     "test-app",
+		OUHandle: "default",
+	}
+
+	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Maybe().Return(nil)
+
+	svcErr := service.validateApplicationFields(context.Background(), app)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), testOUID, app.OUID)
+}
+
+func (suite *ServiceTestSuite) TestValidateApplicationFields_OUHandleNotFound() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	}
+	config.ResetServerRuntime()
+	require.NoError(suite.T(), config.InitializeServerRuntime("/tmp/test", testConfig))
+	defer config.ResetServerRuntime()
+
+	service, _ := suite.setupTestService()
+
+	ouMock := service.ouService.(*oumock.OrganizationUnitServiceInterfaceMock)
+	ouMock.On("GetOrganizationUnitByPath", mock.Anything, "bad-handle").
+		Return(oupkg.OrganizationUnit{}, &serviceerror.ServiceError{Code: "OUS-4004"}).Once()
+
+	app := &model.ApplicationDTO{
+		Name:     "test-app",
+		OUHandle: "bad-handle",
+	}
+
+	svcErr := service.validateApplicationFields(context.Background(), app)
+
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), ErrorInvalidRequestFormat.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestValidateApplicationFields_FlowHandleResolutionError() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	}
+	config.ResetServerRuntime()
+	require.NoError(suite.T(), config.InitializeServerRuntime("/tmp/test", testConfig))
+	defer config.ResetServerRuntime()
+
+	service, mockStore := suite.setupTestService()
+
+	// Remove the permissive ResolveInboundAuthProfileHandles mock and register an error one
+	for i, c := range mockStore.ExpectedCalls {
+		if c.Method == "ResolveInboundAuthProfileHandles" {
+			mockStore.ExpectedCalls = append(mockStore.ExpectedCalls[:i], mockStore.ExpectedCalls[i+1:]...)
+			break
+		}
+	}
+	mockStore.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).
+		Return(inboundclient.ErrFKInvalidAuthFlow).Once()
+
+	app := &model.ApplicationDTO{
+		Name: "test-app",
+		OUID: testOUID,
+	}
+
+	svcErr := service.validateApplicationFields(context.Background(), app)
+
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), ErrorInvalidRequestFormat.Code, svcErr.Code)
 }

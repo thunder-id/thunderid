@@ -59,7 +59,7 @@ vi.mock('@thunderid/logger/react', () => ({
 // Mock get OU hook
 const mockRefetch = vi.fn();
 const mockUseGetOrganizationUnit = vi.fn();
-vi.mock('../../api/useGetOrganizationUnit', () => ({
+vi.mock('@/api/useGetOrganizationUnit', () => ({
   default: () =>
     mockUseGetOrganizationUnit() as {
       data: OrganizationUnit | undefined;
@@ -71,7 +71,7 @@ vi.mock('../../api/useGetOrganizationUnit', () => ({
 
 // Mock update hook
 const mockMutateAsync = vi.fn();
-vi.mock('../../api/useUpdateOrganizationUnit', () => ({
+vi.mock('@/api/useUpdateOrganizationUnit', () => ({
   default: () => ({
     mutateAsync: mockMutateAsync,
     isPending: false,
@@ -80,7 +80,7 @@ vi.mock('../../api/useUpdateOrganizationUnit', () => ({
 
 // Mock delete hook
 const mockDeleteMutate = vi.fn();
-vi.mock('../../api/useDeleteOrganizationUnit', () => ({
+vi.mock('@/api/useDeleteOrganizationUnit', () => ({
   default: () => ({
     mutate: mockDeleteMutate,
     isPending: false,
@@ -88,21 +88,21 @@ vi.mock('../../api/useDeleteOrganizationUnit', () => ({
 }));
 
 // Mock child hooks
-vi.mock('../../api/useGetChildOrganizationUnits', () => ({
+vi.mock('@/api/useGetChildOrganizationUnits', () => ({
   default: () => ({
     data: {organizationUnits: [], totalResults: 0, startIndex: 1, count: 0},
     isLoading: false,
   }),
 }));
 
-vi.mock('../../api/useGetOrganizationUnitUsers', () => ({
+vi.mock('@/api/useGetOrganizationUnitUsers', () => ({
   default: () => ({
     data: {users: [], totalResults: 0, startIndex: 1, count: 0},
     isLoading: false,
   }),
 }));
 
-vi.mock('../../api/useGetOrganizationUnitGroups', () => ({
+vi.mock('@/api/useGetOrganizationUnitGroups', () => ({
   default: () => ({
     data: {groups: [], totalResults: 0, startIndex: 1, count: 0},
     isLoading: false,
@@ -110,16 +110,17 @@ vi.mock('../../api/useGetOrganizationUnitGroups', () => ({
 }));
 
 // Mock useOrganizationUnit hook
-vi.mock('../../contexts/useOrganizationUnit', () => ({
+vi.mock('@/contexts/useOrganizationUnit', () => ({
   default: () => ({
     resetTreeState: vi.fn(),
   }),
 }));
 
 // Mock useDataGridLocaleText
-vi.mock('@thunderid/hooks', () => ({
-  useDataGridLocaleText: () => ({}),
-}));
+vi.mock('@thunderid/hooks', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {...(actual as object), useDataGridLocaleText: () => ({})};
+});
 
 // Mock EmojiPicker
 vi.mock('@thunderid/components', async () => {

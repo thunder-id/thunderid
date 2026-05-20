@@ -7,10 +7,10 @@ package application
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/application/model"
-	model0 "github.com/asgardeo/thunder/internal/inboundclient/model"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/application/model"
+	model0 "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewApplicationServiceInterfaceMock creates a new instance of ApplicationServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

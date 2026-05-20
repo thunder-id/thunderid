@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import FlowQueryKeys from '../constants/flow-query-keys';
@@ -57,7 +57,7 @@ import FlowQueryKeys from '../constants/flow-query-keys';
  * ```
  */
 export default function useDeleteFlow(): UseMutationResult<void, Error, string> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
 

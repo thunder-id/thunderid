@@ -167,7 +167,7 @@ export default function HeroSection(): JSX.Element {
               animation: 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both',
             }}
           >
-            High-performance open-source identity stack, engineered for developers
+            High-performance open-source identity stack, engineered for developers.
           </Typography>
 
           {/* Buttons */}
@@ -179,7 +179,7 @@ export default function HeroSection(): JSX.Element {
           >
             <Button
               component={Link}
-              href="/docs/next/guides/getting-started/what-is-thunderid"
+              href="/docs/next/guides/getting-started/get-thunderid"
               variant="contained"
               color="primary"
               size="large"

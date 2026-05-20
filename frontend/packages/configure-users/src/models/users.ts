@@ -193,7 +193,7 @@ export interface UserTypeListResponse {
   totalResults: number;
   startIndex: number;
   count: number;
-  schemas: SchemaInterface[];
+  types: SchemaInterface[];
 }
 
 export interface SchemaInterface {

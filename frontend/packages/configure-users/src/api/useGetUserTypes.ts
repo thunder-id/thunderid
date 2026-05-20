@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import UserQueryKeys from '../constants/user-query-keys';
@@ -29,7 +29,7 @@ import type {SchemaListParams, UserTypeListResponse} from '../models/users';
  * @returns TanStack Query result object containing user type list data, loading state, and error information
  */
 export default function useGetUserTypes(params?: SchemaListParams): UseQueryResult<UserTypeListResponse> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const {limit, offset} = params ?? {};
 

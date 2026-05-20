@@ -32,9 +32,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/tests/mocks/httpmock"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 )
 
 const testBaseURL = "http://consent.example.com"
@@ -1717,4 +1717,33 @@ func (s *DefaultClientTestSuite) TestListConsentPurposes_WithGroupID_UsesClientI
 	s.Nil(svcErr)
 	s.Len(result, 1)
 	s.Equal("app-99", result[0].GroupID)
+}
+
+// ----- purpose name + type helpers -----
+
+func (s *DefaultClientTestSuite) TestNamespaceFromPurposeName() {
+	s.Equal(NamespaceAttribute, NamespaceFromPurposeName("attributes:app1"))
+	s.Equal(NamespaceAttribute, NamespaceFromPurposeName(AttributesPurposeName("app1")))
+	s.Equal(NamespacePermission, NamespaceFromPurposeName("permissions:app1"))
+	s.Equal(NamespacePermission, NamespaceFromPurposeName(PermissionsPurposeName("app1")))
+	s.Equal(Namespace(""), NamespaceFromPurposeName("custom-purpose"), "names without a recognized prefix return empty")
+	s.Equal(Namespace(""), NamespaceFromPurposeName(""))
+}
+
+func (s *DefaultClientTestSuite) TestAttributesPurposeName() {
+	s.Equal("attributes:app1", AttributesPurposeName("app1"))
+	s.Equal("attributes:", AttributesPurposeName(""))
+}
+
+func (s *DefaultClientTestSuite) TestFilterAttributePurposes() {
+	input := []ConsentPurpose{
+		{ID: "1", Namespace: NamespaceAttribute},
+		{ID: "2", Namespace: NamespacePermission},
+		{ID: "3", Namespace: ""},
+		{ID: "4", Namespace: NamespaceAttribute},
+	}
+	got := FilterAttributePurposes(input)
+	s.Len(got, 2)
+	s.Equal("1", got[0].ID)
+	s.Equal("4", got[1].ID)
 }

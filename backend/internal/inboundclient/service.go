@@ -26,24 +26,24 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/asgardeo/thunder/internal/cert"
-	"github.com/asgardeo/thunder/internal/consent"
-	layoutmgt "github.com/asgardeo/thunder/internal/design/layout/mgt"
-	thememgt "github.com/asgardeo/thunder/internal/design/theme/mgt"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/entitytype"
-	flowcommon "github.com/asgardeo/thunder/internal/flow/common"
-	flowmgt "github.com/asgardeo/thunder/internal/flow/mgt"
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-	oauth2const "github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
-	"github.com/asgardeo/thunder/internal/system/config"
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	syshttp "github.com/asgardeo/thunder/internal/system/http"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/security"
-	"github.com/asgardeo/thunder/internal/system/transaction"
-	sysutils "github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/consent"
+	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
+	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
+	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // InboundClientServiceInterface is the public API of the inbound client subsystem.
@@ -64,6 +64,9 @@ type InboundClientServiceInterface interface {
 	// Validate resolves flow defaults and validates FK constraints and OAuth profile without persisting.
 	Validate(ctx context.Context, client *inboundmodel.InboundClient,
 		oauthProfile *inboundmodel.OAuthProfile, hasClientSecret bool) error
+	// ResolveInboundAuthProfileHandles resolves flow handle fields in-place to their IDs.
+	// Only fields with an empty ID but a non-empty handle are resolved.
+	ResolveInboundAuthProfileHandles(ctx context.Context, profile *inboundmodel.InboundAuthProfile) error
 
 	// GetOAuthProfileByEntityID returns the stored OAuth profile for the given entity.
 	GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*inboundmodel.OAuthProfile, error)
@@ -285,6 +288,38 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 	return nil
 }
 
+// ResolveInboundAuthProfileHandles resolves flow handle fields to their IDs in-place.
+// Each handle is only resolved when the corresponding ID field is empty.
+func (s *inboundClientService) ResolveInboundAuthProfileHandles(
+	ctx context.Context, profile *inboundmodel.InboundAuthProfile,
+) error {
+	if s.flowMgt == nil {
+		return nil
+	}
+	if profile.AuthFlowID == "" && profile.AuthFlowHandle != "" {
+		flow, svcErr := s.flowMgt.GetFlowByHandle(ctx, profile.AuthFlowHandle, flowcommon.FlowTypeAuthentication)
+		if svcErr != nil {
+			return ErrFKInvalidAuthFlow
+		}
+		profile.AuthFlowID = flow.ID
+	}
+	if profile.RegistrationFlowID == "" && profile.RegistrationFlowHandle != "" {
+		flow, svcErr := s.flowMgt.GetFlowByHandle(ctx, profile.RegistrationFlowHandle, flowcommon.FlowTypeRegistration)
+		if svcErr != nil {
+			return ErrFKInvalidRegistrationFlow
+		}
+		profile.RegistrationFlowID = flow.ID
+	}
+	if profile.RecoveryFlowID == "" && profile.RecoveryFlowHandle != "" {
+		flow, svcErr := s.flowMgt.GetFlowByHandle(ctx, profile.RecoveryFlowHandle, flowcommon.FlowTypeRecovery)
+		if svcErr != nil {
+			return ErrFKInvalidRecoveryFlow
+		}
+		profile.RecoveryFlowID = flow.ID
+	}
+	return nil
+}
+
 // resolveClientID returns the OAuth client_id from an entity's system attributes, or "" if absent.
 func (s *inboundClientService) resolveClientID(entityID string) string {
 	if s.entityProvider == nil {
@@ -316,7 +351,7 @@ func (s *inboundClientService) DeleteInboundClient(ctx context.Context, entityID
 	oauthClientID := s.resolveClientID(entityID)
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if s.consentService != nil && s.consentService.IsEnabled() {
-			if err := s.syncDeleteConsent(txCtx, entityID); err != nil {
+			if err := s.syncConsentOnDelete(txCtx, entityID); err != nil {
 				return err
 			}
 		}
@@ -442,7 +477,8 @@ func BuildOAuthClient(entityID, clientID, ouID string, p *inboundmodel.OAuthProf
 	return client
 }
 
-// resolveFlowDefaults fills AuthFlowID and RegistrationFlowID with system defaults when empty.
+// resolveFlowDefaults fills AuthFlowID, RegistrationFlowID, and RecoveryFlowID with system
+// defaults when empty, using the auth flow's handle to locate matching flows of each type.
 func (s *inboundClientService) resolveFlowDefaults(ctx context.Context, c *inboundmodel.InboundClient) error {
 	if s.flowMgt == nil || c == nil {
 		return nil
@@ -474,6 +510,10 @@ func (s *inboundClientService) resolveFlowDefaults(ctx context.Context, c *inbou
 			return ErrFKFlowDefinitionRetrievalFailed
 		}
 		c.RegistrationFlowID = regFlow.ID
+	}
+	if c.RecoveryFlowID == "" {
+		// If a recovery flow is not defined, disable recovery flow for the application.
+		c.IsRecoveryFlowEnabled = false
 	}
 	return nil
 }
@@ -908,6 +948,9 @@ func (s *inboundClientService) validateFKs(ctx context.Context, c *inboundmodel.
 	if err := s.validateRegistrationFlowID(ctx, c.RegistrationFlowID); err != nil {
 		return err
 	}
+	if err := s.validateRecoveryFlowID(ctx, c.RecoveryFlowID); err != nil {
+		return err
+	}
 	if err := s.validateThemeID(c.ThemeID); err != nil {
 		return err
 	}
@@ -946,6 +989,21 @@ func (s *inboundClientService) validateRegistrationFlowID(ctx context.Context, f
 	}
 	if !valid {
 		return ErrFKInvalidRegistrationFlow
+	}
+	return nil
+}
+
+// validateRecoveryFlowID validates that the recovery flow ID exists and is of the correct type.
+func (s *inboundClientService) validateRecoveryFlowID(ctx context.Context, flowID string) error {
+	if flowID == "" || s.flowMgt == nil {
+		return nil
+	}
+	valid, svcErr := s.flowMgt.IsValidFlow(ctx, flowID, flowcommon.FlowTypeRecovery)
+	if svcErr != nil {
+		return ErrFKFlowServerError
+	}
+	if !valid {
+		return ErrFKInvalidRecoveryFlow
 	}
 	return nil
 }
@@ -993,11 +1051,11 @@ func (s *inboundClientService) validateAllowedUserTypes(
 				log.String("error", svcErr.Error.DefaultValue), log.String("code", svcErr.Code))
 			return ErrUserSchemaLookupFailed
 		}
-		for _, schema := range entityTypeList.Schemas {
+		for _, schema := range entityTypeList.Types {
 			existingUserTypes[schema.Name] = true
 		}
-		if len(entityTypeList.Schemas) == 0 ||
-			offset+len(entityTypeList.Schemas) >= entityTypeList.TotalResults {
+		if len(entityTypeList.Types) == 0 ||
+			offset+len(entityTypeList.Types) >= entityTypeList.TotalResults {
 			break
 		}
 		offset += limit
@@ -1239,7 +1297,7 @@ func resolveScopeClaims(in map[string][]string) map[string][]string {
 	return in
 }
 
-// syncConsentOnCreate creates consent purpose elements for a newly registered application.
+// syncConsentOnCreate creates the attribute consent purpose for a newly registered application.
 func (s *inboundClientService) syncConsentOnCreate(ctx context.Context,
 	entityID, entityName string, client *inboundmodel.InboundClient, profile *inboundmodel.OAuthProfile) error {
 	// TODO: Replace with the entity's actual OU when multi-OU consent is supported.
@@ -1256,9 +1314,10 @@ func (s *inboundClientService) syncConsentOnCreate(ctx context.Context,
 		return err
 	}
 	purpose := consent.ConsentPurposeInput{
-		Name:        entityName,
+		Name:        consent.AttributesPurposeName(entityID),
 		Description: "Consent purpose for application " + entityName,
 		GroupID:     entityID,
+		Namespace:   consent.NamespaceAttribute,
 		Elements:    attributesToPurposeElements(attrMap),
 	}
 	if _, err := s.consentService.CreateConsentPurpose(ctx, ouID, &purpose); err != nil {
@@ -1267,7 +1326,7 @@ func (s *inboundClientService) syncConsentOnCreate(ctx context.Context,
 	return nil
 }
 
-// syncConsentOnUpdate updates or creates the consent purpose for an existing application.
+// syncConsentOnUpdate updates or creates the attribute consent purpose for an existing application.
 func (s *inboundClientService) syncConsentOnUpdate(ctx context.Context,
 	entityID, entityName string, client *inboundmodel.InboundClient, profile *inboundmodel.OAuthProfile) error {
 	// TODO: Replace with the entity's actual OU when multi-OU consent is supported.
@@ -1282,16 +1341,18 @@ func (s *inboundClientService) syncConsentOnUpdate(ctx context.Context,
 			return err
 		}
 	}
-	existing, err := s.consentService.ListConsentPurposes(ctx, ouID, entityID)
+	allPurposes, err := s.consentService.ListConsentPurposes(ctx, ouID, entityID)
 	if err != nil {
 		return s.wrapConsentServiceError(err)
 	}
+	existing := consent.FilterAttributePurposes(allPurposes)
 	if len(existing) == 0 {
 		if len(newAttrs) > 0 {
 			purpose := consent.ConsentPurposeInput{
-				Name:        entityName,
+				Name:        consent.AttributesPurposeName(entityID),
 				Description: "Consent purpose for application " + entityName,
 				GroupID:     entityID,
+				Namespace:   consent.NamespaceAttribute,
 				Elements:    attributesToPurposeElements(newAttrs),
 			}
 			if _, createErr := s.consentService.CreateConsentPurpose(ctx, ouID, &purpose); createErr != nil {
@@ -1301,12 +1362,23 @@ func (s *inboundClientService) syncConsentOnUpdate(ctx context.Context,
 		return nil
 	}
 	if len(newAttrs) == 0 {
-		return s.syncDeleteConsent(ctx, entityID)
+		// No attributes requested; remove only the attribute purpose. The permission purpose, if any,
+		// is left alone — it has an independent lifecycle bound to the resource service.
+		if delErr := s.consentService.DeleteConsentPurpose(ctx, ouID, existing[0].ID); delErr != nil {
+			if delErr.Code == consent.ErrorDeletingConsentPurposeWithAssociatedRecords.Code {
+				s.logger.Warn("Cannot delete attribute consent purpose due to existing consents",
+					log.String("entityID", entityID))
+				return nil
+			}
+			return s.wrapConsentServiceError(delErr)
+		}
+		return nil
 	}
 	updated := consent.ConsentPurposeInput{
-		Name:        entityName,
+		Name:        consent.AttributesPurposeName(entityID),
 		Description: "Consent purpose for application " + entityName,
 		GroupID:     entityID,
+		Namespace:   consent.NamespaceAttribute,
 		Elements:    attributesToPurposeElements(newAttrs),
 	}
 	if _, updateErr := s.consentService.UpdateConsentPurpose(ctx, ouID, existing[0].ID, &updated); updateErr != nil {
@@ -1315,24 +1387,26 @@ func (s *inboundClientService) syncConsentOnUpdate(ctx context.Context,
 	return nil
 }
 
-// syncDeleteConsent removes the consent purpose for the given entity if it exists.
-func (s *inboundClientService) syncDeleteConsent(ctx context.Context, entityID string) error {
+// syncConsentOnDelete removes every consent purpose (attribute and permission) owned by the
+// application. Purposes that cannot be deleted because they are referenced by active consent
+// records are skipped with a warning.
+func (s *inboundClientService) syncConsentOnDelete(ctx context.Context, entityID string) error {
 	// TODO: Replace with the entity's actual OU when multi-OU consent is supported.
 	const ouID = "default"
 	purposes, err := s.consentService.ListConsentPurposes(ctx, ouID, entityID)
 	if err != nil {
 		return s.wrapConsentServiceError(err)
 	}
-	if len(purposes) == 0 {
-		return nil
-	}
-	if delErr := s.consentService.DeleteConsentPurpose(ctx, ouID, purposes[0].ID); delErr != nil {
-		if delErr.Code == consent.ErrorDeletingConsentPurposeWithAssociatedRecords.Code {
-			s.logger.Warn("Cannot delete consent purpose due to existing consents",
-				log.String("entityID", entityID))
-			return nil
+	for _, p := range purposes {
+		if delErr := s.consentService.DeleteConsentPurpose(ctx, ouID, p.ID); delErr != nil {
+			if delErr.Code == consent.ErrorDeletingConsentPurposeWithAssociatedRecords.Code {
+				s.logger.Warn("Cannot delete consent purpose due to existing consents",
+					log.String("entityID", entityID), log.String("purposeID", p.ID),
+					log.String("purposeNamespace", string(p.Namespace)))
+				continue
+			}
+			return s.wrapConsentServiceError(delErr)
 		}
-		return s.wrapConsentServiceError(delErr)
 	}
 	return nil
 }

@@ -29,7 +29,7 @@ vi.mock('react-i18next', () => ({
 type UserData = {name?: string; email?: string} | null;
 let mockUser: UserData = null;
 
-vi.mock('@asgardeo/react', () => ({
+vi.mock('@thunderid/react', () => ({
   User: ({children}: {children: (user: UserData) => React.ReactNode}) => <>{children(mockUser)}</>,
 }));
 

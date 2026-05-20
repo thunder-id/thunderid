@@ -215,15 +215,15 @@ func findDefaultAgentTypeID() (string, error) {
 	}
 
 	var list struct {
-		Schemas []struct {
+		Types []struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
-		} `json:"schemas"`
+		} `json:"types"`
 	}
 	if err := json.Unmarshal(body, &list); err != nil {
 		return "", fmt.Errorf("failed to parse list response: %w. Response: %s", err, string(body))
 	}
-	for _, s := range list.Schemas {
+	for _, s := range list.Types {
 		if s.Name == "default" {
 			return s.ID, nil
 		}
@@ -380,8 +380,10 @@ func CreateApplication(app Application) (string, error) {
 		"description":               app.Description,
 		"ouId":                      app.OUID,
 		"isRegistrationFlowEnabled": app.IsRegistrationFlowEnabled,
+		"isRecoveryFlowEnabled":     app.IsRecoveryFlowEnabled,
 		"authFlowId":                app.AuthFlowID,
 		"registrationFlowId":        app.RegistrationFlowID,
+		"recoveryFlowId":            app.RecoveryFlowID,
 		"inboundAuthConfig":         inboundAuthConfig,
 	}
 
@@ -1417,4 +1419,44 @@ func DeleteNotificationSender(senderID string) error {
 	}
 
 	return nil
+}
+
+// AuthenticateWithCredential authenticates a user via the credentials endpoint.
+// Returns (true, nil) on success, (false, nil) on auth failure, (false, err) on request error.
+func AuthenticateWithCredential(identifierKey, identifierValue, credentialKey, credentialValue string) (bool, error) {
+	reqBody := map[string]interface{}{
+		"identifiers": map[string]interface{}{
+			identifierKey: identifierValue,
+		},
+		"credentials": map[string]interface{}{
+			credentialKey: credentialValue,
+		},
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal auth request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/auth/credentials/authenticate", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return false, fmt.Errorf("failed to create auth request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("auth request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		return true, nil
+	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest {
+		return false, nil
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return false, fmt.Errorf("unexpected auth status %d: %s", resp.StatusCode, string(body))
 }

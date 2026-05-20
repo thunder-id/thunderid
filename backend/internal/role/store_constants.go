@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"strings"
 
-	dbmodel "github.com/asgardeo/thunder/internal/system/database/model"
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 )
 
 var (
@@ -108,6 +108,12 @@ var (
 		ID: "RLQ-ROLE_MGT-13",
 		Query: `DELETE FROM "ROLE_ASSIGNMENT" ` +
 			`WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $2 AND ASSIGNEE_ID = $3 AND DEPLOYMENT_ID = $4`,
+	}
+
+	// queryDeleteAllRoleAssignments deletes all assignments for a role (used for cascade delete).
+	queryDeleteAllRoleAssignments = dbmodel.DBQuery{
+		ID:    "RLQ-ROLE_MGT-19",
+		Query: `DELETE FROM "ROLE_ASSIGNMENT" WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
 	// queryCheckRoleNameExists checks if a role name already exists for a given organization unit.
@@ -297,6 +303,73 @@ func buildUserRolesQuery(
 
 	query := dbmodel.DBQuery{
 		ID:            "RLQ-ROLE_MGT-21",
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}
+
+	return query, args
+}
+
+// buildEntityRoleIDsQuery constructs a database-specific query to retrieve the IDs of roles
+// assigned to an entity directly and/or through group membership. Unlike buildUserRolesQuery
+// this does not join the ROLE table, so it returns assignments even when the role itself
+// lives only in a declarative file-based store. Used by the composite store to bridge the
+// gap between DB-stored assignments and file-stored role definitions for permission lookup.
+func buildEntityRoleIDsQuery(
+	entityID string,
+	groupIDs []string,
+	deploymentID string,
+) (dbmodel.DBQuery, []interface{}) {
+	baseQuery := `SELECT DISTINCT ra.ROLE_ID
+		FROM "ROLE_ASSIGNMENT" ra
+		WHERE ra.DEPLOYMENT_ID = $1 AND `
+
+	var postgresWhere []string
+	var sqliteWhere []string
+
+	argsCapacity := 1 + len(groupIDs)
+	if entityID != "" {
+		argsCapacity++
+	}
+	args := make([]interface{}, 0, argsCapacity)
+	args = append(args, deploymentID)
+	paramIndex := 2
+
+	if entityID != "" {
+		postgresWhere = append(postgresWhere,
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = $%d)", paramIndex))
+		sqliteWhere = append(sqliteWhere,
+			"(ra.ASSIGNEE_TYPE = 'entity' AND ra.ASSIGNEE_ID = ?)")
+		args = append(args, entityID)
+		paramIndex++
+	}
+
+	if len(groupIDs) > 0 {
+		groupPlaceholdersPostgres := make([]string, len(groupIDs))
+		groupPlaceholdersSqlite := make([]string, len(groupIDs))
+
+		for i, groupID := range groupIDs {
+			groupPlaceholdersPostgres[i] = fmt.Sprintf("$%d", paramIndex+i)
+			groupPlaceholdersSqlite[i] = "?"
+			args = append(args, groupID)
+		}
+
+		postgresWhere = append(postgresWhere,
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
+				strings.Join(groupPlaceholdersPostgres, ",")))
+		sqliteWhere = append(sqliteWhere,
+			fmt.Sprintf("(ra.ASSIGNEE_TYPE = 'group' AND ra.ASSIGNEE_ID IN (%s))",
+				strings.Join(groupPlaceholdersSqlite, ",")))
+	}
+
+	postgresQuery := baseQuery +
+		"(" + strings.Join(postgresWhere, " OR ") + ")"
+	sqliteQuery := baseQuery +
+		"(" + strings.Join(sqliteWhere, " OR ") + ")"
+
+	query := dbmodel.DBQuery{
+		ID:            "RLQ-ROLE_MGT-22",
 		Query:         postgresQuery,
 		PostgresQuery: postgresQuery,
 		SQLiteQuery:   sqliteQuery,

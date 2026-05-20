@@ -71,11 +71,7 @@ export default function WelcomePage(): JSX.Element {
       label: t('common:welcome.walkthrough.getStartedDesigner'),
       description: t('common:welcome.walkthrough.getStartedDesignerDesc'),
       action: () =>
-        window.open(
-          'https://asgardeo.github.io/thunder/docs/next/guides/quick-start/quickstart',
-          '_blank',
-          'noopener,noreferrer',
-        ),
+        window.open('https://thunderid.dev/docs/next/guides/quick-start/quickstart', '_blank', 'noopener,noreferrer'),
     },
     {
       id: 'learn-fundamentals',
@@ -84,7 +80,7 @@ export default function WelcomePage(): JSX.Element {
       description: t('common:welcome.walkthrough.learnFundamentalsDesc'),
       action: () =>
         window.open(
-          'https://asgardeo.github.io/thunder/docs/next/guides/key-concepts/authentication/overview',
+          'https://thunderid.dev/docs/next/guides/key-concepts/authentication/overview',
           '_blank',
           'noopener,noreferrer',
         ),

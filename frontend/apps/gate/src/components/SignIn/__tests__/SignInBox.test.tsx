@@ -71,7 +71,7 @@ vi.mock('react-router', () => ({
   useSearchParams: () => [mockSearchParams, vi.fn()],
 }));
 
-// Mock Asgardeo SignIn and SignUp components
+// Mock ThunderID SignIn and SignUp components
 const mockOnSubmit = vi.fn().mockResolvedValue(undefined);
 
 // Mock component type for testing embedded flow components
@@ -123,15 +123,15 @@ let mockSignInRenderProps: MockSignInRenderProps = createMockSignInRenderProps()
 
 let mockSignUpRenderProps: MockSignUpRenderProps = createMockSignUpRenderProps();
 
-vi.mock('@asgardeo/react', async () => {
-  const actual = await vi.importActual('@asgardeo/react');
+vi.mock('@thunderid/react', async () => {
+  const actual = await vi.importActual('@thunderid/react');
   return {
     ...actual,
     SignIn: ({children}: {children: (props: typeof mockSignInRenderProps) => React.ReactNode}) => (
-      <div data-testid="asgardeo-signin">{children(mockSignInRenderProps)}</div>
+      <div data-testid="thunderid-signin">{children(mockSignInRenderProps)}</div>
     ),
     SignUp: ({children}: {children: (props: typeof mockSignUpRenderProps) => React.ReactNode}) => (
-      <div data-testid="asgardeo-signup">{children(mockSignUpRenderProps)}</div>
+      <div data-testid="thunderid-signup">{children(mockSignUpRenderProps)}</div>
     ),
     EmbeddedFlowComponentType: {
       Text: 'TEXT',
@@ -170,7 +170,7 @@ describe('SignInBox', () => {
     });
     render(<SignInBox />);
     // CircularProgress should be shown
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 
   it('shows loading spinner when not initialized', () => {
@@ -178,7 +178,7 @@ describe('SignInBox', () => {
       isInitialized: false,
     });
     render(<SignInBox />);
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 
   it('shows error alert when error is present', () => {
@@ -544,7 +544,7 @@ describe('SignInBox', () => {
       isDesignEnabled: true,
     });
     render(<SignInBox />);
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 
   it('shows loading when no components are available', () => {
@@ -555,7 +555,7 @@ describe('SignInBox', () => {
     });
     render(<SignInBox />);
     // Shows loading when no components
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 
   it('handles OTP input changes and auto-focus', async () => {
@@ -1233,7 +1233,7 @@ describe('SignInBox', () => {
     });
     render(<SignInBox />);
     // Should show default error description
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 
   it('handles form submission with password field', async () => {
@@ -1719,17 +1719,17 @@ describe('SignInBox', () => {
 
   it('renders branded logo with alt fallback when alt is not provided', () => {
     render(<SignInBox />);
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 
   it('renders branded logo with custom alt, height, and width', () => {
     render(<SignInBox />);
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 
   it('renders without brandingTheme palette (uses theme fallback)', () => {
     render(<SignInBox />);
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 
   it('renders text field with resolve fallback for placeholder', () => {
@@ -1965,7 +1965,7 @@ describe('SignInBox', () => {
     });
     render(<SignInBox />);
     // Should still render without crashing
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 
   it('renders block with empty components array', () => {
@@ -1979,7 +1979,7 @@ describe('SignInBox', () => {
       ],
     });
     render(<SignInBox />);
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 
   it('renders block without components property', () => {
@@ -1993,6 +1993,6 @@ describe('SignInBox', () => {
       ],
     });
     render(<SignInBox />);
-    expect(screen.getByTestId('asgardeo-signin')).toBeInTheDocument();
+    expect(screen.getByTestId('thunderid-signin')).toBeInTheDocument();
   });
 });

@@ -132,7 +132,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
           flexShrink: 0,
         }}
       >
-        <Stack direction="row" alignItems="center" spacing={2}>
+        <Stack direction="row" spacing={2} sx={{alignItems: 'center'}}>
           <IconButton
             aria-label={t('common:actions.close')}
             onClick={handleClose}
@@ -161,7 +161,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
           display: 'flex',
           flexDirection: 'column',
           py: 8,
-          px: 20,
+          px: {xs: 2, sm: 3, md: 8, lg: 20},
           alignItems: 'flex-start',
         }}
       >
@@ -173,7 +173,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
             flexDirection: 'column',
           }}
         >
-          <Stack spacing={1} mb={4}>
+          <Stack spacing={1} sx={{mb: 4}}>
             <Typography variant="h2" fontWeight={600}>
               {t('validate.title')}
             </Typography>
@@ -183,8 +183,8 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
           </Stack>
 
           <Box sx={{mb: 4}}>
-            <Stack spacing={0.5} mb={2}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
+            <Stack spacing={0.5} sx={{mb: 2}}>
+              <Stack direction="row" sx={{justifyContent: 'space-between', alignItems: 'center'}}>
                 <Typography variant="body2" color="text.secondary">
                   {t('validate.progress')}
                 </Typography>
@@ -303,7 +303,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
                     }}
                   >
                     <Stack spacing={1}>
-                      <Stack direction="row" spacing={1} alignItems="center">
+                      <Stack direction="row" spacing={1} sx={{alignItems: 'center'}}>
                         <Typography variant="body2" fontWeight={600}>
                           {error.fileName ?? t('validate.parseErrors.unknownFile')}
                         </Typography>

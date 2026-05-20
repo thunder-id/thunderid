@@ -1,0 +1,56 @@
+{
+  "private": true,
+  "name": "@thunderid/root",
+  "version": "0.0.0",
+  "description": "Root workspace for ⚡️ ThunderID",
+  "author": "WSO2",
+  "license": "Apache-2.0",
+  "type": "module",
+  "homepage": "https://github.com/thunder-id/thunderid/tree/main",
+  "bugs": {
+    "url": "https://github.com/thunder-id/thunderid/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thunder-id/thunderid"
+  },
+  "keywords": [
+    "thunderid",
+    "workspace",
+    "wso2"
+  ],
+  "packageManager": "pnpm@11.1.1",
+  "scripts": {
+    "build": "nx run-many --target=build --all --exclude=@thunderid/docs",
+    "build:with-docs": "nx run-many --target=build --all",
+    "build:apps": "nx run-many --target=build --projects=frontend/apps/*",
+    "build:packages": "nx run-many --target=build --projects=sdks/**,frontend/packages/*",
+    "build:frontend": "nx run-many --target=build --projects=frontend/**",
+    "build:sdks": "nx run-many --target=build --projects=sdks/**",
+    "clean": "nx run-many --target=clean --all",
+    "format:check": "prettier --check --cache --config frontend/prettier.config.js --ignore-path frontend/.prettierignore frontend",
+    "format:fix": "prettier --write --cache --config frontend/prettier.config.js --ignore-path frontend/.prettierignore frontend",
+    "i18n:extract": "pnpm --dir frontend run i18n:extract",
+    "lint": "nx run-many --target=lint --all --parallel --exclude=@thunderid/docs",
+    "lint:fix": "nx run-many --target=fix:lint --all --parallel --exclude=@thunderid/docs",
+    "test": "nx run-many --target=test --all --parallel --exclude=@thunderid/docs",
+    "typecheck": "nx run-many --target=typecheck --all --parallel",
+    "build:docs": "nx run @thunderid/docs:build",
+    "dev:docs": "pnpm --dir docs run dev",
+    "serve:docs": "pnpm --dir docs run serve",
+    "clean:docs": "pnpm --dir docs run clear",
+    "lint:docs": "pnpm --dir docs run lint",
+    "lint:fix:docs": "pnpm --dir docs run lint:fix",
+    "typecheck:docs": "pnpm --dir docs run typecheck",
+    "generate:api-specs": "pnpm --dir docs run generate:api-specs",
+    "generate:changelog": "pnpm --dir docs run generate:changelog"
+  },
+  "devDependencies": {
+    "nx": "22.6.2",
+    "prettier": "catalog:",
+    "rimraf": "catalog:",
+    "eslint": "catalog:",
+    "tslib": "catalog:",
+    "typescript": "catalog:"
+  }
+}

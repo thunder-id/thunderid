@@ -7,8 +7,8 @@ package mgtmock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/system/i18n/mgt"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 )
 
 // newI18nStoreInterfaceMock creates a new instance of i18nStoreInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

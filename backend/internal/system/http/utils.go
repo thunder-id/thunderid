@@ -21,7 +21,7 @@ package http
 import (
 	"crypto/tls"
 
-	"github.com/asgardeo/thunder/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/config"
 )
 
 // GetTLSVersion returns the appropriate TLS version constant based on the provided

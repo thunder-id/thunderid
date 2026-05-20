@@ -22,8 +22,8 @@ package manager
 import (
 	"context"
 
-	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // AuthnProviderManagerInterface defines the interface for the authentication provider manager.

@@ -20,7 +20,7 @@ import {render} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import withConfig from '../withConfig';
 
-// Track the baseUrl passed to AsgardeoProvider
+// Track the baseUrl passed to ThunderIDProvider
 let capturedBaseUrl: string | undefined;
 
 function MockChild() {
@@ -28,11 +28,11 @@ function MockChild() {
 }
 const AppWithConfig = withConfig(MockChild);
 
-// Mock AsgardeoProvider to capture baseUrl
-vi.mock('@asgardeo/react', () => ({
-  AsgardeoProvider: ({children, baseUrl}: {children: React.ReactNode; baseUrl: string}) => {
+// Mock ThunderIDProvider to capture baseUrl
+vi.mock('@thunderid/react', () => ({
+  ThunderIDProvider: ({children, baseUrl}: {children: React.ReactNode; baseUrl: string}) => {
     capturedBaseUrl = baseUrl;
-    return <div data-testid="asgardeo-provider">{children}</div>;
+    return <div data-testid="thunderid-provider">{children}</div>;
   },
 }));
 
@@ -49,7 +49,7 @@ describe('AppWithConfig', () => {
     vi.clearAllMocks();
     capturedBaseUrl = undefined;
     // Set up default environment variable for fallback tests
-    import.meta.env.VITE_ASGARDEO_BASE_URL = 'https://env-fallback-url.example.com';
+    import.meta.env.VITE_THUNDER_BASE_URL = 'https://env-fallback-url.example.com';
   });
 
   it('renders without crashing', () => {
@@ -70,13 +70,13 @@ describe('AppWithConfig', () => {
     expect(capturedBaseUrl).toBe('https://custom-server.com');
   });
 
-  it('falls back to VITE_ASGARDEO_BASE_URL when getServerUrl returns undefined', () => {
+  it('falls back to VITE_THUNDER_BASE_URL when getServerUrl returns undefined', () => {
     mockGetServerUrl.mockReturnValue(undefined);
     render(<AppWithConfig />);
     expect(capturedBaseUrl).toBe('https://env-fallback-url.example.com');
   });
 
-  it('falls back to VITE_ASGARDEO_BASE_URL when getServerUrl returns null', () => {
+  it('falls back to VITE_THUNDER_BASE_URL when getServerUrl returns null', () => {
     mockGetServerUrl.mockReturnValue(null);
     render(<AppWithConfig />);
     expect(capturedBaseUrl).toBe('https://env-fallback-url.example.com');

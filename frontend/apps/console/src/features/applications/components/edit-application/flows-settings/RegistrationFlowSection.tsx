@@ -17,8 +17,9 @@
  */
 
 import {SettingsCard} from '@thunderid/components';
-import {Box, Typography, TextField, Autocomplete, CircularProgress} from '@wso2/oxygen-ui';
-import {useTranslation} from 'react-i18next';
+import {Box, Typography, TextField, Autocomplete, CircularProgress, Alert} from '@wso2/oxygen-ui';
+import {useTranslation, Trans} from 'react-i18next';
+import {Link} from 'react-router';
 import useGetFlows from '../../../../flows/api/useGetFlows';
 import {FlowType} from '../../../../flows/models/flows';
 import type {Application} from '../../../models/application';
@@ -78,6 +79,25 @@ export default function RegistrationFlowSection({
       enabled={editedApp.isRegistrationFlowEnabled ?? application.isRegistrationFlowEnabled ?? false}
       onToggle={(enabled) => onFieldChange('isRegistrationFlowEnabled', enabled)}
     >
+      {(editedApp.registrationFlowId ?? application.registrationFlowId) && (
+        <Alert severity="info" sx={{mb: 2}}>
+          <Trans
+            i18nKey="applications:edit.flows.registrationFlow.alert"
+            components={[
+              <Link
+                key="edit"
+                to={`/flows/registration/${editedApp.registrationFlowId ?? application.registrationFlowId}`}
+                style={{color: 'inherit', fontWeight: 'bold', textDecoration: 'underline'}}
+              />,
+              <Link
+                key="create"
+                to="/flows"
+                style={{color: 'inherit', fontWeight: 'bold', textDecoration: 'underline'}}
+              />,
+            ]}
+          />
+        </Alert>
+      )}
       <Autocomplete
         fullWidth
         options={regFlowOptions}

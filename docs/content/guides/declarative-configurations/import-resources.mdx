@@ -112,6 +112,39 @@ curl -X POST "https://localhost:8090/import" \
   }'
 ```
 
+## Cross-Resource References by Handle
+
+Instead of embedding environment-specific resource identifiers in YAML files, you can reference organization units and flows by their human-readable handles. The importer resolves each handle to its resource identifier at import time, making the same YAML portable across environments.
+
+The following handle fields are supported:
+
+| Resource type | Handle field | Resolves to |
+|---|---|---|
+| Application | `ou_handle` | `ou_id` |
+| Application | `auth_flow_handle` | `auth_flow_id` |
+| Application | `registration_flow_handle` | `registration_flow_id` |
+| Application | `recovery_flow_handle` | `recovery_flow_id` |
+| User type | `ou_handle` | `organization_unit_id` |
+
+If you provide both a handle field and the corresponding ID field, the ID takes precedence and the handle is ignored.
+
+If a handle cannot be resolved — because the target resource does not exist or the required adapter is not configured — the import item fails with a descriptive error message. When `continueOnError` is `true`, the importer continues processing the remaining documents.
+
+### Example: Application with Handle References
+
+```yaml
+# resource_type: application
+name: My App
+ou_handle: default
+auth_flow_handle: default-basic-flow
+registration_flow_handle: default-registration-flow
+is_registration_flow_enabled: true
+```
+
+### Dry-Run Behavior
+
+When `dryRun` is `true`, the importer validates documents and reports what would be created or updated, but does not write any changes to runtime stores. Handle resolution is also skipped in dry-run mode: the importer accepts handle fields without attempting to look up their target resources. Use dry-run to validate YAML structure before applying it.
+
 ## Delete File-Backed Declarative Resource
 
 `POST /import/delete` removes a declarative file-backed resource by `resourceType` and `resourceKey`.

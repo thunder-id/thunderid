@@ -5,8 +5,8 @@
 package thememock
 
 import (
-	"github.com/asgardeo/thunder/internal/design/theme/mgt"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/design/theme/mgt"
 )
 
 // newThemeMgtStoreInterfaceMock creates a new instance of themeMgtStoreInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

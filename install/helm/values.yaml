@@ -35,9 +35,9 @@ deployment:
   terminationGracePeriodSeconds: 10
   image:
     # -- Container image registry host name
-    registry: "ghcr.io/asgardeo"
+    registry: "ghcr.io/thunder-id"
     # -- Container image repository name
-    repository: "thunder"
+    repository: "thunderid"
     # -- Container image digest
     digest: ""
     # -- Container image tag. Either "tag" or "digest" should be defined

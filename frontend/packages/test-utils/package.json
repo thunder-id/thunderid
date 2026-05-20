@@ -10,9 +10,9 @@
     "testing-library",
     "wso2"
   ],
-  "homepage": "https://github.com/asgardeo/thunder/tree/main/frontend/packages/test-utils#readme",
+  "homepage": "https://github.com/thunder-id/thunderid/tree/main/frontend/packages/test-utils#readme",
   "bugs": {
-    "url": "https://github.com/asgardeo/thunder/issues"
+    "url": "https://github.com/thunder-id/thunderid/issues"
   },
   "author": "WSO2",
   "license": "Apache-2.0",
@@ -45,7 +45,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/asgardeo/thunder",
+    "url": "https://github.com/thunder-id/thunderid",
     "directory": "frontend/packages/test-utils"
   },
   "scripts": {

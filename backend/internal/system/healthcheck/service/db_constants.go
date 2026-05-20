@@ -19,7 +19,7 @@
 // Package service provides health check-related business logic and operations.
 package service
 
-import "github.com/asgardeo/thunder/internal/system/database/model"
+import "github.com/thunder-id/thunderid/internal/system/database/model"
 
 var queryConfigDBTable = model.DBQuery{
 	ID:    "HLC-00001",

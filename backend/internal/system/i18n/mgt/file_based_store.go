@@ -22,8 +22,8 @@ import (
 	"context"
 	"errors"
 
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/declarative_resource/entity"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 )
 
 type fileBasedStore struct {
@@ -72,10 +72,11 @@ func (f *fileBasedStore) GetTranslations() (map[string]map[string]Translation, e
 		if langTrans, ok := item.Data.(*LanguageTranslations); ok {
 			for ns, nsTrans := range langTrans.Translations {
 				for key, value := range nsTrans {
-					if translations[key] == nil {
-						translations[key] = make(map[string]Translation)
+					compositeKey := ns + "|" + key
+					if translations[compositeKey] == nil {
+						translations[compositeKey] = make(map[string]Translation)
 					}
-					translations[key][langTrans.Language] = Translation{
+					translations[compositeKey][langTrans.Language] = Translation{
 						Key:       key,
 						Language:  langTrans.Language,
 						Namespace: ns,
@@ -103,10 +104,11 @@ func (f *fileBasedStore) GetTranslationsByNamespace(namespace string) (map[strin
 					continue
 				}
 				for k, v := range nsTrans {
-					if translations[k] == nil {
-						translations[k] = make(map[string]Translation)
+					compositeKey := ns + "|" + k
+					if translations[compositeKey] == nil {
+						translations[compositeKey] = make(map[string]Translation)
 					}
-					translations[k][langTrans.Language] = Translation{
+					translations[compositeKey][langTrans.Language] = Translation{
 						Key:       k,
 						Language:  langTrans.Language,
 						Namespace: ns,

@@ -179,7 +179,7 @@ func classifyResourceType(node *yaml.Node) string {
 		matches = append(matches, resourceTypeTranslation)
 	}
 
-	if hasAllKeys(node, "organization_unit_id", "schema") {
+	if hasAllKeys(node, "schema") && hasAnyKey(node, "organization_unit_id", "ou_handle") {
 		matches = append(matches, resourceTypeEntityType)
 	}
 

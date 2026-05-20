@@ -41,9 +41,9 @@ vi.mock('@thunderid/design', () => ({
   },
 }));
 
-const mockUseAsgardeo = vi.fn();
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: (): {meta?: {design?: unknown}} => mockUseAsgardeo() as {meta?: {design?: unknown}},
+const mockUseThunderID = vi.fn();
+vi.mock('@thunderid/react', () => ({
+  useThunderID: (): {meta?: {design?: unknown}} => mockUseThunderID() as {meta?: {design?: unknown}},
 }));
 
 function MockChild() {
@@ -56,7 +56,7 @@ describe('withDesign', () => {
     vi.clearAllMocks();
     capturedDesignProp = undefined;
     capturedShouldResolveDesignInternally = undefined;
-    mockUseAsgardeo.mockReturnValue({meta: undefined});
+    mockUseThunderID.mockReturnValue({meta: undefined});
   });
 
   it('renders without crashing', () => {
@@ -74,23 +74,23 @@ describe('withDesign', () => {
     expect(screen.getByTestId('mock-child')).toBeInTheDocument();
   });
 
-  it('passes meta.design from useAsgardeo to DesignProvider', () => {
+  it('passes meta.design from useThunderID to DesignProvider', () => {
     const mockDesign = {theme: {colors: {primary: '#ff5700'}}, layout: {}};
-    mockUseAsgardeo.mockReturnValue({meta: {design: mockDesign}});
+    mockUseThunderID.mockReturnValue({meta: {design: mockDesign}});
 
     render(<WithDesignComponent />);
     expect(capturedDesignProp).toEqual(mockDesign);
   });
 
   it('passes undefined to DesignProvider when meta is undefined', () => {
-    mockUseAsgardeo.mockReturnValue({meta: undefined});
+    mockUseThunderID.mockReturnValue({meta: undefined});
 
     render(<WithDesignComponent />);
     expect(capturedDesignProp).toBeUndefined();
   });
 
   it('passes undefined to DesignProvider when meta.design is undefined', () => {
-    mockUseAsgardeo.mockReturnValue({meta: {design: undefined}});
+    mockUseThunderID.mockReturnValue({meta: {design: undefined}});
 
     render(<WithDesignComponent />);
     expect(capturedDesignProp).toBeUndefined();

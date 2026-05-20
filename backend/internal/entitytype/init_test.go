@@ -25,14 +25,14 @@ import (
 	"os"
 	"testing"
 
-	oupkg "github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/system/cache"
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/database/provider"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/i18n/core"
-	"github.com/asgardeo/thunder/tests/mocks/consentmock"
-	"github.com/asgardeo/thunder/tests/mocks/oumock"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/cache"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	"github.com/thunder-id/thunderid/tests/mocks/consentmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -89,7 +89,7 @@ func (suite *InitTestSuite) TestInitialize() {
 	assert.NoError(suite.T(), err)
 
 	service, _, err := Initialize(
-		suite.mux, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	suite.NotNil(service)
@@ -113,7 +113,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_ListEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodGet, "/user-types", nil)
@@ -141,7 +141,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CreateEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodPost, "/user-types", nil)
@@ -177,7 +177,7 @@ func (suite *InitTestSuite) TestInitialize_DBTransactionerError() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.Error(suite.T(), err)
 	if err != nil {
 		assert.Contains(suite.T(), err.Error(), "failed to get config database client")
@@ -201,7 +201,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_GetByIDEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodGet, "/user-types/test-id", nil)
@@ -229,7 +229,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_UpdateEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodPut, "/user-types/test-id", nil)
@@ -257,7 +257,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_DeleteEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodDelete, "/user-types/test-id", nil)
@@ -285,7 +285,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSPreflight() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodOptions, "/user-types", nil)
@@ -313,7 +313,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSPreflightByID() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodOptions, "/user-types/test-id", nil)
@@ -521,7 +521,7 @@ func TestInitialize_Standalone(t *testing.T) {
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
-	service, exporter, err := Initialize(mux, cache.Initialize(), mockOUService, nil, mockConsentService)
+	service, exporter, err := Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, service)
@@ -714,7 +714,7 @@ func TestInitialize_MutableMode(t *testing.T) {
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
-	service, exporter, err := Initialize(mux, cache.Initialize(), mockOUService, nil, mockConsentService)
+	service, exporter, err := Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, service)
@@ -757,7 +757,7 @@ func TestInitialize_StoreModes(t *testing.T) {
 				Maybe()
 			mockConsentService := mockConsentServiceWithDisabled(t)
 
-			service, exporter, err := Initialize(mux, cache.Initialize(), mockOUService, nil, mockConsentService)
+			service, exporter, err := Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
 
 			assert.NoError(t, err)
 			assert.NotNil(t, service)
@@ -1148,7 +1148,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML(t *testing.T) {
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
 	// Initialize should return an error due to invalid YAML
-	_, _, err = Initialize(mux, cache.Initialize(), mockOUService, nil, mockConsentService)
+	_, _, err = Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 }
@@ -1208,13 +1208,14 @@ schema: |
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
 	// Initialize should return an error due to validation failure
-	_, _, err = Initialize(mux, cache.Initialize(), mockOUService, nil, mockConsentService)
+	_, _, err = Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 }
 
-// TestInitialize_WithDeclarativeResourcesEnabled_OUServiceError tests Initialize when OU service fails
-func TestInitialize_WithDeclarativeResourcesEnabled_OUServiceError(t *testing.T) {
+// TestInitialize_WithDeclarativeResourcesEnabled_OUHandleNotFound tests Initialize when an
+// ou_handle in a declarative resource cannot be resolved.
+func TestInitialize_WithDeclarativeResourcesEnabled_OUHandleNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	confDir := tmpDir + "/repository/resources"
 	schemaDir := confDir + "/user_types"
@@ -1227,10 +1228,10 @@ func TestInitialize_WithDeclarativeResourcesEnabled_OUServiceError(t *testing.T)
 	err = os.MkdirAll(cryptoDir, 0750)
 	assert.NoError(t, err)
 
-	// Create a valid YAML file
+	// Create a YAML file that uses an ou_handle that cannot be resolved
 	validSchemaYAML := `id: "test-schema"
 name: "Test Schema"
-organization_unit_id: "550e8400-e29b-41d4-a716-446655440000"
+ou_handle: "nonexistent-handle"
 allow_self_registration: true
 schema: |
   {
@@ -1265,8 +1266,8 @@ schema: |
 	mux := http.NewServeMux()
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 
-	// Mock OU service to return an error
-	mockOUService.On("GetOrganizationUnit", mock.Anything, "550e8400-e29b-41d4-a716-446655440000").
+	// Mock OU service to return not-found for the handle
+	mockOUService.On("GetOrganizationUnitByPath", mock.Anything, "nonexistent-handle").
 		Return(oupkg.OrganizationUnit{}, &serviceerror.ServiceError{
 			Code: "OUS-1002",
 			Type: serviceerror.ClientErrorType,
@@ -1281,8 +1282,7 @@ schema: |
 		}).Once()
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
-	// Initialize should return an error due to OU service failure
-	_, _, err = Initialize(mux, cache.Initialize(), mockOUService, nil, mockConsentService)
+	_, _, err = Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 
@@ -1342,7 +1342,7 @@ schema: |
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
 	// Initialize should return an error due to invalid JSON
-	_, _, err = Initialize(mux, cache.Initialize(), mockOUService, nil, mockConsentService)
+	_, _, err = Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 }

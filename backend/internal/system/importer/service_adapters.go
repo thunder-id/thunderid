@@ -23,19 +23,18 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/asgardeo/thunder/internal/entitytype"
-	"github.com/asgardeo/thunder/internal/group"
-	"github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/resource"
-	"github.com/asgardeo/thunder/internal/role"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/i18n/core"
-	i18nmgt "github.com/asgardeo/thunder/internal/system/i18n/mgt"
-	"github.com/asgardeo/thunder/internal/user"
-
-	layoutmgt "github.com/asgardeo/thunder/internal/design/layout/mgt"
-	thememgt "github.com/asgardeo/thunder/internal/design/theme/mgt"
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
+	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
+	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/role"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	"github.com/thunder-id/thunderid/internal/user"
 )
 
 type roleDeclarativeYAML struct {
@@ -59,7 +58,8 @@ type entityTypeDeclarativeYAML struct {
 	ID                    string                       `yaml:"id"`
 	Category              entitytype.TypeCategory      `yaml:"category,omitempty"`
 	Name                  string                       `yaml:"name"`
-	OUID                  string                       `yaml:"organization_unit_id"`
+	OUID                  string                       `yaml:"organization_unit_id,omitempty"`
+	OUHandle              string                       `yaml:"ou_handle,omitempty"`
 	AllowSelfRegistration bool                         `yaml:"allow_self_registration,omitempty"`
 	SystemAttributes      *entitytype.SystemAttributes `yaml:"system_attributes,omitempty"`
 	Schema                interface{}                  `yaml:"schema"`
@@ -93,8 +93,20 @@ func (s *importService) importOrganizationUnit(
 		return decodeErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, err)
 	}
 
-	createReq := ou.OrganizationUnitRequestWithID(req)
-	updateReq := ou.OrganizationUnitRequestWithID(req)
+	createReq := ou.OrganizationUnitRequestWithID{
+		ID:              req.ID,
+		Handle:          req.Handle,
+		Name:            req.Name,
+		Description:     req.Description,
+		Parent:          req.Parent,
+		ThemeID:         req.ThemeID,
+		LayoutID:        req.LayoutID,
+		LogoURL:         req.LogoURL,
+		TosURI:          req.TosURI,
+		PolicyURI:       req.PolicyURI,
+		CookiePolicyURI: req.CookiePolicyURI,
+	}
+	updateReq := createReq
 
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {
@@ -189,6 +201,7 @@ func (s *importService) importEntityType(
 		ID:                    req.ID,
 		Name:                  req.Name,
 		OUID:                  req.OUID,
+		OUHandle:              req.OUHandle,
 		AllowSelfRegistration: req.AllowSelfRegistration,
 		SystemAttributes:      req.SystemAttributes,
 		Schema:                schemaBytes,
@@ -196,6 +209,7 @@ func (s *importService) importEntityType(
 	updateReq := entitytype.UpdateEntityTypeRequest{
 		Name:                  createReq.Name,
 		OUID:                  createReq.OUID,
+		OUHandle:              createReq.OUHandle,
 		AllowSelfRegistration: createReq.AllowSelfRegistration,
 		SystemAttributes:      createReq.SystemAttributes,
 		Schema:                createReq.Schema,
@@ -290,7 +304,13 @@ func (s *importService) importRole(
 				return serviceErrorOutcome(resourceTypeRole, req.ID, req.Name, operationUpdate, updateErr)
 			}
 			if len(req.Assignments) > 0 {
-				if assignErr := s.roleService.AddAssignments(ctx, updated.ID, req.Assignments); assignErr != nil {
+				if s.roleAssignmentService == nil {
+					return serviceErrorOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate,
+						serviceerror.CustomServiceError(serviceerror.InternalServerError,
+							core.I18nMessage{DefaultValue: "roleAssignmentService not configured"}))
+				}
+				assignErr := s.roleAssignmentService.AddAssignments(ctx, updated.ID, req.Assignments)
+				if assignErr != nil {
 					return serviceErrorOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate, assignErr)
 				}
 			}

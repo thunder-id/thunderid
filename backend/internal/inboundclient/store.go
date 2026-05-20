@@ -23,12 +23,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/database/provider"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/transaction"
-	"github.com/asgardeo/thunder/internal/system/utils"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // inboundClientJSONBlob is the internal structure for marshaling/unmarshaling the
@@ -101,7 +101,8 @@ func newStore() (inboundClientStoreInterface, transaction.Transactioner, error) 
 func marshalInboundClient(c inboundmodel.InboundClient) (
 	propertiesBytes interface{},
 	isRegistrationEnabledStr string,
-	themeID, layoutID interface{},
+	isRecoveryEnabledStr string,
+	recoveryFlowID, registrationFlowID, themeID, layoutID interface{},
 	err error,
 ) {
 	blob := inboundClientJSONBlob{
@@ -112,11 +113,18 @@ func marshalInboundClient(c inboundmodel.InboundClient) (
 	}
 	propertiesBytes, err = marshalNullableJSON(blob)
 	if err != nil {
-		return nil, "", nil, nil, fmt.Errorf("failed to marshal properties: %w", err)
+		return nil, "", "", nil, nil, nil, nil, fmt.Errorf("failed to marshal properties: %w", err)
 	}
 
 	isRegistrationEnabledStr = utils.BoolToNumString(c.IsRegistrationFlowEnabled)
+	isRecoveryEnabledStr = utils.BoolToNumString(c.IsRecoveryFlowEnabled)
 
+	if c.RecoveryFlowID != "" {
+		recoveryFlowID = c.RecoveryFlowID
+	}
+	if c.RegistrationFlowID != "" {
+		registrationFlowID = c.RegistrationFlowID
+	}
 	if c.ThemeID != "" {
 		themeID = c.ThemeID
 	}
@@ -124,7 +132,8 @@ func marshalInboundClient(c inboundmodel.InboundClient) (
 		layoutID = c.LayoutID
 	}
 
-	return propertiesBytes, isRegistrationEnabledStr, themeID, layoutID, nil
+	return propertiesBytes, isRegistrationEnabledStr, isRecoveryEnabledStr, recoveryFlowID,
+		registrationFlowID, themeID, layoutID, nil
 }
 
 // CreateInboundClient creates a new inbound client entry.
@@ -134,14 +143,15 @@ func (st *store) CreateInboundClient(ctx context.Context, client inboundmodel.In
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	propsBytes, isRegEnabledStr, themeID, layoutID, marshalErr := marshalInboundClient(client)
+	propsBytes, isRegEnabledStr, isRecoveryEnabledStr, recoveryFlowID,
+		registrationFlowID, themeID, layoutID, marshalErr := marshalInboundClient(client)
 	if marshalErr != nil {
 		return marshalErr
 	}
 
 	_, err = dbClient.ExecuteContext(ctx, queryCreateInboundClient,
-		client.ID, client.AuthFlowID, client.RegistrationFlowID, isRegEnabledStr,
-		themeID, layoutID, propsBytes, st.deploymentID)
+		client.ID, client.AuthFlowID, registrationFlowID, isRegEnabledStr,
+		recoveryFlowID, isRecoveryEnabledStr, themeID, layoutID, propsBytes, st.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to insert inbound client: %w", err)
 	}
@@ -254,14 +264,15 @@ func (st *store) UpdateInboundClient(ctx context.Context, client inboundmodel.In
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	propsBytes, isRegEnabledStr, themeID, layoutID, marshalErr := marshalInboundClient(client)
+	propsBytes, isRegEnabledStr, isRecoveryEnabledStr, recoveryFlowID,
+		registrationFlowID, themeID, layoutID, marshalErr := marshalInboundClient(client)
 	if marshalErr != nil {
 		return marshalErr
 	}
 
 	rowsAffected, err := dbClient.ExecuteContext(ctx, queryUpdateInboundClientByEntityID,
-		client.ID, client.AuthFlowID, client.RegistrationFlowID, isRegEnabledStr,
-		themeID, layoutID, propsBytes, st.deploymentID)
+		client.ID, client.AuthFlowID, registrationFlowID, isRegEnabledStr,
+		recoveryFlowID, isRecoveryEnabledStr, themeID, layoutID, propsBytes, st.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to update inbound client: %w", err)
 	}
@@ -368,6 +379,7 @@ func buildInboundClientFromRow(row map[string]interface{}) (*inboundmodel.Inboun
 
 	authFlowID := parseStringColumn(row, "auth_flow_id")
 	regFlowID := parseStringColumn(row, "registration_flow_id")
+	recoveryFlowID := parseStringColumn(row, "recovery_flow_id")
 	themeID := parseStringColumn(row, "theme_id")
 	layoutID := parseStringColumn(row, "layout_id")
 
@@ -376,11 +388,18 @@ func buildInboundClientFromRow(row map[string]interface{}) (*inboundmodel.Inboun
 		isRegistrationFlowEnabled = utils.NumStringToBool(val)
 	}
 
+	isRecoveryFlowEnabled := false
+	if val := parseStringOrBytesColumn(row, "is_recovery_flow_enabled"); val != "" {
+		isRecoveryFlowEnabled = utils.NumStringToBool(val)
+	}
+
 	client := &inboundmodel.InboundClient{
 		ID:                        entityID,
 		AuthFlowID:                authFlowID,
 		RegistrationFlowID:        regFlowID,
 		IsRegistrationFlowEnabled: isRegistrationFlowEnabled,
+		RecoveryFlowID:            recoveryFlowID,
+		IsRecoveryFlowEnabled:     isRecoveryFlowEnabled,
 		ThemeID:                   themeID,
 		LayoutID:                  layoutID,
 	}

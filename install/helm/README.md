@@ -58,22 +58,22 @@ Follow these steps to deploy ThunderID in your Kubernetes cluster:
 
 ```bash
 # Pull and install from GitHub Container Registry
-helm install my-thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid
+helm install my-thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid
 ```
 
 If you wish to install another version, use the command below to specify the desired version.
 
 ```bash
-helm install my-thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid --version <VERSION>
+helm install my-thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid --version <VERSION>
 ```
 
 > To see which chart versions are available, you can:
-> - Visit the [ThunderID Helm Chart Registry](https://github.com/asgardeo/thunder/pkgs/container/helm-charts%2Fthunderid) on GitHub Container Registry.
+> - Visit the [ThunderID Helm Chart Registry](https://github.com/thunder-id/thunderid/pkgs/container/helm-charts%2Fthunderid) on GitHub Container Registry.
 
 If you want to customize the installation, create a `custom-values.yaml` file with your configurations and use:
 
 ```bash
-helm install my-thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid -f custom-values.yaml
+helm install my-thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid -f custom-values.yaml
 ```
 
 The command deploys ThunderID on the Kubernetes cluster with the default configuration. The [Parameters](#parameters) section lists the available parameters that can be configured during installation.
@@ -81,7 +81,7 @@ The command deploys ThunderID on the Kubernetes cluster with the default configu
 If you want to install ThunderID with SQLite databases, use the following command:
 
 ```bash
-helm install my-thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid \
+helm install my-thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid \
   --set configuration.database.config.type=sqlite \
   --set configuration.database.runtime.type=sqlite \
   --set configuration.database.user.type=sqlite
@@ -163,8 +163,8 @@ The following table lists the configurable parameters of the ThunderID chart and
 | `deployment.replicaCount`               | Number of ThunderID replicas                                                              | `2`                            |
 | `deployment.strategy.rollingUpdate.maxSurge` | Maximum number of pods that can be created over the desired number during an update | `1`                           |
 | `deployment.strategy.rollingUpdate.maxUnavailable` | Maximum number of pods that can be unavailable during an update              | `0`                           |
-| `deployment.image.registry`             | ThunderID image registry                                                                  | `ghcr.io/asgardeo`             |
-| `deployment.image.repository`           | ThunderID image repository                                                                | `thunder`                      |
+| `deployment.image.registry`             | ThunderID image registry                                                                  | `ghcr.io/thunder-id`             |
+| `deployment.image.repository`           | ThunderID image repository                                                                | `thunderid`                      |
 | `deployment.image.tag`                  | ThunderID image tag                                                                       | `latest`                       |
 | `deployment.image.digest`               | ThunderID image digest (use either tag or digest)                                         | `""`                           |
 | `deployment.image.pullPolicy`           | ThunderID image pull policy                                                               | `Always`                       |
@@ -293,7 +293,7 @@ configuration:
 
 **Best Practice:** Use `--set` flags to avoid committing passwords:
 ```bash
-helm install my-thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid \
+helm install my-thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid \
   --set configuration.database.config.postgres.password=mypass1 \
   --set configuration.database.runtime.postgres.password=mypass2 \
   --set configuration.database.runtime.redis.password=myredispass \
@@ -602,7 +602,7 @@ declarativeResources:
 Install or upgrade:
 
 ```bash
-helm upgrade --install my-thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid -f custom-values.yaml
+helm upgrade --install my-thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid -f custom-values.yaml
 ```
 
 #### Example with Secret Source

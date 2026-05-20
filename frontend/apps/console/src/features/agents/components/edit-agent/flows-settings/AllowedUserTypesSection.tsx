@@ -37,7 +37,7 @@ export default function AllowedUserTypesSection({
   const {t} = useTranslation();
   const {data: userTypesData, isLoading} = useGetUserTypes();
 
-  const userTypeOptions = userTypesData?.schemas?.map((schema) => schema.name) ?? [];
+  const userTypeOptions = userTypesData?.types?.map((schema) => schema.name) ?? [];
   const value = editedAgent.allowedUserTypes ?? agent.allowedUserTypes ?? [];
 
   return (

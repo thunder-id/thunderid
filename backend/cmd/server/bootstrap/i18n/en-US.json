@@ -47,7 +47,19 @@
       "forms.invite_sms_sent.message": "An invitation SMS has been sent to the user. They can complete their registration using the link in the message.",
       "forms.invite_link_status.title": "Invite Link Ready",
       "forms.invite_link_status.message": "Share the invite link below with the user to complete their registration.",
-      "forms.invite_link_status.link_label": "Invite Link"
+      "forms.invite_link_status.link_label": "Invite Link",
+      "forms.onboarding_mode.title": "Add User",
+      "forms.onboarding_mode.subtitle": "Choose whether to create the account now or send an invite for the user to finish onboarding later.",
+      "forms.onboarding_mode.actions.create.label": "Create User",
+      "forms.onboarding_mode.actions.invite.label": "Invite User",
+      "forms.add_user.title": "Add User Details",
+      "forms.add_user.subtitle": "Provide the new user details to create the account immediately.",
+      "forms.add_user.actions.submit.label": "Create User",
+      "forms.complete_registration.title": "Complete Your Account",
+      "forms.complete_registration.subtitle": "Provide remaining details to finish setting up your account.",
+      "forms.complete_registration.actions.submit.label": "Complete Setup",
+      "forms.add_user_complete.title": "User Added Successfully",
+      "forms.add_user_complete.description": "The new account has been created successfully."
     },
     "invite": {
       "validating": "Validating your invite link...",
@@ -103,7 +115,11 @@
       "forms.otp.description": "Enter the verification code sent to your phone",
       "forms.otp.fields.otp.label": "Verification Code",
       "forms.otp.fields.otp.placeholder": "Enter code",
-      "forms.otp.actions.submit.label": "Verify"
+      "forms.otp.actions.submit.label": "Verify",
+      "forms.credentials.links.forgot_password.prefix": "Forgot password?",
+      "forms.credentials.links.forgot_password.label": "Reset",
+      "forms.credentials.links.sign_up.prefix": "Don't have an account?",
+      "forms.credentials.links.sign_up.label": "Sign up"
     },
     "signup": {
       "images.app_logo.alt": "Application logo",
@@ -220,6 +236,32 @@
       "forms.otp.fields.otp.label": "Verification Code",
       "forms.otp.fields.otp.placeholder": "Enter code",
       "forms.otp.actions.submit.label": "Verify"
+    },
+    "recovery": {
+      "forms.username.title": "Password Recovery",
+      "forms.username.subtitle": "Enter your username to start the password recovery",
+      "forms.username.fields.username.label": "Username",
+      "forms.username.fields.username.placeholder": "Enter your username",
+      "forms.email_sent.title": "Check Your Email",
+      "forms.email_sent.message": "We sent you a password reset link. Please check your inbox and click the link to reset your password.",
+      "forms.username.actions.submit.label": "Submit",
+      "forms.email.fields.email.label": "Email",
+      "forms.email.fields.email.placeholder": "Enter your email",
+      "forms.email.actions.next.label": "Next",
+      "forms.otp_sent.title": "OTP Sent to your mobile",
+      "forms.otp_sent.message": "We sent you a verification code via SMS. Please check your messages and enter the code to continue.",
+      "forms.otp_sent.fields.otp.label": "Verification Code",
+      "forms.otp_sent.fields.otp.placeholder": "Enter code",
+      "forms.otp_sent.actions.verify.label": "Verify",
+      "forms.new_password.title": "Reset Password",
+      "forms.new_password.subtitle": "Enter a new password for your account",
+      "forms.new_password.fields.password.label": "New Password",
+      "forms.new_password.fields.password.placeholder": "Enter your new password",
+      "forms.new_password.actions.submit.label": "Reset Password",
+      "forms.complete.title": "Password Reset Successful",
+      "forms.complete.message": "Your password has been successfully reset. You can now sign in with your new password.",
+      "forms.username.links.sign_in.prefix": "Remember your password?",
+      "forms.username.links.sign_in.label": "Sign in"
     },
     "elements": {
       "fields.usertype.label": "User Type",

@@ -7,8 +7,8 @@ package attributecachemock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/attributecache"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/attributecache"
 )
 
 // newAttributeCacheStoreInterfaceMock creates a new instance of attributeCacheStoreInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

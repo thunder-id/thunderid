@@ -27,8 +27,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/asgardeo/thunder/internal/resource"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/resource"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
 
 // Helper to convert local resourceRules to declarativeresource.ResourceRules for testing
@@ -1945,4 +1945,215 @@ func TestResourceServerExport_DelimiterIsQuoted(t *testing.T) {
 	require.NoError(t, yaml.Unmarshal([]byte(result), &parsed))
 	assert.Equal(t, ":", parsed.Delimiter,
 		"round-tripped delimiter should equal \":\"")
+}
+
+// --- Tests for `yaml:",inline"` handling in the parameterizer ---
+
+type inlineInner struct {
+	A string   `yaml:"a,omitempty"`
+	B string   `yaml:"b,omitempty"`
+	C []string `yaml:"c,omitempty"`
+}
+
+type inlineTopParent struct {
+	Name  string      `yaml:"name"`
+	Inner inlineInner `yaml:",inline"`
+	Tail  string      `yaml:"tail,omitempty"`
+}
+
+// TestInlineEmbed_TopLevelFlattensFields verifies a top-level `yaml:",inline"` embedded
+// struct has its fields flattened into the parent mapping (not nested under an empty key)
+// and that per-field omitempty is still applied to each flattened field.
+func TestInlineEmbed_TopLevelFlattensFields(t *testing.T) {
+	obj := &inlineTopParent{
+		Name:  "MyApp",
+		Inner: inlineInner{A: "alpha", B: "", C: []string{"x", "y"}},
+		Tail:  "end",
+	}
+
+	p := newParameterizer(templatingRules{})
+	out, _, err := p.ToParameterizedYAML(obj, "Application", "MyApp", nil)
+	require.NoError(t, err)
+
+	// Bug signature: a bare-colon line (empty key holding the embedded struct).
+	assert.NotContains(t, out, "\n:\n", "embedded fields must not nest under an empty key")
+	// Inline fields appear at the parent's indent level.
+	assert.Contains(t, out, "name: MyApp")
+	assert.Contains(t, out, "\na: alpha")
+	assert.Contains(t, out, "\nc:")
+	assert.Contains(t, out, "\ntail: end")
+	// B is empty + omitempty + not in rules -> omitted.
+	assert.NotContains(t, out, "\nb:")
+}
+
+type inlinePtrParent struct {
+	Name  string       `yaml:"name"`
+	Inner *inlineInner `yaml:",inline"`
+}
+
+// TestInlineEmbed_NilPointerSkipped verifies a nil `yaml:",inline"` pointer is skipped
+// without emitting anything for it.
+func TestInlineEmbed_NilPointerSkipped(t *testing.T) {
+	obj := &inlinePtrParent{Name: "App", Inner: nil}
+	p := newParameterizer(templatingRules{})
+	out, _, err := p.ToParameterizedYAML(obj, "Application", "App", nil)
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "name: App")
+	assert.NotContains(t, out, "\na:")
+	assert.NotContains(t, out, "\nb:")
+	assert.NotContains(t, out, "\nc:")
+}
+
+// TestInlineEmbed_PointerDereferenced verifies a non-nil `yaml:",inline"` pointer is
+// dereferenced and its fields flattened.
+func TestInlineEmbed_PointerDereferenced(t *testing.T) {
+	obj := &inlinePtrParent{Name: "App", Inner: &inlineInner{A: "alpha"}}
+	p := newParameterizer(templatingRules{})
+	out, _, err := p.ToParameterizedYAML(obj, "Application", "App", nil)
+	require.NoError(t, err)
+
+	assert.NotContains(t, out, "\n:\n")
+	assert.Contains(t, out, "name: App")
+	assert.Contains(t, out, "a: alpha")
+}
+
+type recInner struct {
+	Deep string `yaml:"deep,omitempty"`
+}
+
+type recMiddle struct {
+	Inner recInner `yaml:",inline"`
+	Mid   string   `yaml:"mid,omitempty"`
+}
+
+type recParent struct {
+	Name string    `yaml:"name"`
+	Mid  recMiddle `yaml:",inline"`
+}
+
+// TestInlineEmbed_RecursivelyFlattensNestedInline verifies an inline embed that itself
+// contains an inline embed is recursively flattened into the parent mapping.
+func TestInlineEmbed_RecursivelyFlattensNestedInline(t *testing.T) {
+	obj := &recParent{Name: "App", Mid: recMiddle{Inner: recInner{Deep: "value"}, Mid: "middle"}}
+	p := newParameterizer(templatingRules{})
+	out, _, err := p.ToParameterizedYAML(obj, "Application", "App", nil)
+	require.NoError(t, err)
+
+	assert.NotContains(t, out, "\n:\n")
+	assert.Contains(t, out, "name: App")
+	assert.Contains(t, out, "deep: value")
+	assert.Contains(t, out, "mid: middle")
+}
+
+// TestInlineEmbed_RuleOverridesOmitemptyForInlineField verifies that an empty
+// inline-embedded field referenced by parameterization rules is still emitted, exercising
+// the rule-based omitempty bypass in appendInlineStructFields.
+func TestInlineEmbed_RuleOverridesOmitemptyForInlineField(t *testing.T) {
+	obj := &inlineTopParent{Name: "App", Inner: inlineInner{A: "", B: "", C: nil}}
+	rules := &resourceRules{Variables: []string{"A"}}
+
+	p := newParameterizer(templatingRules{Application: rules})
+	out, _, err := p.ToParameterizedYAML(obj, "Application", "App", toDeclarativeResourceRules(rules))
+	require.NoError(t, err)
+
+	// A is empty but referenced by rules -> emitted (omitempty bypassed).
+	assert.Contains(t, out, "\na:")
+	// B is empty + omitempty + not in rules -> omitted.
+	assert.NotContains(t, out, "\nb:")
+}
+
+type inlineQuotedInner struct {
+	Delim string `yaml:"delim,omitempty" yamlfmt:"quoted"`
+}
+
+type inlineQuotedParent struct {
+	Name  string            `yaml:"name"`
+	Inner inlineQuotedInner `yaml:",inline"`
+}
+
+// TestInlineEmbed_QuotedFieldHonored verifies that `yamlfmt:"quoted"` on a field of
+// an inline embed is honored (the value is wrapped in double quotes in the output).
+func TestInlineEmbed_QuotedFieldHonored(t *testing.T) {
+	obj := &inlineQuotedParent{Name: "App", Inner: inlineQuotedInner{Delim: ":"}}
+	p := newParameterizer(templatingRules{})
+	out, _, err := p.ToParameterizedYAML(obj, "Application", "App", nil)
+	require.NoError(t, err)
+
+	assert.Contains(t, out, `delim: ":"`)
+}
+
+type bogusInlineParent struct {
+	Name string `yaml:"name"`
+	// Tagging a non-struct field with `yaml:",inline"` is invalid; the parameterizer
+	// must skip it gracefully rather than panic.
+	Foo int `yaml:",inline"`
+}
+
+// TestInlineEmbed_NonStructValueSkipped verifies that a non-struct field marked
+// `yaml:",inline"` is skipped without panicking.
+func TestInlineEmbed_NonStructValueSkipped(t *testing.T) {
+	obj := &bogusInlineParent{Name: "App", Foo: 42}
+	p := newParameterizer(templatingRules{})
+	out, _, err := p.ToParameterizedYAML(obj, "Application", "App", nil)
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "name: App")
+	assert.NotContains(t, out, "42")
+}
+
+type skipFieldInner struct {
+	Visible string `yaml:"visible,omitempty"`
+	Skipped string `yaml:"-"`
+	NoTag   string
+}
+
+type skipFieldParent struct {
+	Name  string         `yaml:"name"`
+	Inner skipFieldInner `yaml:",inline"`
+}
+
+// TestInlineEmbed_HiddenAndUntaggedFieldsSkipped verifies that within an inline embed,
+// fields with `yaml:"-"` or no yaml tag at all are skipped.
+func TestInlineEmbed_HiddenAndUntaggedFieldsSkipped(t *testing.T) {
+	obj := &skipFieldParent{
+		Name:  "App",
+		Inner: skipFieldInner{Visible: "yes", Skipped: "secret", NoTag: "untagged"},
+	}
+	p := newParameterizer(templatingRules{})
+	out, _, err := p.ToParameterizedYAML(obj, "Application", "App", nil)
+	require.NoError(t, err)
+
+	assert.Contains(t, out, "visible: yes")
+	assert.NotContains(t, out, "secret")
+	assert.NotContains(t, out, "untagged")
+}
+
+type nestedInlineChild struct {
+	Y     string      `yaml:"y,omitempty"`
+	Inner inlineInner `yaml:",inline"`
+}
+
+type nestedInlineParent struct {
+	Name  string            `yaml:"name"`
+	Child nestedInlineChild `yaml:"child"`
+}
+
+// TestInlineEmbed_InsideNestedStructFlattened verifies the inline detection in the
+// nested-struct walker (handleStructNode): an inline embed inside a non-inline child
+// struct is also flattened into the child's mapping.
+func TestInlineEmbed_InsideNestedStructFlattened(t *testing.T) {
+	obj := &nestedInlineParent{
+		Name:  "App",
+		Child: nestedInlineChild{Y: "outer", Inner: inlineInner{A: "alpha"}},
+	}
+	p := newParameterizer(templatingRules{})
+	out, _, err := p.ToParameterizedYAML(obj, "Application", "App", nil)
+	require.NoError(t, err)
+
+	// No empty-key nesting inside the child mapping.
+	assert.NotContains(t, out, "\n  :\n")
+	assert.Contains(t, out, "child:")
+	assert.Contains(t, out, "y: outer")
+	assert.Contains(t, out, "a: alpha")
 }

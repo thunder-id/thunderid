@@ -48,13 +48,13 @@ kubectl get pods -n ingress-nginx
 Install <ProductName /> from the GitHub Container Registry:
 
 ```bash
-helm install thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid
+helm install thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid
 ```
 
 To install a specific version:
 
 ```bash
-helm install thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid --version 0.11.0
+helm install thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid --version 0.11.0
 ```
 
 ### Step 2: Verify the Installation
@@ -85,7 +85,7 @@ If you are using a cloud provider, the load balancer assigns the external IP aut
 Pass configuration values directly on the command line. The following example installs <ProductName /> with SQLite for development or testing:
 
 ```bash
-helm install thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid \
+helm install thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid \
   --set configuration.database.config.type=sqlite \
   --set configuration.database.runtime.type=sqlite
 ```
@@ -141,7 +141,7 @@ For production deployments, use a values file to manage configuration:
 2. Install using the values file:
 
     ```bash
-    helm install thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid -f custom-values.yaml
+    helm install thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid -f custom-values.yaml
     ```
 
 ## Database Setup
@@ -234,7 +234,7 @@ configuration:
 To upgrade to a new version:
 
 ```bash
-helm upgrade thunderid oci://ghcr.io/asgardeo/helm-charts/thunderid \
+helm upgrade thunderid oci://ghcr.io/thunder-id/helm-charts/thunderid \
   --version 0.12.0 \
   -f custom-values.yaml
 ```

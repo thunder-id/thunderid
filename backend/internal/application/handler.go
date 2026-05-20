@@ -21,14 +21,14 @@ package application
 import (
 	"net/http"
 
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 
-	"github.com/asgardeo/thunder/internal/application/model"
-	oauth2const "github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
-	"github.com/asgardeo/thunder/internal/system/error/apierror"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/log"
-	sysutils "github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/application/model"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // ApplicationHandler defines the handler for managing application API requests.
@@ -66,6 +66,8 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 			AuthFlowID:                appRequest.AuthFlowID,
 			RegistrationFlowID:        appRequest.RegistrationFlowID,
 			IsRegistrationFlowEnabled: appRequest.IsRegistrationFlowEnabled,
+			RecoveryFlowID:            appRequest.RecoveryFlowID,
+			IsRecoveryFlowEnabled:     appRequest.IsRecoveryFlowEnabled,
 			ThemeID:                   appRequest.ThemeID,
 			LayoutID:                  appRequest.LayoutID,
 			Assertion:                 appRequest.Assertion,
@@ -99,6 +101,8 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 			AuthFlowID:                createdAppDTO.AuthFlowID,
 			RegistrationFlowID:        createdAppDTO.RegistrationFlowID,
 			IsRegistrationFlowEnabled: createdAppDTO.IsRegistrationFlowEnabled,
+			RecoveryFlowID:            createdAppDTO.RecoveryFlowID,
+			IsRecoveryFlowEnabled:     createdAppDTO.IsRecoveryFlowEnabled,
 			ThemeID:                   createdAppDTO.ThemeID,
 			LayoutID:                  createdAppDTO.LayoutID,
 			Assertion:                 createdAppDTO.Assertion,
@@ -175,6 +179,8 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 			AuthFlowID:                appDTO.AuthFlowID,
 			RegistrationFlowID:        appDTO.RegistrationFlowID,
 			IsRegistrationFlowEnabled: appDTO.IsRegistrationFlowEnabled,
+			RecoveryFlowID:            appDTO.RecoveryFlowID,
+			IsRecoveryFlowEnabled:     appDTO.IsRecoveryFlowEnabled,
 			ThemeID:                   appDTO.ThemeID,
 			LayoutID:                  appDTO.LayoutID,
 			Assertion:                 appDTO.Assertion,
@@ -306,6 +312,8 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 			AuthFlowID:                appRequest.AuthFlowID,
 			RegistrationFlowID:        appRequest.RegistrationFlowID,
 			IsRegistrationFlowEnabled: appRequest.IsRegistrationFlowEnabled,
+			RecoveryFlowID:            appRequest.RecoveryFlowID,
+			IsRecoveryFlowEnabled:     appRequest.IsRecoveryFlowEnabled,
 			ThemeID:                   appRequest.ThemeID,
 			LayoutID:                  appRequest.LayoutID,
 			Assertion:                 appRequest.Assertion,
@@ -339,6 +347,8 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 			AuthFlowID:                updatedAppDTO.AuthFlowID,
 			RegistrationFlowID:        updatedAppDTO.RegistrationFlowID,
 			IsRegistrationFlowEnabled: updatedAppDTO.IsRegistrationFlowEnabled,
+			RecoveryFlowID:            updatedAppDTO.RecoveryFlowID,
+			IsRecoveryFlowEnabled:     updatedAppDTO.IsRecoveryFlowEnabled,
 			ThemeID:                   updatedAppDTO.ThemeID,
 			LayoutID:                  updatedAppDTO.LayoutID,
 			Assertion:                 updatedAppDTO.Assertion,

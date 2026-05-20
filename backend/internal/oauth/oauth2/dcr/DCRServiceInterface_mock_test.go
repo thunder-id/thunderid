@@ -7,8 +7,8 @@ package dcr
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewDCRServiceInterfaceMock creates a new instance of DCRServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

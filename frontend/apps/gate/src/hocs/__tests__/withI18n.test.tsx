@@ -37,8 +37,8 @@ const mockEmit = vi.fn();
 const mockChangeLanguage = vi.fn().mockResolvedValue(undefined);
 const mockGetResourceBundle = vi.fn().mockReturnValue({});
 
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({meta: mockMeta}),
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({meta: mockMeta}),
 }));
 
 vi.mock('react-i18next', () => ({

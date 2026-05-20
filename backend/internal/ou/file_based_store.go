@@ -21,10 +21,12 @@ package ou
 import (
 	"context"
 	"errors"
+	"strings"
 
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/declarative_resource/entity"
-	"github.com/asgardeo/thunder/internal/system/transaction"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/internal/system/filter"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
 type fileBasedStore struct {
@@ -118,7 +120,7 @@ func (f *fileBasedStore) GetOrganizationUnitByPath(ctx context.Context, handles 
 
 // GetOrganizationUnitList implements organizationUnitStoreInterface.
 func (f *fileBasedStore) GetOrganizationUnitList(
-	ctx context.Context, limit, offset int,
+	ctx context.Context, limit, offset int, fe *filter.FilterGroup,
 ) ([]OrganizationUnitBasic, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
@@ -128,21 +130,18 @@ func (f *fileBasedStore) GetOrganizationUnitList(
 	var ouList []OrganizationUnitBasic
 	for _, item := range list {
 		if ou, ok := item.Data.(*OrganizationUnit); ok {
-			// Only include root OUs (those without a parent)
-			if ou.Parent == nil {
-				basicOU := OrganizationUnitBasic{
+			if ou.Parent == nil && matchesOUFilter(ou, fe) {
+				ouList = append(ouList, OrganizationUnitBasic{
 					ID:          ou.ID,
 					Handle:      ou.Handle,
 					Name:        ou.Name,
 					Description: ou.Description,
 					LogoURL:     ou.LogoURL,
-				}
-				ouList = append(ouList, basicOU)
+				})
 			}
 		}
 	}
 
-	// Apply pagination
 	start := offset
 	if start > len(ouList) {
 		return []OrganizationUnitBasic{}, nil
@@ -156,7 +155,7 @@ func (f *fileBasedStore) GetOrganizationUnitList(
 }
 
 // GetOrganizationUnitListCount implements organizationUnitStoreInterface.
-func (f *fileBasedStore) GetOrganizationUnitListCount(ctx context.Context) (int, error) {
+func (f *fileBasedStore) GetOrganizationUnitListCount(ctx context.Context, fe *filter.FilterGroup) (int, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return 0, err
@@ -165,8 +164,7 @@ func (f *fileBasedStore) GetOrganizationUnitListCount(ctx context.Context) (int,
 	count := 0
 	for _, item := range list {
 		if ou, ok := item.Data.(*OrganizationUnit); ok {
-			// Only count root OUs (those without a parent)
-			if ou.Parent == nil {
+			if ou.Parent == nil && matchesOUFilter(ou, fe) {
 				count++
 			}
 		}
@@ -280,7 +278,9 @@ func (f *fileBasedStore) UpdateOrganizationUnit(ctx context.Context, ou Organiza
 }
 
 // GetOrganizationUnitChildrenCount implements organizationUnitStoreInterface.
-func (f *fileBasedStore) GetOrganizationUnitChildrenCount(ctx context.Context, id string) (int, error) {
+func (f *fileBasedStore) GetOrganizationUnitChildrenCount(
+	ctx context.Context, id string, fe *filter.FilterGroup,
+) (int, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return 0, err
@@ -289,7 +289,7 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenCount(ctx context.Context, i
 	count := 0
 	for _, item := range list {
 		if ou, ok := item.Data.(*OrganizationUnit); ok {
-			if ou.Parent != nil && *ou.Parent == id {
+			if ou.Parent != nil && *ou.Parent == id && matchesOUFilter(ou, fe) {
 				count++
 			}
 		}
@@ -300,7 +300,8 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenCount(ctx context.Context, i
 
 // GetOrganizationUnitChildrenList implements organizationUnitStoreInterface.
 func (f *fileBasedStore) GetOrganizationUnitChildrenList(
-	ctx context.Context, id string, limit, offset int) ([]OrganizationUnitBasic, error) {
+	ctx context.Context, id string, limit, offset int, fe *filter.FilterGroup,
+) ([]OrganizationUnitBasic, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return nil, err
@@ -309,20 +310,18 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenList(
 	var children []OrganizationUnitBasic
 	for _, item := range list {
 		if ou, ok := item.Data.(*OrganizationUnit); ok {
-			if ou.Parent != nil && *ou.Parent == id {
-				basicOU := OrganizationUnitBasic{
+			if ou.Parent != nil && *ou.Parent == id && matchesOUFilter(ou, fe) {
+				children = append(children, OrganizationUnitBasic{
 					ID:          ou.ID,
 					Handle:      ou.Handle,
 					Name:        ou.Name,
 					Description: ou.Description,
 					LogoURL:     ou.LogoURL,
-				}
-				children = append(children, basicOU)
+				})
 			}
 		}
 	}
 
-	// Apply pagination
 	start := offset
 	if start > len(children) {
 		return []OrganizationUnitBasic{}, nil
@@ -333,4 +332,77 @@ func (f *fileBasedStore) GetOrganizationUnitChildrenList(
 	}
 
 	return children[start:end], nil
+}
+
+// matchesOUFilter reports whether an OU satisfies all clauses in the filter group.
+// Returns true when g is nil (no filter applied).
+// AND has higher precedence than OR, matching standard SQL behavior.
+func matchesOUFilter(ou *OrganizationUnit, g *filter.FilterGroup) bool {
+	if g == nil || len(g.Clauses) == 0 {
+		return true
+	}
+
+	// Walk clauses left to right. OR boundaries commit the current AND-group result
+	// and start a fresh one — implementing AND-before-OR precedence.
+	andGroupResult := evaluateSingleClause(ou, &g.Clauses[0].Expr)
+	for _, clause := range g.Clauses[1:] {
+		exprResult := evaluateSingleClause(ou, &clause.Expr)
+		switch clause.Connector {
+		case filter.LogicalAnd:
+			andGroupResult = andGroupResult && exprResult
+		case filter.LogicalOr:
+			if andGroupResult {
+				return true
+			}
+			andGroupResult = exprResult
+		}
+	}
+	return andGroupResult
+}
+
+// matchesOUBasicFilter reports whether an OrganizationUnitBasic satisfies all clauses in the filter group.
+// Used by the service layer when filtering the authorization-restricted ID set in memory.
+func matchesOUBasicFilter(ou OrganizationUnitBasic, g *filter.FilterGroup) bool {
+	ouFull := &OrganizationUnit{
+		Handle:      ou.Handle,
+		Name:        ou.Name,
+		Description: ou.Description,
+		CreatedAt:   ou.CreatedAt,
+		UpdatedAt:   ou.UpdatedAt,
+	}
+	return matchesOUFilter(ouFull, g)
+}
+
+// evaluateSingleClause tests one FilterExpression against an OU.
+func evaluateSingleClause(ou *OrganizationUnit, expr *filter.FilterExpression) bool {
+	var fieldVal string
+	switch expr.Attribute {
+	case "name":
+		fieldVal = ou.Name
+	case "handle":
+		fieldVal = ou.Handle
+	case "description":
+		fieldVal = ou.Description
+	case "createdAt":
+		fieldVal = ou.CreatedAt.UTC().Format("2006-01-02T15:04:05Z")
+	case "updatedAt":
+		fieldVal = ou.UpdatedAt.UTC().Format("2006-01-02T15:04:05Z")
+	default:
+		return false
+	}
+
+	strTarget, ok := expr.Value.(string)
+	if !ok {
+		return false
+	}
+
+	switch expr.Operator {
+	case filter.OperatorEq:
+		return strings.EqualFold(fieldVal, strTarget)
+	case filter.OperatorGt:
+		return fieldVal > strTarget
+	case filter.OperatorLt:
+		return fieldVal < strTarget
+	}
+	return false
 }

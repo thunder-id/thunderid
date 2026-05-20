@@ -64,8 +64,8 @@ let mockLanguageSwitcherProps: {
 
 const mockOnLanguageChange = vi.fn();
 
-// Mock LanguageSwitcher from @asgardeo/react
-vi.mock('@asgardeo/react', () => ({
+// Mock LanguageSwitcher from @thunderid/react
+vi.mock('@thunderid/react', () => ({
   LanguageSwitcher: ({
     children,
   }: {

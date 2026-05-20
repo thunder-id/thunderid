@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {LanguageSwitcher} from '@asgardeo/react';
+import {LanguageSwitcher} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
 import {useDesign, GoogleFontLoader, StylesheetInjector, DefaultTheme, type Theme} from '@thunderid/design';
 import {

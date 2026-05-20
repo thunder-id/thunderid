@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import RoleQueryKeys from '../constants/role-query-keys';
@@ -30,7 +30,7 @@ import type {RoleListResponse} from '../models/role';
  * @returns TanStack Query result object containing roles list data
  */
 export default function useGetRoles(params?: RoleListParams): UseQueryResult<RoleListResponse> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const {limit = 30, offset = 0} = params ?? {};
 

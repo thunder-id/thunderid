@@ -78,6 +78,7 @@ const TEMPLATE_ICONS: Record<string, string[]> = {
   BASIC_PASSKEY: ['assets/images/icons/password.svg', 'assets/images/icons/fingerprint.svg'],
   BASIC: ['assets/images/icons/password.svg'],
   SELF_INVITE: ['assets/images/icons/email.svg'],
+  Email_Link: ['assets/images/icons/email.svg'],
   DEFAULT: ['assets/images/icons/user.svg'],
 };
 

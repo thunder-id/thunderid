@@ -26,7 +26,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

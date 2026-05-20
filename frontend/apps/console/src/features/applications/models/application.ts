@@ -205,6 +205,18 @@ export interface Application {
   isRegistrationFlowEnabled?: boolean;
 
   /**
+   * Recovery flow ID
+   * @example '9a3f1b2c-4d5e-6f7a-8b9c-0d1e2f3a4b5c'
+   */
+  recoveryFlowId?: string;
+
+  /**
+   * Whether recovery flow is enabled
+   * @example true
+   */
+  isRecoveryFlowEnabled?: boolean;
+
+  /**
    * User attributes to include
    * @example ['email', 'username', 'given_name', 'family_name', 'roles']
    */

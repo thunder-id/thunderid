@@ -295,6 +295,7 @@ describe('ConfigureStack', () => {
       onReadyChange: vi.fn(),
     });
 
+    expect(screen.getByText('applications:onboarding.configure.stack.technology.express.title')).toBeInTheDocument();
     expect(screen.getByText('applications:onboarding.configure.stack.technology.react.title')).toBeInTheDocument();
     expect(screen.getByText('applications:onboarding.configure.stack.technology.nextjs.title')).toBeInTheDocument();
   });

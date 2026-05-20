@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {I18nDefaultConstants} from '@thunderid/i18n';
 import enUS from '@thunderid/i18n/locales/en-US';
 import i18next from 'i18next';
@@ -46,7 +46,7 @@ await i18next.use(initReactI18next).init({
 
 export default function withI18n<P extends object>(WrappedComponent: ComponentType<P>) {
   return function WithI18n(props: P): JSX.Element {
-    const {meta} = useAsgardeo();
+    const {meta} = useThunderID();
     const {i18n} = useTranslation();
 
     useEffect(() => {

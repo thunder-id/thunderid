@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useTranslation} from 'react-i18next';
@@ -44,7 +44,7 @@ export interface UpdateAgentTypeVariables {
  * @returns TanStack Query mutation object for updating agent types
  */
 export default function useUpdateAgentType(): UseMutationResult<ApiAgentType, Error, UpdateAgentTypeVariables> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('agentTypes');

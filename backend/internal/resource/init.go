@@ -22,11 +22,12 @@ import (
 	"fmt"
 	"net/http"
 
-	oupkg "github.com/asgardeo/thunder/internal/ou"
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/middleware"
-	"github.com/asgardeo/thunder/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/consent"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
 // Initialize initializes the resource service and registers its routes.
@@ -34,6 +35,7 @@ import (
 func Initialize(
 	mux *http.ServeMux,
 	ouService oupkg.OrganizationUnitServiceInterface,
+	consentService consent.ConsentServiceInterface,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Initialize store and transactioner based on store mode
 	resourceStore, transactioner, err := initializeStore()
@@ -41,7 +43,7 @@ func Initialize(
 		return nil, nil, fmt.Errorf("failed to initialize resource store: %w", err)
 	}
 
-	resourceService, err := newResourceService(ouService, resourceStore, transactioner)
+	resourceService, err := newResourceService(ouService, consentService, resourceStore, transactioner)
 	if err != nil {
 		return nil, nil, err
 	}

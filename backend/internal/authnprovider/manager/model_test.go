@@ -24,7 +24,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 )
 
 type ModelTestSuite struct {

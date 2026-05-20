@@ -21,7 +21,7 @@ template: testify
 template-data:
   unroll-variadic: true
 packages:
-  github.com/asgardeo/thunder/internal/system/database/provider:
+  github.com/thunder-id/thunderid/internal/system/database/provider:
     config:
       all: true
       dir: tests/mocks/database/providermock
@@ -29,7 +29,7 @@ packages:
       pkgname: providermock
       filename: "{{.InterfaceName}}_mock.go"
   
-  github.com/asgardeo/thunder/internal/system/database/model:
+  github.com/thunder-id/thunderid/internal/system/database/model:
     config:
       all: true
       dir: tests/mocks/database/modelmock
@@ -37,7 +37,7 @@ packages:
       pkgname: modelmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/healthcheck/service:
+  github.com/thunder-id/thunderid/internal/system/healthcheck/service:
     config:
       all: true
       dir: tests/mocks/healthcheck/servicemock
@@ -45,7 +45,7 @@ packages:
       pkgname: servicemock
       filename: "{{.InterfaceName}}_mock.go"
   
-  github.com/asgardeo/thunder/internal/system/healthcheck/provider:
+  github.com/thunder-id/thunderid/internal/system/healthcheck/provider:
     config:
       all: true
       dir: tests/mocks/healthcheck/providermock
@@ -53,7 +53,7 @@ packages:
       pkgname: providermock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/cache:
+  github.com/thunder-id/thunderid/internal/system/cache:
     config:
       all: true
       dir: tests/mocks/cachemock
@@ -61,7 +61,7 @@ packages:
       pkgname: cachemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/cert:
+  github.com/thunder-id/thunderid/internal/cert:
     config:
       all: true
       dir: tests/mocks/certmock
@@ -69,7 +69,7 @@ packages:
       pkgname: certmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/jose/jwt:
+  github.com/thunder-id/thunderid/internal/system/jose/jwt:
     config:
       all: true
       dir: tests/mocks/jose/jwtmock
@@ -77,7 +77,7 @@ packages:
       pkgname: jwtmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/jose/jwe:
+  github.com/thunder-id/thunderid/internal/system/jose/jwe:
     config:
       all: true
       dir: tests/mocks/jose/jwemock
@@ -85,7 +85,7 @@ packages:
       pkgname: jwemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/oauth/scope:
+  github.com/thunder-id/thunderid/internal/oauth/scope:
     config:
       all: true
       dir: tests/mocks/oauth/scopemock
@@ -93,7 +93,7 @@ packages:
       pkgname: scopemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/oauth/oauth2/authz:
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/authz:
     interfaces:
       AuthorizeHandlerInterface:
         config:
@@ -108,7 +108,7 @@ packages:
           pkgname: authzmock
           filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/oauth/oauth2/granthandlers:
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers:
     config:
       all: true
       dir: tests/mocks/oauth/oauth2/granthandlersmock
@@ -116,7 +116,7 @@ packages:
       pkgname: granthandlersmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/oauth/oauth2/token:
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/token:
     config:
       all: true
       dir: tests/mocks/oauth/oauth2/tokenmock
@@ -124,7 +124,7 @@ packages:
       pkgname: tokenmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/oauth/oauth2/tokenservice:
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice:
     config:
       all: true
       dir: tests/mocks/oauth/oauth2/tokenservicemock
@@ -132,7 +132,7 @@ packages:
       pkgname: tokenservicemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/oauth/oauth2/introspect:
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/introspect:
     config:
       all: true
       dir: tests/mocks/oauth/oauth2/introspectmock
@@ -140,7 +140,7 @@ packages:
       pkgname: introspectmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/oauth/oauth2/discovery:
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery:
     config:
       all: true
       dir: tests/mocks/oauth/oauth2/discoverymock
@@ -148,7 +148,7 @@ packages:
       pkgname: discoverymock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/entity:
+  github.com/thunder-id/thunderid/internal/entity:
     config:
       dir: tests/mocks/entitymock
       structname: '{{.InterfaceName}}Mock'
@@ -157,7 +157,7 @@ packages:
     interfaces:
       EntityServiceInterface:
 
-  github.com/asgardeo/thunder/internal/user:
+  github.com/thunder-id/thunderid/internal/user:
     config:
       all: true
       dir: tests/mocks/usermock
@@ -165,7 +165,7 @@ packages:
       pkgname: usermock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authn:
+  github.com/thunder-id/thunderid/internal/authn:
     config:
       all: true
       dir: tests/mocks/authn/authnmock
@@ -173,7 +173,7 @@ packages:
       pkgname: authnmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authn/assert:
+  github.com/thunder-id/thunderid/internal/authn/assert:
     config:
       all: true
       dir: tests/mocks/authn/assertmock
@@ -181,7 +181,7 @@ packages:
       pkgname: assertmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authn/otp:
+  github.com/thunder-id/thunderid/internal/authn/otp:
     config:
       all: true
       dir: tests/mocks/authn/otpmock
@@ -189,7 +189,7 @@ packages:
       pkgname: otpmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authn/oauth:
+  github.com/thunder-id/thunderid/internal/authn/oauth:
     config:
       all: true
       dir: tests/mocks/authn/oauthmock
@@ -197,7 +197,7 @@ packages:
       pkgname: oauthmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authn/oidc:
+  github.com/thunder-id/thunderid/internal/authn/oidc:
     config:
       all: true
       dir: tests/mocks/authn/oidcmock
@@ -205,7 +205,7 @@ packages:
       pkgname: oidcmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authn/google:
+  github.com/thunder-id/thunderid/internal/authn/google:
     config:
       all: true
       dir: tests/mocks/authn/googlemock
@@ -213,7 +213,7 @@ packages:
       pkgname: googlemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authn/github:
+  github.com/thunder-id/thunderid/internal/authn/github:
     config:
       all: true
       dir: tests/mocks/authn/githubmock
@@ -221,7 +221,7 @@ packages:
       pkgname: githubmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authn/magiclink:
+  github.com/thunder-id/thunderid/internal/authn/magiclink:
     config:
       all: true
       dir: tests/mocks/authn/magiclinkmock
@@ -229,7 +229,7 @@ packages:
       pkgname: magiclinkmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authn/passkey:
+  github.com/thunder-id/thunderid/internal/authn/passkey:
     interfaces:
       PasskeyServiceInterface:
         config:
@@ -238,7 +238,7 @@ packages:
           pkgname: passkeymock
           filename: "WebAuthnAuthnServiceInterface_mock.go"
 
-  github.com/asgardeo/thunder/internal/authn/consent:
+  github.com/thunder-id/thunderid/internal/authn/consent:
     interfaces:
       ConsentEnforcerServiceInterface:
         config:
@@ -247,7 +247,7 @@ packages:
           pkgname: consentenforcermock
           filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/idp:
+  github.com/thunder-id/thunderid/internal/idp:
     config:
       all: true
       dir: tests/mocks/idp/idpmock
@@ -255,7 +255,7 @@ packages:
       pkgname: idpmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/notification:
+  github.com/thunder-id/thunderid/internal/notification:
     config:
       all: true
       dir: tests/mocks/notification/notificationmock
@@ -263,7 +263,7 @@ packages:
       pkgname: notificationmock
       filename: "{{.InterfaceName}}_mock.go"
   
-  github.com/asgardeo/thunder/internal/notification/message:
+  github.com/thunder-id/thunderid/internal/notification/message:
     config:
       all: true
       dir: tests/mocks/notification/messagemock
@@ -271,7 +271,7 @@ packages:
       pkgname: messagemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/http:
+  github.com/thunder-id/thunderid/internal/system/http:
     config:
       all: true
       dir: tests/mocks/httpmock
@@ -279,7 +279,7 @@ packages:
       pkgname: httpmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/application:
+  github.com/thunder-id/thunderid/internal/application:
     config:
       dir: tests/mocks/applicationmock
       structname: '{{.InterfaceName}}Mock'
@@ -288,7 +288,7 @@ packages:
     interfaces:
       ApplicationServiceInterface:
 
-  github.com/asgardeo/thunder/internal/inboundclient:
+  github.com/thunder-id/thunderid/internal/inboundclient:
     config:
       dir: tests/mocks/inboundclientmock
       structname: '{{.InterfaceName}}Mock'
@@ -297,7 +297,7 @@ packages:
     interfaces:
       InboundClientServiceInterface:
   
-  github.com/asgardeo/thunder/internal/ou:
+  github.com/thunder-id/thunderid/internal/ou:
     config:
       all: true
       dir: tests/mocks/oumock
@@ -305,7 +305,7 @@ packages:
       pkgname: oumock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/flow/core:
+  github.com/thunder-id/thunderid/internal/flow/core:
     config:
       all: true
       dir: tests/mocks/flow/coremock
@@ -313,7 +313,7 @@ packages:
       pkgname: coremock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/flow/flowexec:
+  github.com/thunder-id/thunderid/internal/flow/flowexec:
     config:
       all: true
       dir: tests/mocks/flow/flowexecmock
@@ -321,7 +321,7 @@ packages:
       pkgname: flowexecmock
       filename: "{{.InterfaceName}}_mock.go"
   
-  github.com/asgardeo/thunder/internal/flow/mgt:
+  github.com/thunder-id/thunderid/internal/flow/mgt:
     config:
       all: true
       dir: tests/mocks/flow/flowmgtmock
@@ -329,7 +329,7 @@ packages:
       pkgname: flowmgtmock
       filename: "{{.InterfaceName}}_mock.go"
   
-  github.com/asgardeo/thunder/internal/flow/executor:
+  github.com/thunder-id/thunderid/internal/flow/executor:
     config:
       all: true
       dir: tests/mocks/flow/executormock
@@ -337,7 +337,7 @@ packages:
       pkgname: executormock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/entitytype:
+  github.com/thunder-id/thunderid/internal/entitytype:
     config:
       all: true
       dir: tests/mocks/entitytypemock
@@ -345,7 +345,7 @@ packages:
       pkgname: entitytypemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/group:
+  github.com/thunder-id/thunderid/internal/group:
     config:
       all: true
       dir: tests/mocks/groupmock
@@ -353,7 +353,7 @@ packages:
       pkgname: groupmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authz:
+  github.com/thunder-id/thunderid/internal/authz:
     config:
       all: true
       dir: tests/mocks/authzmock
@@ -361,7 +361,7 @@ packages:
       pkgname: authzmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authz/engine:
+  github.com/thunder-id/thunderid/internal/authz/engine:
     config:
       all: true
       dir: tests/mocks/authz/engine
@@ -369,7 +369,7 @@ packages:
       pkgname: enginemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/role:
+  github.com/thunder-id/thunderid/internal/role:
     config:
       all: true
       dir: tests/mocks/rolemock
@@ -377,7 +377,7 @@ packages:
       pkgname: rolemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/observability:
+  github.com/thunder-id/thunderid/internal/observability:
     config:
       all: true
       dir: tests/mocks/observability/observabilitymock
@@ -385,7 +385,7 @@ packages:
       pkgname: observabilitymock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/observability/adapter:
+  github.com/thunder-id/thunderid/internal/observability/adapter:
     config:
       all: true
       dir: tests/mocks/observability/adaptermock
@@ -393,7 +393,7 @@ packages:
       pkgname: adaptermock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/design/theme/mgt:
+  github.com/thunder-id/thunderid/internal/design/theme/mgt:
     config:
       all: true
       dir: tests/mocks/design/thememock
@@ -401,7 +401,7 @@ packages:
       pkgname: thememock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/design/layout/mgt:
+  github.com/thunder-id/thunderid/internal/design/layout/mgt:
     config:
       all: true
       dir: tests/mocks/design/layoutmock
@@ -409,7 +409,7 @@ packages:
       pkgname: layoutmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/design/resolve:
+  github.com/thunder-id/thunderid/internal/design/resolve:
     config:
       all: true
       dir: tests/mocks/design/resolvemock
@@ -417,7 +417,7 @@ packages:
       pkgname: resolvemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/i18n/mgt:
+  github.com/thunder-id/thunderid/internal/system/i18n/mgt:
     config:
       all: true
       dir: tests/mocks/i18n/mgtmock
@@ -425,7 +425,7 @@ packages:
       pkgname: mgtmock
       filename: "{{.InterfaceName}}_mock.go"
   
-  github.com/asgardeo/thunder/internal/system/cryptolab/hash:
+  github.com/thunder-id/thunderid/internal/system/cryptolab/hash:
     config:
       all: true
       dir: tests/mocks/crypto/hashmock
@@ -433,7 +433,7 @@ packages:
       pkgname: hashmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/kmprovider/defaultkm/pkiservice:
+  github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pkiservice:
     config:
       all: true
       dir: tests/mocks/crypto/pki/pkimock
@@ -441,7 +441,7 @@ packages:
       pkgname: pkimock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/kmprovider:
+  github.com/thunder-id/thunderid/internal/system/kmprovider:
     config:
       all: true
       dir: tests/mocks/crypto/cryptomock
@@ -449,7 +449,7 @@ packages:
       pkgname: cryptomock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/resource:
+  github.com/thunder-id/thunderid/internal/resource:
     config:
       all: true
       dir: tests/mocks/resourcemock
@@ -457,7 +457,7 @@ packages:
       pkgname: resourcemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/entityprovider:
+  github.com/thunder-id/thunderid/internal/entityprovider:
     config:
       all: true
       dir: tests/mocks/entityprovidermock
@@ -465,7 +465,7 @@ packages:
       pkgname: entityprovidermock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authnprovider/provider:
+  github.com/thunder-id/thunderid/internal/authnprovider/provider:
     config:
       all: true
       dir: tests/mocks/authnprovider/providermock
@@ -473,7 +473,7 @@ packages:
       pkgname: providermock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/authnprovider/manager:
+  github.com/thunder-id/thunderid/internal/authnprovider/manager:
     config:
       all: true
       dir: tests/mocks/authnprovider/managermock
@@ -481,7 +481,7 @@ packages:
       pkgname: managermock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/sysauthz:
+  github.com/thunder-id/thunderid/internal/system/sysauthz:
     interfaces:
       SystemAuthorizationServiceInterface:
         config:
@@ -490,7 +490,7 @@ packages:
           pkgname: sysauthzmock
           filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/consent:
+  github.com/thunder-id/thunderid/internal/consent:
     interfaces:
       ConsentServiceInterface:
         config:
@@ -499,7 +499,7 @@ packages:
           pkgname: consentmock
           filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/attributecache:
+  github.com/thunder-id/thunderid/internal/attributecache:
     config:
       all: true
       dir: tests/mocks/attributecachemock
@@ -507,7 +507,7 @@ packages:
       pkgname: attributecachemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/email:
+  github.com/thunder-id/thunderid/internal/system/email:
     config:
       all: true
       dir: tests/mocks/emailmock
@@ -515,7 +515,7 @@ packages:
       pkgname: emailmock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/asgardeo/thunder/internal/system/template:
+  github.com/thunder-id/thunderid/internal/system/template:
     config:
       all: true
       dir: tests/mocks/templatemock

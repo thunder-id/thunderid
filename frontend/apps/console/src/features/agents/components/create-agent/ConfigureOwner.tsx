@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useGetUsers} from '@thunderid/configure-users';
 import {FormControl, FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
 import {useEffect, useMemo, type JSX} from 'react';
@@ -47,8 +47,8 @@ export default function ConfigureOwner({
   onReadyChange = undefined,
 }: ConfigureOwnerProps): JSX.Element {
   const {t} = useTranslation();
-  const asgardeoUser = useAsgardeo().user as {id?: string} | null | undefined;
-  const currentUserId = asgardeoUser?.id ?? null;
+  const currentUser = useThunderID().user as {id?: string} | null | undefined;
+  const currentUserId = currentUser?.id ?? null;
 
   const {data: usersData, isLoading: usersLoading} = useGetUsers({limit: 100, offset: 0});
 

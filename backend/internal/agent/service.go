@@ -25,19 +25,19 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/asgardeo/thunder/internal/agent/model"
-	"github.com/asgardeo/thunder/internal/cert"
-	"github.com/asgardeo/thunder/internal/entity"
-	"github.com/asgardeo/thunder/internal/inboundclient"
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
-	oauth2const "github.com/asgardeo/thunder/internal/oauth/oauth2/constants"
-	oauthutils "github.com/asgardeo/thunder/internal/oauth/oauth2/utils"
-	oupkg "github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/i18n/core"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/security"
-	sysutils "github.com/asgardeo/thunder/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/agent/model"
+	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // AgentServiceInterface defines the operations exposed by the agent service.
@@ -375,11 +375,11 @@ func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *service
 
 	if err := s.inboundClientService.DeleteInboundClient(ctx, agentID); err != nil &&
 		!errors.Is(err, inboundclient.ErrInboundClientNotFound) {
-		if errors.Is(err, inboundclient.ErrCannotModifyDeclarative) {
-			return &ErrorCannotModifyDeclarativeResource
+		if svcErr := s.translateInboundClientError(err); svcErr != nil {
+			return svcErr
 		}
 		s.logger.Error("Failed to delete inbound client for agent",
-			log.String("agentID", agentID), log.Error(err))
+			log.Error(err), log.String("agentID", agentID))
 		return &serviceerror.InternalServerError
 	}
 
@@ -622,11 +622,11 @@ func (s *agentService) createInboundForAgent(ctx context.Context, agentID string
 	hasSecret := clientSecret != ""
 	if err := s.inboundClientService.CreateInboundClient(ctx, &client, req.Certificate,
 		oauthProfile, hasSecret, req.Name); err != nil {
-		if mapped := s.translateInboundClientError(err); mapped != nil {
-			return inboundmodel.InboundClient{}, nil, mapped
+		if svcErr := s.translateInboundClientError(err); svcErr != nil {
+			return inboundmodel.InboundClient{}, nil, svcErr
 		}
 		s.logger.Error("Failed to create inbound client for agent",
-			log.String("agentID", agentID), log.Error(err))
+			log.Error(err), log.String("agentID", agentID))
 		return inboundmodel.InboundClient{}, nil, &serviceerror.InternalServerError
 	}
 	return client, oauthProfile, nil
@@ -645,8 +645,11 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 		if hasExisting {
 			if err := s.inboundClientService.DeleteInboundClient(ctx, agentID); err != nil &&
 				!errors.Is(err, inboundclient.ErrInboundClientNotFound) {
+				if svcErr := s.translateInboundClientError(err); svcErr != nil {
+					return inboundmodel.InboundClient{}, nil, svcErr
+				}
 				s.logger.Error("Failed to remove inbound client during update",
-					log.String("agentID", agentID), log.Error(err))
+					log.Error(err), log.String("agentID", agentID))
 				return inboundmodel.InboundClient{}, nil, &serviceerror.InternalServerError
 			}
 		}
@@ -666,11 +669,11 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 		}
 		if err := s.inboundClientService.UpdateInboundClient(ctx, &client, req.Certificate,
 			oauthProfile, hasSecret, clientID, entityName); err != nil {
-			if mapped := s.translateInboundClientError(err); mapped != nil {
-				return inboundmodel.InboundClient{}, nil, mapped
+			if svcErr := s.translateInboundClientError(err); svcErr != nil {
+				return inboundmodel.InboundClient{}, nil, svcErr
 			}
 			s.logger.Error("Failed to update inbound client",
-				log.String("agentID", agentID), log.Error(err))
+				log.Error(err), log.String("agentID", agentID))
 			return inboundmodel.InboundClient{}, nil, &serviceerror.InternalServerError
 		}
 		return client, oauthProfile, nil
@@ -678,11 +681,11 @@ func (s *agentService) reconcileInboundForUpdate(ctx context.Context, agentID st
 
 	if err := s.inboundClientService.CreateInboundClient(ctx, &client, req.Certificate,
 		oauthProfile, hasSecret, newName); err != nil {
-		if mapped := s.translateInboundClientError(err); mapped != nil {
-			return inboundmodel.InboundClient{}, nil, mapped
+		if svcErr := s.translateInboundClientError(err); svcErr != nil {
+			return inboundmodel.InboundClient{}, nil, svcErr
 		}
 		s.logger.Error("Failed to create inbound client during update",
-			log.String("agentID", agentID), log.Error(err))
+			log.Error(err), log.String("agentID", agentID))
 		return inboundmodel.InboundClient{}, nil, &serviceerror.InternalServerError
 	}
 	return client, oauthProfile, nil
@@ -1232,6 +1235,12 @@ func (s *agentService) translateInboundClientError(err error) *serviceerror.Serv
 	if svcErr := translateOAuthValidationError(err); svcErr != nil {
 		return svcErr
 	}
+	if svcErr := translateUserInfoValidationError(err); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := translateIDTokenValidationError(err); svcErr != nil {
+		return svcErr
+	}
 	if svcErr := translateCertValidationError(err); svcErr != nil {
 		return svcErr
 	}
@@ -1241,43 +1250,225 @@ func (s *agentService) translateInboundClientError(err error) *serviceerror.Serv
 	}
 	var consentErr *inboundclient.ConsentSyncError
 	if errors.As(err, &consentErr) {
-		if consentErr.IsClientError() {
-			return serviceerror.CustomServiceError(ErrorConsentSyncFailed, core.I18nMessage{
-				DefaultValue: "Consent sync failed: " + consentErr.Underlying.Code,
-			})
-		}
+		return translateConsentSyncError(consentErr)
 	}
 	return nil
 }
 
-// translateCertOperationError maps a CertOperationError to a service error, logging server-side failures.
-func (s *agentService) translateCertOperationError(err *inboundclient.CertOperationError) *serviceerror.ServiceError {
-	if !err.IsClientError() {
-		s.logger.Error("Certificate operation failed",
-			log.Any("operation", err.Operation),
-			log.Any("refType", err.RefType),
-			log.Any("serviceError", err.Underlying))
-		return &serviceerror.InternalServerError
+// translateOAuthValidationError maps OAuth redirect URI, grant type, response type,
+// token endpoint auth method, and public client validation errors to agent-service errors.
+func translateOAuthValidationError(err error) *serviceerror.ServiceError {
+	switch {
+	// OAuth: redirect URI
+	case errors.Is(err, inboundclient.ErrOAuthInvalidRedirectURI):
+		return &ErrorInvalidRedirectURI
+	case errors.Is(err, inboundclient.ErrOAuthRedirectURIFragmentNotAllowed):
+		return serviceerror.CustomServiceError(ErrorInvalidRedirectURI, core.I18nMessage{
+			Key:          "error.agentservice.redirect_uri_fragment_not_allowed_description",
+			DefaultValue: "Redirect URIs must not contain a fragment component",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthAuthCodeRequiresRedirectURIs):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.auth_code_requires_redirect_uris_description",
+			DefaultValue: "authorization_code grant type requires redirect URIs",
+		})
+
+	// OAuth: grant + response type
+	case errors.Is(err, inboundclient.ErrOAuthInvalidGrantType):
+		return &ErrorInvalidGrantType
+	case errors.Is(err, inboundclient.ErrOAuthInvalidResponseType):
+		return &ErrorInvalidResponseType
+	case errors.Is(err, inboundclient.ErrOAuthClientCredentialsCannotUseResponseTypes):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.client_credentials_cannot_use_response_types_description",
+			DefaultValue: "client_credentials grant type cannot be used with response types",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthAuthCodeRequiresCodeResponseType):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.auth_code_requires_code_response_type_description",
+			DefaultValue: "authorization_code grant type requires 'code' response type",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthRefreshTokenCannotBeSoleGrant):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.refresh_token_cannot_be_sole_grant_description",
+			DefaultValue: "refresh_token grant type cannot be used without another grant type",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthPKCERequiresAuthCode):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.pkce_requires_authorization_code_description",
+			DefaultValue: "PKCE can only be enabled when the authorization_code grant type is selected",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthResponseTypesRequireAuthCode):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.response_types_require_authorization_code_description",
+			DefaultValue: "Response types can only be configured with the authorization_code grant type",
+		})
+
+	// OAuth: token endpoint auth method
+	case errors.Is(err, inboundclient.ErrOAuthInvalidTokenEndpointAuthMethod):
+		return &ErrorInvalidTokenEndpointAuthMethod
+	case errors.Is(err, inboundclient.ErrOAuthPrivateKeyJWTRequiresCertificate):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.private_key_jwt_requires_certificate_description",
+			DefaultValue: "private_key_jwt authentication method requires a certificate",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthPrivateKeyJWTCannotHaveClientSecret):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.private_key_jwt_cannot_have_client_secret_description",
+			DefaultValue: "private_key_jwt authentication method cannot have a client secret",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthClientSecretCannotHaveCertificate):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.client_secret_cannot_have_certificate_description",
+			DefaultValue: "client_secret authentication methods cannot have a certificate",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthNoneAuthRequiresPublicClient):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.none_auth_method_requires_public_client_description",
+			DefaultValue: "'none' authentication method requires the client to be a public client",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthNoneAuthCannotHaveCertOrSecret):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.none_auth_method_cannot_have_cert_or_secret_description",
+			DefaultValue: "'none' authentication method cannot have a certificate or client secret",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthClientCredentialsCannotUseNoneAuth):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.client_credentials_cannot_use_none_auth_description",
+			DefaultValue: "client_credentials grant type cannot use 'none' authentication method",
+		})
+
+	// OAuth: public client
+	case errors.Is(err, inboundclient.ErrOAuthPublicClientMustUseNoneAuth):
+		return serviceerror.CustomServiceError(ErrorInvalidPublicClientConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.public_client_must_use_none_auth_description",
+			DefaultValue: "Public clients must use 'none' as token endpoint authentication method",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthPublicClientMustHavePKCE):
+		return serviceerror.CustomServiceError(ErrorInvalidPublicClientConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.public_client_must_have_pkce_description",
+			DefaultValue: "Public clients must have PKCE required set to true",
+		})
 	}
-	var prefix string
-	switch err.Operation {
-	case inboundclient.CertOpCreate:
-		prefix = "Failed to create agent certificate: "
-	case inboundclient.CertOpUpdate:
-		prefix = "Failed to update agent certificate: "
-	case inboundclient.CertOpRetrieve:
-		prefix = "Failed to retrieve agent certificate: "
-	case inboundclient.CertOpDelete:
-		prefix = "Failed to delete agent certificate: "
-	default:
-		return &serviceerror.InternalServerError
-	}
-	return serviceerror.CustomServiceError(ErrorCertificateClientError, core.I18nMessage{
-		DefaultValue: prefix + err.Underlying.ErrorDescription.DefaultValue,
-	})
+	return nil
 }
 
-// translateInboundClientFKError maps inbound client foreign-key errors (flows, themes, user types) to service errors.
+// translateUserInfoValidationError maps OAuth userinfo validation errors to agent-service errors.
+func translateUserInfoValidationError(err error) *serviceerror.ServiceError {
+	switch {
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedSigningAlg):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_unsupported_signing_alg_description",
+			DefaultValue: "userinfo signing algorithm is not supported",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedEncryptionAlg):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_unsupported_encryption_alg_description",
+			DefaultValue: "userinfo encryption algorithm is not supported",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedEncryptionEnc):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_unsupported_encryption_enc_description",
+			DefaultValue: "userinfo content-encryption algorithm is not supported",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoEncryptionAlgRequiresEnc):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_encryption_alg_requires_enc_description",
+			DefaultValue: "userinfo encryptionEnc is required when encryptionAlg is set",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoEncryptionEncRequiresAlg):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_encryption_enc_requires_alg_description",
+			DefaultValue: "userinfo encryptionAlg is required when encryptionEnc is set",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoEncryptionRequiresCertificate):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_encryption_requires_certificate_description",
+			DefaultValue: "a certificate (JWKS or JWKS_URI) is required when userinfo encryption is configured",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoJWKSURINotSSRFSafe):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_jwks_uri_not_ssrf_safe_description",
+			DefaultValue: "userinfo JWKS URI must be a publicly reachable HTTPS URL",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedResponseType):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_unsupported_response_type_description",
+			DefaultValue: "userinfo responseType is not supported",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoJWSRequiresSigningAlg):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_jws_requires_signing_alg_description",
+			DefaultValue: "signingAlg is required when userinfo responseType is JWS",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoJWERequiresEncryption):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_jwe_requires_encryption_description",
+			DefaultValue: "encryptionAlg and encryptionEnc are required when userinfo responseType is JWE",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoNestedJWTRequiresAll):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key: "error.agentservice.userinfo_nested_jwt_requires_all_description",
+			DefaultValue: "signingAlg, encryptionAlg, and encryptionEnc are required " +
+				"when userinfo responseType is NESTED_JWT",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthUserInfoAlgRequiresResponseType):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.userinfo_alg_requires_response_type_description",
+			DefaultValue: "userinfo responseType is required when signingAlg or encryptionAlg is set",
+		})
+	}
+	return nil
+}
+
+// translateIDTokenValidationError maps OAuth ID token validation errors to agent-service errors.
+func translateIDTokenValidationError(err error) *serviceerror.ServiceError {
+	switch {
+	case errors.Is(err, inboundclient.ErrOAuthIDTokenEncryptionFieldsNotAllowed):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.idtoken_encryption_fields_not_allowed_description",
+			DefaultValue: "idToken encryptionAlg and encryptionEnc must not be set when responseType is JWT",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthIDTokenUnsupportedResponseType):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.idtoken_unsupported_response_type_description",
+			DefaultValue: "ID token responseType is not supported",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthIDTokenUnsupportedEncryptionAlg):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.idtoken_unsupported_encryption_alg_description",
+			DefaultValue: "ID token encryption algorithm is not supported",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthIDTokenUnsupportedEncryptionEnc):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.idtoken_unsupported_encryption_enc_description",
+			DefaultValue: "ID token content-encryption algorithm is not supported",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthIDTokenEncryptionAlgRequiresEnc):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.idtoken_encryption_alg_requires_enc_description",
+			DefaultValue: "idToken encryptionEnc is required when encryptionAlg is set",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthIDTokenEncryptionEncRequiresAlg):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.idtoken_encryption_enc_requires_alg_description",
+			DefaultValue: "idToken encryptionAlg is required when encryptionEnc is set",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthIDTokenEncryptionRequiresCertificate):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.idtoken_encryption_requires_certificate_description",
+			DefaultValue: "a certificate (JWKS or JWKS_URI) is required when ID token encryption is configured",
+		})
+	case errors.Is(err, inboundclient.ErrOAuthIDTokenJWKSURINotSSRFSafe):
+		return serviceerror.CustomServiceError(ErrorInvalidOAuthConfiguration, core.I18nMessage{
+			Key:          "error.agentservice.idtoken_jwks_uri_not_ssrf_safe_description",
+			DefaultValue: "idToken JWKS URI must be a publicly reachable HTTPS URL",
+		})
+	}
+	return nil
+}
+
+// translateInboundClientFKError maps foreign-key reference errors to agent-service errors.
 func translateInboundClientFKError(err error) *serviceerror.ServiceError {
 	switch {
 	case errors.Is(err, inboundclient.ErrFKInvalidAuthFlow):
@@ -1296,56 +1487,13 @@ func translateInboundClientFKError(err error) *serviceerror.ServiceError {
 		return &ErrorInvalidUserType
 	case errors.Is(err, inboundclient.ErrUserSchemaLookupFailed):
 		return &serviceerror.InternalServerError
-	default:
-		return nil
+	case errors.Is(err, inboundclient.ErrInvalidUserAttribute):
+		return &ErrorInvalidUserAttribute
 	}
+	return nil
 }
 
-// translateOAuthValidationError maps OAuth validation sentinel errors to service errors.
-func translateOAuthValidationError(err error) *serviceerror.ServiceError {
-	switch {
-	case errors.Is(err, inboundclient.ErrOAuthInvalidRedirectURI),
-		errors.Is(err, inboundclient.ErrOAuthRedirectURIFragmentNotAllowed),
-		errors.Is(err, inboundclient.ErrOAuthAuthCodeRequiresRedirectURIs):
-		return &ErrorInvalidRedirectURI
-	case errors.Is(err, inboundclient.ErrOAuthInvalidGrantType),
-		errors.Is(err, inboundclient.ErrOAuthRefreshTokenCannotBeSoleGrant),
-		errors.Is(err, inboundclient.ErrOAuthClientCredentialsCannotUseResponseTypes),
-		errors.Is(err, inboundclient.ErrOAuthAuthCodeRequiresCodeResponseType):
-		return &ErrorInvalidGrantType
-	case errors.Is(err, inboundclient.ErrOAuthInvalidResponseType):
-		return &ErrorInvalidResponseType
-	case errors.Is(err, inboundclient.ErrOAuthInvalidTokenEndpointAuthMethod):
-		return &ErrorInvalidTokenEndpointAuthMethod
-	case errors.Is(err, inboundclient.ErrOAuthPublicClientMustUseNoneAuth),
-		errors.Is(err, inboundclient.ErrOAuthPublicClientMustHavePKCE):
-		return &ErrorInvalidPublicClientConfiguration
-	case errors.Is(err, inboundclient.ErrOAuthPKCERequiresAuthCode),
-		errors.Is(err, inboundclient.ErrOAuthResponseTypesRequireAuthCode),
-		errors.Is(err, inboundclient.ErrOAuthPrivateKeyJWTRequiresCertificate),
-		errors.Is(err, inboundclient.ErrOAuthPrivateKeyJWTCannotHaveClientSecret),
-		errors.Is(err, inboundclient.ErrOAuthClientSecretCannotHaveCertificate),
-		errors.Is(err, inboundclient.ErrOAuthNoneAuthRequiresPublicClient),
-		errors.Is(err, inboundclient.ErrOAuthNoneAuthCannotHaveCertOrSecret),
-		errors.Is(err, inboundclient.ErrOAuthClientCredentialsCannotUseNoneAuth),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedSigningAlg),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedEncryptionAlg),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedEncryptionEnc),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoEncryptionAlgRequiresEnc),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoEncryptionEncRequiresAlg),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoEncryptionRequiresCertificate),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoJWKSURINotSSRFSafe),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoUnsupportedResponseType),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoJWSRequiresSigningAlg),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoJWERequiresEncryption),
-		errors.Is(err, inboundclient.ErrOAuthUserInfoNestedJWTRequiresAll):
-		return &ErrorInvalidOAuthConfiguration
-	default:
-		return nil
-	}
-}
-
-// translateCertValidationError maps certificate validation sentinel errors to service errors.
+// translateCertValidationError maps certificate validation errors to agent-service errors.
 func translateCertValidationError(err error) *serviceerror.ServiceError {
 	switch {
 	case errors.Is(err, inboundclient.ErrCertValueRequired):
@@ -1354,7 +1502,57 @@ func translateCertValidationError(err error) *serviceerror.ServiceError {
 		return &ErrorInvalidJWKSURI
 	case errors.Is(err, inboundclient.ErrCertInvalidType):
 		return &ErrorInvalidCertificateType
-	default:
-		return nil
 	}
+	return nil
+}
+
+// translateCertOperationError maps a typed CertOperationError to an agent-service error.
+func (s *agentService) translateCertOperationError(err *inboundclient.CertOperationError) *serviceerror.ServiceError {
+	if !err.IsClientError() {
+		s.logger.Error("Certificate operation failed",
+			log.Any("operation", err.Operation),
+			log.Any("refType", err.RefType),
+			log.Any("serviceError", err.Underlying))
+		return &serviceerror.InternalServerError
+	}
+	var key, prefix string
+	switch err.Operation {
+	case inboundclient.CertOpCreate:
+		key, prefix = "error.agentservice.create_certificate_failed_description",
+			"Failed to create agent certificate: "
+	case inboundclient.CertOpUpdate:
+		key, prefix = "error.agentservice.update_certificate_failed_description",
+			"Failed to update agent certificate: "
+	case inboundclient.CertOpRetrieve:
+		key, prefix = "error.agentservice.retrieve_certificate_failed_description",
+			"Failed to retrieve agent certificate: "
+	case inboundclient.CertOpDelete:
+		if err.RefType == cert.CertificateReferenceTypeOAuthApp {
+			key, prefix = "error.agentservice.delete_oauth_certificate_failed_description",
+				"Failed to delete OAuth app certificate: "
+		} else {
+			key, prefix = "error.agentservice.delete_certificate_failed_description",
+				"Failed to delete agent certificate: "
+		}
+	default:
+		return &serviceerror.InternalServerError
+	}
+	return serviceerror.CustomServiceError(ErrorCertificateClientError, core.I18nMessage{
+		Key:          key,
+		DefaultValue: prefix + err.Underlying.ErrorDescription.DefaultValue,
+	})
+}
+
+// translateConsentSyncError maps a typed ConsentSyncError to an agent-service error.
+func translateConsentSyncError(err *inboundclient.ConsentSyncError) *serviceerror.ServiceError {
+	if err.IsClientError() {
+		return serviceerror.CustomServiceError(ErrorConsentSyncFailed, core.I18nMessage{
+			Key: "error.agentservice.consent_sync_failed_description",
+			DefaultValue: fmt.Sprintf(
+				ErrorConsentSyncFailed.ErrorDescription.DefaultValue+" : code - %s",
+				err.Underlying.Code,
+			),
+		})
+	}
+	return &serviceerror.InternalServerError
 }

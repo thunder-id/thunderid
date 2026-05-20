@@ -23,14 +23,15 @@ import ManageChildOrganizationUnitSection from '../ManageChildOrganizationUnitSe
 
 // Mock the useGetChildOrganizationUnits hook
 const mockUseGetChildOrganizationUnits = vi.fn();
-vi.mock('../../../../api/useGetChildOrganizationUnits', () => ({
+vi.mock('@/api/useGetChildOrganizationUnits', () => ({
   default: (id: string): unknown => mockUseGetChildOrganizationUnits(id),
 }));
 
 // Mock useDataGridLocaleText hook
-vi.mock('@thunderid/hooks', () => ({
-  useDataGridLocaleText: () => ({}),
-}));
+vi.mock('@thunderid/hooks', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {...(actual as object), useDataGridLocaleText: () => ({})};
+});
 
 // Mock navigate function
 const mockNavigate = vi.fn();

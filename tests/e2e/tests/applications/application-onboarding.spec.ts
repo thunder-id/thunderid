@@ -93,40 +93,40 @@ test.describe("Application Onboarding", () => {
         await applicationsPage.screenshot("tc002-wizard-opened");
       });
 
-      await test.step("Step 1 [configure-name]: Fill app name and click Next", async () => {
+      await test.step("Step 1 [configure-stack]: Skip and click Next", async () => {
+        await applicationsPage.waitForStep("application-configure-stack");
+        console.log("Step 1 (configure-stack) visible - skipping");
+        await applicationsPage.clickNext();
+        await applicationsPage.screenshot("tc002-step1-done");
+      });
+
+      await test.step("Step 2 [configure-name]: Fill app name and click Next", async () => {
         await applicationsPage.waitForStep("application-configure-name");
-        console.log("Step 1 visible - filling app name:", appData.name);
+        console.log("Step 2 visible - filling app name:", appData.name);
         await applicationsPage.fillAppName(appData.name);
         await applicationsPage.clickNext();
-        console.log("Clicked Next on Step 1");
-        await applicationsPage.screenshot("tc002-step1-done");
+        console.log("Clicked Next on Step 2");
+        await applicationsPage.screenshot("tc002-step2-done");
         await applicationsPage.handleOptionalOuStep();
       });
 
-      await test.step("Step 3 [configure-design]: Skip and click Next", async () => {
+      await test.step("Step 4 [configure-design]: Skip and click Next", async () => {
         await applicationsPage.waitForStep("application-configure-design");
-        console.log("Step 3 (configure-design) visible - skipping");
-        await applicationsPage.clickNext();
-        await applicationsPage.screenshot("tc002-step3-done");
-      });
-
-      await test.step("Step 4 [configure-sign-in]: Skip and click Next", async () => {
-        await applicationsPage.waitForStep("application-configure-sign-in");
-        console.log("Step 4 (configure-sign-in) visible - skipping");
+        console.log("Step 4 (configure-design) visible - skipping");
         await applicationsPage.clickNext();
         await applicationsPage.screenshot("tc002-step4-done");
       });
 
-      await test.step("Step 5 [configure-experience]: Verify INBUILT is default and click Next", async () => {
-        await applicationsPage.waitForStep("application-configure-experience");
-        console.log("Step 5 (configure-experience) visible - INBUILT is default, clicking Next");
+      await test.step("Step 5 [configure-sign-in]: Skip and click Next", async () => {
+        await applicationsPage.waitForStep("application-configure-sign-in");
+        console.log("Step 5 (configure-sign-in) visible - skipping");
         await applicationsPage.clickNext();
         await applicationsPage.screenshot("tc002-step5-done");
       });
 
-      await test.step("Step 6 [configure-stack]: Skip and click Next", async () => {
-        await applicationsPage.waitForStep("application-configure-stack");
-        console.log("Step 6 (configure-stack) visible - skipping");
+      await test.step("Step 6 [configure-experience]: Verify INBUILT is default and click Next", async () => {
+        await applicationsPage.waitForStep("application-configure-experience");
+        console.log("Step 6 (configure-experience) visible - INBUILT is default, clicking Next");
         await applicationsPage.clickNext();
         await applicationsPage.screenshot("tc002-step6-done");
       });
@@ -152,8 +152,10 @@ test.describe("Application Onboarding", () => {
         await applicationsPage.goto();
         await applicationsPage.verifyPageLoaded();
         await applicationsPage.clickAddApplication();
+        await applicationsPage.waitForStep("application-configure-stack");
+        await applicationsPage.clickNext();
         await applicationsPage.waitForStep("application-configure-name");
-        console.log("Step 1 visible with empty name input");
+        console.log("Step 2 visible with empty name input");
         await applicationsPage.screenshot("tc003-empty-name");
       });
 
@@ -180,32 +182,32 @@ test.describe("Application Onboarding", () => {
         await applicationsPage.clickAddApplication();
       });
 
-      await test.step("Step 1: Fill name and advance", async () => {
+      await test.step("Step 1: Skip stack and advance", async () => {
+        await applicationsPage.waitForStep("application-configure-stack");
+        await applicationsPage.clickNext();
+      });
+
+      await test.step("Step 2: Fill name and advance", async () => {
         await applicationsPage.waitForStep("application-configure-name");
         await applicationsPage.fillAppName(appData.name);
         await applicationsPage.clickNext();
         await applicationsPage.handleOptionalOuStep();
       });
 
-      await test.step("Steps 3 & 4: Skip design and sign-in", async () => {
+      await test.step("Steps 4 & 5: Skip design and sign-in", async () => {
         await applicationsPage.waitForStep("application-configure-design");
         await applicationsPage.clickNext();
         await applicationsPage.waitForStep("application-configure-sign-in");
         await applicationsPage.clickNext();
       });
 
-      await test.step("Step 5: Select EMBEDDED and advance", async () => {
+      await test.step("Step 6: Select EMBEDDED and verify configure-details is skipped", async () => {
         await applicationsPage.waitForStep("application-configure-experience");
         console.log("Selecting EMBEDDED experience");
         await applicationsPage.selectEmbeddedExperience();
-        await applicationsPage.clickNext();
-        await applicationsPage.screenshot("tc004-embedded-selected");
-      });
-
-      await test.step("Step 6: Skip configure-stack and verify configure-details is skipped", async () => {
-        await applicationsPage.waitForStep("application-configure-stack");
         await expect(applicationsPage.configureDetailsStep).not.toBeVisible();
         await applicationsPage.clickNext();
+        await applicationsPage.screenshot("tc004-embedded-selected");
         console.log("configure-details was never shown - correct EMBEDDED behaviour");
         // EMBEDDED without passkey creates app directly and navigates to edit page
         await applicationsPage.page.waitForURL(/\/console\/applications\/(?!create)[^/]+$/, { timeout: 30000 });
@@ -225,6 +227,9 @@ test.describe("Application Onboarding", () => {
         await applicationsPage.verifyPageLoaded();
         await applicationsPage.clickAddApplication();
 
+        await applicationsPage.waitForStep("application-configure-stack");
+        await applicationsPage.clickNext();
+
         await applicationsPage.waitForStep("application-configure-name");
         await applicationsPage.fillAppName(appData.name);
         await applicationsPage.clickNext();
@@ -235,8 +240,6 @@ test.describe("Application Onboarding", () => {
         await applicationsPage.waitForStep("application-configure-sign-in");
         await applicationsPage.clickNext();
         await applicationsPage.waitForStep("application-configure-experience");
-        await applicationsPage.clickNext();
-        await applicationsPage.waitForStep("application-configure-stack");
         await applicationsPage.clickNext();
 
         createdAppUrl = await applicationsPage.completeWizardCreation();

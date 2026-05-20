@@ -25,10 +25,10 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/log"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 const (
@@ -70,7 +70,7 @@ func (e *ouExporter) GetParameterizerType() string {
 func (e *ouExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
 	// Get all OUs by requesting a large limit from the service
 	// In composite mode, this returns OUs from both file-based and database stores
-	ous, err := e.service.GetOrganizationUnitList(ctx, serverconst.MaxPageSize, 0)
+	ous, err := e.service.GetOrganizationUnitList(ctx, serverconst.MaxPageSize, 0, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +108,7 @@ func (e *ouExporter) GetAllResourceIDs(ctx context.Context) ([]string, *servicee
 
 // getAllChildIDs recursively retrieves all child OU IDs (excluding immutable ones).
 func (e *ouExporter) getAllChildIDs(ctx context.Context, parentID string) ([]string, *serviceerror.ServiceError) {
-	children, err := e.service.GetOrganizationUnitChildren(ctx, parentID, serverconst.MaxPageSize, 0)
+	children, err := e.service.GetOrganizationUnitChildren(ctx, parentID, serverconst.MaxPageSize, 0, nil)
 	if err != nil {
 		return nil, err
 	}

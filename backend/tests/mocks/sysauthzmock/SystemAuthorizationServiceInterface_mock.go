@@ -7,10 +7,10 @@ package sysauthzmock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/security"
-	"github.com/asgardeo/thunder/internal/system/sysauthz"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
 // NewSystemAuthorizationServiceInterfaceMock creates a new instance of SystemAuthorizationServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

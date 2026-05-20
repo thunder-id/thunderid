@@ -23,8 +23,8 @@ import type {UserTypeListResponse} from '../../types/user-types';
 import useGetUserTypes from '../useGetUserTypes';
 
 // Mock the dependencies
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: vi.fn(),
+vi.mock('@thunderid/react', () => ({
+  useThunderID: vi.fn(),
 }));
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
@@ -35,7 +35,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
-const {useAsgardeo} = await import('@asgardeo/react');
+const {useThunderID} = await import('@thunderid/react');
 const {useConfig} = await import('@thunderid/contexts');
 
 describe('useGetUserTypes', () => {
@@ -46,7 +46,7 @@ describe('useGetUserTypes', () => {
     totalResults: 2,
     startIndex: 1,
     count: 2,
-    schemas: [
+    types: [
       {id: '123', name: 'UserType1', ouId: 'root-ou', allowSelfRegistration: false},
       {id: '456', name: 'UserType2', ouId: 'child-ou', allowSelfRegistration: true},
     ],
@@ -57,11 +57,11 @@ describe('useGetUserTypes', () => {
     mockHttpRequest = vi.fn();
     mockGetServerUrl = vi.fn().mockReturnValue('https://api.test.com');
 
-    vi.mocked(useAsgardeo).mockReturnValue({
+    vi.mocked(useThunderID).mockReturnValue({
       http: {
         request: mockHttpRequest,
       },
-    } as unknown as ReturnType<typeof useAsgardeo>);
+    } as unknown as ReturnType<typeof useThunderID>);
 
     vi.mocked(useConfig).mockReturnValue({
       getServerUrl: mockGetServerUrl,
@@ -94,7 +94,7 @@ describe('useGetUserTypes', () => {
     });
 
     expect(result.current.data).toEqual(mockUserTypeListResponse);
-    expect(result.current.data?.schemas).toHaveLength(2);
+    expect(result.current.data?.types).toHaveLength(2);
     expect(result.current.data?.totalResults).toBe(2);
     expect(result.current.data?.count).toBe(2);
   });
@@ -290,7 +290,7 @@ describe('useGetUserTypes', () => {
       totalResults: 0,
       startIndex: 0,
       count: 0,
-      schemas: [],
+      types: [],
     };
 
     mockHttpRequest.mockResolvedValueOnce({
@@ -304,7 +304,7 @@ describe('useGetUserTypes', () => {
     });
 
     expect(result.current.data).toEqual(emptyResponse);
-    expect(result.current.data?.schemas).toHaveLength(0);
+    expect(result.current.data?.types).toHaveLength(0);
     expect(result.current.data?.totalResults).toBe(0);
   });
 });

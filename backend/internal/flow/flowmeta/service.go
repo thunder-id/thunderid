@@ -24,14 +24,14 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/asgardeo/thunder/internal/design/common"
-	"github.com/asgardeo/thunder/internal/design/resolve"
-	"github.com/asgardeo/thunder/internal/entityprovider"
-	"github.com/asgardeo/thunder/internal/inboundclient"
-	"github.com/asgardeo/thunder/internal/ou"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	i18nmgt "github.com/asgardeo/thunder/internal/system/i18n/mgt"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/design/common"
+	"github.com/thunder-id/thunderid/internal/design/resolve"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
+	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // MetaType represents the type of metadata being requested.
@@ -187,9 +187,10 @@ func (fms *flowMetaService) populateTypeMetadata(
 	}
 
 	response.IsRegistrationFlowEnabled = client.IsRegistrationFlowEnabled
+	response.IsRecoveryFlowEnabled = client.IsRecoveryFlowEnabled
 	response.Application = buildApplicationMetadata(client.ID, entity, client.Properties)
 
-	ouList, ouErr := fms.ouService.GetOrganizationUnitList(ctx, 1, 0)
+	ouList, ouErr := fms.ouService.GetOrganizationUnitList(ctx, 1, 0, nil)
 	if ouErr != nil {
 		if ouErr.Code == ou.ErrorOrganizationUnitNotFound.Code {
 			return "", &ErrorOUNotFound

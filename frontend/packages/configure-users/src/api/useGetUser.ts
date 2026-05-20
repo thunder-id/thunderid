@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import type {User} from '@thunderid/types';
@@ -29,7 +29,7 @@ import UserQueryKeys from '../constants/user-query-keys';
  * @returns TanStack Query result object containing user data, loading state, and error information
  */
 export default function useGetUser(userId: string | undefined): UseQueryResult<User> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
   return useQuery<User>({

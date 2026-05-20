@@ -36,8 +36,8 @@ const sidebar: SidebarsConfig = {
           items: [
             {
               type: 'doc',
-              id: 'sdks/react/apis/contexts/asgardeo-provider',
-              label: '<AsgardeoProvider />',
+              id: 'sdks/react/apis/contexts/thunderid-provider',
+              label: '<ThunderIDProvider />',
             },
           ],
         },
@@ -153,8 +153,8 @@ const sidebar: SidebarsConfig = {
           items: [
             {
               type: 'doc',
-              id: 'sdks/react/apis/hooks/use-asgardeo',
-              label: 'useAsgardeo()',
+              id: 'sdks/react/apis/hooks/use-thunderid',
+              label: 'useThunderID()',
             },
           ],
         },

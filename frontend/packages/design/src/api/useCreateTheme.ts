@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import DesignQueryKeys from '../constants/design-query-keys';
@@ -29,7 +29,7 @@ import type {ThemeResponse} from '../models/responses';
  * @returns TanStack Query mutation object for creating theme configurations
  */
 export default function useCreateTheme(): UseMutationResult<ThemeResponse, Error, CreateThemeRequest> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
 

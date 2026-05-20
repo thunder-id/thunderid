@@ -25,7 +25,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/asgardeo/thunder/internal/role"
+	"github.com/thunder-id/thunderid/internal/role"
 )
 
 // rbacEngine implements Role-Based Access Control (RBAC) authorization.

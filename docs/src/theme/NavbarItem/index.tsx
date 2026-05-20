@@ -16,15 +16,21 @@
  * under the License.
  */
 
-import React from 'react';
 import OriginalNavbarItem from '@theme-original/NavbarItem';
+import React from 'react';
+import GitHubStarButton from './GitHubStarButton';
 import PersonaDropdown from './PersonaDropdown';
 
 type OriginalProps = React.ComponentProps<typeof OriginalNavbarItem>;
 
 export default function NavbarItem(props: OriginalProps): React.ReactElement {
-  if ((props as {type?: string}).type === 'custom-PersonaDropdown') {
+  const type = (props as {type?: string}).type;
+  if (type === 'custom-PersonaDropdown') {
     return <PersonaDropdown />;
+  }
+  if (type === 'custom-GitHubStarButton') {
+    const {mobile} = props as {mobile?: boolean};
+    return <GitHubStarButton mobile={mobile} />;
   }
   return <OriginalNavbarItem {...props} />;
 }

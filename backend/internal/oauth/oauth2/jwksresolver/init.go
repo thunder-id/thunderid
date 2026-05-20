@@ -19,7 +19,7 @@
 package jwksresolver
 
 import (
-	syshttp "github.com/asgardeo/thunder/internal/system/http"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 )
 
 // Initialize creates and returns a new Resolver configured with the given HTTP client.

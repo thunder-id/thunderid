@@ -21,8 +21,8 @@ package inboundclient
 import (
 	"errors"
 
-	"github.com/asgardeo/thunder/internal/cert"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 var (
@@ -48,6 +48,8 @@ var (
 	ErrFKInvalidAuthFlow = errors.New("invalid auth flow ID")
 	// ErrFKInvalidRegistrationFlow is returned when the registration flow ID does not exist.
 	ErrFKInvalidRegistrationFlow = errors.New("invalid registration flow ID")
+	// ErrFKInvalidRecoveryFlow is returned when the recovery flow ID does not exist.
+	ErrFKInvalidRecoveryFlow = errors.New("invalid recovery flow ID")
 	// ErrFKFlowDefinitionRetrievalFailed is returned when a flow definition cannot be retrieved.
 	ErrFKFlowDefinitionRetrievalFailed = errors.New("error retrieving flow definition")
 	// ErrFKFlowServerError is returned when a server error occurs while resolving a flow.
@@ -201,10 +203,16 @@ type ConsentSyncError struct {
 	Underlying *serviceerror.ServiceError
 }
 
-// Error implements the error interface.
+// Error implements the error interface. Falls back through (description → code → generic) so
+// the returned string is never empty even when the underlying error has no description.
 func (e *ConsentSyncError) Error() string {
 	if e.Underlying != nil {
-		return e.Underlying.ErrorDescription.DefaultValue
+		if msg := e.Underlying.ErrorDescription.DefaultValue; msg != "" {
+			return msg
+		}
+		if e.Underlying.Code != "" {
+			return "consent sync failed (code " + e.Underlying.Code + ")"
+		}
 	}
 	return "consent sync failed"
 }

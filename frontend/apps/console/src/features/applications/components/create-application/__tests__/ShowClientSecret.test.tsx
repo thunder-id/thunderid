@@ -35,6 +35,7 @@ describe('ShowClientSecret', () => {
 
   const defaultProps: ShowClientSecretProps = {
     appName: 'Test Application',
+    clientId: 'test_client_id_12345',
     clientSecret: 'test_secret_12345',
     onCopySecret: mockOnCopySecret,
     onContinue: mockOnContinue,
@@ -73,6 +74,15 @@ describe('ShowClientSecret', () => {
       expect(screen.getByText('Test Application')).toBeInTheDocument();
     });
 
+    it('should render the client ID field', () => {
+      renderComponent();
+
+      expect(screen.getByText('Client ID')).toBeInTheDocument();
+      const input = screen.getByDisplayValue('test_client_id_12345');
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveAttribute('readonly');
+    });
+
     it('should render the client secret field', () => {
       renderComponent();
 
@@ -106,13 +116,7 @@ describe('ShowClientSecret', () => {
       const input = screen.getByDisplayValue('test_secret_12345');
       expect(input).toHaveAttribute('type', 'password');
 
-      // Get all icon buttons - the first one in the input should be the visibility toggle
-      const allButtons = screen.getAllByRole('button');
-      // Filter to get only icon buttons (small buttons without text content)
-      const iconButtons = allButtons.filter((btn) => btn.querySelector('svg'));
-      // The first icon button should be the visibility toggle
-      const visibilityButton = iconButtons[0];
-      expect(visibilityButton).toBeInTheDocument();
+      const visibilityButton = screen.getByRole('button', {name: 'Toggle secret visibility'});
 
       await user.click(visibilityButton);
 
@@ -132,17 +136,25 @@ describe('ShowClientSecret', () => {
       const user = userEvent.setup();
       renderComponent();
 
-      // Get all icon buttons - the second one in the input should be the copy button
-      const allButtons = screen.getAllByRole('button');
-      const iconButtons = allButtons.filter((btn) => btn.querySelector('svg'));
-      // The second icon button should be the copy button (first is visibility toggle)
-      const copyButton = iconButtons[1];
-      expect(copyButton).toBeInTheDocument();
+      const copyButton = screen.getByRole('button', {name: 'Copy Client Secret'});
 
       await user.click(copyButton);
 
       await waitFor(() => {
         expect(mockCopy).toHaveBeenCalledWith('test_secret_12345');
+      });
+    });
+
+    it('should call copy function when copy client ID button is clicked', async () => {
+      const user = userEvent.setup();
+      renderComponent();
+
+      const copyButton = screen.getByRole('button', {name: 'Copy Client ID'});
+
+      await user.click(copyButton);
+
+      await waitFor(() => {
+        expect(mockCopy).toHaveBeenCalledWith('test_client_id_12345');
       });
     });
 
@@ -184,10 +196,12 @@ describe('ShowClientSecret', () => {
     it('should call onCopySecret callback through useCopyToClipboard', () => {
       renderComponent();
 
-      // Get the config passed to useCopyToClipboard
-      const hookCall = vi.mocked(useCopyToClipboard).mock.calls[0][0];
-      expect(hookCall).toHaveProperty('onCopy', mockOnCopySecret);
-      expect(hookCall).toHaveProperty('resetDelay', 2000);
+      const hookCalls = vi.mocked(useCopyToClipboard).mock.calls.map((call) => call[0]);
+      const secretHookCall = hookCalls.find((call) => call?.onCopy === mockOnCopySecret);
+
+      expect(secretHookCall).toBeDefined();
+      expect(secretHookCall).toHaveProperty('onCopy', mockOnCopySecret);
+      expect(secretHookCall).toHaveProperty('resetDelay', 2000);
     });
   });
 
@@ -215,6 +229,12 @@ describe('ShowClientSecret', () => {
 
       const input = screen.getByDisplayValue('different_secret_abc');
       expect(input).toBeInTheDocument();
+    });
+
+    it('should not render the client ID field when not provided', () => {
+      renderComponent({clientId: ''});
+
+      expect(screen.queryByText('Client ID')).not.toBeInTheDocument();
     });
   });
 

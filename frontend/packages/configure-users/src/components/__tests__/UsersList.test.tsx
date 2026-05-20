@@ -182,11 +182,11 @@ interface UseDeleteUserReturn {
 const mockUseGetUsers = vi.fn<() => UseGetUsersReturn>();
 const mockUseDeleteUser = vi.fn<() => UseDeleteUserReturn>();
 
-vi.mock('../../api/useGetUsers', () => ({
+vi.mock('@/api/useGetUsers', () => ({
   default: () => mockUseGetUsers(),
 }));
 
-vi.mock('../../api/useDeleteUser', () => ({
+vi.mock('@/api/useDeleteUser', () => ({
   default: () => mockUseDeleteUser(),
 }));
 

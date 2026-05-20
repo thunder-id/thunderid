@@ -26,8 +26,8 @@ const mockHttpRequest = vi.fn();
 const mockGetServerUrl = vi.fn().mockReturnValue('https://api.test.com');
 
 // Mock the dependencies
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: () => ({
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
     http: {
       request: mockHttpRequest,
     },
@@ -49,7 +49,7 @@ describe('useGetUserTypes', () => {
     totalResults: 2,
     startIndex: 0,
     count: 2,
-    schemas: [
+    types: [
       {id: 'schema-1', name: 'Employee', ouId: 'ou-1'},
       {id: 'schema-2', name: 'Contractor', ouId: 'ou-2'},
     ],
@@ -86,7 +86,7 @@ describe('useGetUserTypes', () => {
     });
 
     expect(result.current.data).toEqual(mockSchemasResponse);
-    expect(result.current.data?.schemas).toHaveLength(2);
+    expect(result.current.data?.types).toHaveLength(2);
     expect(result.current.data?.totalResults).toBe(2);
     expect(result.current.data?.count).toBe(2);
   });
@@ -299,7 +299,7 @@ describe('useGetUserTypes', () => {
       totalResults: 0,
       startIndex: 0,
       count: 0,
-      schemas: [],
+      types: [],
     };
 
     mockHttpRequest.mockResolvedValueOnce({
@@ -313,7 +313,7 @@ describe('useGetUserTypes', () => {
     });
 
     expect(result.current.data).toEqual(emptyResponse);
-    expect(result.current.data?.schemas).toHaveLength(0);
+    expect(result.current.data?.types).toHaveLength(0);
     expect(result.current.data?.totalResults).toBe(0);
   });
 

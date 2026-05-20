@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState } from "react";
 import {
   AppBar,
   Avatar,
@@ -26,11 +26,11 @@ import {
   Toolbar,
   Tooltip,
   Typography,
-} from '@wso2/oxygen-ui';
-import { Link, Outlet, useNavigate, useLocation } from '@tanstack/react-router';
-import UserProfileModal from './UserProfileModal';
-import { ThemeSwitcher } from './ThemeSwitcher';
-import { decodeJwt } from '../utils/jwt';
+} from "@wso2/oxygen-ui";
+import { Link, Outlet, useNavigate, useLocation } from "react-router";
+import UserProfileModal from "./UserProfileModal";
+import { ThemeSwitcher } from "./ThemeSwitcher";
+import { decodeJwt } from "../utils/jwt";
 
 interface TokenPayload {
   sub?: string;
@@ -46,7 +46,7 @@ function Layout() {
 
   // Read assertion from sessionStorage - location.pathname as dependency triggers re-read after navigation
   const assertion = useMemo(() => {
-    return sessionStorage.getItem('assertion');
+    return sessionStorage.getItem("assertion");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
@@ -65,39 +65,39 @@ function Layout() {
     if (payload?.sub) {
       return String(payload.sub).charAt(0).toUpperCase();
     }
-    return 'U';
+    return "U";
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem('assertion');
-    navigate({ to: '/' });
+    sessionStorage.removeItem("assertion");
+    navigate("/");
   };
 
   return (
     <Box
       sx={{
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: '100vh',
+        display: "flex",
+        flexDirection: "column",
+        minHeight: "100vh",
       }}
     >
       {/* Navigation Bar */}
       <AppBar position="static" color="default" elevation={1}>
-        <Toolbar sx={{ justifyContent: 'space-between' }}>
-          <Link to="/" style={{ textDecoration: 'none' }}>
+        <Toolbar sx={{ justifyContent: "space-between" }}>
+          <Link to="/" style={{ textDecoration: "none" }}>
             <Typography
               variant="h5"
               component="span"
               sx={{
                 fontWeight: 700,
-                color: 'primary.main',
+                color: "primary.main",
               }}
             >
               ThunderID Sample
             </Typography>
           </Link>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
             <ThemeSwitcher />
             {isLoggedIn && (
               <>
@@ -107,7 +107,7 @@ function Layout() {
                     size="small"
                   >
                     <Avatar
-                      sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}
+                      sx={{ width: 32, height: 32, bgcolor: "primary.main" }}
                     >
                       {getUserInitials()}
                     </Avatar>
@@ -131,8 +131,8 @@ function Layout() {
       <Box
         component="main"
         sx={{
-          flex: '1 0 auto',
-          position: 'relative',
+          flex: "1 0 auto",
+          position: "relative",
         }}
       >
         <Outlet />

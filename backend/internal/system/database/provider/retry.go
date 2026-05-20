@@ -64,7 +64,7 @@ var retryMetrics dbRetryMetrics
 
 func initDBRetryMetrics() {
 	retryMetrics.once.Do(func() {
-		meter := otel.Meter("github.com/asgardeo/thunder/database/retry")
+		meter := otel.Meter("github.com/thunder-id/thunderid/database/retry")
 		retryMetrics.retryAttempts, _ = meter.Int64Counter(
 			"thunderid_db_retry_attempts_total",
 			metric.WithDescription("Total DB retry attempts for transient errors"),

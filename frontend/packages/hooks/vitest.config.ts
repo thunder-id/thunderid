@@ -20,7 +20,12 @@ import {playwright} from '@vitest/browser-playwright';
 import {defineConfig} from 'vitest/config';
 
 export default defineConfig({
+  define: {
+    global: 'globalThis',
+  },
   test: {
+    globals: true,
+    setupFiles: ['@thunderid/test-utils/setup'],
     browser: {
       enabled: true,
       headless: true,

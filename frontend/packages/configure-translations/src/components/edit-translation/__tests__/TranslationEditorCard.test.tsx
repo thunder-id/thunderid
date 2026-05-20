@@ -29,11 +29,11 @@ vi.mock('react-i18next', async () => {
   };
 });
 
-vi.mock('../TranslationFieldsView', () => ({
+vi.mock('@/components/edit-translation/TranslationFieldsView', () => ({
   default: () => <div data-testid="fields-view" />,
 }));
 
-vi.mock('../TranslationJsonEditor', () => ({
+vi.mock('@/components/edit-translation/TranslationJsonEditor', () => ({
   default: () => <div data-testid="json-editor" />,
 }));
 

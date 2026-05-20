@@ -25,8 +25,8 @@ import Preview, {type PreviewProps} from '../Preview';
 import {AuthenticatorTypes} from '@/features/integrations/models/authenticators';
 import {IdentityProviderTypes, type IdentityProvider} from '@/features/integrations/models/identity-provider';
 
-// Mock the @asgardeo/react module
-vi.mock('@asgardeo/react', () => ({
+// Mock the @thunderid/react module
+vi.mock('@thunderid/react', () => ({
   BaseSignIn: ({children}: {children: () => ReactNode}) => <div>{children()}</div>,
   ThemeProvider: ({children}: {children: ReactNode}) => <div>{children}</div>,
 }));

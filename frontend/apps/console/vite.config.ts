@@ -108,8 +108,8 @@ export default defineConfig({
     server: {
       deps: {
         inline: [
-          '@asgardeo/browser',
-          '@asgardeo/react',
+          '@thunderid/browser',
+          '@thunderid/react',
           '@wso2/oxygen-ui',
           '@wso2/oxygen-ui-icons-react',
           '@mui/x-data-grid',

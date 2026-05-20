@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
 import {waitFor, act, renderHook} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
@@ -28,8 +28,8 @@ import useCreateApplication from '../useCreateApplication';
 // Import mocked modules
 
 // Mock the dependencies
-vi.mock('@asgardeo/react', () => ({
-  useAsgardeo: vi.fn(),
+vi.mock('@thunderid/react', () => ({
+  useThunderID: vi.fn(),
 }));
 
 vi.mock('@thunderid/contexts', async (importOriginal) => {
@@ -140,12 +140,12 @@ describe('useCreateApplication', () => {
     // Mock HTTP request function
     mockHttpRequest = vi.fn();
 
-    // Mock useAsgardeo hook
-    vi.mocked(useAsgardeo).mockReturnValue({
+    // Mock useThunderID hook
+    vi.mocked(useThunderID).mockReturnValue({
       http: {
         request: mockHttpRequest,
       },
-    } as unknown as ReturnType<typeof useAsgardeo>);
+    } as unknown as ReturnType<typeof useThunderID>);
 
     // Mock useConfig hook
     vi.mocked(useConfig).mockReturnValue({

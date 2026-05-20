@@ -21,8 +21,9 @@ package ou
 import (
 	"context"
 
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 )
 
 // compositeOUStore implements a composite store that combines file-based (immutable) and database (mutable) stores.
@@ -43,10 +44,10 @@ func newCompositeOUStore(fileStore, dbStore organizationUnitStoreInterface) *com
 }
 
 // GetOrganizationUnitListCount retrieves the total count of organization units from both stores.
-func (c *compositeOUStore) GetOrganizationUnitListCount(ctx context.Context) (int, error) {
+func (c *compositeOUStore) GetOrganizationUnitListCount(ctx context.Context, f *filter.FilterGroup) (int, error) {
 	return declarativeresource.CompositeMergeCountHelper(
-		func() (int, error) { return c.dbStore.GetOrganizationUnitListCount(ctx) },
-		func() (int, error) { return c.fileStore.GetOrganizationUnitListCount(ctx) },
+		func() (int, error) { return c.dbStore.GetOrganizationUnitListCount(ctx, f) },
+		func() (int, error) { return c.fileStore.GetOrganizationUnitListCount(ctx, f) },
 	)
 }
 
@@ -54,26 +55,25 @@ func (c *compositeOUStore) GetOrganizationUnitListCount(ctx context.Context) (in
 // Applies the 1000-record limit in composite mode to prevent memory exhaustion.
 // Returns ErrResultLimitExceededInCompositeMode if the limit is exceeded.
 func (c *compositeOUStore) GetOrganizationUnitList(
-	ctx context.Context, limit, offset int,
+	ctx context.Context, limit, offset int, f *filter.FilterGroup,
 ) ([]OrganizationUnitBasic, error) {
 	items, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
-		func() (int, error) { return c.dbStore.GetOrganizationUnitListCount(ctx) },
-		func() (int, error) { return c.fileStore.GetOrganizationUnitListCount(ctx) },
+		func() (int, error) { return c.dbStore.GetOrganizationUnitListCount(ctx, f) },
+		func() (int, error) { return c.fileStore.GetOrganizationUnitListCount(ctx, f) },
 		func(count int) ([]OrganizationUnitBasic, error) {
-			return c.dbStore.GetOrganizationUnitList(ctx, count, 0)
+			return c.dbStore.GetOrganizationUnitList(ctx, count, 0, f)
 		},
 		func(count int) ([]OrganizationUnitBasic, error) {
-			return c.fileStore.GetOrganizationUnitList(ctx, count, 0)
+			return c.fileStore.GetOrganizationUnitList(ctx, count, 0, f)
 		},
 		mergeAndDeduplicateOUs,
 		limit,
 		offset,
-		serverconst.MaxCompositeStoreRecords, // Apply 1000-record limit
+		serverconst.MaxCompositeStoreRecords,
 	)
 	if err != nil {
 		return nil, err
 	}
-	// Return limit exceeded as an error
 	if limitExceeded {
 		return nil, ErrResultLimitExceededInCompositeMode
 	}
@@ -209,10 +209,12 @@ func (c *compositeOUStore) DeleteOrganizationUnit(ctx context.Context, id string
 }
 
 // GetOrganizationUnitChildrenCount retrieves the count of child OUs from both stores.
-func (c *compositeOUStore) GetOrganizationUnitChildrenCount(ctx context.Context, id string) (int, error) {
+func (c *compositeOUStore) GetOrganizationUnitChildrenCount(
+	ctx context.Context, id string, f *filter.FilterGroup,
+) (int, error) {
 	return declarativeresource.CompositeMergeCountHelper(
-		func() (int, error) { return c.dbStore.GetOrganizationUnitChildrenCount(ctx, id) },
-		func() (int, error) { return c.fileStore.GetOrganizationUnitChildrenCount(ctx, id) },
+		func() (int, error) { return c.dbStore.GetOrganizationUnitChildrenCount(ctx, id, f) },
+		func() (int, error) { return c.fileStore.GetOrganizationUnitChildrenCount(ctx, id, f) },
 	)
 }
 
@@ -220,25 +222,25 @@ func (c *compositeOUStore) GetOrganizationUnitChildrenCount(ctx context.Context,
 // Applies the 1000-record limit in composite mode to prevent memory exhaustion.
 // Returns ErrResultLimitExceededInCompositeMode if the limit is exceeded.
 func (c *compositeOUStore) GetOrganizationUnitChildrenList(ctx context.Context,
-	id string, limit, offset int) ([]OrganizationUnitBasic, error) {
+	id string, limit, offset int, f *filter.FilterGroup,
+) ([]OrganizationUnitBasic, error) {
 	items, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
-		func() (int, error) { return c.dbStore.GetOrganizationUnitChildrenCount(ctx, id) },
-		func() (int, error) { return c.fileStore.GetOrganizationUnitChildrenCount(ctx, id) },
+		func() (int, error) { return c.dbStore.GetOrganizationUnitChildrenCount(ctx, id, f) },
+		func() (int, error) { return c.fileStore.GetOrganizationUnitChildrenCount(ctx, id, f) },
 		func(count int) ([]OrganizationUnitBasic, error) {
-			return c.dbStore.GetOrganizationUnitChildrenList(ctx, id, count, 0)
+			return c.dbStore.GetOrganizationUnitChildrenList(ctx, id, count, 0, f)
 		},
 		func(count int) ([]OrganizationUnitBasic, error) {
-			return c.fileStore.GetOrganizationUnitChildrenList(ctx, id, count, 0)
+			return c.fileStore.GetOrganizationUnitChildrenList(ctx, id, count, 0, f)
 		},
 		mergeAndDeduplicateChildren,
 		limit,
 		offset,
-		serverconst.MaxCompositeStoreRecords, // Apply 1000-record limit
+		serverconst.MaxCompositeStoreRecords,
 	)
 	if err != nil {
 		return nil, err
 	}
-	// Return limit exceeded as an error
 	if limitExceeded {
 		return nil, ErrResultLimitExceededInCompositeMode
 	}

@@ -21,10 +21,11 @@ package group
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/asgardeo/thunder/internal/system/config"
-	"github.com/asgardeo/thunder/internal/system/database/provider"
-	"github.com/asgardeo/thunder/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 const storeLoggerComponentName = "GroupStore"
@@ -196,6 +197,7 @@ func (s *groupStore) CreateGroup(ctx context.Context, group GroupDAO) error {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
 
+	now := time.Now().UTC()
 	_, err = dbClient.ExecuteContext(
 		ctx,
 		QueryCreateGroup,
@@ -204,6 +206,8 @@ func (s *groupStore) CreateGroup(ctx context.Context, group GroupDAO) error {
 		group.Name,
 		group.Description,
 		s.deploymentID,
+		now,
+		now,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -310,6 +314,7 @@ func (s *groupStore) UpdateGroup(ctx context.Context, group GroupDAO) error {
 		group.OUID,
 		group.Name,
 		group.Description,
+		time.Now().UTC(),
 		s.deploymentID,
 	)
 	if err != nil {
@@ -587,8 +592,10 @@ func addMembersToGroup(
 	members []Member,
 	deploymentID string,
 ) error {
+	now := time.Now().UTC()
 	for _, member := range members {
-		_, err := dbClient.ExecuteContext(ctx, QueryAddMemberToGroup, groupID, member.Type, member.ID, deploymentID)
+		_, err := dbClient.ExecuteContext(
+			ctx, QueryAddMemberToGroup, groupID, member.Type, member.ID, deploymentID, now, now)
 		if err != nil {
 			return fmt.Errorf("failed to add member to group: %w", err)
 		}

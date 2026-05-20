@@ -43,12 +43,16 @@ vi.mock('../../../../hooks/useDataGridLocaleText', () => ({
   default: () => ({}),
 }));
 
-vi.mock('@thunderid/i18n', () => ({
-  useGetLanguages: vi.fn(),
-  useDeleteTranslations: vi.fn().mockReturnValue({mutate: vi.fn(), isPending: false}),
-  getDisplayNameForCode: (code: string) => `Language(${code})`,
-  toFlagEmoji: (code: string) => `Flag(${code})`,
-}));
+vi.mock('@thunderid/i18n', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    useGetLanguages: vi.fn(),
+    useDeleteTranslations: vi.fn().mockReturnValue({mutate: vi.fn(), isPending: false}),
+    getDisplayNameForCode: (code: string) => `Language(${code})`,
+    toFlagEmoji: (code: string) => `Flag(${code})`,
+  };
+});
 
 vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn()}),

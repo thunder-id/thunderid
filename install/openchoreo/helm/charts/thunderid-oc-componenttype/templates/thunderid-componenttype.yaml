@@ -32,7 +32,7 @@ spec:
       properties:
         image:
           type: string
-          default: "ghcr.io/asgardeo/thunder:latest"
+          default: "ghcr.io/thunder-id/thunderid:latest"
         runtime:
           type: object
           properties:

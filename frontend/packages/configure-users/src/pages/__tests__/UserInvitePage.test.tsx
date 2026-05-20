@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import type {EmbeddedFlowComponent} from '@asgardeo/react';
+import type {EmbeddedFlowComponent} from '@thunderid/react';
 import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
 import type {JSX} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -93,8 +93,8 @@ vi.mock('react-router', async () => ({
   useNavigate: () => mockNavigate,
 }));
 
-vi.mock('@asgardeo/react', async () => {
-  const actual = await vi.importActual<Record<string, unknown>>('@asgardeo/react');
+vi.mock('@thunderid/react', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@thunderid/react');
 
   return {
     ...actual,
@@ -120,11 +120,15 @@ vi.mock('@asgardeo/react', async () => {
   };
 });
 
-vi.mock('@thunderid/hooks', () => ({
-  useTemplateLiteralResolver: () => ({
-    resolve: (key: string) => key,
-  }),
-}));
+vi.mock('@thunderid/hooks', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...(actual as object),
+    useTemplateLiteralResolver: () => ({
+      resolve: (key: string) => key,
+    }),
+  };
+});
 
 vi.mock('../../../organization-units/components/OrganizationUnitTreePicker', () => ({
   default: ({value, onChange, rootOuId}: {value: string; onChange: (id: string) => void; rootOuId?: string}) => (
@@ -191,6 +195,21 @@ const phoneInput = (
     required: opts?.required ?? false,
     placeholder: opts?.placeholder ?? '',
     id: opts?.id ?? `phone-${ref}`,
+  }) as unknown as EmbeddedFlowComponent;
+
+/** Build a password input component */
+const passwordInput = (
+  ref: string,
+  label: string,
+  opts?: {required?: boolean; placeholder?: string; id?: string},
+): EmbeddedFlowComponent =>
+  ({
+    type: 'PASSWORD_INPUT',
+    ref,
+    label,
+    required: opts?.required ?? false,
+    placeholder: opts?.placeholder ?? '',
+    id: opts?.id ?? `password-${ref}`,
   }) as unknown as EmbeddedFlowComponent;
 
 /** Build a select component */
@@ -262,6 +281,7 @@ describe('UserInvitePage', () => {
     simulateInviteUserError = false;
     capturedOnFlowChange = null;
     mockInviteUserRenderProps = {...defaultRenderProps};
+    Object.assign(mockInviteUserError, {message: 'Invite user failed', response: undefined});
   });
 
   /* ----- Loading state ----- */
@@ -293,13 +313,13 @@ describe('UserInvitePage', () => {
   /* ----- Default header ----- */
 
   describe('header', () => {
-    it('should display default "Invite User" breadcrumb when no steps have been visited', () => {
+    it('should display default "Add User" breadcrumb when no steps have been visited', () => {
       mockInviteUserRenderProps.isLoading = true;
       mockInviteUserRenderProps.components = [];
 
       render(<UserInvitePage />);
 
-      expect(screen.getByText('Invite User')).toBeInTheDocument();
+      expect(screen.getByText('Add User')).toBeInTheDocument();
     });
 
     it('should render a close button that navigates to /users', async () => {
@@ -351,6 +371,42 @@ describe('UserInvitePage', () => {
       const input = screen.getByLabelText(/phone number/i);
       expect(input).toBeInTheDocument();
       expect(input).toHaveAttribute('type', 'tel');
+    });
+
+    it('should render a PASSWORD_INPUT field', () => {
+      mockInviteUserRenderProps.components = [
+        heading('Password Step'),
+        block([passwordInput('password', 'Password', {required: true}), submitAction('Next')]),
+      ];
+
+      render(<UserInvitePage />);
+
+      const input = screen.getByLabelText(/password/i);
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveAttribute('type', 'password');
+    });
+
+    it('should toggle password visibility in PASSWORD_INPUT field', async () => {
+      mockInviteUserRenderProps.components = [
+        heading('Password Step'),
+        block([passwordInput('password', 'Password', {required: true}), submitAction('Next')]),
+      ];
+
+      render(<UserInvitePage />);
+
+      const input = screen.getByLabelText(/password/i);
+      expect(input).toHaveAttribute('type', 'password');
+
+      // Find and click the toggle button (shows 'show password' when password is hidden)
+      const toggleButton = screen.getByLabelText('show password');
+      await userEvent.click(toggleButton);
+
+      expect(input).toHaveAttribute('type', 'text');
+
+      // Toggle back (shows 'hide password' when password is visible)
+      const hideButton = screen.getByLabelText('hide password');
+      await userEvent.click(hideButton);
+      expect(input).toHaveAttribute('type', 'password');
     });
 
     it('should render a SELECT field with options', () => {
@@ -450,22 +506,22 @@ describe('UserInvitePage', () => {
       expect(screen.getByText('Check your email.')).toBeInTheDocument();
     });
 
-    it('should show "Close" and "Invite Another User" buttons when no BLOCK components present', () => {
+    it('should show "Close" and "Add Another User" buttons when no BLOCK components present', () => {
       mockInviteUserRenderProps.components = [heading('Done')];
 
       render(<UserInvitePage />);
 
       const closeButtons = screen.getAllByRole('button', {name: /close/i});
       expect(closeButtons.length).toBeGreaterThanOrEqual(2); // header X + footer Close
-      expect(screen.getByRole('button', {name: /invite another user/i})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: /add another user/i})).toBeInTheDocument();
     });
 
-    it('should call resetFlow when "Invite Another User" is clicked in display-only state', async () => {
+    it('should call resetFlow when "Add Another User" is clicked in display-only state', async () => {
       mockInviteUserRenderProps.components = [heading('Done')];
 
       render(<UserInvitePage />);
 
-      await userEvent.click(screen.getByRole('button', {name: /invite another user/i}));
+      await userEvent.click(screen.getByRole('button', {name: /add another user/i}));
 
       expect(mockResetFlow).toHaveBeenCalled();
     });
@@ -503,7 +559,7 @@ describe('UserInvitePage', () => {
       expect(screen.getByText('Invite Link')).toBeInTheDocument();
     });
 
-    it('should not show "Invite Another User" button when BLOCK components are present', () => {
+    it('should not show "Add Another User" button when BLOCK components are present', () => {
       mockInviteUserRenderProps.components = [
         heading('Step 1'),
         block([textInput('name', 'Name'), submitAction('Next')]),
@@ -511,7 +567,7 @@ describe('UserInvitePage', () => {
 
       render(<UserInvitePage />);
 
-      expect(screen.queryByRole('button', {name: /invite another user/i})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: /add another user/i})).not.toBeInTheDocument();
     });
   });
 
@@ -582,6 +638,39 @@ describe('UserInvitePage', () => {
 
       await waitFor(() => {
         expect(mockLoggerError).toHaveBeenCalledWith('User onboarding error', {error: mockInviteUserError});
+      });
+    });
+
+    it('should fall back to manual user creation when the onboarding flow is missing on error', async () => {
+      simulateInviteUserError = true;
+      Object.assign(mockInviteUserError, {
+        message: 'Flow not found',
+        response: {status: 404, data: {code: 'FLM-1003'}},
+      });
+
+      render(<UserInvitePage />);
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/users/create');
+      });
+
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
+        'Falling back to manual user creation because the onboarding flow is unavailable',
+      );
+
+      simulateInviteUserError = false;
+      Object.assign(mockInviteUserError, {message: 'Invite user failed', response: undefined});
+    });
+
+    it('should fall back to manual user creation when flow change reports a missing onboarding flow', async () => {
+      render(<UserInvitePage />);
+
+      if (capturedOnFlowChange) {
+        capturedOnFlowChange({failureReason: 'Flow not found', response: {status: 404, data: {code: 'FLM-1003'}}});
+      }
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/users/create');
       });
     });
   });
@@ -662,6 +751,20 @@ describe('UserInvitePage', () => {
 
       const input = screen.getByLabelText(/email/i);
       await userEvent.type(input, 'test@example.com');
+
+      expect(mockHandleInputChange).toHaveBeenCalled();
+    });
+
+    it('should call handleInputChange when typing in a PASSWORD_INPUT', async () => {
+      mockInviteUserRenderProps.components = [
+        heading('Password'),
+        block([passwordInput('password', 'Password', {required: true}), submitAction('Next')]),
+      ];
+
+      render(<UserInvitePage />);
+
+      const input = screen.getByLabelText(/password/i);
+      await userEvent.type(input, 'SuperSecret123');
 
       expect(mockHandleInputChange).toHaveBeenCalled();
     });
@@ -748,7 +851,7 @@ describe('UserInvitePage', () => {
   /* ----- Progress calculation ----- */
 
   describe('progress calculation', () => {
-    it('should detect OU step and adjust total steps to 4', async () => {
+    it('should detect OU step and adjust total steps to 5', async () => {
       mockInviteUserRenderProps.components = [
         heading('OU Assignment'),
         block([ouSelect('ou', 'Organization Unit'), submitAction('Next')]),
@@ -756,15 +859,15 @@ describe('UserInvitePage', () => {
 
       render(<UserInvitePage />);
 
-      // The OU step detection triggers hasOuStep=true, changing totalSteps to 4
-      // With 1 breadcrumb and 4 total steps, progress = 25%
+      // The OU step detection triggers hasOuStep=true, changing totalSteps to 5
+      // With 1 breadcrumb and 5 total steps, progress = 20%
       await waitFor(() => {
         const progressBar = screen.getAllByRole('progressbar')[0];
-        expect(progressBar).toHaveAttribute('aria-valuenow', '25');
+        expect(progressBar).toHaveAttribute('aria-valuenow', '20');
       });
     });
 
-    it('should calculate progress without OU step as 3 total steps', async () => {
+    it('should calculate progress without OU step as 4 total steps', async () => {
       mockInviteUserRenderProps.components = [
         heading('User Type'),
         block([textInput('type', 'Type'), submitAction('Next')]),
@@ -772,11 +875,11 @@ describe('UserInvitePage', () => {
 
       render(<UserInvitePage />);
 
-      // With 1 breadcrumb and 3 total steps, progress = 33.33...%
+      // With 1 breadcrumb and 4 total steps, progress = 25%
       await waitFor(() => {
         const progressBar = screen.getAllByRole('progressbar')[0];
         const value = Number(progressBar.getAttribute('aria-valuenow'));
-        expect(value).toBeCloseTo(33.33, 0);
+        expect(value).toBeCloseTo(25, 0);
       });
     });
   });
@@ -794,8 +897,8 @@ describe('UserInvitePage', () => {
 
       await waitFor(() => {
         const progressBar = screen.getAllByRole('progressbar')[0];
-        // With OU detected, totalSteps=4, 1 breadcrumb -> 25%
-        expect(progressBar).toHaveAttribute('aria-valuenow', '25');
+        // With OU detected, totalSteps=5, 1 breadcrumb -> 20%
+        expect(progressBar).toHaveAttribute('aria-valuenow', '20');
       });
     });
   });

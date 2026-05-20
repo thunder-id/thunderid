@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/asgardeo/thunder/tests/integration/testutils"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -71,12 +71,12 @@ func (ts *ListUserTypesTestSuite) TestListUserTypes() {
 
 	// Verify response structure according to API spec
 	ts.Assert().GreaterOrEqual(listResponse.TotalResults, 0, "TotalResults should be non-negative")
-	ts.Assert().Equal(listResponse.Count, len(listResponse.Schemas), "Count should match actual schemas")
+	ts.Assert().Equal(listResponse.Count, len(listResponse.Types), "Count should match actual types")
 	ts.Assert().Equal(1, listResponse.StartIndex, "StartIndex should be 1 (1-based)")
 	ts.Assert().NotNil(listResponse.Links, "Should have links array")
 
 	// Verify each schema has required fields for list view
-	for _, schema := range listResponse.Schemas {
+	for _, schema := range listResponse.Types {
 		ts.Assert().NotEmpty(schema.ID, "Schema should have ID")
 		ts.Assert().NotEmpty(schema.Name, "Schema should have name")
 	}

@@ -7,9 +7,9 @@ package passkey
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/authn/common"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/authn/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewPasskeyServiceInterfaceMock creates a new instance of PasskeyServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

@@ -16,14 +16,14 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import AgentQueryKeys from '../constants/agent-query-keys';
 import type {Agent} from '../models/agent';
 
 export default function useGetAgent(agentId: string): UseQueryResult<Agent> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
   return useQuery<Agent>({

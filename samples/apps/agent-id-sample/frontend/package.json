@@ -1,0 +1,20 @@
+{
+  "name": "thunderid-agent-id-sample",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@thunderid/react": "0.0.5",
+    "@vitejs/plugin-react": "^4.4.1",
+    "lucide-react": "^0.511.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^6.30.3",
+    "vite": "^6.3.5"
+  }
+}

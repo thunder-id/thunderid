@@ -1,0 +1,139 @@
+---
+title: Accessing Protected APIs
+displayed_sidebar: browserSdkSidebar
+description: Make authenticated API requests using the Browser SDK
+---
+
+# Accessing Protected APIs
+
+When building applications with <ProductName />, you often need to call protected APIs that require authentication. The Browser SDK provides built-in methods for making authenticated HTTP requests with automatic token management.
+
+## Using the Built-In HTTP Client
+
+The `ThunderIDBrowserClient` provides `httpRequest()` and `httpRequestAll()` methods that automatically attach the access token as a Bearer token to outgoing requests.
+
+### Basic API Request
+
+```js title="src/api.js" showLineNumbers
+import auth from './auth.js'
+
+async function fetchUserData(userId) {
+  const response = await auth.httpRequest({
+    url: `https://localhost:8090/users/${userId}`,
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
+  return response.data
+}
+```
+
+### PATCH Request
+
+```js title="src/api.js" showLineNumbers
+import auth from './auth.js'
+
+async function updateProfile(data) {
+  const response = await auth.httpRequest({
+    url: 'https://localhost:8090/users/me',
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: JSON.stringify(data),
+  })
+
+  return response.data
+}
+```
+
+### Parallel Requests
+
+Use `httpRequestAll()` to make multiple authenticated requests in parallel:
+
+```js title="src/api.js" showLineNumbers
+import auth from './auth.js'
+
+async function loadDashboardData() {
+  const [usersResponse, rolesResponse] = await auth.httpRequestAll([
+    {
+      url: 'https://localhost:8090/users',
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    },
+    {
+      url: 'https://localhost:8090/roles',
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    },
+  ])
+
+  return {
+    users: usersResponse.data,
+    roles: rolesResponse.data,
+  }
+}
+```
+
+## Using the Access Token Directly
+
+If you prefer to use your own HTTP client (e.g., `fetch` or `axios`), retrieve the access token and attach it manually:
+
+```js title="src/api.js" showLineNumbers
+import auth from './auth.js'
+
+async function fetchWithToken(url) {
+  const token = await auth.getAccessToken()
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  })
+
+  return response.json()
+}
+```
+
+:::warning
+When using the access token directly, you are responsible for handling token renewal and refresh. The built-in `httpRequest()` method handles this automatically.
+:::
+
+## Error Handling
+
+Handle API errors by catching exceptions from `httpRequest()`:
+
+```js title="src/api.js" showLineNumbers
+import auth from './auth.js'
+
+async function fetchData() {
+  try {
+    const response = await auth.httpRequest({
+      url: 'https://localhost:8090/users',
+      method: 'GET',
+    })
+
+    return response.data
+  } catch (error) {
+    if (error.response?.status === 401) {
+      // Token expired or invalid — trigger re-authentication
+      await auth.signIn()
+    } else {
+      console.error('API error:', error.message)
+    }
+  }
+}
+```
+
+You can also use [Event Hooks](/docs/next/sdks/browser/apis/hooks) to track HTTP request lifecycle events globally:
+
+```js
+import { Hooks } from '@thunderid/browser'
+
+auth.on(Hooks.HttpRequestError, (error) => {
+  console.error('Request failed:', error)
+})
+```

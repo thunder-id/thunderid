@@ -24,7 +24,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/asgardeo/thunder/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -282,7 +282,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ChildrenOperations() {
 		suite.SetupTest() // Fresh setup
 		parentID := "parent-ou"
 
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, parentID).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, parentID, mock.Anything).
 			Return(2, nil).
 			Once()
 
@@ -301,7 +301,7 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ChildrenOperations() {
 		})
 		suite.NoError(err)
 
-		count, err := suite.compositeStore.GetOrganizationUnitChildrenCount(context.Background(), parentID)
+		count, err := suite.compositeStore.GetOrganizationUnitChildrenCount(context.Background(), parentID, nil)
 		suite.NoError(err)
 		suite.Equal(3, count) // 2 from DB + 1 from file
 	})
@@ -319,9 +319,9 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ListOperations() {
 		})
 
 		// Mock DB store count - CompositeMergeCountHelper calls dbStore.GetOrganizationUnitListCount once
-		suite.dbStoreMock.On("GetOrganizationUnitListCount", mock.Anything).Return(3, nil).Once()
+		suite.dbStoreMock.On("GetOrganizationUnitListCount", mock.Anything, mock.Anything).Return(3, nil).Once()
 
-		count, err := suite.compositeStore.GetOrganizationUnitListCount(context.Background())
+		count, err := suite.compositeStore.GetOrganizationUnitListCount(context.Background(), nil)
 		suite.NoError(err)
 		suite.Equal(5, count) // 3 from DB + 2 from file
 	})
@@ -339,16 +339,18 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ListOperations() {
 
 		// Mock DB store - note that implementation calls count to determine how many to fetch from each
 		// dbCount will be called to fetch all from DB
-		suite.dbStoreMock.On("GetOrganizationUnitListCount", mock.Anything).Return(2, nil).Once()
+		suite.dbStoreMock.On("GetOrganizationUnitListCount", mock.Anything, mock.Anything).Return(2, nil).Once()
 		// Then fileCount from fileStore (real store) returns 1
 		// Total = 3, so it will try to fetch all 3 (dbCount=2, fileCount=1)
-		suite.dbStoreMock.On("GetOrganizationUnitList", mock.Anything, 2, 0).Return([]OrganizationUnitBasic{
-			{ID: "db-ou-1", Handle: "db-1", Name: "DB OU 1"},
-			{ID: "db-ou-2", Handle: "db-2", Name: "DB OU 2"},
-		}, nil).Once()
+		suite.dbStoreMock.On("GetOrganizationUnitList", mock.Anything, 2, 0, mock.Anything).
+			Return([]OrganizationUnitBasic{
+				{ID: "db-ou-1", Handle: "db-1", Name: "DB OU 1"},
+				{ID: "db-ou-2", Handle: "db-2", Name: "DB OU 2"},
+			}, nil).
+			Once()
 		// fileStore.GetOrganizationUnitList will be called with (1, 0) and return the file OU
 
-		list, err := suite.compositeStore.GetOrganizationUnitList(context.Background(), 10, 0)
+		list, err := suite.compositeStore.GetOrganizationUnitList(context.Background(), 10, 0, nil)
 		suite.NoError(err)
 		suite.Len(list, 3) // 2 from DB + 1 from file
 
@@ -373,10 +375,10 @@ func (suite *CompositeStoreTestSuite) TestCompositeStore_ListOperations() {
 		suite.dbStoreMock = newOrganizationUnitStoreInterfaceMock(suite.T())
 		suite.compositeStore = newCompositeOUStore(fileStoreMock, suite.dbStoreMock)
 
-		suite.dbStoreMock.On("GetOrganizationUnitListCount", mock.Anything).Return(600, nil).Once()
-		fileStoreMock.On("GetOrganizationUnitListCount", mock.Anything).Return(700, nil).Once()
+		suite.dbStoreMock.On("GetOrganizationUnitListCount", mock.Anything, mock.Anything).Return(600, nil).Once()
+		fileStoreMock.On("GetOrganizationUnitListCount", mock.Anything, mock.Anything).Return(700, nil).Once()
 
-		result, err := suite.compositeStore.GetOrganizationUnitList(context.Background(), 100, 900)
+		result, err := suite.compositeStore.GetOrganizationUnitList(context.Background(), 100, 900, nil)
 		// When limit is exceeded (1300 > 1000), should return error
 		suite.Error(err)
 		suite.ErrorIs(err, ErrResultLimitExceededInCompositeMode)
@@ -451,25 +453,25 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 			{ID: "ou-2", Handle: "handle-2", Name: "OU 2"},
 		}
 
-		suite.dbStoreMock.On("GetOrganizationUnitListCount", mock.Anything).
+		suite.dbStoreMock.On("GetOrganizationUnitListCount", mock.Anything, mock.Anything).
 			Return(2, nil).
 			Once()
-		suite.dbStoreMock.On("GetOrganizationUnitList", mock.Anything, 2, 0).
+		suite.dbStoreMock.On("GetOrganizationUnitList", mock.Anything, 2, 0, mock.Anything).
 			Return(expectedList, nil).
 			Once()
 
-		result, err := suite.compositeStore.GetOrganizationUnitList(context.Background(), 10, 0)
+		result, err := suite.compositeStore.GetOrganizationUnitList(context.Background(), 10, 0, nil)
 		suite.NoError(err)
 		suite.Equal(expectedList, result)
 	})
 
 	suite.Run("propagates DB store error", func() {
 		dbErr := errors.New("database error")
-		suite.dbStoreMock.On("GetOrganizationUnitListCount", mock.Anything).
+		suite.dbStoreMock.On("GetOrganizationUnitListCount", mock.Anything, mock.Anything).
 			Return(0, dbErr).
 			Once()
 
-		result, err := suite.compositeStore.GetOrganizationUnitList(context.Background(), 10, 0)
+		result, err := suite.compositeStore.GetOrganizationUnitList(context.Background(), 10, 0, nil)
 		suite.Error(err)
 		suite.Equal(dbErr, err)
 		suite.Empty(result)
@@ -679,25 +681,27 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		})
 		suite.NoError(err)
 
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, parentID).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, parentID, mock.Anything).
 			Return(2, nil).
 			Once()
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenList", mock.Anything, parentID, 2, 0).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenList", mock.Anything, parentID, 2, 0, mock.Anything).
 			Return(dbChildren, nil).
 			Once()
 
 		// Request first 2 items
-		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(context.Background(), parentID, 2, 0)
+		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(context.Background(), parentID, 2, 0, nil)
 		suite.NoError(err)
 		suite.Len(result, 2)
 	})
 
 	suite.Run("handles offset beyond total count", func() {
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, parentID).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, parentID, mock.Anything).
 			Return(2, nil).
 			Once()
 
-		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(context.Background(), parentID, 10, 100)
+		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(
+			context.Background(), parentID, 10, 100, nil,
+		)
 		suite.NoError(err)
 		suite.Empty(result)
 	})
@@ -719,15 +723,17 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		})
 		suite.NoError(err)
 
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, testParentID).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, testParentID, mock.Anything).
 			Return(3, nil).
 			Once()
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenList", mock.Anything, testParentID, 3, 0).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenList", mock.Anything, testParentID, 3, 0, mock.Anything).
 			Return(dbChildren, nil).
 			Once()
 
 		// Get second page (offset=2, limit=2)
-		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(context.Background(), testParentID, 2, 2)
+		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(
+			context.Background(), testParentID, 2, 2, nil,
+		)
 		suite.NoError(err)
 		suite.Len(result, 1) // Only 1 item remaining
 		suite.Equal("db-child-3", result[0].ID)
@@ -744,11 +750,13 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		suite.NoError(err)
 
 		dbErr := errors.New("count error")
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, testParentID).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, testParentID, mock.Anything).
 			Return(0, dbErr).
 			Once()
 
-		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(context.Background(), testParentID, 10, 0)
+		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(
+			context.Background(), testParentID, 10, 0, nil,
+		)
 		suite.Error(err)
 		suite.Equal(dbErr, err)
 		suite.Nil(result)
@@ -766,14 +774,16 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		suite.NoError(err)
 
 		dbErr := errors.New("list error")
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, testParentID).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, testParentID, mock.Anything).
 			Return(2, nil).
 			Once()
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenList", mock.Anything, testParentID, 2, 0).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenList", mock.Anything, testParentID, 2, 0, mock.Anything).
 			Return([]OrganizationUnitBasic{}, dbErr).
 			Once()
 
-		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(context.Background(), testParentID, 10, 0)
+		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(
+			context.Background(), testParentID, 10, 0, nil,
+		)
 		suite.Error(err)
 		suite.Equal(dbErr, err)
 		suite.Nil(result)
@@ -804,14 +814,16 @@ func (suite *CompositeStoreCoverageTestSuite) TestCompositeStore_GetOrganization
 		})
 		suite.NoError(err)
 
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, dedupeParentID).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenCount", mock.Anything, dedupeParentID, mock.Anything).
 			Return(2, nil).
 			Once()
-		suite.dbStoreMock.On("GetOrganizationUnitChildrenList", mock.Anything, dedupeParentID, 2, 0).
+		suite.dbStoreMock.On("GetOrganizationUnitChildrenList", mock.Anything, dedupeParentID, 2, 0, mock.Anything).
 			Return(dbChildren, nil).
 			Once()
 
-		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(context.Background(), dedupeParentID, 10, 0)
+		result, err := suite.compositeStore.GetOrganizationUnitChildrenList(
+			context.Background(), dedupeParentID, 10, 0, nil,
+		)
 		suite.NoError(err)
 		// Should have 2 children (duplicate removed)
 		suite.Len(result, 2)

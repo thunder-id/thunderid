@@ -24,13 +24,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/asgardeo/thunder/internal/entitytype/model"
-	oupkg "github.com/asgardeo/thunder/internal/ou"
-	serverconst "github.com/asgardeo/thunder/internal/system/constants"
-	declarativeresource "github.com/asgardeo/thunder/internal/system/declarative_resource"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
-	"github.com/asgardeo/thunder/internal/system/log"
-	"github.com/asgardeo/thunder/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/entitytype/model"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
 
 	"gopkg.in/yaml.v3"
 )
@@ -72,8 +70,8 @@ func (e *entityTypeExporter) GetAllResourceIDs(ctx context.Context) ([]string, *
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, 0, len(response.Schemas))
-	for _, schema := range response.Schemas {
+	ids := make([]string, 0, len(response.Types))
+	for _, schema := range response.Types {
 		if !schema.IsReadOnly {
 			ids = append(ids, schema.ID)
 		}
@@ -126,7 +124,7 @@ func (e *entityTypeExporter) GetResourceRules() *declarativeresource.ResourceRul
 // - In declarative mode: entityTypeStore is a fileBasedStore
 // - In composite mode: entityTypeStore is a compositeEntityTypeStore (contains both file and DB stores)
 func loadDeclarativeResources(
-	entityTypeStore entityTypeStoreInterface, ouService oupkg.OrganizationUnitServiceInterface) error {
+	entityTypeStore entityTypeStoreInterface, service EntityTypeServiceInterface) error {
 	var fileStore entityTypeStoreInterface
 
 	// Determine store type and extract file store
@@ -151,7 +149,7 @@ func loadDeclarativeResources(
 		ResourceType:  "EntityType",
 		DirectoryName: "user_types",
 		Parser:        parseToEntityTypeDTOWrapper,
-		Validator:     validateEntityTypeWrapper(ouService),
+		Validator:     validateEntityTypeWrapper(service),
 		IDExtractor: func(data interface{}) string {
 			return data.(*EntityType).ID
 		},
@@ -177,7 +175,19 @@ func parseToEntityTypeDTO(data []byte) (*EntityType, error) {
 		return nil, err
 	}
 
-	schemaBytes := []byte(schemaRequest.Schema)
+	var schemaBytes []byte
+	if schemaRequest.Schema != nil {
+		switch v := schemaRequest.Schema.(type) {
+		case string:
+			schemaBytes = []byte(v)
+		default:
+			var err error
+			schemaBytes, err = json.Marshal(v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal schema to JSON: %w", err)
+			}
+		}
+	}
 	if !json.Valid(schemaBytes) {
 		return nil, fmt.Errorf("schema field contains invalid JSON")
 	}
@@ -195,26 +205,34 @@ func parseToEntityTypeDTO(data []byte) (*EntityType, error) {
 		Category:              category,
 		Name:                  schemaRequest.Name,
 		OUID:                  schemaRequest.OUID,
+		OUHandle:              schemaRequest.OUHandle,
 		AllowSelfRegistration: schemaRequest.AllowSelfRegistration,
 		SystemAttributes:      schemaRequest.SystemAttributes,
-		Schema:                []byte(schemaRequest.Schema),
+		Schema:                schemaBytes,
 	}
 
 	return schemaDTO, nil
 }
 
 // validateEntityTypeWrapper wraps validateEntityType to match ResourceConfig.Validator signature.
-func validateEntityTypeWrapper(ouService oupkg.OrganizationUnitServiceInterface) func(interface{}) error {
+// When a service is provided, OU handles are resolved before validation runs.
+func validateEntityTypeWrapper(service EntityTypeServiceInterface) func(interface{}) error {
 	return func(dto interface{}) error {
 		schemaDTO, ok := dto.(*EntityType)
 		if !ok {
 			return fmt.Errorf("invalid type: expected *EntityType")
 		}
-		return validateEntityType(schemaDTO, ouService)
+		if service != nil {
+			if svcErr := service.ResolveEntityTypeHandles(context.Background(), schemaDTO); svcErr != nil {
+				return fmt.Errorf("organization unit with handle %q not found for entity type '%s'",
+					schemaDTO.OUHandle, schemaDTO.Name)
+			}
+		}
+		return validateEntityType(schemaDTO)
 	}
 }
 
-func validateEntityType(schemaDTO *EntityType, ouService oupkg.OrganizationUnitServiceInterface) error {
+func validateEntityType(schemaDTO *EntityType) error {
 	if strings.TrimSpace(schemaDTO.Name) == "" {
 		return fmt.Errorf("entity type name is required")
 	}
@@ -224,15 +242,7 @@ func validateEntityType(schemaDTO *EntityType, ouService oupkg.OrganizationUnitS
 	}
 
 	if strings.TrimSpace(schemaDTO.OUID) == "" {
-		return fmt.Errorf("organization unit ID is required for entity type '%s'", schemaDTO.Name)
-	}
-
-	// Validate organization unit exists
-	_, err := ouService.GetOrganizationUnit(
-		security.WithRuntimeContext(context.Background()), schemaDTO.OUID)
-	if err != nil {
-		return fmt.Errorf("organization unit '%s' not found for entity type '%s'",
-			schemaDTO.OUID, schemaDTO.Name)
+		return fmt.Errorf("organization_unit_id or ou_handle is required for entity type '%s'", schemaDTO.Name)
 	}
 
 	// Validate schema definition is present and valid.

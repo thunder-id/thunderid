@@ -163,7 +163,7 @@ export default function ImportConfigurationUploadPage(): JSX.Element {
           if (!trimmedSection) return;
 
           // Extract comments at the start of the section
-          const lines = trimmedSection.split('\n');
+          const lines = trimmedSection.split(/\r?\n|\r/);
           let resourceType = 'unknown';
           let fileName = 'unknown';
 
@@ -356,7 +356,7 @@ export default function ImportConfigurationUploadPage(): JSX.Element {
           display: 'flex',
           flexDirection: 'column',
           py: 8,
-          px: 20,
+          px: {xs: 2, sm: 3, md: 8, lg: 20},
           alignItems: 'flex-start',
         }}
       >

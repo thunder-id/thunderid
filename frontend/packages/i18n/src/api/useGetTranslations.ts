@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import I18nQueryKeys from '../constants/i18n-query-keys';
@@ -74,7 +74,7 @@ export default function useGetTranslations({
   namespace,
   enabled = true,
 }: UseGetTranslationsOptions): UseQueryResult<TranslationsResponse, Error> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
   return useQuery<TranslationsResponse, Error>({

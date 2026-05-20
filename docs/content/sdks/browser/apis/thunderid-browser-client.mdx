@@ -1,0 +1,288 @@
+---
+title: ThunderIDBrowserClient
+displayed_sidebar: browserSdkSidebar
+description: Main authentication client for browser applications
+---
+
+# `ThunderIDBrowserClient`
+
+The `ThunderIDBrowserClient` is the core class of the `@thunderid/browser` SDK. It manages the full authentication lifecycle for browser-based applications, including sign-in, sign-out, token management, and authenticated HTTP requests.
+
+## Usage
+
+Create an instance and initialize it with your application's configuration:
+
+```js title="src/auth.js" showLineNumbers
+import { ThunderIDBrowserClient } from '@thunderid/browser'
+
+const auth = new ThunderIDBrowserClient()
+
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  afterSignInUrl: window.location.origin,
+  afterSignOutUrl: window.location.origin,
+})
+
+export default auth
+```
+
+## Constructor
+
+```js
+const auth = new ThunderIDBrowserClient(instanceId?)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `instanceId` | `number` | `0` | Optional instance identifier. Use different IDs when running multiple SDK instances on the same page |
+
+## Methods
+
+### Initialization
+
+#### `initialize(config, storage?)`
+
+Initialize the client with your <ProductName /> application configuration.
+
+```js
+await auth.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+})
+```
+
+**Returns:** `Promise<boolean>` — `true` when initialization completes.
+
+#### `isInitialized()`
+
+Check whether the client has completed initialization. This method blocks until initialization finishes.
+
+```js
+const ready = await auth.isInitialized()
+```
+
+**Returns:** `Promise<boolean>`
+
+#### `reInitialize(config)`
+
+Update configuration at runtime without creating a new client instance.
+
+```js
+await auth.reInitialize({
+  scopes: ['openid', 'profile', 'email'],
+})
+```
+
+**Returns:** `Promise<boolean>`
+
+### Authentication
+
+#### `signIn(config?)`
+
+Redirect the user to the <ProductName /> sign-in page. After authentication, the user is redirected back to your application.
+
+```js
+await auth.signIn()
+```
+
+You can pass additional parameters:
+
+```js
+await auth.signIn({ fidp: 'GoogleOIDCAuthenticator' })
+```
+
+**Returns:** `Promise<User | undefined>` — The authenticated user on callback, or `undefined` during the redirect.
+
+#### `signInSilently(additionalParams?)`
+
+Perform a background token refresh without user interaction using a hidden iframe.
+
+```js
+const user = await auth.signInSilently()
+```
+
+**Returns:** `Promise<User | undefined>`
+
+#### `signOut()`
+
+Sign out the current user, clear the session, and redirect to the post-logout URL.
+
+```js
+await auth.signOut()
+```
+
+**Returns:** `Promise<boolean>`
+
+### Token Management
+
+#### `getAccessToken()`
+
+Retrieve the current access token.
+
+```js
+const token = await auth.getAccessToken()
+```
+
+**Returns:** `Promise<string>`
+
+#### `getIdToken()`
+
+Retrieve the raw ID token.
+
+```js
+const idToken = await auth.getIdToken()
+```
+
+**Returns:** `Promise<string | undefined>`
+
+#### `getDecodedIdToken()`
+
+Retrieve the decoded ID token claims as an object.
+
+```js
+const claims = await auth.getDecodedIdToken()
+console.log(claims.sub, claims.email)
+```
+
+**Returns:** `Promise<IdToken | undefined>`
+
+#### `refreshAccessToken()`
+
+Manually refresh the access token.
+
+```js
+const user = await auth.refreshAccessToken()
+```
+
+**Returns:** `Promise<User | undefined>`
+
+#### `revokeAccessToken()`
+
+Revoke the access token and end the session.
+
+```js
+await auth.revokeAccessToken()
+```
+
+**Returns:** `Promise<boolean | undefined>`
+
+#### `startAutoRefreshToken()`
+
+Enable automatic periodic token refresh before the access token expires.
+
+```js
+await auth.startAutoRefreshToken()
+```
+
+**Returns:** `Promise<void>`
+
+### User and Session
+
+#### `getUser()`
+
+Retrieve the authenticated user's profile information.
+
+```js
+const user = await auth.getUser()
+console.log(user.displayName, user.email)
+```
+
+**Returns:** `Promise<User | undefined>`
+
+The `User` object includes:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `displayName` | `string` | User's display name |
+| `username` | `string` | Username |
+| `email` | `string` | Email address |
+| `given_name` | `string` | First name |
+| `family_name` | `string` | Last name |
+| `picture` | `string` | Profile picture URL |
+| `sub` | `string` | Subject identifier |
+
+#### `isSignedIn()`
+
+Check whether a user is currently signed in.
+
+```js
+const signedIn = await auth.isSignedIn()
+```
+
+**Returns:** `Promise<boolean | undefined>`
+
+#### `isSessionActive()`
+
+Check whether the current session is still active.
+
+```js
+const active = await auth.isSessionActive()
+```
+
+**Returns:** `Promise<boolean | undefined>`
+
+#### `getOpenIDProviderEndpoints()`
+
+Retrieve the OIDC provider endpoint URLs (authorize, token, userinfo, etc.).
+
+```js
+const endpoints = await auth.getOpenIDProviderEndpoints()
+console.log(endpoints.authorizationEndpoint)
+```
+
+**Returns:** `Promise<Partial<OIDCEndpoints>>`
+
+### HTTP Requests
+
+#### `httpRequest(config)`
+
+Make an authenticated HTTP request. The SDK automatically attaches the access token as a Bearer token.
+
+```js
+const response = await auth.httpRequest({
+  url: 'https://api.example.com/data',
+  method: 'GET',
+  headers: {
+    Accept: 'application/json',
+  },
+})
+
+console.log(response.data)
+```
+
+**Returns:** `Promise<HttpResponse>`
+
+#### `httpRequestAll(configs)`
+
+Make multiple authenticated HTTP requests in parallel.
+
+```js
+const [users, roles] = await auth.httpRequestAll([
+  { url: 'https://api.example.com/users', method: 'GET' },
+  { url: 'https://api.example.com/roles', method: 'GET' },
+])
+```
+
+**Returns:** `Promise<HttpResponse[]>`
+
+#### `getHttpClient()`
+
+Retrieve the underlying `FetchHttpClient` instance for advanced use cases.
+
+```js
+const client = auth.getHttpClient()
+```
+
+**Returns:** `FetchHttpClient`
+
+#### `enableHttpHandler()` / `disableHttpHandler()`
+
+Control whether the SDK automatically attaches access tokens to HTTP requests.
+
+```js
+await auth.disableHttpHandler()  // Stop attaching tokens
+await auth.enableHttpHandler()   // Resume attaching tokens
+```
+
+**Returns:** `Promise<boolean | undefined>`

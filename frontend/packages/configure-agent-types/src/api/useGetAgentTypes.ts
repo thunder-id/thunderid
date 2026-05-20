@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
 import AgentTypeQueryKeys from '../constants/agentTypeQueryKeys';
@@ -32,7 +32,7 @@ import type {AgentTypeListResponse} from '../models/responses';
  * @returns TanStack Query result object containing agent types list data, loading state, and error information
  */
 export default function useGetAgentTypes(params?: AgentTypeListParams): UseQueryResult<AgentTypeListResponse> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const {limit, offset} = params ?? {};
 

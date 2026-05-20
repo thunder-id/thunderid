@@ -7,10 +7,10 @@ package flowmgtmock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/flow/core"
-	"github.com/asgardeo/thunder/internal/flow/mgt"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/mgt"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // newGraphBuilderInterfaceMock creates a new instance of graphBuilderInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

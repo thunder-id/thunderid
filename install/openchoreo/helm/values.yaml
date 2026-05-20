@@ -45,7 +45,7 @@ thunderid-component:
   pipelineName: identity-platform-pipeline  # Must match an existing DeploymentPipeline or set pipeline.create: true
 
   image:
-    repository: ghcr.io/asgardeo/thunder  # ThunderID container image repository
+    repository: ghcr.io/thunder-id/thunderid  # ThunderID container image repository
     tag: "latest"                          # Use a specific version tag in production
 
   thunderid:

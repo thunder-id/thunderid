@@ -53,10 +53,10 @@ const KNOWN_ICONS: Record<string, string> = {
  * ```tsx
  * <CodeGroup>
  *   <CodeBlock lang="bash" label="npm">
- *     npm install @asgardeo/react
+ *     npm install @example/react
  *   </CodeBlock>
  *   <CodeBlock lang="bash" label="Yarn">
- *     yarn add @asgardeo/react
+ *     yarn add @example/react
  *   </CodeBlock>
  * </CodeGroup>
  * ```

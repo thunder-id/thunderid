@@ -7,8 +7,8 @@ package notificationmock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/notification/common"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/notification/common"
 )
 
 // newNotificationStoreInterfaceMock creates a new instance of notificationStoreInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

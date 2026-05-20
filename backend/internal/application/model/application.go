@@ -22,13 +22,14 @@
 package model
 
 import (
-	inboundmodel "github.com/asgardeo/thunder/internal/inboundclient/model"
+	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 )
 
 // ApplicationDTO represents the data transfer object for application service operations.
 type ApplicationDTO struct {
 	ID          string `json:"id,omitempty" jsonschema:"Application ID. Auto-generated unique identifier."`
 	OUID        string `json:"ouId,omitempty" jsonschema:"Organization unit ID. The OU this application belongs to."`
+	OUHandle    string `json:"ouHandle,omitempty" jsonschema:"Organization unit handle. Resolved to an ID by the service layer."`
 	Name        string `json:"name" jsonschema:"Application name."`
 	Description string `json:"description,omitempty" jsonschema:"Optional description of the application's purpose or functionality."`
 	Template    string `json:"template,omitempty" jsonschema:"Application template. Optional. Pre-configured application type template."`
@@ -52,6 +53,8 @@ type BasicApplicationDTO struct {
 	AuthFlowID                string
 	RegistrationFlowID        string
 	IsRegistrationFlowEnabled bool
+	RecoveryFlowID            string
+	IsRecoveryFlowEnabled     bool
 	ThemeID                   string
 	LayoutID                  string
 	Template                  string
@@ -122,6 +125,7 @@ type ApplicationRequest struct {
 type ApplicationRequestWithID struct {
 	ID          string   `json:"id" yaml:"id"`
 	OUID        string   `json:"ouId,omitempty" yaml:"ou_id,omitempty"`
+	OUHandle    string   `json:"ouHandle,omitempty" yaml:"ou_handle,omitempty"`
 	Name        string   `json:"name" yaml:"name"`
 	Description string   `json:"description" yaml:"description"`
 	Template    string   `json:"template,omitempty" yaml:"template,omitempty"`
@@ -186,6 +190,8 @@ type BasicApplicationResponse struct {
 	AuthFlowID                string `json:"authFlowId,omitempty" jsonschema:"Authentication Flow ID."`
 	RegistrationFlowID        string `json:"registrationFlowId,omitempty" jsonschema:"Registration Flow ID."`
 	IsRegistrationFlowEnabled bool   `json:"isRegistrationFlowEnabled" jsonschema:"Registration enabled status."`
+	RecoveryFlowID            string `json:"recoveryFlowId,omitempty" jsonschema:"Recovery Flow ID."`
+	IsRecoveryFlowEnabled     bool   `json:"isRecoveryFlowEnabled" jsonschema:"Recovery enabled status."`
 	ThemeID                   string `json:"themeId,omitempty" jsonschema:"Theme ID."`
 	LayoutID                  string `json:"layoutId,omitempty" jsonschema:"Layout ID."`
 	Template                  string `json:"template,omitempty" jsonschema:"Application Template."`

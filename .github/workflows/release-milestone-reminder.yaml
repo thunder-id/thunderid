@@ -37,7 +37,7 @@ jobs:
           
           # 2. Fetch open milestones from the repo
           MILESTONES=$(curl -fsS -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/asgardeo/thunder/milestones?state=open")
+            "https://api.github.com/repos/thunder-id/thunderid/milestones?state=open")
           
           # 3. Filter for milestones due on that specific target date
           DUE_MILESTONES=$(echo "$MILESTONES" | jq "[.[] | select(.due_on != null and (.due_on | startswith(\"$TARGET_DATE\")))]")
@@ -61,7 +61,7 @@ jobs:
             ITEMS="[]"
             while true; do
               PAGE_ITEMS=$(curl -fsS -H "Authorization: Bearer $GITHUB_TOKEN" \
-                "https://api.github.com/repos/asgardeo/thunder/issues?milestone=$MILESTONE_NUMBER&state=open&per_page=100&page=$ITEM_PAGE")
+                "https://api.github.com/repos/thunder-id/thunderid/issues?milestone=$MILESTONE_NUMBER&state=open&per_page=100&page=$ITEM_PAGE")
               
               PAGE_COUNT=$(echo "$PAGE_ITEMS" | jq 'length')
               

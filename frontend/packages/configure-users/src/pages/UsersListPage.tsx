@@ -18,7 +18,7 @@
 
 import {useLogger} from '@thunderid/logger/react';
 import {Stack, TextField, Button, InputAdornment, PageContent, PageTitle} from '@wso2/oxygen-ui';
-import {Plus, Search, Mail} from '@wso2/oxygen-ui-icons-react';
+import {Plus, Search} from '@wso2/oxygen-ui-icons-react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import UsersList from '../components/UsersList';
@@ -35,34 +35,19 @@ export default function UsersListPage() {
         <PageTitle.Header>{t('users:title')}</PageTitle.Header>
         <PageTitle.SubHeader>{t('users:subtitle')}</PageTitle.SubHeader>
         <PageTitle.Actions>
-          <Stack direction="row" spacing={2}>
-            <Button
-              variant="outlined"
-              startIcon={<Mail size={18} />}
-              onClick={() => {
-                (async () => {
-                  await navigate('/users/invite');
-                })().catch((error: unknown) => {
-                  logger.error('Failed to navigate to invite user page', {error});
-                });
-              }}
-            >
-              {t('users:inviteUser', 'Invite User')}
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<Plus size={20} />}
-              onClick={() => {
-                (async () => {
-                  await navigate('/users/create');
-                })().catch((error: unknown) => {
-                  logger.error('Failed to navigate to create user page', {error});
-                });
-              }}
-            >
-              {t('users:addUser')}
-            </Button>
-          </Stack>
+          <Button
+            variant="contained"
+            startIcon={<Plus size={20} />}
+            onClick={() => {
+              (async () => {
+                await navigate('/users/invite');
+              })().catch((error: unknown) => {
+                logger.error('Failed to navigate to add user page', {error});
+              });
+            }}
+          >
+            {t('users:addUser')}
+          </Button>
         </PageTitle.Actions>
       </PageTitle>
 

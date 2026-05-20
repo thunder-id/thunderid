@@ -39,6 +39,14 @@ vi.mock('../RegistrationFlowSection', () => ({
   ),
 }));
 
+vi.mock('../RecoveryFlowSection', () => ({
+  default: ({application, editedApp}: {application: Application; editedApp: Partial<Application>}) => (
+    <div data-testid="recovery-flow-section">
+      RecoveryFlowSection - App: {application.id}, Edited Rec Flow: {editedApp.recoveryFlowId ?? 'None'}
+    </div>
+  ),
+}));
+
 describe('EditFlowsSettings', () => {
   const mockOnFieldChange = vi.fn();
   const mockApplication: Application = {
@@ -54,7 +62,7 @@ describe('EditFlowsSettings', () => {
   });
 
   describe('Rendering', () => {
-    it('should render both flow sections', () => {
+    it('should render all flow sections', () => {
       render(
         <MemoryRouter>
           <EditFlowsSettings application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
@@ -63,6 +71,7 @@ describe('EditFlowsSettings', () => {
 
       expect(screen.getByTestId('auth-flow-section')).toBeInTheDocument();
       expect(screen.getByTestId('registration-flow-section')).toBeInTheDocument();
+      expect(screen.getByTestId('recovery-flow-section')).toBeInTheDocument();
     });
 
     it('should pass application to child components', () => {
@@ -74,12 +83,14 @@ describe('EditFlowsSettings', () => {
 
       expect(screen.getByTestId('auth-flow-section')).toHaveTextContent('App: app-123');
       expect(screen.getByTestId('registration-flow-section')).toHaveTextContent('App: app-123');
+      expect(screen.getByTestId('recovery-flow-section')).toHaveTextContent('App: app-123');
     });
 
     it('should pass editedApp to child components', () => {
       const editedApp = {
         authFlowId: 'edited-auth-flow',
         registrationFlowId: 'edited-reg-flow',
+        recoveryFlowId: 'edited-rec-flow',
       };
 
       render(
@@ -90,6 +101,7 @@ describe('EditFlowsSettings', () => {
 
       expect(screen.getByTestId('auth-flow-section')).toHaveTextContent('Edited Auth Flow: edited-auth-flow');
       expect(screen.getByTestId('registration-flow-section')).toHaveTextContent('Edited Reg Flow: edited-reg-flow');
+      expect(screen.getByTestId('recovery-flow-section')).toHaveTextContent('Edited Rec Flow: edited-rec-flow');
     });
 
     it('should pass empty editedApp to child components', () => {
@@ -101,6 +113,7 @@ describe('EditFlowsSettings', () => {
 
       expect(screen.getByTestId('auth-flow-section')).toHaveTextContent('Edited Auth Flow: None');
       expect(screen.getByTestId('registration-flow-section')).toHaveTextContent('Edited Reg Flow: None');
+      expect(screen.getByTestId('recovery-flow-section')).toHaveTextContent('Edited Rec Flow: None');
     });
   });
 
@@ -127,6 +140,17 @@ describe('EditFlowsSettings', () => {
       expect(container.querySelector('[data-testid="registration-flow-section"]')).toBeInTheDocument();
     });
 
+    it('should pass onFieldChange to RecoveryFlowSection', () => {
+      const {container} = render(
+        <MemoryRouter>
+          <EditFlowsSettings application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
+        </MemoryRouter>,
+      );
+
+      // Verify the component is rendered (which means props were passed correctly)
+      expect(container.querySelector('[data-testid="recovery-flow-section"]')).toBeInTheDocument();
+    });
+
     it('should pass all required props to both child components', () => {
       const editedApp = {authFlowId: 'new-flow'};
 
@@ -139,6 +163,7 @@ describe('EditFlowsSettings', () => {
       // Both components should be present and have received their props
       expect(screen.getByTestId('auth-flow-section')).toBeInTheDocument();
       expect(screen.getByTestId('registration-flow-section')).toBeInTheDocument();
+      expect(screen.getByTestId('recovery-flow-section')).toBeInTheDocument();
     });
   });
 
@@ -153,6 +178,7 @@ describe('EditFlowsSettings', () => {
       const sections = container.querySelectorAll('[data-testid]');
       expect(sections[0]).toHaveAttribute('data-testid', 'auth-flow-section');
       expect(sections[1]).toHaveAttribute('data-testid', 'registration-flow-section');
+      expect(sections[2]).toHaveAttribute('data-testid', 'recovery-flow-section');
     });
   });
 });

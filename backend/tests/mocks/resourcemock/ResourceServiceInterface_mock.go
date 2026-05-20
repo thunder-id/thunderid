@@ -7,9 +7,9 @@ package resourcemock
 import (
 	"context"
 
-	"github.com/asgardeo/thunder/internal/resource"
-	"github.com/asgardeo/thunder/internal/system/error/serviceerror"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // NewResourceServiceInterfaceMock creates a new instance of ResourceServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

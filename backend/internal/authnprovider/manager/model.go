@@ -21,7 +21,7 @@ package manager
 import (
 	"encoding/json"
 
-	authnprovidercm "github.com/asgardeo/thunder/internal/authnprovider/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 )
 
 type providerKey string

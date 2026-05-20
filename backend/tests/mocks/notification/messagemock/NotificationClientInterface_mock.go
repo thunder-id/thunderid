@@ -5,8 +5,8 @@
 package messagemock
 
 import (
-	"github.com/asgardeo/thunder/internal/notification/common"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/notification/common"
 )
 
 // NewNotificationClientInterfaceMock creates a new instance of NotificationClientInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.

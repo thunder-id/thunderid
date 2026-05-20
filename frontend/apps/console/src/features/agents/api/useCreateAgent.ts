@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
@@ -25,7 +25,7 @@ import AgentQueryKeys from '../constants/agent-query-keys';
 import type {Agent, CreateAgentRequest} from '../models/agent';
 
 export default function useCreateAgent(): UseMutationResult<Agent, Error, CreateAgentRequest> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient = useQueryClient();
   const {t} = useTranslation('agents');

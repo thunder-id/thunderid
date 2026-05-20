@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {useAsgardeo} from '@asgardeo/react';
+import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
 import {useTranslation} from 'react-i18next';
@@ -28,7 +28,7 @@ import UserQueryKeys from '../constants/user-query-keys';
  * @returns TanStack Query mutation object for deleting users
  */
 export default function useDeleteUser(): UseMutationResult<void, Error, string> {
-  const {http} = useAsgardeo();
+  const {http} = useThunderID();
   const {getServerUrl} = useConfig();
   const queryClient: ReturnType<typeof useQueryClient> = useQueryClient();
   const {t} = useTranslation('users');
