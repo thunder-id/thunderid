@@ -1,17 +1,17 @@
-# Re-runs the PR Builder workflow when the `dependencies-approved` label is added.
-# The PR Builder intentionally does not trigger on `labeled` events to avoid
-# skipping all checks when unrelated labels are added.
+# Re-runs the PR Builder workflow when the `dependencies-approved` or `skip-tests`
+# label is added or removed. The PR Builder intentionally does not trigger on
+# `labeled`/`unlabeled` events to avoid re-running for unrelated label changes.
 
-name: 🔄 Re-run PR Builder on Dependency Approval
+name: 🔄 Re-run PR Builder on Label Change
 
 on:
   pull_request:
-    types: [labeled]
+    types: [labeled, unlabeled]
 
 jobs:
   retrigger:
     name: 🔄 Re-trigger PR Builder
-    if: github.event.label.name == 'dependencies-approved'
+    if: contains(fromJSON('["dependencies-approved", "skip-tests"]'), github.event.label.name)
     runs-on: ubuntu-latest
     permissions:
       actions: write

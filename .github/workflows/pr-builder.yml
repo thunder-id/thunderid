@@ -228,7 +228,7 @@ jobs:
   build:
     name: 🛠️ Build Product
     needs: dependency-guard
-    if: ${{ always() && (needs.dependency-guard.result == 'success' || needs.dependency-guard.result == 'skipped') && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+    if: ${{ always() && (needs.dependency-guard.result == 'success' || needs.dependency-guard.result == 'skipped') && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && !contains(github.event.pull_request.labels.*.name, 'skip-tests') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -322,7 +322,7 @@ jobs:
   test-frontend:
     name: 🧪 Frontend Tests (shard ${{ matrix.shard }}/4)
     needs: dependency-guard
-    if: ${{ always() && (needs.dependency-guard.result == 'success' || needs.dependency-guard.result == 'skipped') && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+    if: ${{ always() && (needs.dependency-guard.result == 'success' || needs.dependency-guard.result == 'skipped') && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && !contains(github.event.pull_request.labels.*.name, 'skip-tests') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
