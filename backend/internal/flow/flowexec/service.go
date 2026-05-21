@@ -62,7 +62,7 @@ const (
 type flowExecService struct {
 	flowEngine           flowEngineInterface
 	flowMgtService       flowmgt.FlowMgtServiceInterface
-	flowStore            flowStoreInterface
+	flowStore            ContextStoreInterface
 	inboundClientService inboundclient.InboundClientServiceInterface
 	entityProvider       entityprovider.EntityProviderInterface
 	observabilitySvc     observability.ObservabilityServiceInterface
@@ -71,7 +71,7 @@ type flowExecService struct {
 }
 
 func newFlowExecService(flowMgtService flowmgt.FlowMgtServiceInterface,
-	flowStore flowStoreInterface, flowEngine flowEngineInterface,
+	flowStore ContextStoreInterface, flowEngine flowEngineInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,

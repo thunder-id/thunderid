@@ -37,8 +37,8 @@ type authRequestContext struct {
 	OAuthParameters model.OAuthParameters
 }
 
-// authorizationRequestStoreInterface defines the interface for authorization request storage.
-type authorizationRequestStoreInterface interface {
+// RequestStoreInterface defines the interface for authorization request storage.
+type RequestStoreInterface interface {
 	AddRequest(ctx context.Context, value authRequestContext) (string, error)
 	GetRequest(ctx context.Context, key string) (bool, authRequestContext, error)
 	ClearRequest(ctx context.Context, key string) error
@@ -52,7 +52,7 @@ type authorizationRequestStore struct {
 }
 
 // newAuthorizationRequestStore creates a new instance of authorizationRequestStore with injected dependencies.
-func newAuthorizationRequestStore() authorizationRequestStoreInterface {
+func newAuthorizationRequestStore() RequestStoreInterface {
 	return &authorizationRequestStore{
 		dbProvider:     provider.GetDBProvider(),
 		validityPeriod: 10 * time.Minute,

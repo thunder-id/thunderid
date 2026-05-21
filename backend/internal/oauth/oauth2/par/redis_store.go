@@ -36,7 +36,7 @@ type parRedisClient interface {
 	GetDel(ctx context.Context, key string) *redis.StringCmd
 }
 
-// redisPARRequestStore is the Redis-backed implementation of parStoreInterface.
+// redisPARRequestStore is the Redis-backed implementation of StoreInterface.
 type redisPARRequestStore struct {
 	client       parRedisClient
 	keyPrefix    string
@@ -46,7 +46,7 @@ type redisPARRequestStore struct {
 // newRedisPARRequestStore creates a new Redis-backed PAR request store.
 func newRedisPARRequestStore(
 	p provider.RedisProviderInterface, deploymentID string,
-) parStoreInterface {
+) StoreInterface {
 	return &redisPARRequestStore{
 		client:       p.GetRedisClient(),
 		keyPrefix:    p.GetKeyPrefix(),

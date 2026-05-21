@@ -64,6 +64,16 @@ type authorizationCodeStore struct {
 	deploymentID string
 }
 
+// NewDefaultCodeStore returns the authorization code store for the configured runtime database.
+func NewDefaultCodeStore() AuthorizationCodeStoreInterface {
+	return newAuthorizationCodeStore()
+}
+
+// NewDefaultRequestStore returns the authorization request store for the configured runtime database.
+func NewDefaultRequestStore() RequestStoreInterface {
+	return newAuthorizationRequestStore()
+}
+
 // newAuthorizationCodeStore creates a new instance of authorizationCodeStore with injected dependencies.
 func newAuthorizationCodeStore() AuthorizationCodeStoreInterface {
 	return &authorizationCodeStore{

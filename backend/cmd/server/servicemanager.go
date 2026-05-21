@@ -45,19 +45,17 @@ import (
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	"github.com/thunder-id/thunderid/internal/design/resolve"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
+	"github.com/thunder-id/thunderid/internal/enginebridge"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowcore "github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
-	"github.com/thunder-id/thunderid/internal/flow/flowexec"
-	"github.com/thunder-id/thunderid/internal/flow/flowmeta"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/notification"
-	"github.com/thunder-id/thunderid/internal/oauth"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
@@ -265,11 +263,32 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			"EmailExecutor will be registered but will not send emails.", log.Error(err))
 		emailClient = nil
 	}
-	execRegistry := executor.Initialize(flowFactory, ouService, idpService, notifSenderSvc, jwtService, authAssertGen,
-		consentEnforcer, authnProvider, otpCoreService, passkeyService, magicLinkService, authZService,
-		entityTypeService, groupService, roleService, roleAssignmentService, entityProvider,
-		attributeCacheService, emailClient, templateService, oauthAuthnService, oidcAuthnService,
-		githubAuthnService, googleAuthnService)
+	execRegistry := executor.Initialize(executor.ExecutorDeps{
+		FlowFactory:           flowFactory,
+		OUService:             ouService,
+		IDPService:            idpService,
+		NotifSenderSvc:        notifSenderSvc,
+		JWTService:            jwtService,
+		AuthAssertGen:         authAssertGen,
+		ConsentEnforcer:       consentEnforcer,
+		AuthnProvider:         authnProvider,
+		OTPService:            otpCoreService,
+		PasskeyService:        passkeyService,
+		MagicLinkService:      magicLinkService,
+		AuthZService:          authZService,
+		EntityTypeService:     entityTypeService,
+		GroupService:          groupService,
+		RoleService:           roleService,
+		RoleAssignmentService: roleAssignmentService,
+		EntityProvider:        entityProvider,
+		AttributeCacheSvc:     attributeCacheService,
+		EmailClient:           emailClient,
+		TemplateService:       templateService,
+		OAuthSvc:              oauthAuthnService,
+		OIDCSvc:               oidcAuthnService,
+		GithubSvc:             githubAuthnService,
+		GoogleSvc:             googleAuthnService,
+	})
 
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, graphCache)
@@ -319,9 +338,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Initialize design resolve service for theme and layout resolution
 	designResolveService := resolve.Initialize(mux, themeMgtService, layoutMgtService, applicationService)
 
-	// Initialize flow metadata service
-	_ = flowmeta.Initialize(mux, inboundClientService, entityProvider, ouService, designResolveService, i18nService)
-
 	// Initialize export service with collected exporters
 	_ = export.Initialize(mux, exporters)
 
@@ -344,18 +360,29 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		agentService,
 	)
 
-	flowExecService, err := flowexec.Initialize(mux, flowMgtService, inboundClientService, entityProvider,
-		execRegistry, observabilitySvc, runtimeCryptoSvc)
+	// Runtime routes (OAuth AS, flow execute, flow meta) via thunderidengine server wiring.
+	err = enginebridge.RegisterServerRuntime(mux, enginebridge.ServerRuntimeDeps{
+		FlowMgtService:       flowMgtService,
+		InboundClient:        inboundClientService,
+		EntityProvider:       entityProvider,
+		OUService:            ouService,
+		DesignResolveService: designResolveService,
+		I18nService:          i18nService,
+		ExecutorRegistry:     execRegistry,
+		ObservabilityService: observabilitySvc,
+		RuntimeCrypto:        runtimeCryptoSvc,
+		JWTService:           jwtService,
+		JWEService:           jweService,
+		AuthnProvider:        authnProvider,
+		AuthzService:         authZService,
+		ResourceService:      resourceService,
+		AttributeCache:       attributeCacheService,
+		IDPService:           idpService,
+		ApplicationService:   applicationService,
+		EnableDCR:            true,
+	})
 	if err != nil {
-		logger.Fatal("Failed to initialize flow execution service", log.Error(err))
-	}
-
-	// Initialize OAuth services.
-	err = oauth.Initialize(mux, applicationService, inboundClientService, authnProvider, jwtService, jweService,
-		flowExecService, observabilitySvc, runtimeCryptoSvc, ouService, attributeCacheService, authZService,
-		entityProvider, resourceService, i18nService, idpService)
-	if err != nil {
-		logger.Fatal("Failed to initialize OAuth services", log.Error(err))
+		logger.Fatal("Failed to register thunderidengine runtime routes", log.Error(err))
 	}
 
 	// Register the health service.

@@ -49,14 +49,14 @@ type PARServiceInterface interface {
 
 // parService implements PARServiceInterface.
 type parService struct {
-	store           parStoreInterface
+	store           StoreInterface
 	resourceService resource.ResourceServiceInterface
 	logger          *log.Logger
 }
 
 // newPARService creates a new PAR service instance.
 func newPARService(
-	store parStoreInterface, resourceService resource.ResourceServiceInterface,
+	store StoreInterface, resourceService resource.ResourceServiceInterface,
 ) PARServiceInterface {
 	return &parService{
 		store:           store,

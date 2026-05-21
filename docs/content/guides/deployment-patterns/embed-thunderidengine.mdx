@@ -1,0 +1,111 @@
+---
+title: Embed the OAuth and Flow Engine in Go
+sidebar_position: 5
+persona: iam
+description: Run ThunderID OAuth 2.0/OIDC and flow execution inside your own Go process using pkg/thunderidengine.
+---
+
+# Embed the OAuth and Flow Engine in Go
+
+You can run the ThunderID OAuth 2.0/OIDC authorization server and flow execution runtime inside your own Go application. Import `github.com/thunder-id/thunderid/pkg/thunderidengine` and implement the host provider interfaces. ThunderID registers the runtime HTTP routes on your multiplexer.
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- Go 1.22 or later.
+- A ThunderID server configuration tree (the same `repository/conf/deployment.yaml` and `repository/resources` layout used by `cmd/server`).
+- Cryptographic key material referenced by your configuration (for example `repository/resources/security/crypto.key`).
+
+## What the Engine Registers
+
+The engine registers these runtime routes on your `http.ServeMux`:
+
+| Route | Purpose |
+|-------|---------|
+| `GET /.well-known/openid-configuration` | OpenID Provider metadata |
+| `GET /.well-known/oauth-authorization-server` | OAuth authorization server metadata |
+| `GET /oauth2/jwks` | JSON Web Key Set |
+| `GET /oauth2/authorize`, `POST /oauth2/auth/callback` | Authorization endpoint |
+| `POST /oauth2/par` | Pushed Authorization Requests |
+| `POST /oauth2/token` | Token endpoint |
+| `POST /oauth2/introspect` | Token introspection |
+| `GET` / `POST /oauth2/userinfo` | UserInfo |
+| `POST /flow/execute` | Flow execution |
+| `GET /flow/meta` | Flow metadata for Gate-style clients |
+
+The engine does **not** register Dynamic Client Registration (`/oauth2/register`) or flow definition CRUD (`/flows/**`). The full ThunderID server keeps those routes.
+
+## Implement Host Providers
+
+Implement the interfaces in `pkg/thunderidengine/providers.go`:
+
+| Provider | Role |
+|----------|------|
+| `ClientProvider` | Resolve OAuth clients, applications, and entity groups |
+| `AuthnProvider` | Authenticate users and load attributes |
+| `AuthzProvider` | Answer `IsAuthorized(subject, action, resource)` |
+| `ResourceProvider` | Resolve resources by `resourceServerID/resourceID` URI |
+| `OUProvider` | Resolve organization units and ancestors |
+| `IDPProvider` | Resolve identity providers |
+| `FlowDefinitionProvider` | Supply flow definitions for execution |
+| `RuntimeStore` | Optional; defaults to Thunder SQL/Redis stores when nil |
+| `ObservabilityProvider` | Optional event publishing |
+
+`AuthzProvider` maps to internal permission checks as follows: each requested permission is checked with `IsAuthorized(entityOrGroupID, permission, "")`. Group membership uses the subject entity ID and group IDs from `ClientProvider.GetTransitiveEntityGroups`.
+
+## Initialize the Engine
+
+```go
+import (
+    "net/http"
+
+    "github.com/thunder-id/thunderid/pkg/thunderidengine"
+)
+
+func main() {
+    mux := http.NewServeMux()
+
+    engine := thunderidengine.New(thunderidengine.EngineConfig{
+        ConfigPath: "/path/to/thunder/server/home",
+        Providers: thunderidengine.Providers{
+            Client:         myClientProvider,
+            Authn:          myAuthnProvider,
+            Authz:          myAuthzProvider,
+            Resource:       myResourceProvider,
+            OU:             myOUProvider,
+            IDP:            myIDPProvider,
+            FlowDefinition: myFlowProvider,
+            RuntimeStore:   nil, // use Thunder default stores
+        },
+        Executors: thunderidengine.ExecutorConfig{
+            Names: []string{
+                "BasicAuthExecutor",
+                "AuthAssertExecutor",
+                "AuthorizationExecutor",
+            },
+        },
+    })
+
+    if err := engine.Initialize(mux); err != nil {
+        panic(err)
+    }
+
+    // Listen on mux with your HTTP server.
+}
+```
+
+Set `Executors.Names` to a subset of built-in executor names when you want a lean runtime. An empty `Names` slice registers the full default set (same as the ThunderID server). Use `InjectCustom` to register additional executors that implement `thunderidengine.ExecutorInterface`.
+
+## Full ThunderID Server Integration
+
+The ThunderID server (`cmd/server`) wires the same runtime routes through `enginebridge.RegisterServerRuntime` after it initializes domain services. Flow CRUD and DCR remain in `servicemanager` outside the engine surface.
+
+## Custom Executors
+
+Implement `thunderidengine.ExecutorInterface` (re-exported from the internal flow core) and pass instances through `ExecutorConfig.InjectCustom`, or supply `ExecutorConfig.CustomRegistry` for a fully custom registry.
+
+## Next Steps
+
+- Review [Production Deployment Guidelines](./production-guidelines) for configuration hardening.
+- Read [Flow Concepts](../guides/flows/flow-concepts) to design authentication flows your `FlowDefinitionProvider` returns.

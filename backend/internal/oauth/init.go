@@ -30,21 +30,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
-	"github.com/thunder-id/thunderid/internal/oauth/jwks"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dcr"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/introspect"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/token"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/userinfo"
-	"github.com/thunder-id/thunderid/internal/oauth/scope"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
-	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -71,33 +58,25 @@ func Initialize(
 	i18nService i18nmgt.I18nServiceInterface,
 	idpService idp.IDPServiceInterface,
 ) error {
-	// Fetch runtime transactioner for OAuth services.
-	transactioner, err := provider.GetDBProvider().GetRuntimeDBTransactioner()
-	if err != nil {
-		return err
-	}
-
-	jwks.Initialize(mux, runtimeCrypto)
-	httpClient := syshttp.NewHTTPClientWithCheckRedirect(func(req *http.Request, _ []*http.Request) error {
-		return syshttp.IsSSRFSafeURL(req.URL.String())
+	return InitializeEngine(EngineDeps{
+		Mux:                mux,
+		ApplicationService: applicationService,
+		InboundClient:      inboundClient,
+		AuthnProvider:      authnProvider,
+		JWTService:         jwtService,
+		JWEService:         jweService,
+		FlowExecService:    flowExecService,
+		ObservabilitySvc:   observabilitySvc,
+		RuntimeCrypto:      runtimeCrypto,
+		OUService:          ouService,
+		AttributeCacheSvc:  attributeCacheSvc,
+		AuthzService:       authzService,
+		EntityProvider:     entityProvider,
+		ResourceService:    resourceService,
+		I18nService:        i18nService,
+		IDPService:         idpService,
+		EnableDCR:          true,
+		PAR:                nil,
+		Authz:              nil,
 	})
-	resolver := jwksresolver.Initialize(httpClient)
-	tokenBuilder, tokenValidator := tokenservice.Initialize(jwtService, jweService, resolver, idpService)
-	scopeValidator := scope.Initialize()
-	discoveryService := discovery.Initialize(mux, runtimeCrypto)
-	parService := par.Initialize(mux, inboundClient, authnProvider, jwtService, discoveryService,
-		resourceService)
-	grantHandlerProvider, err := granthandlers.Initialize(
-		mux, jwtService, inboundClient, flowExecService, tokenBuilder, tokenValidator,
-		attributeCacheSvc, ouService, authzService, entityProvider, resourceService, parService)
-	if err != nil {
-		return err
-	}
-	token.Initialize(mux, jwtService, inboundClient, authnProvider, grantHandlerProvider,
-		scopeValidator, observabilitySvc, discoveryService, transactioner)
-	introspect.Initialize(mux, jwtService, inboundClient, authnProvider, discoveryService)
-	userinfo.Initialize(mux, jwtService, jweService, resolver,
-		tokenValidator, inboundClient, ouService, attributeCacheSvc, transactioner)
-	dcr.Initialize(mux, applicationService, ouService, i18nService, transactioner)
-	return nil
 }

@@ -33,22 +33,27 @@ import (
 // requestURIRandomBytes is the number of random bytes for the request URI (32 bytes = 256 bits).
 const requestURIRandomBytes = 32
 
-// parStoreInterface defines the interface for PAR request storage.
+// StoreInterface defines the interface for PAR request storage.
 // Implementations operate on opaque random keys; the request_uri URN prefix is
 // added and stripped by the service layer.
-type parStoreInterface interface {
+type StoreInterface interface {
 	Store(ctx context.Context, request pushedAuthorizationRequest, expirySeconds int64) (string, error)
 	Consume(ctx context.Context, randomKey string) (pushedAuthorizationRequest, bool, error)
 }
 
-// parRequestStore is the relational-DB-backed implementation of parStoreInterface.
+// NewDefaultStore returns the PAR store for the configured runtime database.
+func NewDefaultStore() StoreInterface {
+	return initializePARStore()
+}
+
+// parRequestStore is the relational-DB-backed implementation of StoreInterface.
 type parRequestStore struct {
 	dbProvider   provider.DBProviderInterface
 	deploymentID string
 }
 
 // newPARRequestStore creates a new DB-backed PAR request store.
-func newPARRequestStore(deploymentID string) parStoreInterface {
+func newPARRequestStore(deploymentID string) StoreInterface {
 	return &parRequestStore{
 		dbProvider:   provider.GetDBProvider(),
 		deploymentID: deploymentID,

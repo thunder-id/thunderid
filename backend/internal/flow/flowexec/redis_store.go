@@ -48,7 +48,7 @@ type redisClient interface {
 	Del(ctx context.Context, keys ...string) *redis.IntCmd
 }
 
-// redisFlowStore is the Redis-backed implementation of flowStoreInterface.
+// redisFlowStore is the Redis-backed implementation of ContextStoreInterface.
 type redisFlowStore struct {
 	client       redisClient
 	keyPrefix    string
@@ -56,7 +56,7 @@ type redisFlowStore struct {
 }
 
 // newRedisFlowStore creates a new Redis-backed flow store.
-func newRedisFlowStore(p provider.RedisProviderInterface) flowStoreInterface {
+func newRedisFlowStore(p provider.RedisProviderInterface) ContextStoreInterface {
 	return &redisFlowStore{
 		client:       p.GetRedisClient(),
 		keyPrefix:    p.GetKeyPrefix(),

@@ -39,7 +39,7 @@ type authReqRedisClient interface {
 	Del(ctx context.Context, keys ...string) *redis.IntCmd
 }
 
-// redisAuthorizationRequestStore is the Redis-backed implementation of authorizationRequestStoreInterface.
+// redisAuthorizationRequestStore is the Redis-backed implementation of RequestStoreInterface.
 type redisAuthorizationRequestStore struct {
 	client         authReqRedisClient
 	keyPrefix      string
@@ -48,7 +48,7 @@ type redisAuthorizationRequestStore struct {
 }
 
 // newRedisAuthorizationRequestStore creates a new Redis-backed authorization request store.
-func newRedisAuthorizationRequestStore(p provider.RedisProviderInterface) authorizationRequestStoreInterface {
+func newRedisAuthorizationRequestStore(p provider.RedisProviderInterface) RequestStoreInterface {
 	return &redisAuthorizationRequestStore{
 		client:         p.GetRedisClient(),
 		keyPrefix:      p.GetKeyPrefix(),

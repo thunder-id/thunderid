@@ -34,6 +34,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
+// InitOptions configures optional authorization store overrides.
+type InitOptions struct {
+	CodeStore    AuthorizationCodeStoreInterface
+	RequestStore RequestStoreInterface
+}
+
 // Initialize initializes the authorization handler and registers its routes.
 func Initialize(
 	mux *http.ServeMux,
@@ -42,8 +48,9 @@ func Initialize(
 	jwtService jwt.JWTServiceInterface,
 	flowExecService flowexec.FlowExecServiceInterface,
 	parService par.PARServiceInterface,
+	opts *InitOptions,
 ) (AuthorizeServiceInterface, error) {
-	authzCodeStore, authzReqStore, transactioner, err := initializeAuthorizationStores()
+	authzCodeStore, authzReqStore, transactioner, err := resolveAuthorizationStores(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize authorization stores: %w", err)
 	}
@@ -57,9 +64,31 @@ func Initialize(
 	return authzService, nil
 }
 
+func resolveAuthorizationStores(opts *InitOptions) (
+	AuthorizationCodeStoreInterface, RequestStoreInterface, transaction.Transactioner, error,
+) {
+	defaultCode, defaultRequest, transactioner, err := initializeAuthorizationStores()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if opts == nil {
+		return defaultCode, defaultRequest, transactioner, nil
+	}
+	codeStore := opts.CodeStore
+	if codeStore == nil {
+		codeStore = defaultCode
+	}
+	requestStore := opts.RequestStore
+	if requestStore == nil {
+		requestStore = defaultRequest
+	}
+	return codeStore, requestStore, transactioner, nil
+}
+
 // initializeAuthorizationStores creates the authorization code store, request store, and transactioner.
 func initializeAuthorizationStores() (
-	AuthorizationCodeStoreInterface, authorizationRequestStoreInterface, transaction.Transactioner, error) {
+	AuthorizationCodeStoreInterface, RequestStoreInterface, transaction.Transactioner, error,
+) {
 	if config.GetServerRuntime().Config.Database.Runtime.Type == provider.DataSourceTypeRedis {
 		redisProvider := provider.GetRedisProvider()
 		return newRedisAuthorizationCodeStore(redisProvider),

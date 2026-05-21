@@ -93,7 +93,7 @@ func (suite *AuthorizationRequestStoreTestSuite) TearDownTest() {
 func (suite *AuthorizationRequestStoreTestSuite) TestNewAuthorizationRequestStore() {
 	store := newAuthorizationRequestStore()
 	assert.NotNil(suite.T(), store)
-	assert.Implements(suite.T(), (*authorizationRequestStoreInterface)(nil), store)
+	assert.Implements(suite.T(), (*RequestStoreInterface)(nil), store)
 }
 
 func (suite *AuthorizationRequestStoreTestSuite) TestAddRequest_Success() {

@@ -10,6 +10,8 @@ backend/cmd/server/
   servicemanager.go     # calls every internal/*/init.go to register routes
   bootstrap/flows/      # JSON auth/registration flow definitions (auto-seeded)
   repository/           # configdb.db · runtimedb.db · userdb.db created at runtime in the configured data directory (SQLite or Postgres)
+backend/pkg/thunderidengine/   # public embed surface (host providers, Engine.Initialize)
+backend/internal/enginebridge/ # host provider → internal service adapters (module-internal)
 backend/internal/
   authn/                # credential / OTP / passkey / social login
   oauth/                # OAuth 2.0 + OIDC server (authorize, token, introspect, userinfo, JWKS, DCR)
@@ -25,6 +27,12 @@ frontend/apps/
 frontend/packages/      # @thunderid/contexts · design · hooks · i18n · utils · types · logger
 samples/apps/           # react-sdk-sample · react-api-based-sample · react-vanilla-sample · wayfinder-sample
 ```
+
+## Embeddable engine (`pkg/thunderidengine`)
+
+External Go processes import only `github.com/thunder-id/thunderid/pkg/thunderidengine`. Host code implements nine provider interfaces; `Engine.Initialize(mux)` loads configuration, wires `internal/enginebridge` adapters, and registers OAuth AS + `POST /flow/execute` + `GET /flow/meta` (no DCR, no `/flows/**` CRUD).
+
+The full server reuses the same runtime wiring via `enginebridge.RegisterServerRuntime` after `servicemanager` builds internal services. See [Embed the OAuth and Flow Engine in Go](docs/content/guides/deployment-patterns/embed-thunderidengine.mdx).
 
 ## Backend patterns
 

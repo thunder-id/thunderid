@@ -84,6 +84,36 @@ func (a AuthUser) IsAuthenticated() bool {
 	return a.userID != ""
 }
 
+// UserID returns the authenticated user identifier when set.
+func (a AuthUser) UserID() string {
+	return a.userID
+}
+
+// ApplyIdentity sets the authenticated user identity on AuthUser.
+func (a *AuthUser) ApplyIdentity(userID, userType, ouID string) {
+	a.setIdentity(userID, userType, ouID)
+}
+
+// ApplyProviderSession caches provider token and attribute payload for later attribute calls.
+func (a *AuthUser) ApplyProviderSession(
+	token string, attrs *authnprovidercm.AttributesResponse, valuesIncluded bool,
+) {
+	a.setProviderData(defaultProvider, providerData{
+		token:                     token,
+		attributes:                attrs,
+		isAttributeValuesIncluded: valuesIncluded,
+	})
+}
+
+// CachedAttributes returns cached attributes when the provider included them at authentication time.
+func (a AuthUser) CachedAttributes() (*authnprovidercm.AttributesResponse, bool) {
+	data, ok := a.getProviderData(defaultProvider)
+	if !ok || data.attributes == nil {
+		return nil, false
+	}
+	return data.attributes, data.isAttributeValuesIncluded
+}
+
 // authUserJSON is the internal proxy used for JSON serialization of AuthUser.
 type authUserJSON struct {
 	UserID            string                      `json:"userId"`

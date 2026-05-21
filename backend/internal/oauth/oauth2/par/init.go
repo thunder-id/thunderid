@@ -33,6 +33,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
+// InitOptions configures optional PAR initialization overrides.
+type InitOptions struct {
+	// Store overrides the default runtime PAR store when set.
+	Store StoreInterface
+}
+
 // Initialize initializes the PAR handler and registers its routes.
 // Returns the PARServiceInterface so the authorization endpoint can resolve request_uri parameters.
 func Initialize(
@@ -42,8 +48,12 @@ func Initialize(
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	resourceService resource.ResourceServiceInterface,
+	opts *InitOptions,
 ) PARServiceInterface {
 	store := initializePARStore()
+	if opts != nil && opts.Store != nil {
+		store = opts.Store
+	}
 	parSvc := newPARService(store, resourceService)
 	handler := newPARHandler(parSvc)
 	registerRoutes(mux, handler, inboundClient, authnProvider, jwtService, discoveryService)
@@ -51,7 +61,7 @@ func Initialize(
 }
 
 // initializePARStore selects the PAR store implementation based on the configured runtime DB type.
-func initializePARStore() parStoreInterface {
+func initializePARStore() StoreInterface {
 	deploymentID := config.GetServerRuntime().Config.Server.Identifier
 
 	if config.GetServerRuntime().Config.Database.Runtime.Type == provider.DataSourceTypeRedis {

@@ -29,12 +29,17 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 )
 
-// flowStoreInterface defines the methods for flow context storage operations.
-type flowStoreInterface interface {
+// ContextStoreInterface defines the methods for flow context storage operations.
+type ContextStoreInterface interface {
 	StoreFlowContext(ctx context.Context, dbModel FlowContextDB, expirySeconds int64) error
 	GetFlowContext(ctx context.Context, executionID string) (*FlowContextDB, error)
 	UpdateFlowContext(ctx context.Context, dbModel FlowContextDB) error
 	DeleteFlowContext(ctx context.Context, executionID string) error
+}
+
+// NewDefaultContextStore returns the flow context store for the configured runtime database.
+func NewDefaultContextStore(dbProvider provider.DBProviderInterface) ContextStoreInterface {
+	return newFlowStore(dbProvider)
 }
 
 // flowStore implements the FlowStoreInterface for managing flow contexts.
@@ -44,7 +49,7 @@ type flowStore struct {
 }
 
 // newFlowStore creates a new instance of FlowStore.
-func newFlowStore(dbProvider provider.DBProviderInterface) flowStoreInterface {
+func newFlowStore(dbProvider provider.DBProviderInterface) ContextStoreInterface {
 	return &flowStore{
 		dbProvider:   dbProvider,
 		deploymentID: config.GetServerRuntime().Config.Server.Identifier,

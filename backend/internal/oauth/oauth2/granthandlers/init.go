@@ -49,8 +49,30 @@ func Initialize(
 	resourceService resource.ResourceServiceInterface,
 	parService par.PARServiceInterface,
 ) (GrantHandlerProviderInterface, error) {
+	return InitializeEngine(
+		mux, jwtService, inboundClient, flowExecService, tokenBuilder, tokenValidator,
+		attrCacheService, ouService, authzService, entityProv, resourceService, parService, nil,
+	)
+}
+
+// InitializeEngine initializes the grant handler provider with optional authz store overrides.
+func InitializeEngine(
+	mux *http.ServeMux,
+	jwtService jwt.JWTServiceInterface,
+	inboundClient inboundclient.InboundClientServiceInterface,
+	flowExecService flowexec.FlowExecServiceInterface,
+	tokenBuilder tokenservice.TokenBuilderInterface,
+	tokenValidator tokenservice.TokenValidatorInterface,
+	attrCacheService attributecache.AttributeCacheServiceInterface,
+	ouService ou.OrganizationUnitServiceInterface,
+	authzService authz.AuthorizationServiceInterface,
+	entityProv entityprovider.EntityProviderInterface,
+	resourceService resource.ResourceServiceInterface,
+	parService par.PARServiceInterface,
+	authzOpts *oauth2authz.InitOptions,
+) (GrantHandlerProviderInterface, error) {
 	oauthAuthzService, err := oauth2authz.Initialize(
-		mux, inboundClient, resourceService, jwtService, flowExecService, parService,
+		mux, inboundClient, resourceService, jwtService, flowExecService, parService, authzOpts,
 	)
 	if err != nil {
 		return nil, err

@@ -62,7 +62,7 @@ type authorizeService struct {
 	resourceService resource.ResourceServiceInterface
 	authZValidator  AuthorizationValidatorInterface
 	authCodeStore   AuthorizationCodeStoreInterface
-	authReqStore    authorizationRequestStoreInterface
+	authReqStore    RequestStoreInterface
 	parService      par.PARServiceInterface
 	jwtService      jwt.JWTServiceInterface
 	flowExecService flowexec.FlowExecServiceInterface
@@ -77,7 +77,7 @@ func newAuthorizeService(
 	jwtService jwt.JWTServiceInterface,
 	flowExecService flowexec.FlowExecServiceInterface,
 	authCodeStore AuthorizationCodeStoreInterface,
-	authReqStore authorizationRequestStoreInterface,
+	authReqStore RequestStoreInterface,
 	parService par.PARServiceInterface,
 	transactioner transaction.Transactioner,
 ) AuthorizeServiceInterface {

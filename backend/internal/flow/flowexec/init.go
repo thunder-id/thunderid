@@ -33,6 +33,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
+// InitOptions configures optional flow execution initialization overrides.
+type InitOptions struct {
+	ContextStore ContextStoreInterface
+}
+
 // Initialize creates and configures the flow execution service components.
 // The observabilitySvc parameter is optional (can be nil) - if nil, observability events won't be published.
 func Initialize(
@@ -43,21 +48,11 @@ func Initialize(
 	executorRegistry executor.ExecutorRegistryInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	cryptoSvc kmprovider.RuntimeCryptoProvider,
+	opts *InitOptions,
 ) (FlowExecServiceInterface, error) {
-	var flowStore flowStoreInterface
-	var transactioner transaction.Transactioner
-
-	if config.GetServerRuntime().Config.Database.Runtime.Type == dbprovider.DataSourceTypeRedis {
-		flowStore = newRedisFlowStore(dbprovider.GetRedisProvider())
-		transactioner = transaction.NewNoOpTransactioner()
-	} else {
-		dbProvider := dbprovider.GetDBProvider()
-		var err error
-		transactioner, err = dbProvider.GetRuntimeDBTransactioner()
-		if err != nil {
-			return nil, err
-		}
-		flowStore = newFlowStore(dbProvider)
+	flowStore, transactioner, err := resolveFlowContextStore(opts)
+	if err != nil {
+		return nil, err
 	}
 	flowEngine := newFlowEngine(executorRegistry, observabilitySvc)
 	flowExecService := newFlowExecService(flowMgtService, flowStore, flowEngine,
@@ -67,6 +62,38 @@ func Initialize(
 	registerRoutes(mux, handler)
 
 	return flowExecService, nil
+}
+
+// NewDefaultContextStoreFromConfig returns the flow context store for the configured runtime database.
+func NewDefaultContextStoreFromConfig() (ContextStoreInterface, error) {
+	if config.GetServerRuntime().Config.Database.Runtime.Type == dbprovider.DataSourceTypeRedis {
+		return newRedisFlowStore(dbprovider.GetRedisProvider()), nil
+	}
+	return newFlowStore(dbprovider.GetDBProvider()), nil
+}
+
+func resolveFlowContextStore(opts *InitOptions) (ContextStoreInterface, transaction.Transactioner, error) {
+	if opts != nil && opts.ContextStore != nil {
+		if config.GetServerRuntime().Config.Database.Runtime.Type == dbprovider.DataSourceTypeRedis {
+			return opts.ContextStore, transaction.NewNoOpTransactioner(), nil
+		}
+		dbProvider := dbprovider.GetDBProvider()
+		transactioner, err := dbProvider.GetRuntimeDBTransactioner()
+		if err != nil {
+			return nil, nil, err
+		}
+		return opts.ContextStore, transactioner, nil
+	}
+
+	if config.GetServerRuntime().Config.Database.Runtime.Type == dbprovider.DataSourceTypeRedis {
+		return newRedisFlowStore(dbprovider.GetRedisProvider()), transaction.NewNoOpTransactioner(), nil
+	}
+	dbProvider := dbprovider.GetDBProvider()
+	transactioner, err := dbProvider.GetRuntimeDBTransactioner()
+	if err != nil {
+		return nil, nil, err
+	}
+	return newFlowStore(dbProvider), transactioner, nil
 }
 
 func registerRoutes(mux *http.ServeMux, handler *flowExecutionHandler) {

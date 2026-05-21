@@ -92,7 +92,7 @@ func (suite *InitTestSuite) TestInitialize() {
 
 	service, err := Initialize(
 		mux, suite.mockInboundClient, suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil,
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil,
 	)
 
 	assert.NoError(suite.T(), err)
@@ -105,7 +105,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 
 	_, err := Initialize(
 		mux, suite.mockInboundClient, suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil,
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil,
 	)
 	assert.NoError(suite.T(), err)
 
@@ -126,7 +126,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 
 	_, err := Initialize(
 		mux, suite.mockInboundClient, suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil,
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil,
 	)
 	assert.NoError(suite.T(), err)
 
@@ -176,7 +176,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSHeaders() {
 
 	_, err := Initialize(
 		mux, suite.mockInboundClient, suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil,
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil,
 	)
 	assert.NoError(suite.T(), err)
 

@@ -520,6 +520,11 @@ const sidebars: SidebarsConfig = {
           id: 'guides/deployment-patterns/production-guidelines',
           label: 'Production Guidelines',
         },
+        {
+          type: 'doc',
+          id: 'guides/deployment-patterns/embed-thunderidengine',
+          label: 'Embed OAuth and Flow Engine',
+        },
       ],
     },
   ],
