@@ -23,11 +23,14 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/authz"
+	"github.com/thunder-id/thunderid/internal/design/resolve"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/role"
+	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/observability"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine"
 )
@@ -41,6 +44,9 @@ func TestBridgesSatisfyInternalInterfaces(t *testing.T) {
 		_ ou.OrganizationUnitServiceInterface         = (*ouBridge)(nil)
 		_ idp.IDPServiceInterface                     = (*idpBridge)(nil)
 		_ observability.ObservabilityServiceInterface = (*observabilityBridge)(nil)
+		_ resolve.DesignResolveServiceInterface       = (*designBridge)(nil)
+		_ i18nmgt.I18nServiceInterface                = (*i18nBridge)(nil)
+		_ role.RoleServiceInterface                   = (*roleBridge)(nil)
 		_ executor.ExecutorRegistryInterface          = (*executorRegistryBridge)(nil)
 	)
 

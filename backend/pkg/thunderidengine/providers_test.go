@@ -91,6 +91,30 @@ func (m *mockFlowDefinitionProvider) GetFlowByHandle(_ context.Context, _, _ str
 	return &FlowDefinition{Handle: "login"}, nil
 }
 
+type mockDesignProvider struct{}
+
+func (m *mockDesignProvider) ResolveDesign(_ context.Context, _, _ string) (*DesignResponse, error) {
+	return &DesignResponse{}, nil
+}
+
+type mockI18nProvider struct{}
+
+func (m *mockI18nProvider) ResolveTranslations(
+	_ context.Context, language, _ string,
+) (*TranslationsResponse, error) {
+	return &TranslationsResponse{Language: language}, nil
+}
+
+func (m *mockI18nProvider) ListLanguages(_ context.Context) ([]string, error) {
+	return []string{"en"}, nil
+}
+
+type mockRoleProvider struct{}
+
+func (m *mockRoleProvider) GetUserRoles(_ context.Context, _ string, _ []string) ([]Role, error) {
+	return []Role{{Name: "user"}}, nil
+}
+
 type mockObservabilityProvider struct{}
 
 func (m *mockObservabilityProvider) IsEnabled() bool { return true }
@@ -150,9 +174,53 @@ func TestProviderMocksSatisfyInterfaces(t *testing.T) {
 		_ OUProvider             = (*mockOUProvider)(nil)
 		_ IDPProvider            = (*mockIDPProvider)(nil)
 		_ FlowDefinitionProvider = (*mockFlowDefinitionProvider)(nil)
+		_ DesignProvider         = (*mockDesignProvider)(nil)
+		_ I18nProvider           = (*mockI18nProvider)(nil)
+		_ RoleProvider           = (*mockRoleProvider)(nil)
 		_ ObservabilityProvider  = (*mockObservabilityProvider)(nil)
 		_ RuntimeStore           = (*mockRuntimeStore)(nil)
 	)
+}
+
+func TestProvidersComplete(t *testing.T) {
+	require.False(t, ProvidersComplete(Providers{}))
+	require.True(t, ProvidersComplete(Providers{
+		Client:         &mockClientProvider{},
+		Authn:          &mockAuthnProvider{},
+		Authz:          &mockAuthzProvider{},
+		Resource:       &mockResourceProvider{},
+		OU:             &mockOUProvider{},
+		IDP:            &mockIDPProvider{},
+		FlowDefinition: &mockFlowDefinitionProvider{},
+		Design:         &mockDesignProvider{},
+		I18n:           &mockI18nProvider{},
+		Role:           &mockRoleProvider{},
+		RuntimeStore:   &mockRuntimeStore{},
+	}))
+}
+
+func TestHostOnlyEnabled(t *testing.T) {
+	hostOnly := true
+	require.True(t, EngineConfig{HostOnly: &hostOnly}.HostOnlyEnabled())
+
+	disabled := false
+	cfg := EngineConfig{
+		HostOnly: &disabled,
+		Providers: Providers{
+			Client:         &mockClientProvider{},
+			Authn:          &mockAuthnProvider{},
+			Authz:          &mockAuthzProvider{},
+			Resource:       &mockResourceProvider{},
+			OU:             &mockOUProvider{},
+			IDP:            &mockIDPProvider{},
+			FlowDefinition: &mockFlowDefinitionProvider{},
+			Design:         &mockDesignProvider{},
+			I18n:           &mockI18nProvider{},
+			Role:           &mockRoleProvider{},
+			RuntimeStore:   &mockRuntimeStore{},
+		},
+	}
+	require.False(t, cfg.HostOnlyEnabled())
 }
 
 func TestEngineConfigDefaults(t *testing.T) {

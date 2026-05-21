@@ -43,6 +43,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/observability"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
 // ServerRuntimeDeps holds Thunder services already initialized by cmd/server.
@@ -70,6 +71,8 @@ type ServerRuntimeDeps struct {
 	PAR                  *par.InitOptions
 	Authz                *oauthauthz.InitOptions
 	FlowExec             *flowexec.InitOptions
+	// RuntimeTransactioner when set is used for OAuth token/userinfo instead of the runtime DB.
+	RuntimeTransactioner transaction.Transactioner
 }
 
 // RegisterServerRuntime registers POST /flow/execute, GET /flow/meta, and OAuth AS routes (optional DCR).
@@ -86,24 +89,25 @@ func RegisterServerRuntime(mux *http.ServeMux, deps ServerRuntimeDeps) error {
 		deps.DesignResolveService, deps.I18nService)
 
 	return oauth.InitializeEngine(oauth.EngineDeps{
-		Mux:                mux,
-		ApplicationService: deps.ApplicationService,
-		InboundClient:      deps.InboundClient,
-		AuthnProvider:      deps.AuthnProvider,
-		JWTService:         deps.JWTService,
-		JWEService:         deps.JWEService,
-		FlowExecService:    flowExecService,
-		ObservabilitySvc:   deps.ObservabilityService,
-		RuntimeCrypto:      deps.RuntimeCrypto,
-		OUService:          deps.OUService,
-		AttributeCacheSvc:  deps.AttributeCache,
-		AuthzService:       deps.AuthzService,
-		EntityProvider:     deps.EntityProvider,
-		ResourceService:    deps.ResourceService,
-		I18nService:        deps.I18nService,
-		IDPService:         deps.IDPService,
-		EnableDCR:          deps.EnableDCR,
-		PAR:                deps.PAR,
-		Authz:              deps.Authz,
+		Mux:                  mux,
+		ApplicationService:   deps.ApplicationService,
+		InboundClient:        deps.InboundClient,
+		AuthnProvider:        deps.AuthnProvider,
+		JWTService:           deps.JWTService,
+		JWEService:           deps.JWEService,
+		FlowExecService:      flowExecService,
+		ObservabilitySvc:     deps.ObservabilityService,
+		RuntimeCrypto:        deps.RuntimeCrypto,
+		OUService:            deps.OUService,
+		AttributeCacheSvc:    deps.AttributeCache,
+		AuthzService:         deps.AuthzService,
+		EntityProvider:       deps.EntityProvider,
+		ResourceService:      deps.ResourceService,
+		I18nService:          deps.I18nService,
+		IDPService:           deps.IDPService,
+		EnableDCR:            deps.EnableDCR,
+		PAR:                  deps.PAR,
+		Authz:                deps.Authz,
+		RuntimeTransactioner: deps.RuntimeTransactioner,
 	})
 }

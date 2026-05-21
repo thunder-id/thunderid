@@ -30,6 +30,13 @@ import (
 
 // Initialize wires host providers from cfg into internal services and registers runtime routes on mux.
 func Initialize(cfg thunderidengine.EngineConfig, mux *http.ServeMux) error {
+	if cfg.HostOnlyEnabled() {
+		return initializeHostOnly(cfg, mux)
+	}
+	return initializeWithInternalBootstrap(cfg, mux)
+}
+
+func initializeWithInternalBootstrap(cfg thunderidengine.EngineConfig, mux *http.ServeMux) error {
 	_, thunderCfg, err := loadEngineConfig(cfg.ConfigPath)
 	if err != nil {
 		return err

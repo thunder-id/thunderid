@@ -67,6 +67,22 @@ type ObservabilityProvider interface {
 	PublishEvent(evt *Event)
 }
 
+// DesignProvider resolves Gate theme and layout for /flow/meta.
+type DesignProvider interface {
+	ResolveDesign(ctx context.Context, resolveType string, id string) (*DesignResponse, error)
+}
+
+// I18nProvider supplies translations and language list for /flow/meta.
+type I18nProvider interface {
+	ResolveTranslations(ctx context.Context, language, namespace string) (*TranslationsResponse, error)
+	ListLanguages(ctx context.Context) ([]string, error)
+}
+
+// RoleProvider supplies role names for AuthAssertExecutor token claims.
+type RoleProvider interface {
+	GetUserRoles(ctx context.Context, userID string, groupIDs []string) ([]Role, error)
+}
+
 // RuntimeStore persists OAuth PAR, authorization requests/codes, and flow execution context.
 type RuntimeStore interface {
 	Store(ctx context.Context, parRequest PushedAuthorizationRequest, expirySeconds int64) (string, error)

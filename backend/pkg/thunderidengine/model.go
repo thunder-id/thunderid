@@ -181,3 +181,21 @@ type Event struct {
 	Status    string
 	Data      map[string]interface{}
 }
+
+// DesignResponse holds resolved theme and layout JSON for Gate /flow/meta.
+type DesignResponse struct {
+	Theme  json.RawMessage
+	Layout json.RawMessage
+}
+
+// TranslationsResponse holds resolved i18n translations for a language and namespace.
+type TranslationsResponse struct {
+	Language     string
+	TotalResults int
+	Translations map[string]map[string]string
+}
+
+// Role is a role name assigned to a user for AuthAssert and token claims.
+type Role struct {
+	Name string
+}

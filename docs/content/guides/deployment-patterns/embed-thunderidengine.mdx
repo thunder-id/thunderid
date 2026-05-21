@@ -49,10 +49,43 @@ Implement the interfaces in `pkg/thunderidengine/providers.go`:
 | `OUProvider` | Resolve organization units and ancestors |
 | `IDPProvider` | Resolve identity providers |
 | `FlowDefinitionProvider` | Supply flow definitions for execution |
-| `RuntimeStore` | Optional; defaults to <ProductName /> SQL/Redis stores when nil |
+| `DesignProvider` | Resolve theme and layout JSON for `GET /flow/meta` |
+| `I18nProvider` | Resolve translations and language list for `GET /flow/meta` |
+| `RoleProvider` | Supply role names for `AuthAssertExecutor` token claims |
+| `RuntimeStore` | Persist PAR, authorization codes, and flow context (required for host-only mode) |
 | `ObservabilityProvider` | Optional event publishing |
 
 `AuthzProvider` maps to internal permission checks as follows: each requested permission is checked with `IsAuthorized(entityOrGroupID, permission, "")`. Group membership uses the subject entity ID and group IDs from `ClientProvider.GetTransitiveEntityGroups`.
+
+## Host-Only Bootstrap
+
+By default, `Engine.Initialize` boots the full <ProductName /> domain stack and then replaces individual services when you supply providers. That is appropriate when you reuse <ProductName /> databases and only override a subset of behavior.
+
+For a lightweight embed, set all required providers and enable **host-only** mode. Host-only initialization loads configuration and crypto (JWT/JWKS), wires your providers through bridges, registers only the executors you list, and **does not** start internal entity, role, theme, notification, or admin services.
+
+Enable host-only mode explicitly:
+
+```go
+hostOnly := true
+engine := thunderidengine.New(thunderidengine.EngineConfig{
+    HostOnly: &hostOnly,
+    // ...
+})
+```
+
+Or omit `HostOnly` and supply every required provider; host-only mode is selected automatically when `ProvidersComplete` returns true.
+
+Required providers for host-only:
+
+| Provider | Required |
+|----------|----------|
+| `Client`, `Authn`, `Authz`, `Resource`, `OU`, `IDP`, `FlowDefinition` | Yes |
+| `Design`, `I18n`, `Role`, `RuntimeStore` | Yes |
+| `Observability` | No |
+
+Set `HostOnly` to `false` when you want full internal bootstrap even though all providers are implemented (for example, gradual migration).
+
+Host-only mode uses an in-process noop database transactioner for OAuth token and userinfo handlers when your `RuntimeStore` backs PAR, codes, and flow context. You still need a valid `deployment.yaml` and key material for JWT signing.
 
 ## Initialize the Engine
 
@@ -66,8 +99,10 @@ import (
 func main() {
     mux := http.NewServeMux()
 
+    hostOnly := true
     engine := thunderidengine.New(thunderidengine.EngineConfig{
         ConfigPath: "/path/to/thunder/server/home",
+        HostOnly:   &hostOnly,
         Providers: thunderidengine.Providers{
             Client:         myClientProvider,
             Authn:          myAuthnProvider,
@@ -76,7 +111,10 @@ func main() {
             OU:             myOUProvider,
             IDP:            myIDPProvider,
             FlowDefinition: myFlowProvider,
-            RuntimeStore:   nil, // use {{ProductName}} default stores
+            Design:         myDesignProvider,
+            I18n:           myI18nProvider,
+            Role:           myRoleProvider,
+            RuntimeStore:   myRuntimeStore,
         },
         Executors: thunderidengine.ExecutorConfig{
             Names: []string{

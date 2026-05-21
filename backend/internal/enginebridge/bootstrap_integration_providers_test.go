@@ -35,8 +35,46 @@ func testProviders() thunderidengine.Providers {
 		OU:             &testOUProvider{},
 		IDP:            &testIDPProvider{},
 		FlowDefinition: &testFlowDefinitionProvider{},
+		Design:         &testDesignProvider{},
+		I18n:           &testI18nProvider{},
+		Role:           &testRoleProvider{},
 		RuntimeStore:   newTestMemoryRuntimeStore(),
 	}
+}
+
+type testDesignProvider struct{}
+
+func (p *testDesignProvider) ResolveDesign(
+	_ context.Context, _, _ string,
+) (*thunderidengine.DesignResponse, error) {
+	return &thunderidengine.DesignResponse{
+		Theme:  json.RawMessage(`{}`),
+		Layout: json.RawMessage(`{}`),
+	}, nil
+}
+
+type testI18nProvider struct{}
+
+func (p *testI18nProvider) ResolveTranslations(
+	_ context.Context, language, namespace string,
+) (*thunderidengine.TranslationsResponse, error) {
+	return &thunderidengine.TranslationsResponse{
+		Language:     language,
+		TotalResults: 1,
+		Translations: map[string]map[string]string{namespace: {"key": "value"}},
+	}, nil
+}
+
+func (p *testI18nProvider) ListLanguages(_ context.Context) ([]string, error) {
+	return []string{"en"}, nil
+}
+
+type testRoleProvider struct{}
+
+func (p *testRoleProvider) GetUserRoles(
+	_ context.Context, _ string, _ []string,
+) ([]thunderidengine.Role, error) {
+	return []thunderidengine.Role{{Name: "user"}}, nil
 }
 
 type testClientProvider struct{}

@@ -51,6 +51,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/observability"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
 // EngineDeps holds wired dependencies for the embeddable OAuth engine runtime.
@@ -77,6 +78,9 @@ type EngineDeps struct {
 
 	PAR   *par.InitOptions
 	Authz *oauthauthz.InitOptions
+
+	// RuntimeTransactioner when set is used instead of the runtime database transactioner.
+	RuntimeTransactioner transaction.Transactioner
 }
 
 // InitializeEngine initializes OAuth runtime services for the embeddable engine.
@@ -87,9 +91,13 @@ func InitializeEngine(deps EngineDeps) error {
 		return fmt.Errorf("oauth: mux is required")
 	}
 
-	transactioner, err := provider.GetDBProvider().GetRuntimeDBTransactioner()
-	if err != nil {
-		return err
+	transactioner := deps.RuntimeTransactioner
+	if transactioner == nil {
+		var err error
+		transactioner, err = provider.GetDBProvider().GetRuntimeDBTransactioner()
+		if err != nil {
+			return err
+		}
 	}
 
 	jwks.Initialize(mux, deps.RuntimeCrypto)

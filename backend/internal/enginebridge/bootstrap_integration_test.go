@@ -39,8 +39,10 @@ func TestInitializeRegistersRuntimeRoutes(t *testing.T) {
 	ensureServerTestAssets(t, serverHome)
 
 	mux := http.NewServeMux()
+	hostOnly := true
 	err := Initialize(thunderidengine.EngineConfig{
 		ConfigPath: serverHome,
+		HostOnly:   &hostOnly,
 		Providers:  testProviders(),
 		Executors: thunderidengine.ExecutorConfig{
 			Names: []string{
