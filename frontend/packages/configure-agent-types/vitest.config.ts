@@ -44,5 +44,20 @@ export default defineConfig({
       provider: playwright(),
     },
     setupFiles: ['@thunderid/test-utils/setup'],
+    coverage: {
+      provider: 'istanbul',
+      reporter: process.env.CI ? ['lcov'] : ['text', 'json', 'html', 'lcov'],
+      exclude: [
+        'node_modules/',
+        'dist/',
+        'coverage/',
+        '**/*.d.ts',
+        '**/*.config.*',
+        '**/*.test.ts',
+        '**/*.test.tsx',
+        '**/*.spec.ts',
+        '**/*.spec.tsx',
+      ],
+    },
   },
 });

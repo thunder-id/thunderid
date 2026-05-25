@@ -28,18 +28,7 @@ beforeAll(async () => {
   await i18n.use(initReactI18next).init({
     resources: {
       'en-US': {
-        common: enUS.common,
-        navigation: enUS.navigation,
-        users: enUS.users,
-        userTypes: enUS.userTypes,
-        integrations: enUS.integrations,
-        applications: enUS.applications,
-        groups: enUS.groups,
-        auth: enUS.auth,
-        mfa: enUS.mfa,
-        social: enUS.social,
-        consent: enUS.consent,
-        errors: enUS.errors,
+        ...enUS,
       },
     },
     lng: 'en-US',

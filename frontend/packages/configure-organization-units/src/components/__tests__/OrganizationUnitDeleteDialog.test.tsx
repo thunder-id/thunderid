@@ -27,30 +27,6 @@ vi.mock('@/api/useDeleteOrganizationUnit', () => ({
   default: () => mockDeleteHook,
 }));
 
-// Mock translations
-vi.mock('react-i18next', async (importOriginal) => {
-  const actual = await importOriginal();
-  return {
-    ...(actual as object),
-    useTranslation: () => ({
-      t: (key: string) => {
-        const translations: Record<string, string> = {
-          'organizationUnits:delete.dialog.title': 'Delete Organization Unit',
-          'organizationUnits:delete.dialog.message':
-            'Are you sure you want to delete this organization unit? This action cannot be undone.',
-          'organizationUnits:delete.dialog.disclaimer':
-            'Warning: All associated data, configurations, and user assignments will be permanently removed.',
-          'organizationUnits:delete.dialog.error': 'Failed to delete organization unit. Please try again.',
-          'common:actions.cancel': 'Cancel',
-          'common:actions.delete': 'Delete',
-          'common:status.deleting': 'Deleting...',
-        };
-        return translations[key] ?? key;
-      },
-    }),
-  };
-});
-
 describe('OrganizationUnitDeleteDialog', () => {
   const defaultProps = {
     open: true,

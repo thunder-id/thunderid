@@ -21,14 +21,6 @@ import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import ReviewLocaleCode from '@/components/create-translation/ReviewLocaleCode';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 vi.mock('@thunderid/i18n', () => ({
   getDisplayNameForCode: (code: string) => (code ? `Name(${code})` : null),
   toFlagEmoji: (code: string) => (code ? `Flag(${code})` : ''),
@@ -52,8 +44,12 @@ describe('ReviewLocaleCode', () => {
     it('renders the step title and subtitle', () => {
       render(<ReviewLocaleCode {...defaultProps} />);
 
-      expect(screen.getByText('language.create.localeCode.title')).toBeInTheDocument();
-      expect(screen.getByText('language.create.localeCode.subtitle')).toBeInTheDocument();
+      expect(screen.getByText('Review Locale Code')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'The locale code was derived from your selection. Override it here if you need a different tag.',
+        ),
+      ).toBeInTheDocument();
     });
 
     it('renders the locale code input with the derived locale as placeholder', () => {
@@ -65,7 +61,11 @@ describe('ReviewLocaleCode', () => {
     it('renders the BCP 47 helper tip', () => {
       render(<ReviewLocaleCode {...defaultProps} />);
 
-      expect(screen.getByText('language.add.code.helperText')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'If you are manually modifying the generated code, use BCP 47 format (e.g. fr-FR for French, de-DE for German, etc.).',
+        ),
+      ).toBeInTheDocument();
     });
   });
 

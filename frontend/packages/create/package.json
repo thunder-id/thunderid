@@ -69,6 +69,7 @@
     "@thunderid/test-utils": "workspace:^",
     "@types/lodash-es": "catalog:",
     "@types/node": "catalog:",
+    "@vitest/coverage-istanbul": "catalog:",
     "eslint": "catalog:",
     "rimraf": "catalog:",
     "rolldown": "catalog:",

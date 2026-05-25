@@ -22,12 +22,6 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {SchemaInterface} from '../../../models/users';
 import ConfigureUserType, {type ConfigureUserTypeProps} from '../ConfigureUserType';
 
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-  }),
-}));
-
 const mockSchemas: SchemaInterface[] = [
   {id: 'schema-1', name: 'Employee', ouId: 'ou-1'},
   {id: 'schema-2', name: 'Contractor', ouId: 'ou-2'},
@@ -54,21 +48,21 @@ describe('ConfigureUserType', () => {
   it('renders the component with title and subtitle', () => {
     renderComponent();
 
-    expect(screen.getByText('users:createWizard.selectUserType.title')).toBeInTheDocument();
-    expect(screen.getByText('users:createWizard.selectUserType.subtitle')).toBeInTheDocument();
+    expect(screen.getByRole('heading', {name: 'Select a user type'})).toBeInTheDocument();
+    expect(screen.getByText('Choose a user type (schema) for the new user.')).toBeInTheDocument();
   });
 
   it('renders the user type select field', () => {
     renderComponent();
 
-    expect(screen.getByText('users:createWizard.selectUserType.fieldLabel')).toBeInTheDocument();
+    expect(screen.getByText('User Type')).toBeInTheDocument();
     expect(screen.getByTestId('configure-user-type')).toBeInTheDocument();
   });
 
   it('renders placeholder when no schema is selected', () => {
     renderComponent();
 
-    expect(screen.getByText('users:createWizard.selectUserType.placeholder')).toBeInTheDocument();
+    expect(screen.getAllByText('Select a user type').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders all schema options in the select', async () => {

@@ -21,14 +21,6 @@ import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 import NamespaceSelector from '@/components/edit-translation/NamespaceSelector';
 
-vi.mock('react-i18next', async () => {
-  const actual = await vi.importActual<typeof import('react-i18next')>('react-i18next');
-  return {
-    ...actual,
-    useTranslation: () => ({t: (key: string) => key}),
-  };
-});
-
 const defaultProps = {
   namespaces: ['commonNamespace', 'loginFlow', 'userProfile'],
   value: 'commonNamespace',
@@ -45,13 +37,17 @@ describe('NamespaceSelector', () => {
     it('renders the namespace label', () => {
       render(<NamespaceSelector {...defaultProps} />);
 
-      expect(screen.getByText('editor.namespace')).toBeInTheDocument();
+      expect(screen.getByText('Namespace')).toBeInTheDocument();
     });
 
     it('renders the helper text', () => {
       render(<NamespaceSelector {...defaultProps} />);
 
-      expect(screen.getByText('editor.namespace.helperText')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'A namespace typically represents a page or a section within a page. It helps group and organize related translation keys for better structure and maintainability.',
+        ),
+      ).toBeInTheDocument();
     });
 
     it('renders with the current value displayed in the input', () => {

@@ -51,19 +51,20 @@
   "devDependencies": {
     "@thunderid/eslint-plugin": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
-    "@vitest/browser-playwright": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@vitest/browser-playwright": "catalog:",
+    "@vitest/coverage-istanbul": "catalog:",
     "@wso2/oxygen-ui": "catalog:",
     "eslint": "catalog:",
+    "playwright": "catalog:",
     "prettier": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "rimraf": "catalog:",
     "rolldown": "catalog:",
     "typescript": "catalog:",
-    "playwright": "catalog:",
     "vitest": "catalog:"
   },
   "publishConfig": {

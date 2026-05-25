@@ -17,7 +17,7 @@
  */
 
 import {render, screen, waitFor, userEvent} from '@thunderid/test-utils';
-import type {ReactNode} from 'react';
+import React, {type ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import UserCreateProvider from '../../contexts/UserCreate/UserCreateProvider';
 import type {UserTypeListResponse, ApiUserType, SchemaInterface} from '../../models/users';
@@ -107,8 +107,8 @@ interface UseGetChildOUsReturn {
   error: Error | null;
 }
 const mockUseGetChildOrganizationUnits = vi.fn<() => UseGetChildOUsReturn>();
-vi.mock('../../../organization-units/api/useGetChildOrganizationUnits', () => ({
-  default: () => mockUseGetChildOrganizationUnits(),
+vi.mock('@thunderid/configure-organization-units', () => ({
+  useGetChildOrganizationUnits: () => mockUseGetChildOrganizationUnits(),
 }));
 
 // Mock useThunderID
@@ -122,9 +122,7 @@ vi.mock('@thunderid/react', async (importOriginal) => {
 });
 
 // Mock ConfigureOrganizationUnit — mirrors real component's auto-select behavior
-vi.mock('@/components/create-user/ConfigureOrganizationUnit', async () => {
-  const React = await import('react');
-
+vi.mock('@/components/create-user/ConfigureOrganizationUnit', () => {
   function MockConfigureOrganizationUnit({
     rootOuId,
     selectedOuId,
