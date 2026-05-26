@@ -179,6 +179,15 @@ export type ThunderIDContextProps = {
   signInOptions: SignInOptions;
 
   /**
+   * Optional additional parameters to be sent in the token request body.
+   * These will be appended to the token endpoint POST body alongside the standard OAuth parameters.
+   *
+   * @example
+   * tokenRequestOptions: { resource: "https://api.example.com" }
+   */
+  tokenRequestOptions: Record<string, unknown>;
+
+  /**
    * Silent sign-in function to re-authenticate the user without user interaction.
    * @remark This is the programmatic version of the `SilentSignIn` component.
    */
@@ -240,6 +249,7 @@ const ThunderIDContext: Context<ThunderIDContextProps | null> = createContext<nu
   resolveFlowTemplateLiterals: (text: string | undefined) => text ?? '',
   signIn: () => Promise.resolve({} as any),
   signInOptions: {},
+  tokenRequestOptions: {},
   signInSilently: () => Promise.resolve({} as any),
   signInUrl: undefined,
   signOut: () => Promise.resolve({} as any),

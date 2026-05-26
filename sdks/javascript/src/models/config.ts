@@ -307,6 +307,15 @@ export interface BaseConfig<T = unknown> extends WithPreferences, WithExtensions
   signInOptions?: SignInOptions;
 
   /**
+   * Optional additional parameters to be sent in the token request body.
+   * These will be appended to the token endpoint POST body alongside the standard OAuth parameters.
+   *
+   * @example
+   * tokenRequestOptions: { resource: "https://api.example.com", audience: "my-api" }
+   */
+  tokenRequestOptions?: Record<string, unknown>;
+
+  /**
    * Optional URL to redirect the user to sign-in.
    * By default, this will be the sign-in page of ThunderID.
    * If you want to use a custom sign-in page, you can provide the URL here and use the `SignIn` component to render it.
