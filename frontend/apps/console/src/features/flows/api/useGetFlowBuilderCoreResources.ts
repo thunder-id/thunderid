@@ -16,15 +16,23 @@
  * under the License.
  */
 
+import {useConfig} from '@thunderid/contexts';
 import {useMemo} from 'react';
 import elements from '../data/elements.json';
 import steps from '../data/steps.json';
 import templates from '../data/templates.json';
 import widgets from '../data/widgets.json';
 import {type Resources} from '../models/resources';
+import updateTemplatePlaceholderReferences from '../utils/updateTemplatePlaceholderReferences';
 
 /**
  * Hook to get all the resources supported by the flow builder.
+ *
+ * Static resource JSON ships with `{{productName}}` placeholders for any
+ * branded value that must reflect the deployment's configured product name
+ * (currently the WebAuthn relying party name in passkey templates). The
+ * placeholder is resolved at load time from `config.brand.product_name` so
+ * every consumer sees the correct value without further work.
  *
  * This function calls the GET method of the following endpoint to get the resources.
  * - TODO: Fill this
@@ -34,15 +42,22 @@ import {type Resources} from '../models/resources';
  * @returns SWR response object containing the data, error, isLoading, isValidating, mutate.
  */
 const useGetFlowBuilderCoreResources = <Data = Resources>() => {
-  const data: unknown = useMemo(
-    () => ({
-      elements,
-      steps,
-      templates,
-      widgets,
-    }),
-    [],
-  );
+  const {config} = useConfig();
+  const productName = config?.brand?.product_name ?? '';
+
+  const data: unknown = useMemo(() => {
+    const [resolved] = updateTemplatePlaceholderReferences(
+      {
+        elements,
+        steps,
+        templates,
+        widgets,
+      },
+      [{key: 'productName', value: productName}],
+    );
+
+    return resolved;
+  }, [productName]);
 
   return {
     data: data as Data,

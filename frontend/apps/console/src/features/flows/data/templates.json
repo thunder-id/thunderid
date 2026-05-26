@@ -2397,7 +2397,7 @@
           },
           "properties": {
             "relyingPartyId": "localhost",
-            "relyingPartyName": "ThunderID"
+            "relyingPartyName": "{{productName}}"
           },
           "executor": {
             "name": "PasskeyAuthExecutor",
@@ -2735,7 +2735,7 @@
           },
           "properties": {
             "relyingPartyId": "localhost",
-            "relyingPartyName": "ThunderID"
+            "relyingPartyName": "{{productName}}"
           },
           "executor": {
             "name": "PasskeyAuthExecutor",
@@ -2894,7 +2894,7 @@
           },
           "properties": {
             "relyingPartyId": "localhost",
-            "relyingPartyName": "ThunderID"
+            "relyingPartyName": "{{productName}}"
           },
           "executor": {
             "name": "PasskeyAuthExecutor",
@@ -4105,7 +4105,7 @@
           },
           "properties": {
             "relyingPartyId": "localhost",
-            "relyingPartyName": "ThunderID"
+            "relyingPartyName": "{{productName}}"
           },
           "executor": {
             "name": "PasskeyAuthExecutor",
@@ -4636,7 +4636,7 @@
           "type": "TASK_EXECUTION",
           "properties": {
             "relyingPartyId": "localhost",
-            "relyingPartyName": "ThunderID",
+            "relyingPartyName": "{{productName}}",
             "authenticatorSelection": {
               "authenticatorAttachment": "platform",
               "requireResidentKey": true,
@@ -4797,7 +4797,7 @@
           "type": "TASK_EXECUTION",
           "properties": {
             "relyingPartyId": "localhost",
-            "relyingPartyName": "ThunderID",
+            "relyingPartyName": "{{productName}}",
             "authenticatorSelection": {
               "authenticatorAttachment": "platform",
               "requireResidentKey": true,

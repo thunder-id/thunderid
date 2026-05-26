@@ -725,7 +725,7 @@
               },
               "properties": {
                 "relyingPartyId": "localhost",
-                "relyingPartyName": "ThunderID"
+                "relyingPartyName": "{{productName}}"
               }
             }
           },
@@ -861,7 +861,7 @@
               },
               "properties": {
                 "relyingPartyId": "localhost",
-                "relyingPartyName": "ThunderID"
+                "relyingPartyName": "{{productName}}"
               }
             }
           },

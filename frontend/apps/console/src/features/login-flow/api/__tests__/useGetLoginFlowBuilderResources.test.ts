@@ -20,6 +20,22 @@ import {renderHook} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import useGetLoginFlowBuilderResources from '../useGetLoginFlowBuilderResources';
 
+// Mock useConfig to avoid ConfigProvider requirement.
+vi.mock('@thunderid/contexts', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+
+  return {
+    ...actual,
+    useConfig: () => ({
+      config: {
+        brand: {
+          product_name: 'TestProduct',
+        },
+      },
+    }),
+  };
+});
+
 // Mock the core resources hook
 vi.mock('@/features/flows/api/useGetFlowBuilderCoreResources', () => ({
   default: vi.fn(() => ({

@@ -17,12 +17,28 @@
  */
 
 import {renderHook} from '@testing-library/react';
-import {describe, it, expect} from 'vitest';
+import {describe, it, expect, vi} from 'vitest';
 import elements from '../../data/elements.json';
 import steps from '../../data/steps.json';
-import templates from '../../data/templates.json';
-import widgets from '../../data/widgets.json';
 import useGetFlowBuilderCoreResources from '../useGetFlowBuilderCoreResources';
+
+const TEST_PRODUCT_NAME = 'TestProduct';
+
+// Mock useConfig to avoid ConfigProvider requirement.
+vi.mock('@thunderid/contexts', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+
+  return {
+    ...actual,
+    useConfig: () => ({
+      config: {
+        brand: {
+          product_name: TEST_PRODUCT_NAME,
+        },
+      },
+    }),
+  };
+});
 
 describe('useGetFlowBuilderCoreResources', () => {
   describe('Return Structure', () => {
@@ -77,18 +93,19 @@ describe('useGetFlowBuilderCoreResources', () => {
       expect(data.steps).toEqual(steps);
     });
 
-    it('should return data containing templates from JSON file', () => {
+    it('should return data containing templates resolved from JSON file', () => {
       const {result} = renderHook(() => useGetFlowBuilderCoreResources());
 
       const {data} = result.current;
-      expect(data.templates).toEqual(templates);
+      expect(Array.isArray(data.templates)).toBe(true);
+      expect(data.templates.length).toBeGreaterThan(0);
     });
 
-    it('should return data containing widgets from JSON file', () => {
+    it('should return data containing widgets resolved from JSON file', () => {
       const {result} = renderHook(() => useGetFlowBuilderCoreResources());
 
       const {data} = result.current;
-      expect(data.widgets).toEqual(widgets);
+      expect(Array.isArray(data.widgets)).toBe(true);
     });
 
     it('should return all resource types in data object', () => {
@@ -99,6 +116,17 @@ describe('useGetFlowBuilderCoreResources', () => {
       expect(data).toHaveProperty('steps');
       expect(data).toHaveProperty('templates');
       expect(data).toHaveProperty('widgets');
+    });
+  });
+
+  describe('Brand Placeholder Substitution', () => {
+    it('should substitute {{productName}} placeholders with the configured product name', () => {
+      const {result} = renderHook(() => useGetFlowBuilderCoreResources());
+
+      const serialised = JSON.stringify(result.current.data);
+
+      expect(serialised).not.toContain('{{productName}}');
+      expect(serialised).toContain(TEST_PRODUCT_NAME);
     });
   });
 
