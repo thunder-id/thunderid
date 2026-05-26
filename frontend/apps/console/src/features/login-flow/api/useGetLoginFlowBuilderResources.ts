@@ -23,8 +23,8 @@ import steps from '../data/steps.json';
 import templates from '../data/templates.json';
 import widgets from '../data/widgets.json';
 import useGetFlowBuilderCoreResources from '@/features/flows/api/useGetFlowBuilderCoreResources';
-import updateTemplatePlaceholderReferences from '@/features/flows/utils/updateTemplatePlaceholderReferences';
 import type {Resources} from '@/features/flows/models/resources';
+import updateTemplatePlaceholderReferences from '@/features/flows/utils/updateTemplatePlaceholderReferences';
 
 /**
  * Hook to get the resources supported by the password recovery flow builder.
@@ -49,17 +49,19 @@ const useGetLoginFlowBuilderResources = <Data = Resources>() => {
   const productName = config?.brand?.product_name ?? '';
 
   const data = useMemo(() => {
-    const [resolvedLocal] = updateTemplatePlaceholderReferences(
-      {executors, steps, templates, widgets},
-      [{key: 'productName', value: productName}],
-    );
+    const [resolvedLocal] = updateTemplatePlaceholderReferences({executors, steps, templates, widgets}, [
+      {key: 'productName', value: productName},
+    ]);
 
     return {
       ...coreResources,
       steps: [...(coreResources?.steps ?? []), ...resolvedLocal.steps],
       templates: [...(coreResources?.templates ?? []), ...resolvedLocal.templates],
       widgets: [...(coreResources?.widgets ?? []), ...resolvedLocal.widgets],
-      executors: [...((coreResources as Resources & {executors?: unknown[]})?.executors ?? []), ...resolvedLocal.executors],
+      executors: [
+        ...((coreResources as Resources & {executors?: unknown[]})?.executors ?? []),
+        ...resolvedLocal.executors,
+      ],
     };
   }, [coreResources, productName]);
 
