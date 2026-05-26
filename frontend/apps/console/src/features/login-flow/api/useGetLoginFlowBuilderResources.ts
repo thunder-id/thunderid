@@ -58,10 +58,7 @@ const useGetLoginFlowBuilderResources = <Data = Resources>() => {
       steps: [...(coreResources?.steps ?? []), ...resolvedLocal.steps],
       templates: [...(coreResources?.templates ?? []), ...resolvedLocal.templates],
       widgets: [...(coreResources?.widgets ?? []), ...resolvedLocal.widgets],
-      executors: [
-        ...((coreResources as Resources & {executors?: unknown[]})?.executors ?? []),
-        ...resolvedLocal.executors,
-      ],
+      executors: [...(coreResources?.executors ?? []), ...resolvedLocal.executors],
     };
   }, [coreResources, productName]);
 
