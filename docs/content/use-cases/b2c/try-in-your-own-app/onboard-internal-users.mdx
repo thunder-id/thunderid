@@ -1,0 +1,232 @@
+---
+title: Onboard Internal Users
+description: Configure {{ProductName}} to invite and onboard internal staff members in your own application.
+sidebar_position: 6
+---
+
+# Onboard Internal Users
+
+This walkthrough configures <ProductName /> so that an admin can invite staff members by email. When the invitee accepts, <ProductName /> provisions their account and attaches the right role automatically. The invitation and acceptance flow runs inside the <ProductName /> Console, so this walkthrough applies regardless of which solution pattern your consumer app uses.
+
+:::info Background
+[Onboard Internal Users](../../customer-identity#onboard-internal-users) covers the requirements story behind this use case.
+:::
+
+:::note Prerequisites
+Configure SMTP so that <ProductName /> can send invitation emails. See [Email Configuration](/docs/next/guides/getting-started/configuration#email-configuration), then restart <ProductName /> for the changes to take effect.
+:::
+
+## Configure <ProductName />
+
+**1. Create an internal user type**
+
+Navigate to **User Types** → **Create User Type**. Define the schema for your staff accounts. At minimum:
+
+| Attribute     | Type   | Notes                         |
+| ------------- | ------ | ----------------------------- |
+| `username`    | string | Required, unique              |
+| `email`       | string | Required, unique              |
+| `password`    | string | Credential                    |
+| `displayName` | string | Captured on invitation accept |
+
+See [User Types](/docs/next/guides/guides/users/user-types).
+
+**2. Create staff roles**
+
+Navigate to **Roles** → **Add Role** and create the roles your internal users need. Assign the permissions that match each role's access level in your application.
+
+See [Authorization](/docs/next/guides/key-concepts/authorization).
+
+**3. Build a user onboarding flow**
+
+Build a `USER_ONBOARDING` flow that sends the invitation email and provisions the invitee with the correct role on acceptance. See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+
+Set `properties.assignRole` on the `ProvisioningExecutor` node to the ID of the role from step 2. If you have multiple staff roles, duplicate the invite/provision branch for each.
+
+<details>
+  <summary>Sample user onboarding flow</summary>
+
+```json
+{
+  "handle": "staff-onboarding-flow",
+  "name": "Staff Onboarding Flow",
+  "flowType": "USER_ONBOARDING",
+  "nodes": [
+    { "id": "start", "type": "START", "onSuccess": "permission_validator" },
+    {
+      "id": "permission_validator",
+      "type": "TASK_EXECUTION",
+      "properties": { "requiredScopes": ["system"] },
+      "executor": { "name": "PermissionValidator" },
+      "onSuccess": "user_type_resolver"
+    },
+    {
+      "id": "user_type_resolver",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "UserTypeResolver" },
+      "onSuccess": "prompt_email",
+      "onIncomplete": "prompt_usertype"
+    },
+    {
+      "id": "prompt_usertype",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "heading_usertype", "label": "Who are you inviting?", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_usertype",
+            "components": [
+              { "type": "SELECT", "id": "usertype_input", "ref": "userType", "label": "User type", "placeholder": "Select a user type", "required": true, "options": [] },
+              { "type": "ACTION", "id": "action_usertype", "label": "Continue", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "inputs": [ { "ref": "usertype_input", "identifier": "userType", "type": "SELECT", "required": true } ],
+          "action": { "ref": "action_usertype", "nextNode": "user_type_resolver" }
+        }
+      ]
+    },
+    {
+      "id": "prompt_email",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "text_header_email", "label": "Invitee email", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_email",
+            "components": [
+              { "id": "input_email", "ref": "email", "type": "EMAIL_INPUT", "label": "Email", "required": true, "placeholder": "name@example.com" },
+              { "type": "ACTION", "id": "action_submit_email", "label": "Send invitation", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "inputs": [ { "ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true } ],
+          "action": { "ref": "action_submit_email", "nextNode": "check_email_uniqueness" }
+        }
+      ]
+    },
+    {
+      "id": "check_email_uniqueness",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "AttributeUniquenessValidator" },
+      "onSuccess": "invite_generate",
+      "onIncomplete": "prompt_email"
+    },
+    {
+      "id": "invite_generate",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "InviteExecutor", "mode": "generate" },
+      "onSuccess": "send_invite_email"
+    },
+    {
+      "id": "send_invite_email",
+      "type": "TASK_EXECUTION",
+      "properties": { "emailTemplate": "USER_INVITE" },
+      "executor": { "name": "EmailExecutor", "mode": "send" },
+      "onSuccess": "email_invite_status",
+      "onFailure": "email_invite_status"
+    },
+    {
+      "id": "email_invite_status",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "email_status_icon", "label": "✅", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_status_heading", "label": "Invitation sent", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_status_message", "label": "The invitee can accept from their email.", "variant": "HEADING_6" }
+        ]
+      },
+      "message": "Invitation sent",
+      "next": "invite_verify"
+    },
+    {
+      "id": "invite_verify",
+      "type": "TASK_EXECUTION",
+      "inputs": [ { "ref": "input_invite_token", "identifier": "inviteToken", "type": "HIDDEN", "required": true } ],
+      "executor": { "name": "InviteExecutor", "mode": "verify" },
+      "onSuccess": "provisioning"
+    },
+    {
+      "id": "provisioning",
+      "type": "TASK_EXECUTION",
+      "properties": { "includeOptional": true, "includeOptionalCredentials": true, "assignRole": "<your-role-id>" },
+      "executor": { "name": "ProvisioningExecutor" },
+      "onSuccess": "registration_complete",
+      "onIncomplete": "prompt_user_details"
+    },
+    {
+      "id": "prompt_user_details",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "text_header_user_details", "label": "Complete your profile", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_user_details",
+            "components": [
+              { "type": "DYNAMIC_INPUT_PLACEHOLDER", "id": "dynamic_inputs_user_details" },
+              { "type": "ACTION", "id": "action_user_details", "label": "Finish", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        { "inputs": [], "action": { "ref": "action_user_details", "nextNode": "provisioning" } }
+      ]
+    },
+    {
+      "id": "registration_complete",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "registration_complete_icon", "label": "✅", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "registration_complete_heading", "label": "Account ready", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "registration_complete_message", "label": "Your staff account has been created.", "variant": "HEADING_6" }
+        ]
+      },
+      "message": "Registration complete",
+      "next": "end"
+    },
+    { "id": "end", "type": "END" }
+  ]
+}
+```
+
+</details>
+
+**4. Activate the onboarding flow**
+
+Point the `user_onboarding_flow_handle` at your flow handle in `repository/conf/deployment.yaml` and restart:
+
+```yaml
+flow:
+  user_onboarding_flow_handle: "staff-onboarding-flow"
+```
+
+**5. Create an admin user**
+
+Navigate to **Users** → **Add User**. Create a user with your internal user type and assign the role that grants admin permissions. This user will issue invitations from the <ProductName /> Console.
+
+See [Manage Users](/docs/next/guides/guides/users/manage-users).
+
+## Try It Out
+
+1. Sign in to the <ProductName /> Console at <ConsoleUrl /> as the admin user you created.
+2. Navigate to **Users** and select **Invite User**.
+3. Select your internal user type and enter the invitee's email address. Send the invitation.
+4. Open the invitation email in the invitee's inbox and click the link.
+5. Fill in the required attributes (username, display name, password) and submit.
+6. Verify that the new staff account appears in **Users** in the Console with the correct role attached.
+
+## Going Deeper
+
+- Want to understand how the staff user type and roles fit together? See [User Types](../../identity-concepts#user-types) and [Roles](../../identity-concepts#roles) in Identity Concepts.
+- Want to see this use case running against the Wayfinder sample? See [Onboard Internal Users — Try It Out](../../try-it-out/onboard-internal-users).

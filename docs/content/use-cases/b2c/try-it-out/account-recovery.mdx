@@ -18,24 +18,7 @@ Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) bef
 
 ## Set Up Account Recovery
 
-1. Recovery emails are delivered through a SMTP server. Configure a SMTP provider and apply the configuration in `repository/conf/deployment.yaml`.
-
-    **Sample SMTP Configuration:**
-
-    ```yaml
-    email:
-      smtp:
-        host: "<smtp-host>"
-        port: <smtp-port>
-        username: "<smtp-username>"
-        password: "<smtp-password>"
-        from_address: "<from-address>"
-        enable_start_tls: true
-        enable_authentication: true
-    ```
-    For the full property reference and provider-specific examples, see [Configure SMTP Server](../../../../guides/guides/smtp-server/smtp-server-configuration).
-
-2. Restart <ProductName /> for the changes to take effect.
+Recovery emails require a working SMTP connection. See [Email Configuration](/docs/next/guides/getting-started/configuration#email-configuration) to configure and enable it, then restart <ProductName /> for the changes to take effect.
 
 ## Pick Your Pattern
 
@@ -73,3 +56,4 @@ Coming soon. See the [App-native pattern](../../solution-patterns#app-native) fo
 
 - Want to understand the steps the recovery flow takes? See [Flows](../../identity-concepts#flows) in the Identity Concepts.
 - Prefer to build the recovery flow manually? See [Build the Account Recovery Flow](../../configure-it-yourself#build-the-account-recovery-flow) in Configure It Yourself.
+- Building account recovery in your own app instead of Wayfinder? See [Account Recovery — Try In Your Own App](../../try-in-your-own-app/account-recovery).

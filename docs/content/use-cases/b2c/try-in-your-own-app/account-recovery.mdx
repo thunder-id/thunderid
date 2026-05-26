@@ -1,0 +1,209 @@
+---
+title: Account Recovery
+description: Configure {{ProductName}} for password recovery and integrate it into your own application.
+sidebar_position: 5
+---
+
+# Account Recovery
+
+This walkthrough configures <ProductName /> to let users reset a forgotten password through an email link. <ProductName /> identifies the user, sends the recovery email, verifies the link, and lets the user set a new password — all on the hosted sign-in pages in the redirect-based pattern.
+
+:::info Background
+[Add Account Recovery](../../customer-identity#add-account-recovery) covers the requirements story behind this use case.
+:::
+
+:::note Prerequisites
+- Complete the [Login](../add-login) walkthrough first. The user type and application set up there are required here.
+- Configure SMTP so that <ProductName /> can send recovery emails. See [Email Configuration](/docs/next/guides/getting-started/configuration#email-configuration), then restart <ProductName /> for the changes to take effect.
+:::
+
+## Pick Your Pattern
+
+<details open>
+  <summary>Redirect-based</summary>
+
+In the redirect-based pattern, the entire recovery experience is hosted by <ProductName />. Your app provides a **Forgot password?** link that redirects the user to <ProductName />. After the user completes the recovery flow, they return to your app's sign-in page.
+
+### Configure <ProductName />
+
+**1. Build a recovery flow**
+
+Build a `RECOVERY` flow that identifies the user, generates a recovery token, sends the email, verifies the link, and lets the user set a new password. See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+
+<details>
+  <summary>Sample recovery flow</summary>
+
+```json
+{
+  "handle": "consumer-recovery-flow",
+  "name": "Consumer Password Recovery Flow",
+  "flowType": "RECOVERY",
+  "nodes": [
+    { "id": "start", "type": "START", "onSuccess": "prompt_username" },
+    {
+      "id": "prompt_username",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "text_header_username", "label": "Reset your password", "variant": "HEADING_1" },
+          { "type": "TEXT", "id": "text_subtitle_username", "label": "Enter your username and we'll email you a recovery link.", "variant": "HEADING_6" },
+          {
+            "type": "BLOCK",
+            "id": "block_username",
+            "components": [
+              { "id": "input_username", "ref": "username", "type": "TEXT_INPUT", "label": "Username", "required": true, "placeholder": "Your username" },
+              { "type": "ACTION", "id": "action_submit_username", "label": "Send recovery link", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "inputs": [ { "ref": "input_username", "identifier": "username", "type": "TEXT_INPUT", "required": true } ],
+          "action": { "ref": "action_submit_username", "nextNode": "identify_user" }
+        }
+      ]
+    },
+    {
+      "id": "identify_user",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "IdentifyingExecutor",
+        "mode": "identify",
+        "inputs": [ { "ref": "input_username", "identifier": "username", "type": "TEXT_INPUT", "required": true } ]
+      },
+      "onSuccess": "generate_recovery_token",
+      "onFailure": "email_sent_status"
+    },
+    {
+      "id": "generate_recovery_token",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "InviteExecutor", "mode": "generate" },
+      "onSuccess": "send_recovery_email"
+    },
+    {
+      "id": "send_recovery_email",
+      "type": "TASK_EXECUTION",
+      "properties": { "emailTemplate": "PASSWORD_RECOVERY" },
+      "executor": { "name": "EmailExecutor", "mode": "send" },
+      "onSuccess": "email_sent_status",
+      "onFailure": "email_sent_status"
+    },
+    {
+      "id": "email_sent_status",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "email_sent_icon", "label": "✉️", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_sent_heading", "label": "Check your email", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "email_sent_message", "label": "If an account matches, we've sent a recovery link.", "variant": "HEADING_6" }
+        ]
+      },
+      "message": "Check Your Email",
+      "next": "verify_recovery_token"
+    },
+    {
+      "id": "verify_recovery_token",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "InviteExecutor",
+        "mode": "verify",
+        "inputs": [ { "ref": "input_recovery_token", "identifier": "inviteToken", "type": "HIDDEN", "required": true } ]
+      },
+      "onSuccess": "prompt_new_password"
+    },
+    {
+      "id": "prompt_new_password",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "text_header_password", "label": "Set a new password", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_password",
+            "components": [
+              { "id": "input_new_password", "ref": "password", "type": "PASSWORD_INPUT", "label": "New password", "required": true, "placeholder": "New password" },
+              { "type": "ACTION", "id": "action_submit_password", "label": "Update password", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "inputs": [ { "ref": "input_new_password", "identifier": "password", "type": "PASSWORD_INPUT", "required": true } ],
+          "action": { "ref": "action_submit_password", "nextNode": "set_credential" }
+        }
+      ]
+    },
+    {
+      "id": "set_credential",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "CredentialSetter" },
+      "onSuccess": "recovery_complete"
+    },
+    {
+      "id": "recovery_complete",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "recovery_complete_icon", "label": "✅", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "recovery_complete_heading", "label": "Password updated", "variant": "HEADING_1" },
+          { "align": "center", "type": "TEXT", "id": "recovery_complete_message", "label": "Return to your app and sign in with your new password.", "variant": "HEADING_6" }
+        ]
+      },
+      "message": "Password Reset Successful",
+      "next": "end"
+    },
+    { "id": "end", "type": "END" }
+  ]
+}
+```
+
+</details>
+
+**2. Attach the recovery flow to your application**
+
+Go to **Applications** → your app → **Flows** tab. Under **Recovery Flow**, select the flow you created. Save the application.
+
+See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+
+### Integrate into Your App
+
+The recovery flow is hosted on <ProductName />. Your app only needs a **Forgot password?** entry point that your SDK routes to the hosted recovery experience:
+
+| Framework   | Where to integrate                                                                            |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| React       | [React SDK Overview](/docs/next/sdks/react/overview) — use the SDK's recovery entry point    |
+| Next.js     | [Next.js Quickstart](/docs/next/guides/getting-started/connect-your-application/nextjs)       |
+| Vue         | [Vue Quickstart](/docs/next/guides/getting-started/connect-your-application/vue)              |
+| Browser SDK | [Browser SDK Overview](/docs/next/sdks/browser/overview)                                      |
+
+### Try It Out
+
+1. Start your app and navigate to the sign-in screen.
+2. Click **Forgot password?** (or your equivalent entry point). The browser navigates to <ProductName />.
+3. Enter your test user's username and submit.
+4. Check the inbox for the test user's email address and open the recovery link.
+5. <ProductName /> renders the **Set new password** screen. Enter a new password and submit.
+6. Return to your app and sign in with the new password.
+
+</details>
+
+<details>
+  <summary>App-native step-by-step</summary>
+
+Coming soon. See the [App-native pattern](../../solution-patterns#app-native) for what to expect.
+
+</details>
+
+<details>
+  <summary>App-native managed</summary>
+
+Coming soon. See the [App-native pattern](../../solution-patterns#app-native) for what to expect.
+
+</details>
+
+## Going Deeper
+
+- Want to understand how the recovery flow nodes work? See [Flows](../../identity-concepts#flows) in Identity Concepts.
+- Want to see this use case running against the Wayfinder sample? See [Account Recovery — Try It Out](../../try-it-out/account-recovery).

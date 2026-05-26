@@ -1,0 +1,65 @@
+---
+title: Try In Your Own App
+description: Configure {{ProductName}} for each B2C use case and integrate it into your own application.
+sidebar_position: 4
+---
+
+import {NextSteps, NextStepsCard} from '../../../src/components/NextSteps';
+
+# Try In Your Own App
+
+Each walkthrough below configures <ProductName /> for one B2C use case and walks you through integrating it into your application.
+
+:::tip Already following Try It Out?
+This path is for integrating <ProductName /> into your own app. If you'd rather see the use cases running against a pre-built sample, see [Try It Out](../try-it-out).
+:::
+
+## Prerequisites
+
+- <ProductName /> running locally. Follow [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid) if you haven't already.
+
+## Foundation
+
+All walkthroughs build on a shared consumer user type. Create it once here; each walkthrough then layers its own configuration on top.
+
+Navigate to **User Types** → **Create User Type**. Add at minimum:
+
+| Attribute  | Type   | Properties       |
+| ---------- | ------ | ---------------- |
+| `username` | string | Required, unique |
+| `email`    | string | Required, unique |
+| `password` | string | Credential       |
+
+See [User Types](/docs/next/guides/guides/users/user-types).
+
+Start with the [Login](./add-login) walkthrough — it registers your application and builds the sign-in flow that every other walkthrough depends on.
+
+## Walkthroughs
+
+<NextSteps>
+  <NextStepsCard
+    title="Login"
+    description="Configure sign-in and wire it into your app."
+    href="./add-login"
+  />
+  <NextStepsCard
+    title="Self Sign-Up"
+    description="Let new users register themselves with email and password."
+    href="./self-sign-up"
+  />
+  <NextStepsCard
+    title="View Profile"
+    description="Display and update a user's profile attributes and password."
+    href="./profile-section"
+  />
+  <NextStepsCard
+    title="Account Recovery"
+    description="Let users reset a forgotten password through an email link."
+    href="./account-recovery"
+  />
+  <NextStepsCard
+    title="Onboard Internal Users"
+    description="Invite staff by email and provision them with the right role on accept."
+    href="./onboard-internal-users"
+  />
+</NextSteps>

@@ -20,22 +20,7 @@ Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) bef
 
 ## Set Up Internal User Onboarding
 
-1. Invitation emails are delivered through a SMTP server. **Configure a SMTP provider** and apply the configuration in `repository/conf/deployment.yaml`.
-
-    **Sample SMTP Configuration:**
-
-    ```yaml
-    email:
-      smtp:
-        host: "<smtp-host>"
-        port: <smtp-port>
-        username: "<smtp-username>"
-        password: "<smtp-password>"
-        from_address: "<from-address>"
-        enable_start_tls: true
-        enable_authentication: true
-    ```
-    For the full property reference and provider-specific examples, see [Configure SMTP Server](../../../../guides/guides/smtp-server/smtp-server-configuration).
+1. Invitation emails require a working SMTP connection. See [Email Configuration](/docs/next/guides/getting-started/configuration#email-configuration) to configure and enable it.
 
 2. **Activate the user onboarding flow** by pointing the `user_onboarding_flow_handle` to the bundled flow in `repository/conf/deployment.yaml`:
 
@@ -62,3 +47,4 @@ The Wayfinder onboarding flow prompts the admin to pick the staff role (Support 
 
 - Want to understand how the staff user type and roles fit together? See [User Types](../../identity-concepts#user-types) and [Roles](../../identity-concepts#roles) in the Identity Concepts.
 - Prefer to build the user onboarding side of the model manually? See [Set Up Internal User Onboarding](../../configure-it-yourself#set-up-internal-user-onboarding) in Configure It Yourself.
+- Building internal user onboarding in your own setup instead of Wayfinder? See [Onboard Internal Users — Try In Your Own App](../../try-in-your-own-app/onboard-internal-users).
