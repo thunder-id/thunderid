@@ -57,6 +57,7 @@ func main() {
 	startupStartedAt := time.Now()
 	logger := log.GetLogger()
 
+	flag.String("resources", "", "Path to declarative resources YAML file")
 	serverHome := getThunderHome(logger)
 
 	cfg := initThunderConfigurations(logger, serverHome)

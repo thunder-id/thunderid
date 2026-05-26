@@ -149,113 +149,43 @@ if ($ENV_FILE -ne "" -and -not [System.IO.Path]::IsPathRooted($ENV_FILE)) {
 # Exit on any error
 $ErrorActionPreference = 'Stop'
 
-function Setup-DeclarativeResources {
-    $scriptDir = Split-Path -Parent $MyInvocation.ScriptName
-    $resourcesBase = Join-Path $scriptDir "repository\resources"
-
-    # Load and export env vars from the env file.
-    if ($ENV_FILE -ne "") {
-        if (-not (Test-Path $ENV_FILE)) {
-            Write-Host "Error: env file not found: $ENV_FILE" -ForegroundColor Red
-            exit 1
-        }
-        Write-Host "Loading environment from $ENV_FILE ..."
-        Get-Content $ENV_FILE | ForEach-Object {
-            $line = $_.TrimEnd()
-            if ($line -eq "" -or $line.StartsWith('#')) { return }
-            if ($line -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
-                $key = $Matches[1]
-                $value = $Matches[2]
-                if ($value -match '^\[') {
-                    # JSON array — expand into KEY_0, KEY_1, ...
-                    try {
-                        $arr = $value | ConvertFrom-Json
-                        $idx = 0
-                        foreach ($elem in $arr) {
-                            [System.Environment]::SetEnvironmentVariable("${key}_${idx}", $elem, 'Process')
-                            $idx++
-                        }
-                    } catch {
-                        Write-Warning "Failed to parse JSON array for key '$key': $_"
-                        [System.Environment]::SetEnvironmentVariable($key, $value, 'Process')
-                    }
-                } else {
-                    [System.Environment]::SetEnvironmentVariable($key, $value, 'Process')
-                }
-            }
-        }
+# Load and export env vars from the env file.
+function Load-EnvFile {
+    if ($ENV_FILE -eq "") { return }
+    if (-not (Test-Path $ENV_FILE)) {
+        Write-Host "Error: env file not found: $ENV_FILE" -ForegroundColor Red
+        exit 1
     }
-
-    # Split the combined resources YAML and place each document in its type directory.
-    if ($RESOURCES_FILE -ne "") {
-        if (-not (Test-Path $RESOURCES_FILE)) {
-            Write-Host "Error: resources file not found: $RESOURCES_FILE" -ForegroundColor Red
-            exit 1
-        }
-        Write-Host "Setting up declarative resources from $RESOURCES_FILE ..."
-
-        $typeMap = @{
-            'application'         = 'applications'
-            'flow'                = 'flows'
-            'group'               = 'groups'
-            'identity_provider'   = 'identity_providers'
-            'layout'              = 'layouts'
-            'notification_sender' = 'notification_senders'
-            'organization_unit'   = 'organization_units'
-            'resource_server'     = 'resource_servers'
-            'role'                = 'roles'
-            'theme'               = 'themes'
-            'translation'         = 'translations'
-            'user'                = 'users'
-            'user_schema'         = 'user_schemas'
-        }
-
-        $lines = Get-Content $RESOURCES_FILE
-        $docLines = [System.Collections.Generic.List[string]]::new()
-        $currentFile = ""
-        $currentType = ""
-
-        $flushDoc = {
-            if ($docLines.Count -eq 0 -or $currentType -eq "") {
-                $docLines.Clear()
-                $script:currentFile = ""
-                $script:currentType = ""
-                return
-            }
-            $dir = if ($typeMap.ContainsKey($currentType)) { $typeMap[$currentType] } else { "${currentType}s" }
-            $targetDir = Join-Path $resourcesBase $dir
-            if (-not (Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
-            $fname = if ($currentFile -ne "") { $currentFile } else { "resource.yaml" }
-            $outPath = Join-Path $targetDir $fname
-            $docLines | Set-Content -Path $outPath -Encoding UTF8
-            Write-Host "  Placed: $dir\$fname"
-            $docLines.Clear()
-            $script:currentFile = ""
-            $script:currentType = ""
-        }
-
-        foreach ($line in $lines) {
-            if ($line -match '^---\s*$') {
-                & $flushDoc
-            }
-            elseif ($line -match '^# File:\s*(.+)$') {
-                $currentFile = $Matches[1].Trim()
-            }
-            elseif ($line -match '^# resource_type:\s*(.+)$') {
-                $currentType = $Matches[1].Trim()
-            }
-            else {
-                $docLines.Add($line)
+    Write-Host "Loading environment from $ENV_FILE ..."
+    Get-Content $ENV_FILE | ForEach-Object {
+        $line = $_.TrimEnd()
+        if ($line -eq "" -or $line.StartsWith('#')) { return }
+        if ($line -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
+            $key = $Matches[1]
+            $value = $Matches[2]
+            if ($value -match '^\[') {
+                # JSON array — expand into KEY_0, KEY_1, ...
+                try {
+                    $arr = $value | ConvertFrom-Json
+                    $idx = 0
+                    foreach ($elem in $arr) {
+                        [System.Environment]::SetEnvironmentVariable("${key}_${idx}", $elem, 'Process')
+                        $idx++
+                    }
+                } catch {
+                    Write-Error "Failed to parse JSON array for key '$key': $_"
+                    exit 1
+                }
+            } else {
+                [System.Environment]::SetEnvironmentVariable($key, $value, 'Process')
             }
         }
-        & $flushDoc
-        Write-Host "Declarative resources ready."
     }
 }
 
-# Set up declarative resources if a resources file or env file was provided.
-if ($RESOURCES_FILE -ne "" -or $ENV_FILE -ne "") {
-    Setup-DeclarativeResources
+# Load env vars before starting the binary so substitution works in resource files.
+if ($ENV_FILE -ne "") {
+    Load-EnvFile
 }
 
 function Stop-PortListener {
@@ -371,6 +301,9 @@ try {
         }
     }
 
+    $resourcesArgs = @()
+    if ($RESOURCES_FILE -ne "") { $resourcesArgs = @('-resources', $RESOURCES_FILE) }
+
     if ($DEBUG_MODE) {
         Write-Host "[INFO] Starting $PRODUCT_NAME Server in DEBUG mode..."
         Write-Host "[INFO] Application will run on: https://localhost:$BACKEND_PORT"
@@ -380,8 +313,11 @@ try {
         Write-Host "   Host: 127.0.0.1, Port: $DEBUG_PORT" -ForegroundColor Gray
         Write-Host ""
 
+        # Export BACKEND_PORT for the child process (mirrors the non-debug branch)
+        $env:BACKEND_PORT = $BACKEND_PORT
+
         # Start Delve in headless mode
-        $dlvArgs =  @(
+        $dlvArgs = @(
             'exec'
             "--listen=:$DEBUG_PORT"
             '--headless=true'
@@ -389,7 +325,8 @@ try {
             '--accept-multiclient'
             '--continue'
             $serverExecPath
-        )
+            '--'
+        ) + $resourcesArgs
         $proc = Start-Process -FilePath dlv -ArgumentList $dlvArgs -WorkingDirectory $scriptDir -NoNewWindow -PassThru
     }
     else {
@@ -397,7 +334,7 @@ try {
 
         # Export BACKEND_PORT for the child process
         $env:BACKEND_PORT = $BACKEND_PORT
-        $proc = Start-Process -FilePath $serverExecPath -WorkingDirectory $scriptDir -NoNewWindow -PassThru
+        $proc = Start-Process -FilePath $serverExecPath -ArgumentList $resourcesArgs -WorkingDirectory $scriptDir -NoNewWindow -PassThru
     }
 
     Write-Host ""

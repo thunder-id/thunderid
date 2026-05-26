@@ -25,10 +25,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"text/template"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
+
+const tplLiteralPlaceholderFmt = "__TPL_LITERAL_%d__"
 
 var (
 	// Pattern to match Go template variables like {{.Variable}}
@@ -39,6 +42,23 @@ var (
 
 	// Pattern to match Go template file path patterns
 	filePattern = regexp.MustCompile(`file://(?:"([^"]*)"|([^\s"]+))`)
+
+	// anyBracesPattern matches any single-line {{ ... }} expression (no nested braces).
+	anyBracesPattern = regexp.MustCompile(`\{\{[^}]*\}\}`)
+
+	// goTemplateExprPattern matches only the Go template expressions that Thunder config
+	// files intentionally use: {{.Var}}, {{.}} (range element), {{- range .Var}}, {{- end}}.
+	// Anything not matching this is a non-Go-template literal (e.g. {{ t(key) }}, {{appName}}).
+	goTemplateExprPattern = regexp.MustCompile(
+		`\{\{` +
+			`(?:` +
+			`\s*\.\s*[A-Za-z_][A-Za-z0-9_]*\s*` + // {{.Variable}}
+			`|\s*\.\s*` + // {{.}}
+			`|-\s*range\s+\.\s*[A-Za-z_][A-Za-z0-9_]*\s*` + // {{- range .Var}}
+			`|-\s*end\s*` + // {{- end}}
+			`)` +
+			`\}\}`,
+	)
 )
 
 // SubstituteFilePaths replaces file path placeholders in the given content with the actual file contents.
@@ -143,19 +163,48 @@ func SubstituteEnvironmentVariables(content []byte) ([]byte, error) {
 		return content, nil
 	}
 
+	// Shield non-Go-template {{ ... }} expressions (e.g. {{ t(key) }}, {{appName}},
+	// {{meta(prop)}}) so the Go template parser does not mistake them for function calls.
+	shielded, restore := shieldNonGoTemplateExpressions(contentStr)
+
 	// Create and execute the template
-	tmpl, err := template.New("config").Parse(contentStr)
+	tmpl, err := template.New("config").Parse(shielded)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse template: %w", err)
 	}
 
 	var buf bytes.Buffer
-	err = tmpl.Execute(&buf, templateVars)
-	if err != nil {
+	if err = tmpl.Execute(&buf, templateVars); err != nil {
 		return nil, fmt.Errorf("failed to execute template: %w", err)
 	}
 
-	return buf.Bytes(), nil
+	// Restore shielded expressions to their original form
+	result := buf.String()
+	for placeholder, original := range restore {
+		result = strings.ReplaceAll(result, placeholder, original)
+	}
+
+	return []byte(result), nil
+}
+
+// shieldNonGoTemplateExpressions replaces any {{ ... }} pattern that is not a valid
+// Go template expression with a unique placeholder string, returning the modified
+// content and a map to restore the originals after template execution.
+func shieldNonGoTemplateExpressions(content string) (string, map[string]string) {
+	restore := make(map[string]string)
+	idx := 0
+
+	result := anyBracesPattern.ReplaceAllStringFunc(content, func(match string) string {
+		if goTemplateExprPattern.MatchString(match) {
+			return match
+		}
+		placeholder := fmt.Sprintf(tplLiteralPlaceholderFmt, idx)
+		idx++
+		restore[placeholder] = match
+		return placeholder
+	})
+
+	return result, restore
 }
 
 // buildArrayFromEnvVars builds an array by reading environment variables with indexed suffixes

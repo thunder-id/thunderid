@@ -645,11 +645,17 @@ func removePidFile() {
 	os.Remove(path)
 }
 
-func StartServer(port string, zipFilePattern string) error {
+func StartServer(port string, _ string) error {
 	log.Println("Starting server...")
+	return startServerInternal(port)
+}
 
+// startServerInternal launches the server binary with the standard args plus any extra args supplied.
+// All callers share this implementation so logging and env-var setup stay consistent.
+func startServerInternal(port string, extraArgs ...string) error {
 	serverPath := filepath.Join(extractedProductHome, ServerBinary)
-	cmd := exec.Command(serverPath, "-serverHome="+extractedProductHome)
+	args := append([]string{"-serverHome=" + extractedProductHome}, extraArgs...)
+	cmd := exec.Command(serverPath, args...)
 
 	// logFile is non-nil only when subprocessMode opens a log file. The parent
 	// must close its copy after cmd.Start() so it does not leak the FD.
@@ -701,6 +707,27 @@ func StartServer(port string, zipFilePattern string) error {
 	serverCmd = cmd
 	serverPid = cmd.Process.Pid
 	writePidFile(serverPid)
+
+	return nil
+}
+
+// RestartServerWithResourcesFile stops the running server and restarts it with the -resources flag
+// pointing to the given single-file declarative resources YAML. Call RestartServer to return to
+// normal mode afterwards.
+func RestartServerWithResourcesFile(resourcesFilePath string) error {
+	ensureInitialized()
+	log.Printf("Restarting server with resources file: %s", resourcesFilePath)
+
+	StopServer()
+	time.Sleep(3 * time.Second)
+
+	if err := startServerInternal(serverPort, "-resources="+resourcesFilePath); err != nil {
+		return fmt.Errorf("failed to start server with resources file: %w", err)
+	}
+
+	if err := waitForServerReady(30 * time.Second); err != nil {
+		return fmt.Errorf("server did not become ready after restart: %w", err)
+	}
 
 	return nil
 }

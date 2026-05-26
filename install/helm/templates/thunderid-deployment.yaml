@@ -21,6 +21,9 @@
 {{- if and .Values.declarativeResources.enabled (not .Values.declarativeResources.configMap.name) (not .Values.declarativeResources.secret.name) }}
 {{- fail "Invalid declarativeResources configuration: set declarativeResources.configMap.name or declarativeResources.secret.name when declarativeResources.enabled=true." }}
 {{- end }}
+{{- if and .Values.declarativeResources.enabled .Values.declarativeResources.singleFile.key (or .Values.declarativeResources.configMap.items .Values.declarativeResources.secret.items) }}
+{{- fail "Invalid declarativeResources configuration: declarativeResources.singleFile.key is mutually exclusive with configMap.items / secret.items." }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -92,6 +95,11 @@ spec:
           image: {{ .Values.deployment.image.registry }}/{{ .Values.deployment.image.repository }}:{{ default "latest" .Values.deployment.image.tag }}
           {{- end }}
           imagePullPolicy: {{ .Values.deployment.image.pullPolicy }}
+          {{- if and .Values.declarativeResources.enabled .Values.declarativeResources.singleFile.key }}
+          args:
+            - --resources
+            - {{ printf "%s/resources.yaml" .Values.declarativeResources.mountPath }}
+          {{- end }}
           env:
             - name: SKIP_SECURITY
               value: {{ .Values.deployment.skipSecurity | quote }}
@@ -170,7 +178,12 @@ spec:
               mountPath: /opt/thunderid/apps/console/config.js
               subPath: console-config.js
             {{- if .Values.declarativeResources.enabled }}
-            {{- if and .Values.declarativeResources.configMap.name .Values.declarativeResources.configMap.items }}
+            {{- if .Values.declarativeResources.singleFile.key }}
+            - name: declarative-resources
+              mountPath: {{ printf "%s/resources.yaml" .Values.declarativeResources.mountPath }}
+              subPath: {{ .Values.declarativeResources.singleFile.key }}
+              readOnly: {{ .Values.declarativeResources.readOnly }}
+            {{- else if and .Values.declarativeResources.configMap.name .Values.declarativeResources.configMap.items }}
 {{ include "thunderid.declarativeResourceVolumeMounts" (dict "items" .Values.declarativeResources.configMap.items "field" "declarativeResources.configMap.items" "mountPath" .Values.declarativeResources.mountPath "readOnly" .Values.declarativeResources.readOnly) | nindent 12 }}
             {{- else if and .Values.declarativeResources.secret.name .Values.declarativeResources.secret.items }}
 {{ include "thunderid.declarativeResourceVolumeMounts" (dict "items" .Values.declarativeResources.secret.items "field" "declarativeResources.secret.items" "mountPath" .Values.declarativeResources.mountPath "readOnly" .Values.declarativeResources.readOnly) | nindent 12 }}
