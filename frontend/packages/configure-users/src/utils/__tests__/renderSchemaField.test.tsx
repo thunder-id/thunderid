@@ -112,6 +112,97 @@ describe('renderSchemaField', () => {
       });
     });
 
+    it('renders grouped enum options with provider headers', async () => {
+      const user = userEvent.setup();
+      const fieldDef: PropertyDefinition = {
+        type: 'string',
+        enum: ['claude-sonnet-4.6', 'claude-opus-4.6', 'openai-gpt-5.4-pro'],
+      };
+      render(<TestForm fieldName="model" fieldDef={fieldDef} />);
+
+      const select = screen.getByRole('combobox');
+      await user.click(select);
+
+      await waitFor(() => {
+        expect(screen.getByText('Claude')).toBeInTheDocument();
+        expect(screen.getByText('OpenAI')).toBeInTheDocument();
+        expect(screen.getByText('Sonnet 4.6')).toBeInTheDocument();
+        expect(screen.getByText('Opus 4.6')).toBeInTheDocument();
+        expect(screen.getByText('GPT-5.4 Pro')).toBeInTheDocument();
+      });
+    });
+
+    it('keeps flat rendering for simple enums without dashes', async () => {
+      const user = userEvent.setup();
+      const fieldDef: PropertyDefinition = {
+        type: 'string',
+        enum: ['admin', 'user', 'guest'],
+      };
+      render(<TestForm fieldName="role" fieldDef={fieldDef} />);
+
+      const select = screen.getByRole('combobox');
+      await user.click(select);
+
+      await waitFor(() => {
+        expect(screen.getByText('Admin')).toBeInTheDocument();
+        expect(screen.getByText('User')).toBeInTheDocument();
+        expect(screen.getByText('Guest')).toBeInTheDocument();
+      });
+    });
+
+    it('renders selected grouped enum value with display name', () => {
+      const fieldDef: PropertyDefinition = {
+        type: 'string',
+        enum: ['claude-sonnet-4.6', 'claude-opus-4.6'],
+      };
+      render(<TestForm fieldName="model" fieldDef={fieldDef} defaultValues={{model: 'claude-sonnet-4.6'}} />);
+
+      const select = screen.getByRole('combobox');
+      expect(select).toHaveTextContent('Sonnet 4.6');
+    });
+
+    it('does not group enums where no provider has multiple values', async () => {
+      const user = userEvent.setup();
+      const fieldDef: PropertyDefinition = {
+        type: 'string',
+        enum: ['north-america', 'south-america', 'europe'],
+      };
+      render(<TestForm fieldName="region" fieldDef={fieldDef} />);
+
+      const select = screen.getByRole('combobox');
+      await user.click(select);
+
+      await waitFor(() => {
+        expect(screen.getByText('North-america')).toBeInTheDocument();
+        expect(screen.getByText('South-america')).toBeInTheDocument();
+        expect(screen.getByText('Europe')).toBeInTheDocument();
+        // Should NOT have group headers
+        expect(screen.queryByText('North')).not.toBeInTheDocument();
+        expect(screen.queryByText('South')).not.toBeInTheDocument();
+      });
+    });
+
+    it('renders ungrouped single items without redundant headers', async () => {
+      const user = userEvent.setup();
+      const fieldDef: PropertyDefinition = {
+        type: 'string',
+        enum: ['claude-sonnet-4.6', 'claude-opus-4.6', 'other'],
+      };
+      render(<TestForm fieldName="model" fieldDef={fieldDef} />);
+
+      const select = screen.getByRole('combobox');
+      await user.click(select);
+
+      await waitFor(() => {
+        expect(screen.getByText('Claude')).toBeInTheDocument();
+        expect(screen.getByText('Sonnet 4.6')).toBeInTheDocument();
+        expect(screen.getByText('Opus 4.6')).toBeInTheDocument();
+        // "Other" should appear once as a MenuItem, NOT with a ListSubheader
+        const otherElements = screen.getAllByText('Other');
+        expect(otherElements).toHaveLength(1);
+      });
+    });
+
     it('renders with default value for string field', () => {
       const fieldDef: PropertyDefinition = {type: 'string'};
       render(<TestForm fieldName="username" fieldDef={fieldDef} defaultValues={{username: 'john'}} />);

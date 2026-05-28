@@ -26,11 +26,14 @@ import {
   MenuItem,
   Checkbox,
   FormControlLabel,
+  ListSubheader,
 } from '@wso2/oxygen-ui';
+import type {ReactNode} from 'react';
 import {Controller} from 'react-hook-form';
 import type {Control, FieldErrors, Path} from 'react-hook-form';
 import ArrayFieldInput from '../components/ArrayFieldInput';
 import CredentialFieldInput from '../components/CredentialFieldInput';
+import {groupEnumOptions, getModelDisplayName} from './groupEnumOptions';
 import type {PropertyDefinition} from '../models/users';
 
 /**
@@ -65,6 +68,44 @@ const renderSchemaField = <T extends Record<string, unknown>>(
     // Render as Select dropdown if enum values are provided
     if (stringDef.enum && stringDef.enum.length > 0) {
       const enumOptions = stringDef.enum;
+      const groups = groupEnumOptions(enumOptions);
+      const hasGroupedValues = [...groups.values()].some((v) => v.length >= 2);
+
+      const renderEnumItems = () => {
+        if (!hasGroupedValues) {
+          return enumOptions.map((option) => (
+            <MenuItem key={option} value={option}>
+              {option.charAt(0).toUpperCase() + option.slice(1)}
+            </MenuItem>
+          ));
+        }
+
+        const items: ReactNode[] = [];
+
+        groups.forEach((values, provider) => {
+          const isSingleUngrouped = values.length === 1 && values[0] === provider;
+          if (!isSingleUngrouped) {
+            items.push(<ListSubheader key={`header-${provider}`}>{getModelDisplayName(provider)}</ListSubheader>);
+          }
+          for (const value of values) {
+            items.push(
+              <MenuItem key={value} value={value} sx={isSingleUngrouped ? {} : {pl: 4}}>
+                {getModelDisplayName(value)}
+              </MenuItem>,
+            );
+          }
+        });
+
+        return items;
+      };
+
+      const renderSelectedValue = (selected: unknown) => {
+        if (!selected || selected === '') return <em>Select {fieldLabel}</em>;
+        if (hasGroupedValues) return getModelDisplayName(selected as string);
+        const s = selected as string;
+        return s.charAt(0).toUpperCase() + s.slice(1);
+      };
+
       return (
         <FormControl key={fieldName}>
           <FormLabel htmlFor={fieldName}>
@@ -86,15 +127,12 @@ const renderSchemaField = <T extends Record<string, unknown>>(
                 required={isRequired}
                 error={!!errors[fieldName]}
                 displayEmpty
+                renderValue={renderSelectedValue}
               >
                 <MenuItem value="">
                   <em>Select {fieldLabel}</em>
                 </MenuItem>
-                {enumOptions.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    {option.charAt(0).toUpperCase() + option.slice(1)}
-                  </MenuItem>
-                ))}
+                {renderEnumItems()}
               </Select>
             )}
           />
