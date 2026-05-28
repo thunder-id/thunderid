@@ -10,8 +10,6 @@ on:
     # Runs every Friday at 12:00 PM IST (6:30 AM UTC)
     - cron: '30 6 * * 5'
   workflow_dispatch:
-    branches:
-      - release
     inputs:
       bump_type:
         description: 'Version bump type to apply to version.txt (major, minor, or patch)'
@@ -61,7 +59,13 @@ jobs:
       prerelease: ${{ steps.get_version.outputs.prerelease }}
       run_performance_test: ${{ steps.get_version.outputs.run_performance_test }}
       use_existing_version: ${{ steps.get_version.outputs.use_existing_version }}
-    steps:  
+    steps:
+      - name: 🔒 Enforce release branch
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name != 'release' }}
+        run: |
+          echo "❌ This workflow must be triggered from the 'release' branch, not '${{ github.ref_name }}'."
+          exit 1
+
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
