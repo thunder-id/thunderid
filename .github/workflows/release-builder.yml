@@ -10,6 +10,8 @@ on:
     # Runs every Friday at 12:00 PM IST (6:30 AM UTC)
     - cron: '30 6 * * 5'
   workflow_dispatch:
+    branches:
+      - release
     inputs:
       bump_type:
         description: 'Version bump type to apply to version.txt (major, minor, or patch)'
