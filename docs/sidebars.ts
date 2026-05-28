@@ -358,6 +358,34 @@ const sidebars: SidebarsConfig = {
           ],
         },
         {
+          type: 'category',
+          label: 'Declarative Configuration',
+          collapsed: true,
+          collapsible: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'guides/declarative-configurations/export-resources-console',
+              label: 'Export Resources Using the Console',
+            },
+            {
+              type: 'doc',
+              id: 'guides/declarative-configurations/import-resources-console',
+              label: 'Import Resources Using the Console',
+            },
+            {
+              type: 'doc',
+              id: 'guides/guides/resource-export',
+              label: 'Export Resources API',
+            },
+            {
+              type: 'doc',
+              id: 'guides/declarative-configurations/import-resources',
+              label: 'Import Resources API',
+            },
+          ],
+        },
+        {
           type: 'doc',
           id: 'guides/guides/consent',
           label: 'Consent',

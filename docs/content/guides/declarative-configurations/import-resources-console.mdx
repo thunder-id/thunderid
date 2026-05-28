@@ -1,0 +1,132 @@
+---
+title: Import Resources Using the Console
+description: Import a declarative YAML configuration bundle into ThunderID using the three-step Console wizard.
+---
+
+# Import Resources Using the Console
+
+Use the ThunderID Console to import a YAML configuration bundle into your ThunderID instance through a guided three-step wizard. The wizard validates your files, checks your environment variable values, runs a pre-flight test, and then applies the changes.
+
+Use this guide when you want to:
+
+- Set up a new ThunderID instance from an exported configuration bundle.
+- Apply a version-controlled resource configuration to a target environment.
+- Restore resources from a previously exported bundle.
+
+## Before You Begin
+
+- You need a `.yaml` or `.yml` configuration file containing one or more declarative resource documents. You can generate this file using [Export Resources Using the Console](./export-resources-console.mdx) or author it manually following the declarative resource schema.
+- If your configuration file uses template variables (values in the form `{{.VARIABLE_NAME}}`), you also need a `.env` file with a value assigned to each variable.
+
+## Step 1: Upload Your Files
+
+1. From the welcome screen, select **Open Project**.
+2. In the configuration file upload area, drag and drop your `.yaml` or `.yml` file, or select the upload area to open a file picker.
+3. If your configuration file contains template variables, upload your `.env` file in the **Environment Variables** upload area below. The environment variables file is optional — you can also supply values in Step 3.
+4. Select **Continue**.
+
+The Console parses your YAML file locally before proceeding. If the file contains unsupported resource types or cannot be parsed, the Console displays an error and does not advance to the next step.
+
+## Step 2: Validate Your Configuration
+
+The Console runs four sequential validation checks. A progress indicator shows the status of each check.
+
+| Check | What it does |
+|---|---|
+| Reading file | Confirms the uploaded file is accessible and non-empty. |
+| Validating YAML | Parses the YAML content and reports any structural errors. |
+| Checking compatibility | Verifies the resource schema versions are compatible with this instance. |
+| Validating resources | Confirms each resource document meets the required field constraints. |
+
+If the YAML validation check fails, the Console stops and displays the error details for each problematic document. Each error entry shows the affected file name, the resource type, and the parse error message. You can select **Upload a Different File** to go back to Step 1 and try again.
+
+When all four checks pass, the Console automatically advances to Step 3.
+
+## Step 3: Review and Apply
+
+The summary page gives you a complete view of the resources in your bundle and lets you run a pre-flight test before applying any changes.
+
+### Review Resources
+
+The **Resource Summary** table lists every resource type present in your bundle. Expand a resource type to see the individual items and their key properties. Resources that include template variable placeholders highlight the affected fields so you can verify the values are correct before proceeding.
+
+### Supply Environment Variable Values
+
+The **Pre-flight Check** panel on the right side of the page shows the status of your environment variables.
+
+- If your configuration contains no template variables, the panel confirms that no environment variables are required.
+- If template variables are present and all values are available from your uploaded `.env` file, the panel shows a confirmation.
+- If any required variable has no value, the panel lists the missing variable names and blocks the import until you supply the values.
+
+To supply missing values, select **Re-upload** next to the environment variables viewer and upload an updated `.env` file. You can also edit the environment variable values directly in the viewer.
+
+### Run the Pre-Flight Test
+
+Before you apply the import, the Console runs a pre-flight test (a dry run) to detect errors without writing any changes to the instance. The dry run calls `POST /import` with `dryRun: true`.
+
+- If all environment variable values are present, the pre-flight test starts automatically when you reach Step 3.
+- The **Import Test** section in the **Pre-flight Check** panel displays the result: a pass indicates all resources validated successfully; a failure lists the specific resources that failed and the reason for each failure.
+- After fixing any issues (for example, by updating environment variable values), select **Test** to run the pre-flight test again.
+
+### Apply the Import
+
+The **Proceed** button becomes active when:
+
+- All required environment variables have values.
+- The most recent pre-flight test has passed.
+
+Select **Proceed** to apply the import. The Console calls `POST /import` with `dryRun: false` and `continueOnError: false`. When the import completes:
+
+- If all resources imported successfully, a success notification confirms the number of imported resources and the Console navigates you to the home page.
+- If any resources failed to import, a warning notification shows the failure count. Review the failed items and correct the configuration before retrying.
+
+## Supported Resource Types
+
+The following resource types can be imported through the Console:
+
+| Resource type | Description |
+|---|---|
+| `application` | Registered client applications |
+| `agent` | AI agent configurations |
+| `flow` | Authentication and registration flows |
+| `group` | User groups |
+| `identity_provider` | Social login and federation providers |
+| `layout` | Login page layout configurations |
+| `organization_unit` | Organizational unit structures |
+| `resource_server` | API resource server definitions |
+| `role` | Application and organization roles |
+| `theme` | Login page theme customizations |
+| `translation` | Locale-specific UI translations |
+| `user` | User accounts |
+| `user_type` | Custom user type schemas |
+
+## Troubleshooting
+
+### The YAML Validation Check Fails
+
+The Console reports the file name, resource type, and error message for each problematic document. Common causes:
+
+- A resource type is misspelled or is not in the supported list.
+- A YAML document has incorrect indentation or syntax.
+- Template variable placeholders are malformed (the expected form is `{{.VARIABLE_NAME}}`).
+
+Correct the errors in your YAML file and upload it again.
+
+### Environment Variables Are Missing
+
+The **Pre-flight Check** panel lists each missing variable name. Fill in the values in your `.env` file and re-upload it, or type the values directly in the environment variables viewer. The pre-flight test runs again automatically once all values are present.
+
+### The Pre-Flight Test Fails
+
+Each failure entry shows the resource type, resource name (when available), and the reason for the failure. Common causes:
+
+- A referenced resource (such as a flow or organization unit) does not exist in this instance and will not be created by this import bundle.
+- A handle reference cannot be resolved because the target resource is missing.
+
+Add the missing resources to your bundle or remove the reference from the failing resource, then select **Test** to retry.
+
+## Next Steps
+
+- [Import resources using the API](./import-resources.mdx) to integrate the import step into a CI/CD pipeline.
+- [Export resources using the Console](./export-resources-console.mdx) to create a new configuration bundle from a configured instance.
+- [Use template variables in declarative resources](./templates.mdx) to parameterize environment-specific values.

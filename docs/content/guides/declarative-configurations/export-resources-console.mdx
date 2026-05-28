@@ -1,0 +1,102 @@
+---
+title: Export Resources Using the Console
+description: Export all ThunderID resources to a portable YAML configuration bundle using the ThunderID Console.
+---
+
+# Export Resources Using the Console
+
+Use the ThunderID Console to export your current IAM solution — applications, flows, identity providers, users, and more — into a portable YAML configuration bundle. You can then use this bundle to replicate the configuration in another environment or keep it under version control.
+
+Use this guide when you want to:
+
+- Back up your current resource configuration.
+- Migrate resources from one environment to another (for example, from development to production).
+- Seed a new ThunderID instance with an existing configuration.
+
+## Before You Begin
+
+- You need access to the ThunderID Console with sufficient permissions to read all resources.
+
+## Export Your Resources
+
+1. In the ThunderID Console, navigate to the export page.
+2. The Console automatically fetches all resources and displays the export summary.
+3. Review the **Project Details** section to confirm the total number of resources detected.
+4. Expand any resource category in the **Resource Summary** table to inspect the included items.
+5. If the Console detects template variables in your resources, a **Environment Variables** section appears below the resource table. This file lists each template variable with an empty value. Download the environment file and fill in the values before importing into another environment.
+6. Under the **Configuration Resources** section, select **Export Configuration** to download the YAML bundle.
+
+## What You Get
+
+The export produces one or two files, depending on whether your resources use template variables.
+
+### Configuration File
+
+The configuration file (`<product-name>-config.yaml`) is a multi-document YAML file. Each document represents one resource. A `# File:` comment header and a `# resource_type:` comment identify each document. A `---` separator divides consecutive documents.
+
+Example structure:
+
+```yaml
+# File: applications/my-app.yaml
+# resource_type: application
+---
+name: My App
+description: Main customer-facing application
+inbound_auth_config:
+  - type: oauth2
+    config:
+      client_id: "{{.MY_APP_CLIENT_ID}}"
+---
+# File: flows/default-login.yaml
+# resource_type: flow
+---
+name: Default Login Flow
+handle: default-basic-flow
+flowType: LOGIN
+```
+
+### Environment File
+
+When one or more resource properties reference sensitive values (such as OAuth 2.0 client credentials or external service secrets), the exporter replaces those values with template variable placeholders in the form `{{.VARIABLE_NAME}}`. The export generates a companion `.env` file that lists each placeholder with an empty assignment.
+
+Example environment file:
+
+```text
+MY_APP_CLIENT_ID=
+MY_APP_CLIENT_SECRET=
+GOOGLE_IDP_CLIENT_SECRET=
+```
+
+Fill in each value before using the file in an import. The Console does not export the actual secret values.
+
+If none of your resources use template variables, the environment file section does not appear and no `.env` file is generated.
+
+## Supported Resource Types
+
+The export includes resources of the following types when they exist in your instance:
+
+| Resource type | Description |
+|---|---|
+| `application` | Registered client applications |
+| `agent` | AI agent configurations |
+| `flow` | Authentication and registration flows |
+| `group` | User groups |
+| `identity_provider` | Configured social login and federation providers |
+| `layout` | Login page layout configurations |
+| `organization_unit` | Organizational unit structures |
+| `resource_server` | API resource server definitions |
+| `role` | Application and organization roles |
+| `theme` | Login page theme customizations |
+| `translation` | Locale-specific UI translations |
+| `user` | User accounts |
+| `user_type` | Custom user type schemas |
+
+## Run the Product with Your Exported Configuration
+
+After downloading the configuration bundle, you can start a local instance of <ProductName /> pre-loaded with your resources. The export page displays the exact command to run. Copy the command from the **Run** panel on the right side of the export page, then run it in a terminal that has access to your downloaded files.
+
+## Next Steps
+
+- [Import your resources using the Console](./import-resources-console.mdx) to apply the configuration bundle to another instance.
+- [Import resources using the API](./import-resources.mdx) to automate the import in a CI/CD pipeline.
+- [Use template variables in declarative resources](./templates.mdx) to keep environment-specific values out of your configuration files.
