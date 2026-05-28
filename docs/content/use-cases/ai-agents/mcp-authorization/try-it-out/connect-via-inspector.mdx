@@ -1,0 +1,86 @@
+---
+title: MCP Authorization
+description: Connect an external MCP client to the Wayfinder MCP server through {{ProductName}}, then watch scope enforcement deny a privileged tool until the user grants the missing permission at consent.
+sidebar_position: 1
+---
+
+# MCP Authorization
+
+In this walkthrough, `john.doe` signs in to MCP Inspector through <ProductName />, picks which `booking:*` permissions to grant, and calls a few MCP tools. Calling a tool he didn't grant a permission for hits a `403`. He reconnects, grants the missing permission, and the same call succeeds.
+
+:::note Prerequisites
+Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) before starting this walkthrough.
+:::
+
+## Walk Through the Use Case
+
+### 1. Launch MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+Inspector opens in your browser at `http://localhost:6274`.
+
+### 2. Connect to the Wayfinder MCP Server
+
+In the Inspector UI:
+
+- **Transport type:** Streamable HTTP
+- **URL:** `http://localhost:8787/mcp`
+- **OAuth:** enabled (Inspector handles auto-discovery)
+
+Open Inspector's **Auth** panel and enter the pre-registered client:
+
+- **Client ID:** `EXTERNAL-MCP-CLIENT`
+- Leave the client secret empty (this is a public client).
+
+Without these values, Inspector falls back to dynamic registration and creates a new OAuth client, bypassing the application you imported.
+
+Click **Connect**. Inspector reads the MCP server's protected-resource metadata, discovers <ProductName /> as the authorization server, and starts an OAuth authorization-code + PKCE flow as `EXTERNAL-MCP-CLIENT`.
+
+### 3. Sign in and Narrow the Grant at Consent
+
+A browser tab opens with <ProductName />'s sign-in page for the `EXTERNAL-MCP-CLIENT` application. Sign in as `john.doe` / `john.doe`.
+
+The consent screen surfaces each requested `booking:*` permission as an individual toggle. **Tick `booking:read` and `booking:create`. Leave `booking:cancel` unchecked.** Approve.
+
+Inspector receives the authorization code on its loopback callback, exchanges it for an access token at <ProductName />'s `/oauth2/token`, and connects to the MCP server with that token in the `Authorization: Bearer …` header.
+
+### 4. List the Tools
+
+In the **Tools** tab, Inspector calls `tools/list` and shows the Wayfinder tool catalog: `search_flights`, `recommend_bookings`, `search_hotels`, `get_trips`, `get_locations`, `get_profile`, `get_flight_bookings`, `create_booking`, `delete_all_bookings`.
+
+### 5. Call a Tool the User Has Scope For
+
+Pick `search_flights`. Set `from=Colombo`, `to=Singapore`, click **Run Tool**. The result is a JSON list of flights — exactly what `GET /api/flights` returns to the Wayfinder web UI, served from the same service module.
+
+Pick `create_booking`. Set `type=flight`, `itemId=flight-cmb-sin-01`, `travelers=1`. The booking succeeds. The token carries `booking:create`, so the MCP server's per-tool scope check passes.
+
+### 6. Call a Tool the User Did Not Grant
+
+Pick `delete_all_bookings`. Click **Run Tool**.
+
+You see an MCP error:
+
+```
+Insufficient scope for tool delete_all_bookings. Required: booking:cancel
+```
+
+`john.doe` did not tick `booking:cancel` at consent, so the issued token doesn't carry it. The MCP server enforces the per-tool scope before invoking the handler, and the destructive tool stays inaccessible.
+
+### 7. Grant the Missing Permission and Retry
+
+In Inspector, click **Disconnect** and reconnect. The sign-in flow runs again — this time, tick `booking:cancel` at the consent screen along with the other two.
+
+A new token is issued, this one carrying `booking:cancel`. Call `delete_all_bookings` again. It succeeds.
+
+## Try a Variant
+
+- **Show the JWT.** In Inspector's Auth panel, view the access token's claims. The `aud` is `http://localhost:8787/mcp` — the Wayfinder MCP server's resource indicator, derived from the granted `booking:*` scopes — and `scope` matches exactly what `john.doe` ticked at consent.
+- **Use a different user.** Create a fresh `Customer` user with no roles. Sign in via Inspector. Tools that need a `booking:*` scope fail; browsing tools (`search_flights`, `search_hotels`) still work.
+
+## Going Deeper
+
+- Curious how `EXTERNAL-MCP-CLIENT` and the consent step map to <ProductName /> concepts? See [Application](../../identity-concepts#application) and [Consent at Sign-In](../../identity-concepts#consent-at-sign-in) in the Identity Concepts.
+- Prefer to register the application manually? See [Configure It Yourself](../../configure-it-yourself).

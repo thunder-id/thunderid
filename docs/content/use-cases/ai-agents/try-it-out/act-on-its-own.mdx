@@ -9,7 +9,7 @@ sidebar_position: 3
 In this walkthrough, John asks the Wayfinder Concierge for flights from Colombo to Singapore and follows up with a request for recommendations. The Concierge answers from the booking API catalog. No popup, no extra consent — it makes the calls under its own identity, using its M2M token.
 
 :::note Prerequisites
-Complete [Setup](../#setup) before starting this walkthrough.
+Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) before starting this walkthrough.
 :::
 
 :::info Background
@@ -33,7 +33,7 @@ Complete [Setup](../#setup) before starting this walkthrough.
    Suggest a few flight deals.
    ```
 
-   This calls the `recommend_flights` MCP tool, which requires the `booking:recommend` scope. The agent gets it because it requests `scope=booking:recommend` when fetching its M2M token. The `Recommender` role you assigned to `WAYFINDER-CONCIERGE` during setup grants exactly that permission.
+   This calls the `recommend_bookings` MCP tool, which requires the `booking:recommend` scope. The agent gets it because it requests `scope=booking:recommend` when fetching its M2M token. The `Recommender` role you assigned to `WAYFINDER-CONCIERGE` during setup grants exactly that permission.
 
 No consent popup appears at any point. The user never sees the agent's M2M token — it lives entirely inside the AI Agent.
 
@@ -42,8 +42,7 @@ No consent popup appears at any point. The user never sees the agent's M2M token
 - Tail the AI Agent logs while sending the message. You can see the `client_credentials` token request go out to <ProductName /> with `scope=booking:recommend`, and the `Authorization: Bearer …` header on the MCP call.
 - Remove the `Recommender` role assignment from the agent in the Console. Ask for recommendations again and watch the agent surface the `403` back to you in natural language — the M2M token no longer carries `booking:recommend`.
 
-:::info[Concepts]
-**Agent identity.** `WAYFINDER-CONCIERGE` is a first-class principal in <ProductName /> with its own credentials. Treating it as an identity — not just an API key — is what lets you grant, restrict, audit, and revoke its access independently of any user. See [Manage Agents](/docs/next/guides/guides/agents/manage-agents) and [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication).
+## Going Deeper
 
-**Authorization.** The `recommend_flights` tool is protected by `booking:recommend` on the `booking-api` resource server. The agent's M2M token carries that permission because the agent holds the `Recommender` role — exactly the same `requireScope` check that gates user tokens applies to the agent's. See [Authorization](/docs/next/guides/key-concepts/authorization).
-:::
+- Want to understand how the Concierge gets its own identity and permissions? See [Agent](../../identity-concepts#agent) and [Roles](../../identity-concepts#roles) in the Identity Concepts.
+- Prefer to register the agent and the `Recommender` role manually? See [Register the Wayfinder Concierge Agent](../../configure-it-yourself#register-the-wayfinder-concierge-agent) in Configure It Yourself.

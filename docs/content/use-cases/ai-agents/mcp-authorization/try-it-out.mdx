@@ -1,0 +1,85 @@
+---
+title: Try It Out
+description: Run the MCP Authorization use case against the Wayfinder sample. Connect an external MCP client to the Wayfinder MCP server, signed in through {{ProductName}}.
+sidebar_position: 2
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import Stepper from '../../../../src/components/Stepper';
+import {NextSteps, NextStepsCard} from '../../../../src/components/NextSteps';
+import { WayfinderMcpOrganization, WayfinderMcpArchitecture } from '../../../../src/components/WayfinderDiagrams';
+
+# Try It Out
+
+Each walkthrough below runs the [Securing MCP](../overview) pattern against the Wayfinder sample. The Wayfinder Server hosts an MCP server on `/mcp` alongside its REST API; an external MCP client signs in through <ProductName /> and calls Wayfinder's tools, with <ProductName /> enforcing who can invoke which tool.
+
+## Meet Wayfinder
+
+Wayfinder is the same travel-booking application from the [Securing AI Agents tryout](../../try-it-out), where the in-product **Wayfinder Concierge** acts as an MCP client from inside the app. This tryout covers the other side: an **external** MCP client connecting to the same Wayfinder MCP server through its own OAuth application in <ProductName />. The application is pre-registered in the bundle; in production, clients that support [Dynamic Client Registration](/docs/next/guides/guides/protocols/dynamic-client-registration) can self-register at runtime instead.
+
+<WayfinderMcpOrganization />
+
+### Meet the Cast
+
+- **John Doe** signs in to the external MCP client and picks which `booking:*` permissions to grant at consent. He carries the `Booking User` role with read, create, and cancel permissions.
+- **MCP Inspector** is the [reference debug UI](https://github.com/modelcontextprotocol/inspector) for MCP servers — browser-based, speaks the protocol, supports OAuth-protected servers out of the box.
+
+## Sample Architecture
+
+This tryout extends the AI Agents architecture with one new piece:
+
+- **External MCP Client**: an OAuth client (MCP Inspector) that signs in through <ProductName /> and calls the Wayfinder MCP server's tools.
+
+The Wayfinder Server validates the issued access token on every MCP call and enforces the per-tool scope before invoking the tool handler.
+
+<WayfinderMcpArchitecture />
+
+## Set Up Your Environment
+
+Complete the [AI Agents Set Up Your Environment](../../try-it-out#set-up-your-environment) first. The same bundle also seeds the `EXTERNAL-MCP-CLIENT` application used here.
+
+<Stepper stepNode="h3" as="h4">
+
+### Verify the New Application
+
+In the <ProductName /> Console at <ConsoleUrl />, open **Applications** and confirm `EXTERNAL-MCP-CLIENT` is listed.
+
+### Install MCP Inspector
+
+Launch MCP Inspector locally:
+
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+### Allow Inspector in CORS
+
+Add Inspector's origin to <ProductName />'s CORS allow-list in `repository/conf/deployment.yaml`, then restart <ProductName />:
+
+```yaml
+cors:
+  allowed_origins:
+    # ...existing entries...
+    - "http://localhost:6274"
+```
+
+</Stepper>
+
+## Walkthroughs
+
+Pick a walkthrough to begin. Each one starts from the setup above.
+
+<NextSteps>
+  <NextStepsCard
+    title="MCP Authorization"
+    description="Authorize an external MCP client, list Wayfinder's tools, call a few, and watch scope enforcement deny delete_all_bookings."
+    href="./connect-via-inspector"
+  />
+</NextSteps>
+
+## Going Deeper
+
+- Curious how the MCP-specific application and consent step map to <ProductName /> concepts? See [Identity Concepts](../identity-concepts).
+- Prefer to register the application manually? See [Configure It Yourself](../configure-it-yourself).
+- Want to compare server-side and client-side patterns before going to production? See [Solution Patterns](../solution-patterns).

@@ -1,0 +1,97 @@
+---
+title: Securing MCP
+description: Secure MCP servers and govern MCP clients with standards-based identity and access control.
+sidebar_position: 1
+persona: iam
+---
+
+# Securing MCP
+
+The Model Context Protocol (MCP) connects AI agents to tools and data sources through MCP servers. An MCP server might expose tools that read files, query databases, send emails, or modify infrastructure. These are not low-risk operations — they need the same access control you would apply to any protected API.
+
+<div className="uc-b2b-intro-panel">
+  <div className="uc-b2b-intro-kicker">When to use this pattern</div>
+  <div className="uc-b2b-intro-text">
+    Use this pattern when you are running an MCP server that exposes capabilities with real consequences. It also fits when you need to govern which MCP clients reach which servers, and which tools they can invoke once connected.
+  </div>
+</div>
+
+## How the Model Works
+
+- **MCP server**: the process exposing tools, resources, and prompts over MCP. Validates tokens and enforces scopes per tool before invoking any handler.
+- **MCP client**: the application or agent that connects to the MCP server — debug tools (such as MCP Inspector), AI hosts (such as Claude Desktop or VS Code), and your own in-product agents. Each client is a registered identity in <ProductName />.
+- **End user (optional)**: the person on whose behalf an MCP client makes a call. When delegated, the token identifies the user as the subject and the MCP client as the actor.
+- **Identity product**: issues tokens to MCP clients, runs the consent flow when a user is in the loop, and validates scopes at every hop.
+
+## Securing MCP Journey
+
+Securing MCP requires two pieces working together: an MCP server that enforces access decisions at the tool boundary, and a way to govern which MCP clients are allowed to connect at all. The patterns below cover those two responsibilities.
+
+### Protect Your MCP Server
+
+You built an MCP server and exposed it to clients. Without access control, every connected client can invoke every tool — there is no boundary between a low-risk read and a destructive write. You need the MCP server to validate each request and reject anything the caller is not allowed to do, without making the decision itself.
+
+Treating the entire MCP server as a single "all or nothing" resource is rarely enough. Servers typically expose tools at different sensitivity levels — a tool that lists records is not the same as one that deletes them. You need to grant and revoke access per tool, or at least per tool group, without redeploying the server. And the authorization decision should live in <ProductName />, not in the MCP server's code — the server should only enforce what has already been decided.
+
+For example, a research MCP server exposes browsing tools, an `export` tool, and a `purge` tool. A client used by analysts receives a token carrying scopes for browsing and export. A separate admin client receives a token that also includes the purge scope. When the analyst's client tries to call `purge`, the MCP server rejects the request before invoking the tool — the token does not carry the required scope.
+
+**Capabilities Involved**
+
+- Define a scope per tool or per tool group on the MCP server.
+- Bundle scopes into roles and assign roles to MCP clients.
+- Validate the incoming token on every MCP request.
+- Enforce the per-tool scope before invoking the tool handler.
+- Centralize the authorization decision in <ProductName />; the MCP server only enforces.
+
+See it running: [Try It Out — Protect Your MCP Server](../try-it-out).
+
+### Govern MCP Clients
+
+MCP servers do not trust anonymous callers. Every MCP client needs an identity in <ProductName /> before it can request a token. The challenge is that "MCP client" covers a wide range: your own in-product agents, off-the-shelf AI hosts, debug tools, and third-party integrations you have not enumerated in advance. How you create the identity depends on what the client is.
+
+For clients you know up-front, register them as applications (or as agents, if the client is itself an AI agent in your system). For clients that appear dynamically — third-party AI hosts, marketplace integrations — let them register themselves via dynamic client registration after they discover <ProductName /> through the MCP server's metadata. Either way, the resulting identity carries credentials the client uses to authenticate, and is bound to the roles that decide which scopes it can request.
+
+For example, your in-product agent is registered as an agent and granted access to the full set of booking tools. An external MCP client (used by an analyst on the same MCP server) is registered as a public application with a narrow role — read and create, but no cancel. A third-party tool you have never seen before discovers your MCP server, registers itself via DCR, and lands with a default role that only grants browsing-tool scopes until an administrator broadens it.
+
+**Capabilities Involved**
+
+- Register MCP clients as applications, agents, or via dynamic client registration.
+- Issue credentials at registration — Client ID, plus Client Secret for confidential clients or PKCE for public ones.
+- Bind each client to roles that scope what tokens it can request.
+- Run the consent flow when the MCP client acts on a user's behalf, so the user approves the requested scopes.
+- Revoke a client's credentials when it is decommissioned or compromised — all tokens it issued stop being accepted.
+
+See it running: [Try It Out — Govern MCP Clients](../try-it-out).
+
+## Cross-Cutting Capabilities
+
+Beyond the two core patterns, a few capabilities apply to every MCP interaction regardless of which client is calling or which tool is being invoked.
+
+### Audience Binding
+
+A token issued for one MCP server should not be usable against another. <ProductName /> binds each token to its intended target, so a client holding a token meant for one server cannot replay it against a different one. This matters when an environment runs multiple MCP servers behind the same authorization server.
+
+### Audit Trail
+
+The token the MCP server validates identifies both the user or agent on whose behalf the call is made (subject) and the MCP client facilitating it (actor). Logging both at the tool boundary gives every tool invocation a clear answer to "who initiated this, and which client did they go through" — without needing to correlate across systems.
+
+### Credential Lifecycle
+
+Each registered MCP client has its own credentials. Rotate them on a schedule, revoke immediately when a client is decommissioned, and apply the same hygiene to dynamically registered clients once they're in use. Because each MCP client is a distinct identity, revoking one does not affect any other client's ability to operate.
+
+---
+
+## Next Steps
+
+Once you know which patterns apply, the next decision is how to integrate. See **[Solution Patterns](../solution-patterns)** to compare server-side and client-side options.
+
+## Related Capabilities
+
+<div className="uc-cap-grid">
+  <article className="uc-cap-card"><h3>MCP Client Identity</h3><p>Each client registered with its own credentials.</p></article>
+  <article className="uc-cap-card"><h3>Dynamic Registration</h3><p>Self-registration for clients you have not enumerated.</p></article>
+  <article className="uc-cap-card"><h3>Per-Tool Scopes</h3><p>Fine-grained authorization at the tool boundary.</p></article>
+  <article className="uc-cap-card"><h3>Audience Binding</h3><p>Tokens scoped to their intended MCP server.</p></article>
+  <article className="uc-cap-card"><h3>Consent</h3><p>User approval when an MCP client acts on a user's behalf.</p></article>
+  <article className="uc-cap-card"><h3>Audit Chain</h3><p>Subject and actor logged at every tool invocation.</p></article>
+</div>

@@ -52,7 +52,7 @@ function ensureSchema(database) {
 
 function getDatabase() {
   if (!existsSync(dbPath)) {
-    throw new Error("SQLite database not found. Run `npm run seed` from the api directory.");
+    throw new Error("SQLite database not found. Run `npm run seed` from the backend directory.");
   }
 
   if (!db) {

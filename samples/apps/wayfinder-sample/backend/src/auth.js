@@ -138,7 +138,7 @@ export async function getAuthenticatedUser(request) {
 }
 
 export async function resolveUser(request) {
-  if (process.env.API_REQUIRE_AUTH !== "true") {
+  if (process.env.API_REQUIRE_AUTH === "false") {
     return {
       id: "local-demo-user",
       username: "local.traveler",

@@ -4,7 +4,7 @@ End-to-end sample of an AI agent that holds its own ThunderID-managed identity.
 
 The agent uses **its own access token (client_credentials grant)** for browsing tools. When a tool needs the user's consent (booking, cancellation, reading the user's own data), it switches to a **user-context token**. That token is obtained via **OAuth 2.0 authorization-code + PKCE**.
 
-The sample is a travel booking app called Wayfinder. A chat widget in the UI talks to a LangChain agent that calls REST tools through an MCP server.
+The sample is a travel booking app called Wayfinder. A chat widget in the UI talks to a LangChain agent that calls REST tools through an MCP server. The REST API and the MCP server share one Node process and one set of service modules. `/api/*` is the REST surface and `/mcp` is the MCP surface, both enforcing the same `booking:*` scopes against Thunder-issued tokens.
 
 ## Architecture
 
@@ -17,17 +17,15 @@ graph LR
 
     subgraph Backend["Backend Services"]
         Agent["AI Agent<br/>(HTTP API)"]
-        MCP["MCP Server<br/>(Streamable HTTP)"]
-        API["REST API<br/>(Express + SQLite)"]
+        Wayfinder["Wayfinder Server<br/>(REST + MCP + SQLite)"]
     end
 
     Thunder["ThunderID<br/>(Identity Provider)"]
 
-    UI -- "user token<br/>(WAYFINDER app)" --> API
+    UI -- "user token<br/>(WAYFINDER app)<br/>→ /api/*" --> Wayfinder
     Chat -- "POST /chat<br/>+ user token<br/>(agent:access)" --> Agent
-    Agent -- "M2M token<br/>(client_credentials)" --> MCP
-    Agent -. "OBO token<br/>(authorization_code + PKCE)" .-> MCP
-    MCP --> API
+    Agent -- "M2M token<br/>(client_credentials)<br/>→ /mcp" --> Wayfinder
+    Agent -. "OBO token<br/>(authorization_code + PKCE)<br/>→ /mcp" .-> Wayfinder
 
     Thunder -- "user sign-in<br/>(authorization_code)" --> UI
     Thunder -- "M2M token" --> Agent
@@ -48,9 +46,9 @@ The sample uses two OAuth clients and three token types:
 
 1. The user signs in to the Wayfinder web app via the `WAYFINDER` OAuth application. The issued token carries `agent:access` (from the Chat User role).
 2. When the user sends a chat message, the frontend calls `POST /chat` on the AI Agent API with the user's access token in the `Authorization` header. The AI Agent validates the token has the `agent:access` scope before processing the message.
-3. For browsing tools (search flights, search hotels), the AI Agent uses its own M2M token (obtained via `client_credentials` with the `WAYFINDER-CONCIERGE` credentials) to call the MCP server, which proxies to the REST API.
+3. For browsing tools (search flights, search hotels), the AI Agent uses its own M2M token (obtained via `client_credentials` with the `WAYFINDER-CONCIERGE` credentials) to call the Wayfinder server's `/mcp` endpoint.
 4. For mutating tools (create booking, cancel booking), the AI Agent returns a `need_user_consent` response. The frontend opens a consent popup, the user signs in and picks which booking permissions to grant (`booking:read`, `booking:create`, `booking:cancel`), and the authorization code is submitted to `POST /chat/consent`. The agent exchanges it for a user-context token, and the frontend retries the original message.
-5. The REST API validates the JWT on every request and enforces scopes per route — browsing endpoints are open, booking endpoints require the matching `booking:*` scope.
+5. The Wayfinder server validates the JWT on every request and enforces scopes per route — browsing endpoints/tools are open, booking endpoints/tools require the matching `booking:*` scope. The MCP layer and the REST layer share the same scope guards because they share the same service modules.
 
 ## What This Demonstrates
 
@@ -69,9 +67,9 @@ The sample uses two OAuth clients and three token types:
 wayfinder-sample/
 ├── frontend/          React + Vite UI. Hosts the chat widget and the
 │                      /agent-callback route used by the consent popup.
-├── api/               Node REST API backed by SQLite. Validates JWTs
-│                      and enforces scopes on booking routes.
-├── mcp/               Streamable-HTTP MCP server that wraps the REST API.
+├── backend/           Node server backed by SQLite. Hosts both the REST API
+│                      (/api/*) and the MCP server (/mcp), validates JWTs,
+│                      enforces scopes per route and per MCP tool.
 ├── ai-agent/          HTTP Wayfinder Concierge API (LangChain + Claude/Gemini).
 ├── thunderid-config/  Importable YAML config for ThunderID setup.
 └── README.md
@@ -120,7 +118,7 @@ The import creates:
 | `Customer` | User type | Consumer schema (`username`, `email`, `password`, `given_name`, `family_name`, `sub`) with self-registration enabled |
 | `Staff` | User type | Internal team schema (`username`, `email`, `password`, `displayName`) |
 | `wayfinder-agent` | Resource server | `agent:access` permission |
-| `booking-api` | Resource server | `booking:read`, `booking:create`, `booking:cancel`, `booking:recommend` permissions |
+| `wayfinder-booking` | Resource server | `booking:read`, `booking:create`, `booking:cancel`, `booking:recommend` permissions. Protects both `/api/*` (REST) and `/mcp` (MCP tools) on the Wayfinder server. |
 | `WAYFINDER` | Application | Public OAuth app (PKCE, redirect to `http://localhost:5173`) with registration and recovery flows enabled |
 | `WAYFINDER-CONCIERGE` | Agent | Confidential OAuth client with `client_credentials` + `authorization_code` grants |
 | `wayfinder-registration-flow` | Flow | Self sign-up flow (REGISTRATION). Assigns the `Traveler` role on completion. |
@@ -166,7 +164,7 @@ After the import, update `deployment.yaml` with two additions and restart the se
 
 ## Configure the Sample
 
-`api/`, `ai-agent/`, and `frontend/` each ship with a `.env.example` listing only the variables you actually need to set. In each of those folders, copy it to `.env` and fill the placeholders. The `mcp/` server has no required configuration.
+`backend/`, `ai-agent/`, and `frontend/` each ship with a `.env.example` listing only the variables you actually need to set. In each of those folders, copy it to `.env` and fill the placeholders.
 
 The only placeholder you must replace is in `ai-agent/.env`:
 
@@ -176,16 +174,15 @@ The agent secret defaults to `wayfinder-agent-secret` (matching `thunderid.env`)
 
 ## Run
 
-In four terminals:
+In three terminals:
 
 ```bash
-cd api      && npm install && npm run seed && npm start   # http://localhost:8787
-cd mcp      && npm install && npm start                   # http://localhost:8000/mcp
+cd backend  && npm install && npm run seed && npm start   # http://localhost:8787 (REST + /mcp)
 cd ai-agent && npm install && npm start                   # http://localhost:8790/chat
 cd frontend && npm install && npm run dev                 # http://localhost:5173
 ```
 
-`npm run seed` initializes the local SQLite database with sample flights, hotels, and trips. Run it once on first setup.
+The Wayfinder server hosts both the REST API on `/api/*` and the MCP server on `/mcp`. `npm run seed` initializes the local SQLite database with sample flights, hotels, and trips. Run it once on first setup.
 
 ## Try It
 
@@ -203,7 +200,7 @@ You can also ask the agent for general recommendations — for example:
 Suggest a few flight deals.
 ```
 
-This calls the `recommend_flights` MCP tool, which hits `GET /api/flights/recommended` with the agent's M2M token. The endpoint requires the `booking:recommend` scope, which is granted to the `WAYFINDER-CONCIERGE` agent via its **Recommender** role assignment.
+This calls the `recommend_bookings` MCP tool, which serves `GET /api/bookings/recommended` from the same service module with the agent's M2M token. The tool requires the `booking:recommend` scope, which is granted to the `WAYFINDER-CONCIERGE` agent via its **Recommender** role assignment.
 
 Then:
 

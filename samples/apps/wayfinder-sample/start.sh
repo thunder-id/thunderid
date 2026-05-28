@@ -17,14 +17,14 @@
 # under the License.
 # ----------------------------------------------------------------------------
 
-# Starts the four Wayfinder sample services: travel REST API, MCP server,
-# AI chat agent, and React frontend. Streams each service's logs to a file
-# under logs/ and prints aggregated status to stdout.
+# Starts the three Wayfinder sample services: the Node backend (REST API on
+# /api/* and MCP server on /mcp), AI chat agent, and React frontend. Streams
+# each service's logs to a file under logs/ and prints aggregated status
+# to stdout.
 
 set -e
 
-API_PORT=8787
-MCP_PORT=8000
+BACKEND_PORT=8787
 AGENT_PORT=8790
 FRONTEND_PORT=5173
 
@@ -38,7 +38,7 @@ function kill_port() {
     lsof -ti tcp:"$port" | xargs kill -9 2>/dev/null || true
 }
 
-for p in $API_PORT $MCP_PORT $AGENT_PORT $FRONTEND_PORT; do
+for p in $BACKEND_PORT $AGENT_PORT $FRONTEND_PORT; do
     kill_port "$p"
 done
 
@@ -55,22 +55,19 @@ function ensure_install() {
     fi
 }
 
-ensure_install api
-ensure_install mcp
+ensure_install backend
 ensure_install ai-agent
 ensure_install frontend
 
-if [ ! -f "api/wayfinder.sqlite" ]; then
-    echo "🌱 Seeding API database..."
-    (cd api && npm run seed)
+if [ ! -f "backend/wayfinder.sqlite" ]; then
+    echo "🌱 Seeding backend database..."
+    (cd backend && npm run seed)
 fi
 
 echo "⚡ Starting Wayfinder services..."
 
-(cd api      && npm start > "$SCRIPT_DIR/logs/api.log" 2>&1) &
-API_PID=$!
-(cd mcp      && npm start > "$SCRIPT_DIR/logs/mcp.log" 2>&1) &
-MCP_PID=$!
+(cd backend  && npm start > "$SCRIPT_DIR/logs/backend.log" 2>&1) &
+BACKEND_PID=$!
 (cd ai-agent && npm start > "$SCRIPT_DIR/logs/ai-agent.log" 2>&1) &
 AGENT_PID=$!
 (cd frontend && npm run dev > "$SCRIPT_DIR/logs/frontend.log" 2>&1) &
@@ -79,8 +76,8 @@ FRONTEND_PID=$!
 function shutdown() {
     echo ""
     echo "🛑 Stopping Wayfinder services..."
-    kill $API_PID $MCP_PID $AGENT_PID $FRONTEND_PID 2>/dev/null || true
-    for p in $API_PORT $MCP_PORT $AGENT_PORT $FRONTEND_PORT; do
+    kill $BACKEND_PID $AGENT_PID $FRONTEND_PID 2>/dev/null || true
+    for p in $BACKEND_PORT $AGENT_PORT $FRONTEND_PORT; do
         kill_port "$p"
     done
     exit 0
@@ -90,11 +87,11 @@ trap shutdown SIGINT SIGTERM
 
 echo ""
 echo "🚀 Wayfinder sample is starting up. Logs under ./logs/"
-echo "   - Travel REST API: http://localhost:$API_PORT  (logs: logs/api.log)"
-echo "   - MCP server:      http://localhost:$MCP_PORT/mcp  (logs: logs/mcp.log)"
+echo "   - Travel REST API: http://localhost:$BACKEND_PORT       (logs: logs/backend.log)"
+echo "   - MCP server:      http://localhost:$BACKEND_PORT/mcp   (logs: logs/backend.log)"
 echo "   - AI chat agent:   http://localhost:$AGENT_PORT/chat  (logs: logs/ai-agent.log)"
-echo "   - Frontend:        http://localhost:$FRONTEND_PORT  (logs: logs/frontend.log)"
+echo "   - Frontend:        http://localhost:$FRONTEND_PORT       (logs: logs/frontend.log)"
 echo ""
 echo "Press Ctrl+C to stop all services."
 
-wait $API_PID $MCP_PID $AGENT_PID $FRONTEND_PID
+wait $BACKEND_PID $AGENT_PID $FRONTEND_PID

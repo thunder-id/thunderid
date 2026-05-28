@@ -927,7 +927,7 @@ function Build-Sample-App {
         Pop-Location
     }
 
-    foreach ($svc in @("api", "mcp", "ai-agent")) {
+    foreach ($svc in @("backend", "ai-agent")) {
         Write-Host "Installing Wayfinder sample $svc dependencies..."
         Push-Location (Join-Path $WAYFINDER_SAMPLE_APP_DIR $svc)
         try {
@@ -1171,12 +1171,12 @@ function Package-Wayfinder-Sample {
         if (Test-Path $src) { Copy-Item -Path $src -Destination $frontendDest -Recurse -Force }
     }
 
-    foreach ($svc in @("api", "mcp", "ai-agent")) {
+    foreach ($svc in @("backend", "ai-agent")) {
         $svcSrc = Join-Path $WAYFINDER_SAMPLE_APP_DIR $svc
         $svcDest = Join-Path $dist_folder $svc
         Write-Host "Copying Wayfinder sample $svc source..."
         New-Item -Path $svcDest -ItemType Directory -Force | Out-Null
-        foreach ($item in @("package.json", "package-lock.json", "tsconfig.json", "README.md", ".env.example", "server.ts", "agent.ts")) {
+        foreach ($item in @("package.json", "package-lock.json", "tsconfig.json", "README.md", ".env.example", "agent.ts")) {
             $src = Join-Path $svcSrc $item
             if (Test-Path $src) { Copy-Item -Path $src -Destination $svcDest -Force }
         }

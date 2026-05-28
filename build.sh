@@ -644,7 +644,7 @@ function build_sample_app() {
 
     cd "$SCRIPT_DIR" || exit 1
 
-    for svc in api mcp ai-agent; do
+    for svc in backend ai-agent; do
         echo "Installing Wayfinder sample $svc dependencies..."
         (cd "$WAYFINDER_SAMPLE_APP_DIR/$svc" && npm ci)
     done
@@ -845,9 +845,9 @@ function package_wayfinder_sample() {
     local dist_folder="$DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER"
     mkdir -p "$dist_folder"
 
-    # Frontend is built ahead of time; the api/mcp/ai-agent services ship as source
-    # because pkg cannot bundle Node 22's node:sqlite binding and the chat agent
-    # requires runtime LLM keys from .env.
+    # Frontend is built ahead of time; the backend and ai-agent services ship as
+    # source because pkg cannot bundle Node 22's node:sqlite binding and the chat
+    # agent requires runtime LLM keys from .env.
     if [ -d "$WAYFINDER_SAMPLE_APP_DIR/frontend/dist" ]; then
         echo "Copying Wayfinder sample frontend build output..."
         mkdir -p "$dist_folder/frontend"
@@ -873,7 +873,7 @@ function package_wayfinder_sample() {
         exit 1
     fi
 
-    for svc in api mcp ai-agent; do
+    for svc in backend ai-agent; do
         local svc_src="$WAYFINDER_SAMPLE_APP_DIR/$svc"
         local svc_dest="$dist_folder/$svc"
         echo "Copying Wayfinder sample $svc source..."
@@ -896,12 +896,10 @@ function package_wayfinder_sample() {
         if [ -d "$svc_src/scripts" ]; then
             cp -r "$svc_src/scripts" "$svc_dest/"
         fi
-        # mcp/ai-agent ship a single TypeScript entry file at the root
-        for entry in server.ts agent.ts; do
-            if [ -f "$svc_src/$entry" ]; then
-                cp "$svc_src/$entry" "$svc_dest/"
-            fi
-        done
+        # ai-agent ships a single TypeScript entry file at the root
+        if [ -f "$svc_src/agent.ts" ]; then
+            cp "$svc_src/agent.ts" "$svc_dest/"
+        fi
     done
 
     # Copy top-level files

@@ -521,7 +521,7 @@ function ChatWidgetCore({ getToken }) {
           <header className="chat-header">
             <div>
               <span className="chat-kicker">AI assistant</span>
-              <h2>Wayfinder concierge</h2>
+              <h2>Wayfinder Concierge</h2>
             </div>
             <div className="chat-header-actions">
               <button

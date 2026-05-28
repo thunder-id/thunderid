@@ -141,19 +141,18 @@ Some tools require user authorization. The system handles this automatically at 
 
 const THUNDER_BASE_URL = process.env.THUNDER_BASE_URL || "";
 const AGENT_REDIRECT_URI = process.env.AGENT_REDIRECT_URI || "http://localhost:5173/agent-callback";
-const MCP_SERVER_URL = process.env.MCP_SERVER_URL || "http://localhost:8000/mcp";
+const MCP_SERVER_URL = process.env.MCP_SERVER_URL || "http://localhost:8787/mcp";
 const AGENT_ACCESS_SCOPE = process.env.AGENT_ACCESS_SCOPE || "agent:access";
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 
 const USER_CONTEXT_TOOLS = new Set<string>([
     "create_booking",
-    "cancel_booking",
     "delete_all_bookings",
     "get_flight_bookings",
     "get_profile",
 ]);
 
-const OBO_SCOPES = "openid profile email booking:read booking:create booking:cancel";
+const OBO_SCOPES = "booking:read booking:create booking:cancel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -171,6 +170,7 @@ type MCPLikeTool = {
     description?: string;
     schema?: unknown;
     invoke: (input: unknown, config?: unknown) => Promise<unknown>;
+    func: (input: unknown, runManager?: unknown, config?: unknown) => Promise<unknown>;
 };
 
 interface TokenClaims {
@@ -361,12 +361,12 @@ function wrapToolForSession(originalTool: DynamicStructuredTool, session: Sessio
                 session.consentError = new ConsentRequiredError(authorizeUrl, state, requestId, scope);
                 console.log(`[obo] ${originalTool.name} → consent required (scope=${scope})`);
 
-                return "This action requires user authorization. The system will handle the consent flow.";
+                return ["This action requires user authorization. The system will handle the consent flow.", null];
             }
 
             console.log(`[obo] ${originalTool.name} → reusing cached user token`);
             const userTool = await getUserContextTool(session, originalTool.name);
-            return userTool.invoke(args);
+            return userTool.func(args);
         },
     });
 }
@@ -602,7 +602,9 @@ async function handleChat(request: IncomingMessage, response: ServerResponse, ba
 
         if (missingScopes.length > 0) {
             console.log(`POST /chat | rejected: missing scope ${missingScopes.join(" ")} | sub: ${claims.sub || "-"}`);
-            sendJson(response, 403, { error: `Missing required scope: ${missingScopes.join(" ")}` });
+            sendJson(response, 403, {
+                error: `You do not have permission to access Wayfinder Concierge — missing required scope: ${missingScopes.join(" ")}`,
+            });
             return;
         }
 

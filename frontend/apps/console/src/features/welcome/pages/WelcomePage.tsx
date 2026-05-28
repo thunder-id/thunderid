@@ -28,6 +28,7 @@ import {
   ExternalLink,
   Lightbulb,
   Rocket,
+  MCP,
 } from '@wso2/oxygen-ui-icons-react';
 import {motion} from 'framer-motion';
 import type {JSX} from 'react';
@@ -89,6 +90,13 @@ export default function WelcomePage(): JSX.Element {
       label: t('common:welcome.tryoutProduct.aiAgents'),
       description: t('common:welcome.tryoutProduct.aiAgentsDesc'),
       url: `${docsBaseUrl}/use-cases/ai-agents/try-it-out`,
+    },
+    {
+      id: 'learn-mcp',
+      icon: <MCP size={18} />,
+      label: t('common:welcome.tryoutProduct.mcp'),
+      description: t('common:welcome.tryoutProduct.mcpDesc'),
+      url: `${docsBaseUrl}/use-cases/ai-agents/mcp-authorization/try-it-out`,
     },
   ];
 

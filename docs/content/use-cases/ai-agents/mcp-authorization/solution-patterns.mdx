@@ -1,0 +1,60 @@
+---
+title: Solution Patterns
+description: Server-side and client-side patterns for securing MCP servers and the clients that reach them.
+sidebar_position: 2
+---
+
+# Solution Patterns
+
+Securing MCP splits into two sides of the same connection: protecting the MCP server, and governing the clients that reach it. The sections below cover each side independently — pick one server-side pattern and one client-side pattern that fit how your MCP server runs and what kinds of clients connect to it.
+
+## MCP Server Patterns
+
+### Resource Server Registration
+
+Register the MCP server in <ProductName /> as a resource server, and define a scope for each tool (or group of tools) you want to protect independently. Bundle related scopes into roles you can assign to MCP clients.
+
+This is what gives <ProductName /> the vocabulary to issue scope-bearing tokens for your server. The MCP server then has clear, named permissions to check on every request — without ever holding the authorization decision itself.
+
+A practical choice that sits inside this pattern: how finely to scope. One scope per tool gives the most precise control (you can grant read-only without write); one scope per tool group is a common middle ground; one scope per server is simplest but coarse. The MCP server's enforcement logic stays the same regardless — only the scope vocabulary changes.
+
+### Token Validation at the Tool Boundary
+
+The MCP server validates the incoming token on every MCP request and checks for the required scope before invoking the tool handler. <ProductName /> handles issuance; the MCP server handles enforcement. Keeping these split puts the policy in one place (<ProductName />) and the check at the component closest to the call. A missing scope then fails cleanly at the protocol layer, rather than producing partial side effects.
+
+If your environment runs more than one MCP server behind the same authorization server, scope the issued tokens to the target server so a token meant for one cannot be replayed against another. <ProductName /> handles this automatically when the client requests a target during the token exchange.
+
+## MCP Client Patterns
+
+How an MCP client gets its identity depends on what the client is.
+
+### Static Application
+
+Register the MCP client as an application in <ProductName /> up-front. Configure its allowed redirect URIs and assign it the roles that carry the scopes it needs.
+
+Fits known clients you control or have explicitly decided to support — internal admin tools, off-the-shelf MCP clients on your allow-list, anything you can configure once and rarely revisit. The trade-off is operational: any new MCP client type needs to be registered before it can connect.
+
+### Registered Agent
+
+When the MCP client is one of your own AI agents, register it as an agent in <ProductName /> rather than as an application. The agent identity is portable: the same agent can reach multiple MCP servers under one auditable identity, with one Client ID and one credential lifecycle to manage.
+
+This is the same identity primitive used in the [Securing AI Agents](../../overview) patterns — choose this when the MCP client *is* an agent in your system, not just an OAuth client.
+
+### Dynamic Client Registration
+
+Some MCP clients can register themselves. The client reads the MCP server's protected-resource metadata, discovers <ProductName /> as the authorization server, and registers via <ProductName />'s dynamic registration endpoint. <ProductName /> issues credentials the client then uses for token requests.
+
+Fits ecosystems where MCP clients can't all be enumerated in advance — third-party AI hosts, marketplace tools, integrations built by customers. The trade-off is governance: review and role assignment have to happen on first use rather than at registration time.
+
+## Cross-Cutting Choices
+
+These apply regardless of which server-side or client-side pattern you pick.
+
+- **Audit.** Every issued token identifies both the user or agent on whose behalf the call is made (subject) and the MCP client facilitating it (actor). Log both at the tool boundary so every invocation has a clear answer to "who initiated this, and which client did they go through."
+- **Credential lifecycle.** Each registered MCP client — application, agent, or dynamically registered — has its own credentials. Rotate them on a schedule and revoke them immediately when a client is decommissioned. Revoking one client's credentials does not affect any other client's ability to operate.
+
+---
+
+## Next Steps
+
+Pick the server-side and client-side patterns that fit your environment, then see them running in **[Try It Out](../try-it-out)**.

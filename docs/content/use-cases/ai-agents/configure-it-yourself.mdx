@@ -1,0 +1,253 @@
+---
+title: Configure It Yourself
+description: Build the AI agent identity model manually instead of importing the Wayfinder bundle — resource servers, roles, users, application, agent, and the agent authentication flow.
+sidebar_position: 6
+---
+
+# Configure It Yourself
+
+Use this page to build the Wayfinder AI agent setup manually instead of importing the declarative bundle from [Try It Out](../try-it-out). Pick this path when you want to see exactly what gets created, adapt the setup to your own project, or learn the moving parts step by step. The end state is identical — every walkthrough works against either path.
+
+The first section is the shared foundation — required regardless of which walkthroughs you plan to exercise. The remaining sections build on it.
+
+- [Set Up the Foundation](#set-up-the-foundation) — resource servers, roles, demo users, and the `WAYFINDER` application.
+- [Register the Wayfinder Concierge Agent](#register-the-wayfinder-concierge-agent) — needed for [Acting on Its Own](../try-it-out/act-on-its-own) and [Acting on Behalf of a User](../try-it-out/act-on-behalf-of-user).
+- [Build the Agent Authentication Flow](#build-the-agent-authentication-flow) — drives the OBO consent screen used by [Acting on Behalf of a User](../try-it-out/act-on-behalf-of-user).
+
+## Set Up the Foundation
+
+The foundation creates the two resource servers, three roles, two demo users, and the OAuth application that Wayfinder Web uses to sign users in.
+
+1. **Create the `wayfinder-agent` resource server.**
+
+   Invoke the **Resource Management API** to create the resource server. Set the identifier to `wayfinder-agent`. Replace `<organization-unit-id>` with the ID of your default organization unit (look it up via `GET /organization-units`):
+
+   ```bash
+   curl -kL -X POST https://localhost:8090/resource-servers \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Bearer <access-token>' \
+     -d '{
+       "name": "Wayfinder Agent",
+       "description": "Controls access to the Wayfinder Concierge agent",
+       "identifier": "wayfinder-agent",
+       "ouId": "<organization-unit-id>",
+       "delimiter": ":"
+     }'
+   ```
+
+   Add a resource with handle `agent` under it:
+
+   ```bash
+   curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-agent-rs-id>/resources \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Bearer <access-token>' \
+     -d '{ "name": "Agent", "handle": "agent" }'
+   ```
+
+   Then add one action under the resource:
+
+   ```bash
+   curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-agent-rs-id>/resources/<agent-resource-id>/actions \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Bearer <access-token>' \
+     -d '{ "name": "Access", "handle": "access" }'
+   ```
+
+   | Action   | Generated permission |
+   | -------- | -------------------- |
+   | `access` | `agent:access`       |
+
+   See [Resource Servers](/docs/next/guides/guides/resource-servers).
+
+2. **Create the `wayfinder-booking` resource server.**
+
+   Invoke the **Resource Management API** again. The identifier is `http://localhost:8787/mcp` — a URL-shaped identifier per [RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) that matches what the Wayfinder MCP server advertises in `/.well-known/oauth-protected-resource`. MCP Inspector reads that metadata and passes the value back as `resource=...` on `/oauth2/token`; <ProductName /> would reject the request with `invalid_target` otherwise. This resource server protects both the REST surface (`/api/*`) and the MCP surface (`/mcp`) of the Wayfinder server — both check the same `booking:*` permissions:
+
+   ```bash
+   curl -kL -X POST https://localhost:8090/resource-servers \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Bearer <access-token>' \
+     -d '{
+       "name": "Wayfinder Booking",
+       "description": "Protects the Wayfinder booking domain (REST and MCP surfaces)",
+       "identifier": "http://localhost:8787/mcp",
+       "ouId": "<organization-unit-id>",
+       "delimiter": ":"
+     }'
+   ```
+
+   Add a resource with handle `booking`:
+
+   ```bash
+   curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-booking-rs-id>/resources \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Bearer <access-token>' \
+     -d '{ "name": "Booking", "handle": "booking" }'
+   ```
+
+   Then add four actions under the resource — repeat the call below for each handle (`read`, `create`, `cancel`, `recommend`):
+
+   ```bash
+   curl -kL -X POST https://localhost:8090/resource-servers/<wayfinder-booking-rs-id>/resources/<booking-resource-id>/actions \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Bearer <access-token>' \
+     -d '{ "name": "Read", "handle": "read" }'
+   ```
+
+   | Action      | Generated permission |
+   | ----------- | -------------------- |
+   | `read`      | `booking:read`       |
+   | `create`    | `booking:create`     |
+   | `cancel`    | `booking:cancel`     |
+   | `recommend` | `booking:recommend`  |
+
+3. **Create the `Chat User` role.**
+
+   Send a `POST` to `/roles`. The role grants `agent:access` on the `wayfinder-agent` resource server:
+
+   ```bash
+   curl -kL -X POST https://localhost:8090/roles \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Bearer <access-token>' \
+     -d '{
+       "name": "Chat User",
+       "description": "Grants access to use the Wayfinder Concierge agent",
+       "ouId": "<organization-unit-id>",
+       "permissions": [
+         {
+           "resourceServerId": "<wayfinder-agent-rs-id>",
+           "permissions": ["agent:access"]
+         }
+       ]
+     }'
+   ```
+
+4. **Create the `Booking User` role.**
+
+   Grant it `booking:read`, `booking:create`, and `booking:cancel` on `wayfinder-booking`:
+
+   ```bash
+   curl -kL -X POST https://localhost:8090/roles \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Bearer <access-token>' \
+     -d '{
+       "name": "Booking User",
+       "description": "Grants booking permissions for the Wayfinder sample",
+       "ouId": "<organization-unit-id>",
+       "permissions": [
+         {
+           "resourceServerId": "<wayfinder-booking-rs-id>",
+           "permissions": ["booking:read", "booking:create", "booking:cancel"]
+         }
+       ]
+     }'
+   ```
+
+5. **Create the `Recommender` role.**
+
+   Grant it `booking:recommend` on `wayfinder-booking`. This role will be assigned to the Wayfinder Concierge in a later step, not to a user:
+
+   ```bash
+   curl -kL -X POST https://localhost:8090/roles \
+     -H 'Content-Type: application/json' \
+     -H 'Authorization: Bearer <access-token>' \
+     -d '{
+       "name": "Recommender",
+       "description": "Grants the booking:recommend permission to the Wayfinder Concierge",
+       "ouId": "<organization-unit-id>",
+       "permissions": [
+         {
+           "resourceServerId": "<wayfinder-booking-rs-id>",
+           "permissions": ["booking:recommend"]
+         }
+       ]
+     }'
+   ```
+
+   See [Authorization](/docs/next/guides/key-concepts/authorization).
+
+6. **Create the `Customer` user type.**
+
+   Navigate to **User Types** → **Add User Type**. Name it `Customer` and define the schema with the attributes the agent needs to issue claims for:
+
+   | Attribute     | Type   | Required | Notes                                  |
+   | ------------- | ------ | -------- | -------------------------------------- |
+   | `username`    | string | Yes      | Unique                                 |
+   | `password`    | string | No       | Marked as a credential                 |
+   | `email`       | string | Yes      | Unique                                 |
+   | `given_name`  | string | No       |                                        |
+   | `family_name` | string | No       |                                        |
+
+   See [User Types](/docs/next/guides/guides/users/user-types).
+
+7. **Create the two demo users.**
+
+   Navigate to **Users** → **Add User**. Select the `Customer` user type and create:
+
+   | Username     | Password     |
+   | ------------ | ------------ |
+   | `john.doe`   | `john.doe`   |
+   | `jane.smith` | `jane.smith` |
+
+   See [Manage Users](/docs/next/guides/guides/users/manage-users).
+
+8. **Assign user roles.**
+
+   - **Roles** → **Chat User** → **Assignments** tab → **Add Assignment**. Pick **User** and assign `john.doe`.
+   - **Roles** → **Booking User** → **Assignments** tab → **Add Assignment**. Pick **User** and assign both `john.doe` and `jane.smith`.
+
+9. **Register the `WAYFINDER` application.**
+
+   Navigate to **Applications** → **Add Application** and choose **Browser App** as the type. Configure:
+
+   | Setting             | Value                                          |
+   | ------------------- | ---------------------------------------------- |
+   | Client ID           | `WAYFINDER`                                    |
+   | Redirect URI        | `{{WayFinderSampleUrl}}`                       |
+   | Allowed grants      | `authorization_code`                           |
+   | PKCE                | Required                                       |
+   | Allowed user types  | `Customer`                                     |
+
+   See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+
+## Register the Wayfinder Concierge Agent
+
+The Concierge runs as a first-class agent in <ProductName />. It needs its own credentials, the right OAuth grants enabled, and a role assignment so its machine-to-machine token can call browsing tools.
+
+1. **Add the agent.**
+
+   Navigate to **Agents** → **Add Agent**. Name the agent `WAYFINDER-CONCIERGE`, then:
+
+   - **Capture the client secret.** <ProductName /> prints it only once. You will use it in `ai-agent/.env`.
+   - Under **Protocol** settings, enable the **Authorization Code** grant. Client Credentials is on by default for agents.
+   - Add the redirect URI `{{WayFinderSampleUrl}}/agent-callback`.
+
+   See [Manage Agents](/docs/next/guides/guides/agents/manage-agents) and [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication).
+
+2. **Assign the `Recommender` role to the agent.**
+
+   With the agent created, complete the role assignment:
+
+   - **Roles** → **Recommender** → **Assignments** tab → **Add Assignment**. Pick **Agent** and assign `WAYFINDER-CONCIERGE`.
+
+## Build the Agent Authentication Flow
+
+The Wayfinder Concierge needs a separate authentication flow that drives the on-behalf-of (OBO) consent screen when a chat request triggers a mutating tool. The flow authenticates the user with username and password, then shows a consent screen listing the `booking:*` permissions the agent is requesting.
+
+Navigate to **Flows** and create a flow with these steps:
+
+- A `PROMPT` step asking for username and password.
+- A `TASK_EXECUTION` step running the `BasicAuthExecutor`.
+- A `TASK_EXECUTION` step running the `AuthorizationExecutor`.
+- A `TASK_EXECUTION` step running the `ConsentExecutor`, with a `PROMPT` step for the consent screen on its `onIncomplete` branch.
+- A `TASK_EXECUTION` step running the `AuthAssertExecutor` on success.
+
+Attach the flow to the `WAYFINDER-CONCIERGE` agent (set `auth_flow_handle` on the agent to the flow's handle).
+
+The complete flow definition is in the Wayfinder sample distribution at `thunderid-config/thunderid-config.yaml` under the `wayfinder-agent-auth-flow` entry — copy it as a reference.
+
+See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+
+## Start the Sample
+
+With every resource in place, follow the commands in the Wayfinder sample's <RepoLink path="/tree/main/samples/apps/wayfinder-sample#readme">README</RepoLink>, passing the agent client secret you captured when you registered the agent.

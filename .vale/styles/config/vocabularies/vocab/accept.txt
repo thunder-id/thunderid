@@ -164,3 +164,9 @@ Twilio
 [Mm]ultibyte
 [Ss]harding
 [Ff]ailover
+[Ll]oopback
+[Ss]treamable
+client_id
+[Dd]ownscope
+[Dd]ownscoping
+[Ss]uperset

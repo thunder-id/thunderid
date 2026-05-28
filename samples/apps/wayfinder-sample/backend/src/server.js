@@ -26,9 +26,19 @@ import {
   listLocations,
   listTrips
 } from "./db.js";
+import { getProtectedResourceMetadata, handleMcpRequest } from "./mcp.js";
 
 const port = Number(process.env.PORT || 8787);
+
+// CORS: every endpoint here requires a Bearer token, so there is no cookie-
+// based session to protect. We echo back the request Origin (so MCP Inspector
+// at :6274 and the sample CLI on a loopback port both work), falling back to
+// FRONTEND_ORIGIN for non-browser callers without an Origin header.
 const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
+
+function corsOrigin(request) {
+  return request?.headers?.origin || frontendOrigin;
+}
 
 function decodeTokenClaims(authHeader) {
   if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
@@ -52,12 +62,14 @@ function logRequest(method, pathname, claims) {
   );
 }
 
-function sendJson(response, statusCode, body) {
+function sendJson(response, statusCode, body, request) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": frontendOrigin,
+    "Access-Control-Allow-Origin": corsOrigin(request),
     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization"
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,mcp-session-id,mcp-protocol-version,last-event-id",
+    "Access-Control-Expose-Headers": "WWW-Authenticate,mcp-session-id",
+    "Access-Control-Max-Age": "86400"
   });
   response.end(JSON.stringify(body));
 }
@@ -168,24 +180,42 @@ async function route(request, response) {
   const url = new URL(request.url, `http://${request.headers.host}`);
 
   if (request.method === "OPTIONS") {
-    return sendJson(response, 204, {});
+    return sendJson(response, 204, {}, request);
   }
 
   const claims = decodeTokenClaims(request.headers.authorization);
   logRequest(request.method, url.pathname, claims);
 
   try {
+    if (request.method === "POST" && url.pathname === "/mcp") {
+      let body;
+
+      try {
+        body = await readJsonBody(request);
+      } catch (parseError) {
+        return sendJson(response, 400, {
+          error: parseError.message || "Malformed JSON body"
+        }, request);
+      }
+
+      return handleMcpRequest(request, response, body);
+    }
+
+    if (request.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
+      return sendJson(response, 200, getProtectedResourceMetadata(request), request);
+    }
+
     if (request.method === "GET" && url.pathname === "/health") {
-      return sendJson(response, 200, { status: "ok" });
+      return sendJson(response, 200, { status: "ok" }, request);
     }
 
     if (request.method === "GET" && url.pathname === "/api/flights") {
       return sendJson(response, 200, {
         data: searchFlights(url.searchParams)
-      });
+      }, request);
     }
 
-    if (request.method === "GET" && url.pathname === "/api/flights/recommended") {
+    if (request.method === "GET" && url.pathname === "/api/bookings/recommended") {
       const user = await resolveUser(request);
 
       requireScope(user, "booking:recommend");
@@ -195,7 +225,7 @@ async function route(request, response) {
 
       return sendJson(response, 200, {
         data: findRecommendedFlights({ limit })
-      });
+      }, request);
     }
 
     if (request.method === "GET" && url.pathname.startsWith("/api/flights/")) {
@@ -203,18 +233,18 @@ async function route(request, response) {
       const flight = findFlightById(flightId);
 
       if (!flight) {
-        return sendJson(response, 404, { error: "Flight not found" });
+        return sendJson(response, 404, { error: "Flight not found" }, request);
       }
 
       return sendJson(response, 200, {
         data: flight
-      });
+      }, request);
     }
 
     if (request.method === "GET" && url.pathname === "/api/hotels") {
       return sendJson(response, 200, {
         data: searchHotels(url.searchParams)
-      });
+      }, request);
     }
 
     if (request.method === "GET" && url.pathname === "/api/locations") {
@@ -222,7 +252,7 @@ async function route(request, response) {
         data: listLocations({
           category: url.searchParams.get("category")
         })
-      });
+      }, request);
     }
 
     if (request.method === "GET" && url.pathname === "/api/trips") {
@@ -230,13 +260,13 @@ async function route(request, response) {
         data: listTrips({
           destination: url.searchParams.get("destination")
         })
-      });
+      }, request);
     }
 
     if (request.method === "GET" && url.pathname === "/api/me") {
       const user = await resolveUser(request);
 
-      return sendJson(response, 200, { data: user });
+      return sendJson(response, 200, { data: user }, request);
     }
 
     if (request.method === "GET" && url.pathname === "/api/bookings/flights") {
@@ -248,13 +278,13 @@ async function route(request, response) {
 
       return sendJson(response, 200, {
         data: listBookedFlights(username)
-      });
+      }, request);
     }
 
     if (request.method === "POST" && url.pathname === "/api/bookings") {
       const result = await handleBooking(request);
 
-      return sendJson(response, result.statusCode, result.body);
+      return sendJson(response, result.statusCode, result.body, request);
     }
 
     if (request.method === "DELETE" && url.pathname === "/api/bookings/flights") {
@@ -267,20 +297,23 @@ async function route(request, response) {
 
       return sendJson(response, 200, {
         data: { deleted: result.deleted, username }
-      });
+      }, request);
     }
 
-    return sendJson(response, 404, { error: "Route not found" });
+    return sendJson(response, 404, { error: "Route not found" }, request);
   } catch (error) {
     const statusCode = error.statusCode
       || (error.message.toLowerCase().includes("token") ? 401 : 500);
 
     return sendJson(response, statusCode, {
       error: error.message
-    });
+    }, request);
   }
 }
 
 createServer(route).listen(port, () => {
   console.log(`Wayfinder Travel API listening on http://localhost:${port}`);
+  console.log(`  REST API: http://localhost:${port}/api`);
+  console.log(`  MCP server: http://localhost:${port}/mcp`);
+  console.log(`  Discovery: http://localhost:${port}/.well-known/oauth-protected-resource`);
 });

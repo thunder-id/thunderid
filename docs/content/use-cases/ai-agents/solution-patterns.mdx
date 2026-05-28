@@ -8,18 +8,18 @@ import { AIAgentSolutionPatternsRoadmap } from '../../../src/components/AIAgentI
 
 # Solution Patterns
 
-When you decide to add identity to an AI agent, you face a small set of token-flow choices. This page describes them at a generic level, so you can compare options before mapping them to specific patterns from [Identity for AI Agents](../overview).
+When you decide to add identity to an AI agent, you face a small set of token-flow choices. This page describes them at a generic level, so you can compare options before mapping them to specific patterns from [Securing AI Agents](../overview).
 
-## Two Questions to Start
+## Where to Start
 
-Most of the decisions on this page come down to two questions:
+This page is a set of decisions. Start with the token flow: pick the one (or combination) that matches how your agent is invoked. The supporting patterns and cross-cutting choices stand on their own, so you can take them in whatever order your project drives them.
+
+The token-flow choice comes down to two questions:
 
 - **Is the agent acting on its own, or on behalf of a user?**
 - **If on behalf of a user, is the user actively present at the moment of the call?**
 
-The four token flows in **Part A** answer these questions differently. **Part B** covers supporting patterns that compose with whichever flow you pick.
-
-## Part A: Token Flow Patterns
+## Token Flow Patterns
 
 The four flows differ on who the token represents and how it is obtained. Choose the one (or combination) that fits how your agent is invoked.
 
@@ -66,9 +66,9 @@ This pattern fits multi-agent workflows where each hop should receive only what 
 
 This flow is built using OAuth2 token exchange ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)). See [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication).
 
-## Part B: Supporting Patterns
+## Supporting Patterns
 
-These compose with any flow in Part A. They are independent decisions: an autonomous reporting agent and a delegated assistant can share the same resource-server design, audience-locking strategy, and credential lifecycle.
+These compose with any token flow above. They are independent decisions: an autonomous reporting agent and a delegated assistant can share the same resource-server design, audience-locking strategy, and credential lifecycle.
 
 ### Resource Servers and Audience Locking
 

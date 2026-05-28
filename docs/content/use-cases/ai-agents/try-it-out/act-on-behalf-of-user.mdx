@@ -11,7 +11,7 @@ Booking a flight commits a real action against the user's record. The agent's ow
 In this walkthrough, John asks the agent to book a flight. The chat pauses, a popup opens where John picks which booking permissions to grant, and the booking goes through under a delegated token.
 
 :::note Prerequisites
-Complete [Setup](../#setup) before starting this walkthrough.
+Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) before starting this walkthrough.
 :::
 
 :::info Background
@@ -43,10 +43,7 @@ Complete [Setup](../#setup) before starting this walkthrough.
 - Repeat the walkthrough but **uncheck `booking:create`** on the consent screen. The agent retries, the tool returns `403`, and the agent surfaces the failure honestly in the chat.
 - Ask the agent to cancel a booking without granting `booking:cancel`. Same outcome — the OBO token doesn't carry the scope, the API rejects, and the agent reports back.
 
-:::info[Concepts]
-**Consent.** This walkthrough is consent in action. John doesn't grant the agent a blanket "do anything bookings-related" — the consent screen surfaces the individual `booking:*` permissions and the issued token carries only what he ticked. The agent cannot widen its access after the fact.
+## Going Deeper
 
-**Delegation.** The OBO token identifies *both* John (as the subject) and the agent (as the actor). Downstream services know the booking was triggered by an agent acting for John, not by John directly. The token's effective permissions are the intersection of what John holds and what John just consented to. See [Agent Authentication](/docs/next/guides/guides/agents/agent-authentication) for the full OBO exchange.
-
-**Branding.** The consent popup is rendered by <ProductName /> hosted pages. The Wayfinder sample uses <ProductName />'s default branding out of the box. To make the popup feel like part of Wayfinder, customize the logo and color theme for the `WAYFINDER-CONCIERGE` agent from its **Design** settings in the Console. The same pattern applies to applications — see [Register an Application](/docs/next/guides/getting-started/register-an-application).
-:::
+- Want to understand how the OBO token narrows to only what John consented to? See [Agent](../../identity-concepts#agent) and [Flows](../../identity-concepts#flows) in the Identity Concepts.
+- Prefer to build the agent authentication flow with its consent screen manually? See [Build the Agent Authentication Flow](../../configure-it-yourself#build-the-agent-authentication-flow) in Configure It Yourself.

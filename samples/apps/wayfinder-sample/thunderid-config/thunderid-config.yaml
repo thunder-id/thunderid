@@ -97,10 +97,14 @@ resources:
 
 ---
 # resource_type: resource_server
-id: booking-api-rs
-name: Booking API
-description: Controls booking operations in the Wayfinder Travel API
-identifier: booking-api
+id: wayfinder-booking-rs
+name: Wayfinder Booking
+description: Protects the Wayfinder booking domain — same scopes guard the REST API on /api/* and the MCP tools on /mcp.
+# URL-shaped identifier per RFC 8707 (resource indicators), matching what the
+# Wayfinder MCP server advertises in /.well-known/oauth-protected-resource.
+# MCP Inspector reads that metadata and passes the value back as resource=...
+# on /token; Thunder rejects with invalid_target unless this identifier matches.
+identifier: http://localhost:8787/mcp
 ou_handle: default
 delimiter: ":"
 resources:
@@ -1012,11 +1016,43 @@ inbound_auth_config:
       token:
         access_token:
           validity_period: 3600
-          user_attributes:
-            - given_name
-            - family_name
-            - email
-            - groups
+
+---
+# resource_type: application
+# Public OAuth client used by external MCP clients (e.g. MCP Inspector)
+# to call the Wayfinder MCP server on /mcp.
+# Used by the MCP Authorization tryout to demonstrate Thunder-secured MCP
+# access from clients that are not part of the Wayfinder product itself.
+id: external-mcp-client
+name: External MCP Client
+description: Public OAuth client for external MCP clients connecting to the Wayfinder MCP server.
+ou_handle: default
+url: http://localhost:8787/mcp
+# Reuse the Concierge's auth flow so the OAuth consent screen surfaces the
+# requested booking:* scopes during the MCP Authorization tryout. Without
+# this, Thunder falls back to the default sign-in-only flow and no consent
+# step is shown.
+auth_flow_handle: wayfinder-agent-auth-flow
+allowed_user_types:
+  - Customer
+inbound_auth_config:
+  - type: oauth2
+    config:
+      client_id: EXTERNAL-MCP-CLIENT
+      redirect_uris:
+        - http://localhost:6274/oauth/callback/debug
+        - http://localhost:6274/oauth/callback
+      grant_types:
+        - authorization_code
+        - refresh_token
+      response_types:
+        - code
+      token_endpoint_auth_method: none
+      pkce_required: true
+      public_client: true
+      token:
+        access_token:
+          validity_period: 3600
 
 ---
 # resource_type: role
@@ -1025,7 +1061,7 @@ name: Traveler
 description: Consumer role with full booking permissions
 ou_handle: default
 permissions:
-  - resource_server_id: booking-api-rs
+  - resource_server_id: wayfinder-booking-rs
     permissions:
       - booking:read
       - booking:create
@@ -1081,7 +1117,7 @@ name: Booking User
 description: Grants booking permissions for the Wayfinder sample
 ou_handle: default
 permissions:
-  - resource_server_id: booking-api-rs
+  - resource_server_id: wayfinder-booking-rs
     permissions:
       - booking:read
       - booking:create
@@ -1099,7 +1135,7 @@ name: Recommender
 description: Grants access to the booking:recommend permission, assigned to the Wayfinder Concierge agent
 ou_handle: default
 permissions:
-  - resource_server_id: booking-api-rs
+  - resource_server_id: wayfinder-booking-rs
     permissions:
       - booking:recommend
 assignments:

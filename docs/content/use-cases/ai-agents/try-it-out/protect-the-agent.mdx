@@ -9,7 +9,7 @@ sidebar_position: 2
 In this walkthrough, John signs in to Wayfinder and uses the chat freely. Jane signs in to the same Wayfinder UI, books a trip through the web app, and then tries to use the chat — and is rejected. Both consumers use the same `WAYFINDER` application, but only John's access token carries the `agent:access` permission. The AI Agent enforces the scope on every `/chat` request and turns Jane away with a 403.
 
 :::note Prerequisites
-Complete [Setup](../#setup) before starting this walkthrough.
+Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) before starting this walkthrough.
 :::
 
 :::info Background
@@ -18,7 +18,7 @@ Complete [Setup](../#setup) before starting this walkthrough.
 
 ## Walk Through the Use Case
 
-1. Open `http://localhost:5173` and sign in as `john.doe` / `john.doe`.
+1. Open <WayFinderSampleUrl /> and sign in as `john.doe` / `john.doe`.
 2. Open the chat widget and send any message. The request reaches the AI Agent with John's token, the scope check passes, and the agent responds.
 3. Sign out. Sign back in as `jane.smith` / `jane.smith`.
 4. Browse flights and place a booking through the UI. Jane has booking permissions, so these still work.
@@ -29,8 +29,7 @@ Complete [Setup](../#setup) before starting this walkthrough.
 - Assign the `Chat User` role to Jane in the Console and verify that the chat widget starts working for her on the next sign-in.
 - Add a second permission to the `wayfinder-agent` resource server — for example `agent:admin` — and gate a separate admin endpoint behind it.
 
-:::info[Concepts]
-**Authorization.** The AI Agent is a resource server (`wayfinder-agent`) with a single permission (`agent:access`). The `Chat User` role bundles that permission. <ProductName /> writes only the permissions the user actually holds into the access token, so the same edge check (`token has agent:access?`) lets John in and turns Jane away. See [Authorization](/docs/next/guides/key-concepts/authorization).
+## Going Deeper
 
-**Branding.** The sign-in surface is the <ProductName /> hosted page. The Wayfinder sample ships with <ProductName />'s default branding. You can customize the logo and color theme for the `WAYFINDER` application from its **Design** settings in the Console — see [Register an Application](/docs/next/guides/getting-started/register-an-application) for where the Design step sits.
-:::
+- Want to understand how the `agent:access` permission gets into John's token? See [Resources and Permissions](../../identity-concepts#resources-and-permissions) and [Roles](../../identity-concepts#roles) in the Identity Concepts.
+- Prefer to set up the `wayfinder-agent` resource server and `Chat User` role manually? See [Set Up the Foundation](../../configure-it-yourself#set-up-the-foundation) in Configure It Yourself.
