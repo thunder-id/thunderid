@@ -317,15 +317,23 @@ jobs:
       should-run: ${{ steps.filter.outputs.code }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
+      - name: 🔍 Detect non-docs file changes
         id: filter
-        with:
-          base: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
-          ref: ${{ github.event_name == 'merge_group' && github.sha || github.event.pull_request.head.sha }}
-          filters: |
-            code:
-              - '**'
-              - '!docs/**'
+        env:
+          BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event_name == 'merge_group' && github.sha || github.event.pull_request.head.sha }}
+        run: |
+          git fetch --depth=1 origin "$BASE_SHA"
+          CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "Changed files:"
+          echo "$CHANGED"
+          NON_DOCS=$(echo "$CHANGED" | grep -v '^docs/' | grep -c . || true)
+          echo "Non-docs changed file count: $NON_DOCS"
+          if [ "$NON_DOCS" -gt 0 ]; then
+            echo "code=true" >> $GITHUB_OUTPUT
+          else
+            echo "code=false" >> $GITHUB_OUTPUT
+          fi
       - name: ✅ Code changes detected
         if: steps.filter.outputs.code == 'true'
         run: echo "Non-documentation files changed - frontend and E2E tests will run"
