@@ -23,6 +23,8 @@ import CopyPageButton from 'docusaurus-plugin-copy-page-button/src/CopyPageButto
 import {type ReactNode, useEffect, useRef} from 'react';
 import GettingStartedJourney from '@site/src/components/GettingStartedJourney';
 import {getGettingStartedStepIndex} from '@site/src/components/GettingStartedSteps';
+import MaturityBanner from '@site/src/components/MaturityBanner';
+import type {Maturity} from '@site/plugins/maturityPlugin';
 
 function useSyntheticTitle(): string | null {
   const {metadata, frontMatter, contentTitle} = useDoc();
@@ -36,6 +38,7 @@ function useSyntheticTitle(): string | null {
 export default function DocItemContent({children}: {children: ReactNode}): ReactNode {
   const syntheticTitle = useSyntheticTitle();
   const {metadata, frontMatter} = useDoc();
+  const maturity = ((frontMatter as unknown as {maturity?: Maturity}).maturity) ?? null;
   const currentJourneyStep = getGettingStartedStepIndex(metadata.id);
   const isHomePage = metadata.id === 'index';
   const showButton = !isHomePage && !frontMatter.hide_title;
@@ -79,6 +82,7 @@ export default function DocItemContent({children}: {children: ReactNode}): React
           <GettingStartedJourney current={currentJourneyStep} />
         </div>
       )}
+      {maturity && <MaturityBanner maturity={maturity} />}
       {showButton && (
         <div className="copy-page-btn-wrapper">
           <CopyPageButton enabledActions={['copy', 'view', 'chatgpt', 'claude', 'gemini']} />

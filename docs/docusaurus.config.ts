@@ -20,6 +20,8 @@ import type * as Preset from '@docusaurus/preset-classic';
 import type {Config} from '@docusaurus/types';
 import {themes as prismThemes} from 'prism-react-renderer';
 import productConfig from './docusaurus.product.config';
+import featureFlagPlugin from './plugins/featureFlagPlugin';
+import maturityPlugin from './plugins/maturityPlugin';
 import personaPlugin from './plugins/personaPlugin';
 import rehypeProductName from './plugins/rehypeProductName';
 import webpackPlugin from './plugins/webpackPlugin';
@@ -93,6 +95,18 @@ const config: Config = {
         productConfig.project.name,
         productConfig.project.name.toLowerCase(),
       ) as Record<string, unknown>;
+
+      const featureFlag = result.frontMatter.featureFlag;
+      if (typeof featureFlag === 'string' && featureFlag.length > 0) {
+        const enabled = (process.env.FEATURE_FLAGS ?? '')
+          .split(',')
+          .map((f) => f.trim())
+          .filter(Boolean);
+        if (!enabled.includes(featureFlag)) {
+          result.frontMatter.unlisted = true;
+        }
+      }
+
       return result;
     },
   },
@@ -158,7 +172,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
     },
   ],
 
-  plugins: [webpackPlugin, personaPlugin],
+  plugins: [webpackPlugin, personaPlugin, maturityPlugin, featureFlagPlugin],
 
   presets: [
     [
