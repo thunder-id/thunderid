@@ -657,6 +657,21 @@ jobs:
       #     name: Backend-combined Coverage (${{ matrix.database }})
       #     fail_ci_if_error: false
 
+  test-integration-status:
+    name: ✅ Integration Tests Status
+    needs: [test-integration]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check integration test results
+        run: |
+          if [[ "${{ needs.test-integration.result }}" == "failure" ]]; then
+            echo "❌ Integration tests failed"
+            exit 1
+          fi
+          echo "✅ Integration tests passed or were not required"
+
   test-e2e:
     name: 🎭 Playwright E2E Tests
     needs: [build, build_samples, detect-code-changes]

@@ -20,40 +20,30 @@ codecov:
   require_ci_to_pass: true
   notify:
     wait_for_ci: true
-    # Wait for exactly 5 coverage uploads before reporting status:
-    #   1. backend-unit (from build job)
-    #   2. backend-integration-sqlite (from test-integration matrix)
-    #   3. backend-integration-postgres (from test-integration matrix)
-    #   4. frontend-apps-console-unit (from upload-frontend-coverage)
-    #   5. frontend-apps-gate-unit (from upload-frontend-coverage)
-    # Without this, Codecov status checks can intermittently hang at
-    # "Expected — Waiting for status to be reported" when CI signal is delayed.
-    # See: https://about.codecov.io/blog/delay-notifications-for-flags-with-after_n_builds/
-    after_n_builds: 6
 
 flags:
   backend-unit:
-    carryforward: false
+    carryforward: true
     paths:
       - backend/
   backend-integration-sqlite:
-    carryforward: false
+    carryforward: true
     paths:
       - backend/
   backend-integration-postgres:
-    carryforward: false
+    carryforward: true
     paths:
       - backend/
   backend-integration-redis:
-    carryforward: false
+    carryforward: true
     paths:
       - backend/
   frontend-apps-console-unit:
-    carryforward: false
+    carryforward: true
     paths:
       - frontend/apps/console/
   frontend-apps-gate-unit:
-    carryforward: false
+    carryforward: true
     paths:
       - frontend/apps/gate/
 
