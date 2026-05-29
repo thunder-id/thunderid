@@ -45,34 +45,35 @@ The JWKS cache TTL is configured at `server.security.jwks_cache_ttl`, not inside
 
 ## Console Portal Configuration
 
-The `server.security.trusted_issuer` block on the server only controls how <ProductName /> validates incoming tokens. <ProductName />'s console portal still authenticates against this <ProductName /> instance unless you also delegate its login to the external authorization server. To delegate console login, add a `trusted_issuer` entry to the console's runtime configuration at `apps/console/config.js`:
+The `server.security.trusted_issuer` block on the server only controls how <ProductName /> validates incoming tokens. <ProductName />'s console portal still authenticates against this <ProductName /> instance unless you also delegate its login to the external authorization server. To delegate console login, add an `sdk` block to the console's runtime configuration at `apps/console/config.js`:
 
 ```js
 window.__THUNDERID_RUNTIME_CONFIG__ = {
   // ...existing client, server, brand entries...
-  trusted_issuer: {
-    hostname: "auth.example.com",
-    port: 443,
-    http_only: false,
-    public_url: "https://auth.example.com",
-    client_id: "FEDERATED_CONSOLE",
+  sdk: {
+    baseUrl: "https://auth.example.com",
+    clientId: "FEDERATED_CONSOLE",
     scopes: ['openid', 'profile', 'email', 'group', 'ou', 'system', 'system:user', 'system:group', 'system:ou:view', 'system:usertype:view'],
-    type: "generic",
+    signInOptions: {resource: "https://<this-thunderid-instance-url>"},
+    // For generic OIDC providers: suppress ThunderID-specific bootstrap calls
+    // and allow CORS-safe uncredentialed token requests.
+    preferences: {resolveFromMeta: false, theme: {inheritFromBranding: false}},
+    sendCookiesInRequests: false,
   },
 };
 ```
 
 | Field | Description |
 |-------|-------------|
-| `hostname` | The hostname of the external authorization server the console redirects users to for login. |
-| `port` | Port on the external authorization server. |
-| `http_only` | Set to `true` only for local or development authorization servers served over HTTP. |
-| `public_url` | Fully-qualified URL of the external authorization server. Used by the console to build authorization requests. |
-| `client_id` | OAuth client ID registered on the external authorization server for this <ProductName /> instance's console. |
+| `baseUrl` | Fully-qualified URL of the external authorization server. The console redirects users here for login. |
+| `clientId` | OAuth client ID registered on the external authorization server for this <ProductName /> instance's console. |
 | `scopes` | Scopes the console requests from the external authorization server. Must include every scope <ProductName />'s APIs require. |
-| `type` | Set to `"generic"` when the trusted issuer is a generic OIDC provider. When set, the console skips <ProductName />-specific bootstrap calls (flow metadata, branding preferences) that would fail against a generic provider and uses the IdP's `end_session_endpoint` for sign-out. Defaults to `"thunderid"`. |
+| `signInOptions.resource` | The resource indicator sent in the authorization request so the issued token's `aud` points at this <ProductName /> instance. Set to this instance's public URL. |
+| `preferences.resolveFromMeta` | Set to `false` for generic OIDC providers to skip the <ProductName />-specific flow-metadata bootstrap call that would fail against a generic provider. |
+| `preferences.theme.inheritFromBranding` | Set to `false` for generic OIDC providers to skip the branding-preferences call. |
+| `sendCookiesInRequests` | Set to `false` for generic OIDC providers. External authorization servers typically respond with `access-control-allow-credentials: false`, so credentialed token requests are blocked by CORS. Setting this to `false` switches to `credentials: 'same-origin'`, which is CORS-safe for cross-origin requests. |
 
-When this block is present, the console delegates login to the external authorization server. When omitted, the console authenticates against this <ProductName /> instance normally.
+When an `sdk` block with `baseUrl` and `clientId` is present, the console delegates login to the external authorization server. When omitted, the console authenticates against this <ProductName /> instance normally.
 
 :::note
 The external authorization server must permit this <ProductName /> instance's origin in its CORS allowed-origins configuration. Otherwise, browser calls from the console to the authorization server's `/oauth2/token`, `/oauth2/jwks`, and related endpoints are blocked.
@@ -140,19 +141,18 @@ configuration:
             value: "tenant-123"
 ```
 
-To configure the console portal instead of editing `apps/console/config.js` directly, set `configuration.consoleClient.trustedIssuer` in the chart values. The fields mirror those described in [Console Portal Configuration](#console-portal-configuration) but use camelCase (`httpOnly`, `publicUrl`, `clientId`):
+To configure the console portal instead of editing `apps/console/config.js` directly, set `configuration.consoleClient.sdk` in the chart values. The fields mirror those described in [Console Portal Configuration](#console-portal-configuration):
 
 ```yaml
 configuration:
   consoleClient:
-    trustedIssuer:
-      hostname: "auth.example.com"
-      port: 443
-      httpOnly: false
-      publicUrl: "https://auth.example.com"
+    sdk:
+      baseUrl: "https://auth.example.com"
       clientId: "FEDERATED_CONSOLE"
       scopes: "['openid', 'profile', 'email', 'group', 'ou', 'system', 'system:user', 'system:group', 'system:ou:view', 'system:usertype:view']"
-      type: "generic"
+      signInOptions: {resource: "https://thunder.example.com"}
+      preferences: {resolveFromMeta: false, theme: {inheritFromBranding: false}}
+      sendCookiesInRequests: false
 ```
 
 ## Troubleshooting
@@ -164,7 +164,7 @@ configuration:
 | Tokens rejected with "audience mismatch" | The authorization server is not sending a `resource` parameter, so `aud` defaults to the client ID instead of <ProductName />'s URL | Either set `trusted_issuer.audience` to the client ID, or configure the client to send `resource=<server-url>` in the authorization request. |
 | Tokens rejected with "required claim missing" | A claim listed under `required_claims` is not present on the token, or its value differs | Remove the claim from `required_claims`, or configure the authorization server to include it with the expected value. |
 | JWKS fetch fails | `trusted_issuer.jwks_url` cannot be reached from <ProductName />, or the authorization server uses a certificate <ProductName /> does not trust | Check that the network allows the request, and install the authorization server's CA certificate on <ProductName /> if needed. |
-| Console never redirects to the external authorization server | `consoleClient.trustedIssuer` not set, or `publicUrl`/`hostname` still point at <ProductName /> | Verify the `consoleClient.trustedIssuer` block and re-render the chart. |
+| Console never redirects to the external authorization server | `consoleClient.sdk.baseUrl` not set, or still points at this <ProductName /> instance | Verify the `consoleClient.sdk` block and re-render the chart. |
 
 ## Token Exchange with External Identity Providers
 

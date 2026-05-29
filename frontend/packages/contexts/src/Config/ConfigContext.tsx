@@ -80,39 +80,6 @@ export interface ConfigContextType {
    */
   getClientUuid: () => string | undefined;
 
-  /**
-   * Gets the trusted issuer URL. When trusted_issuer is configured, returns
-   * the external issuer URL. Otherwise falls back to getServerUrl().
-   * @returns The trusted issuer URL (e.g., "https://auth.example.com:8090")
-   */
-  getTrustedIssuerUrl: () => string;
-
-  /**
-   * Gets the OAuth client ID for the trusted issuer. When trusted_issuer.client_id is
-   * configured, returns that. Otherwise falls back to getClientId().
-   * @returns The trusted issuer client ID string
-   */
-  getTrustedIssuerClientId: () => string;
-
-  /**
-   * Gets the OAuth scopes for the trusted issuer. When trusted_issuer.scopes is
-   * configured, returns those. Otherwise falls back to getScopes().
-   * @returns The trusted issuer scopes array
-   */
-  getTrustedIssuerScopes: () => string[];
-
-  /**
-   * Indicates whether the configured trusted issuer is a generic OIDC provider
-   * rather than the same type of instance. When true, the console must suppress
-   * specific bootstrap calls (flow metadata, branding preferences) that
-   * would otherwise fail against a generic OIDC provider.
-   *
-   * Returns false when no trusted issuer is configured, and when the configured
-   * trusted issuer type is `default`.
-   *
-   * @returns True if the trusted issuer is a generic OIDC provider
-   */
-  isTrustedIssuerGenericOidc: () => boolean;
 }
 
 /**
