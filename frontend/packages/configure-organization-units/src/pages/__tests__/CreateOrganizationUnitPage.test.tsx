@@ -350,12 +350,10 @@ describe('CreateOrganizationUnitPage', () => {
     });
   });
 
-  it('should show "Root Organization Unit" in parent field when no parent is provided', () => {
+  it('should not show parent field when no parent is provided', () => {
     renderWithProviders(<CreateOrganizationUnitPage />);
 
-    const parentInput = screen.getByLabelText(new RegExp(t('organizationUnits:edit.general.parent.label'), 'i'));
-    expect(parentInput).toHaveValue(t('organizationUnits:edit.general.ou.noParent.label'));
-    expect(parentInput).toHaveAttribute('readOnly');
+    expect(screen.queryByLabelText(new RegExp(t('organizationUnits:edit.general.parent.label'), 'i'))).toBeNull();
   });
 
   it('should set parent to null when no parent is in navigation state', async () => {

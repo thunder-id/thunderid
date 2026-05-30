@@ -326,23 +326,21 @@ export default function CreateOrganizationUnitPage(): JSX.Element {
                       />
                     </FormControl>
 
-                    {/* Parent OU field - read-only */}
-                    <FormControl fullWidth>
-                      <FormLabel htmlFor="ou-parent-input">
-                        {t('organizationUnits:edit.general.parent.label')}
-                      </FormLabel>
-                      <TextField
-                        id="ou-parent-input"
-                        fullWidth
-                        value={
-                          parentDisplayName
-                            ? `${parentDisplayName}${parentDisplayHandle ? ` (${parentDisplayHandle})` : ''}`
-                            : t('organizationUnits:edit.general.ou.noParent.label')
-                        }
-                        slotProps={{input: {readOnly: true}}}
-                        helperText={t('organizationUnits:edit.general.parent.hint')}
-                      />
-                    </FormControl>
+                    {/* Parent OU field - read-only, only shown when a parent is preselected */}
+                    {parentDisplayName && (
+                      <FormControl fullWidth>
+                        <FormLabel htmlFor="ou-parent-input">
+                          {t('organizationUnits:edit.general.parent.label')}
+                        </FormLabel>
+                        <TextField
+                          id="ou-parent-input"
+                          fullWidth
+                          value={`${parentDisplayName}${parentDisplayHandle ? ` (${parentDisplayHandle})` : ''}`}
+                          slotProps={{input: {readOnly: true}}}
+                          helperText={t('organizationUnits:edit.general.parent.hint')}
+                        />
+                      </FormControl>
+                    )}
 
                     {/* Navigation buttons */}
                     <Box
