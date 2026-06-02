@@ -157,71 +157,12 @@ export interface BrandConfig {
 }
 
 /**
- * Trusted issuer configuration interface that defines connection parameters
- * for an external authentication server separate from the resource server.
- *
- * When provided, the application authenticates against this server (OAuth/OIDC)
- * while using the main `server` config for API resource calls.
- *
- * @public
- */
-export interface TrustedIssuerConfig {
-  /**
-   * Trusted issuer hostname or IP address
-   * @example "auth.example.com", "localhost"
-   */
-  hostname: string;
-
-  /**
-   * Trusted issuer port number
-   * @example 8090, 443
-   */
-  port: number;
-
-  /**
-   * Whether to use HTTP only (no HTTPS)
-   */
-  http_only: boolean;
-
-  /**
-   * Optional public URL for the trusted issuer
-   * @example "https://auth.example.com"
-   */
-  public_url?: string;
-
-  /**
-   * OAuth client ID registered on the trusted issuer for this application
-   * @example "FEDERATED_CONSOLE"
-   */
-  client_id?: string;
-
-  /**
-   * OAuth2/OIDC scopes to request from the trusted issuer
-   * @example ["openid", "profile", "email", "system"]
-   */
-  scopes?: string[];
-
-  /**
-   * Type of external authorization server. Set to `generic` when the trusted
-   * issuer is a generic OIDC provider rather than another instance of the same type.
-   * When `generic`, the console skips specific bootstrap calls
-   * (flow metadata, branding preferences) that would otherwise fail against a generic OIDC provider.
-   *
-   * Defaults to self for backward compatibility with existing
-   * federation deployments.
-   */
-  type?: 'thunderid' | 'generic';
-}
-
-/**
  * Runtime overrides for the ThunderID SDK provider (ThunderIDProvider props).
  *
  * Accepts any valid ThunderIDProvider prop. Values are deep-merged on top of
- * the defaults derived from the application config, so only fields that need
- * to differ from the computed defaults must be specified.
- * `config.sdk` takes the highest precedence — it overrides both the defaults
- * derived from `trusted_issuer` and the identity-related props (baseUrl,
- * clientId, afterSignInUrl, scopes) resolved from the server/client config.
+ * the application defaults, so only fields that need to differ must be specified.
+ * `config.sdk` takes the highest precedence — it overrides the identity-related
+ * props (baseUrl, clientId, afterSignInUrl, scopes) set from env vars.
  *
  * @public
  */
@@ -246,9 +187,6 @@ export interface ProductConfig {
 
   /** Server connection configuration for API resource calls */
   server: ServerConfig;
-
-  /** Optional trusted issuer configuration for external token validation */
-  trusted_issuer?: TrustedIssuerConfig;
 
   /** Optional design configuration for theming and UI customization */
   design?: DesignConfig;

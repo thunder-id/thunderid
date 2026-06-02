@@ -130,36 +130,6 @@ export default function ConfigProvider({children}: ConfigProviderProps) {
 
         return undefined;
       },
-      getTrustedIssuerUrl: () => {
-        if (config.trusted_issuer) {
-          if (config.trusted_issuer.public_url) {
-            return config.trusted_issuer.public_url;
-          }
-          const {hostname, port, http_only: httpOnly} = config.trusted_issuer;
-          const protocol: string = httpOnly ? 'http' : 'https';
-          return `${protocol}://${hostname}:${port}`;
-        }
-        // Fall back to resource server URL
-        if (config.server.public_url) {
-          return config.server.public_url;
-        }
-        const {hostname, port, http_only: httpOnly} = config.server;
-        const protocol: string = httpOnly ? 'http' : 'https';
-        return `${protocol}://${hostname}:${port}`;
-      },
-      getTrustedIssuerClientId: () => {
-        if (config.trusted_issuer?.client_id) {
-          return config.trusted_issuer.client_id;
-        }
-        return config.client.client_id;
-      },
-      getTrustedIssuerScopes: () => {
-        if (config.trusted_issuer?.scopes) {
-          return config.trusted_issuer.scopes;
-        }
-        return config.client.scopes ?? [];
-      },
-      isTrustedIssuerGenericOidc: () => config.trusted_issuer?.type === 'generic',
     }),
     [config],
   );

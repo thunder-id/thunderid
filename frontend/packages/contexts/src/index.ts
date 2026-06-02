@@ -17,7 +17,7 @@
  */
 
 // Export types
-export type {ProductConfig, ServerConfig, TrustedIssuerConfig, BrandConfig, SdkConfig} from './Config/types';
+export type {ProductConfig, ServerConfig, BrandConfig, SdkConfig} from './Config/types';
 export type {ToastContextType, ToastSeverity} from './Toast/ToastContext';
 
 // Export React components and hooks
