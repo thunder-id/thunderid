@@ -198,7 +198,7 @@ func (tv *tokenValidator) ValidateSubjectToken(
 		if err := tv.verifyTokenSignatureByIssuer(ctx, token, iss); err != nil {
 			return nil, fmt.Errorf("invalid subject token signature: %w", err)
 		}
-		return tv.extractSubjectTokenClaims(token, iss, claims, oauthApp)
+		return tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, nil)
 	}
 
 	// Not a server-issued token — try external IDP issuers.
@@ -223,13 +223,14 @@ func (tv *tokenValidator) ValidateSubjectToken(
 			"external token audience does not contain expected server issuer %q", serverIssuer)
 	}
 
-	return tv.extractSubjectTokenClaims(token, iss, claims, oauthApp)
+	return tv.extractSubjectTokenClaims(token, iss, claims, oauthApp, issuerInfo.AttributeMappings)
 }
 
 // tokenExchangeIssuerInfo holds the resolved properties needed to validate an external token.
 type tokenExchangeIssuerInfo struct {
-	Issuer  string
-	JWKSURL string
+	Issuer            string
+	JWKSURL           string
+	AttributeMappings []idp.AttributeMapping
 }
 
 // resolveExternalIssuer looks up an external IDP whose issuer property matches the given issuer.
@@ -255,8 +256,9 @@ func (tv *tokenValidator) resolveExternalIssuer(ctx context.Context, issuer stri
 	}
 
 	return &tokenExchangeIssuerInfo{
-		Issuer:  issuer,
-		JWKSURL: jwksURL,
+		Issuer:            issuer,
+		JWKSURL:           jwksURL,
+		AttributeMappings: idp.GetAttributeMappings(&idpDTO),
 	}, nil
 }
 
@@ -266,6 +268,7 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 	iss string,
 	claims map[string]interface{},
 	oauthApp *inboundmodel.OAuthClient,
+	attributeMappings []idp.AttributeMapping,
 ) (*SubjectTokenClaims, error) {
 	sub, err := extractStringClaim(claims, "sub")
 	if err != nil {
@@ -308,8 +311,8 @@ func (tv *tokenValidator) extractSubjectTokenClaims(
 	// Extract scopes
 	scopes := extractScopesFromClaims(claims, isAuthAssertion)
 
-	// Extract user attributes
-	userAttributes := ExtractUserAttributes(claims)
+	// Extract user attributes, applying any configured external-to-local claim mappings.
+	userAttributes := idp.ApplyAttributeMappings(ExtractUserAttributes(claims), attributeMappings)
 
 	// Extract nested act claim if present
 	var nestedAct map[string]interface{}

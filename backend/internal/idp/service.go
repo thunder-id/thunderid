@@ -22,10 +22,13 @@ package idp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -45,20 +48,89 @@ type IDPServiceInterface interface {
 
 // idpService is the default implementation of the IdPServiceInterface.
 type idpService struct {
-	idpStore      idpStoreInterface
-	transactioner transaction.Transactioner
-	logger        *log.Logger
-	uuidGenerator func() (string, error)
+	idpStore          idpStoreInterface
+	entityTypeService entitytype.EntityTypeServiceInterface
+	transactioner     transaction.Transactioner
+	logger            *log.Logger
+	uuidGenerator     func() (string, error)
 }
 
 // newIDPService creates a new instance of IdPService.
-func newIDPService(idpStore idpStoreInterface, transactioner transaction.Transactioner) IDPServiceInterface {
+func newIDPService(idpStore idpStoreInterface, entityTypeService entitytype.EntityTypeServiceInterface,
+	transactioner transaction.Transactioner) IDPServiceInterface {
 	return &idpService{
-		idpStore:      idpStore,
-		transactioner: transactioner,
-		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
-		uuidGenerator: utils.GenerateUUIDv7,
+		idpStore:          idpStore,
+		entityTypeService: entityTypeService,
+		transactioner:     transactioner,
+		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
+		uuidGenerator:     utils.GenerateUUIDv7,
 	}
+}
+
+// validateAttributeConfiguration validates the IDP's attribute configuration: a required default user type, and
+// for each user type's attributes a valid claim-mapping shape with every local (target) claim a
+// non-credential attribute defined in that user type's schema. No-op when no profile is configured.
+func (is *idpService) validateAttributeConfiguration(ctx context.Context, idp *IDPDTO) *serviceerror.ServiceError {
+	profile := idp.AttributeConfiguration
+	if profile == nil {
+		return nil
+	}
+	if profile.UserTypeResolution == nil || strings.TrimSpace(profile.UserTypeResolution.Default) == "" {
+		return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+			Key:          "error.idpservice.attribute_configuration_user_type_required_description",
+			DefaultValue: "attribute configuration requires a user type",
+		})
+	}
+
+	seenUserTypes := make(map[string]bool, len(profile.UserTypeAttributeMappings))
+	for i := range profile.UserTypeAttributeMappings {
+		entry := profile.UserTypeAttributeMappings[i]
+		if strings.TrimSpace(entry.UserType) == "" {
+			return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+				Key:          "error.idpservice.attribute_configuration_entry_user_type_required_description",
+				DefaultValue: "each user type attributes entry requires a user type",
+			})
+		}
+		if seenUserTypes[entry.UserType] {
+			return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+				Key: "error.idpservice.attribute_configuration_duplicate_user_type_description",
+				DefaultValue: fmt.Sprintf(
+					"user type '%s' is configured more than once", entry.UserType),
+			})
+		}
+		seenUserTypes[entry.UserType] = true
+
+		if len(entry.Attributes) > 0 {
+			if svcErr := validateAttributeMappingShape(entry.Attributes); svcErr != nil {
+				return svcErr
+			}
+		}
+
+		// Local targets must be non-credential attributes defined in the user type's schema.
+		attributes, svcErr := is.entityTypeService.GetAttributes(
+			ctx, entitytype.TypeCategoryUser, entry.UserType, false, true, false)
+		if svcErr != nil {
+			return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+				Key: "error.idpservice.attribute_configuration_user_type_invalid_description",
+				DefaultValue: fmt.Sprintf("invalid user type '%s' for attribute configuration: %s",
+					entry.UserType, svcErr.ErrorDescription.DefaultValue),
+			})
+		}
+		validTargets := make(map[string]bool, len(attributes))
+		for _, attr := range attributes {
+			validTargets[attr.Attribute] = true
+		}
+		for _, m := range entry.Attributes {
+			if !validTargets[m.LocalAttribute] {
+				return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+					Key: "error.idpservice.attribute_configuration_target_not_in_schema_description",
+					DefaultValue: fmt.Sprintf("local claim '%s' is not an attribute of user type '%s'",
+						m.LocalAttribute, entry.UserType),
+				})
+			}
+		}
+	}
+	return nil
 }
 
 // CreateIdentityProvider creates a new Identity Provider.
@@ -70,6 +142,9 @@ func (is *idpService) CreateIdentityProvider(
 	}
 
 	if svcErr := validateIDP(ctx, idp, logger); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := is.validateAttributeConfiguration(ctx, idp); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -208,6 +283,9 @@ func (is *idpService) UpdateIdentityProvider(ctx context.Context, idpID string, 
 		return nil, &ErrorInvalidIDPID
 	}
 	if svcErr := validateIDP(ctx, idp, logger); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := is.validateAttributeConfiguration(ctx, idp); svcErr != nil {
 		return nil, svcErr
 	}
 

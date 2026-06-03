@@ -176,4 +176,18 @@ var (
 			DefaultValue: "The total number of records exceeds the maximum limit in composite mode",
 		},
 	}
+	// ErrorInvalidAttributeConfiguration is the error returned when the identity provider's
+	// attribute configuration is invalid.
+	ErrorInvalidAttributeConfiguration = serviceerror.ServiceError{
+		Type: serviceerror.ClientErrorType,
+		Code: "IDP-1012",
+		Error: core.I18nMessage{
+			Key:          "error.idpservice.invalid_attribute_configuration",
+			DefaultValue: "Invalid attribute configuration",
+		},
+		ErrorDescription: core.I18nMessage{
+			Key:          "error.idpservice.invalid_attribute_configuration_description",
+			DefaultValue: "The identity provider's attribute configuration is invalid",
+		},
+	}
 )

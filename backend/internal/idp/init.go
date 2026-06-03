@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -34,6 +35,7 @@ import (
 // Initialize initializes the IDP service and registers its routes.
 func Initialize(
 	cacheManager cache.CacheManagerInterface, mux *http.ServeMux,
+	entityTypeService entitytype.EntityTypeServiceInterface,
 ) (IDPServiceInterface, declarativeresource.ResourceExporter, error) {
 	// Create store and transactioner based on store mode
 	idpStore, transactioner, err := initializeStore(cacheManager)
@@ -41,7 +43,7 @@ func Initialize(
 		return nil, nil, err
 	}
 
-	idpService := newIDPService(idpStore, transactioner)
+	idpService := newIDPService(idpStore, entityTypeService, transactioner)
 
 	idpHandler := newIDPHandler(idpService)
 	registerRoutes(mux, idpHandler)

@@ -86,6 +86,52 @@ curl -kL -X POST https://localhost:8090/identity-providers \
 | `prompt` | The `prompt` parameter to send in authorization requests (for example, `login`, `consent`). |
 | `token_exchange_enabled` | Set to `true` to enable token exchange with this provider. Requires `issuer` and `jwks_endpoint`. |
 
+## Attribute Configuration
+
+External providers emit attributes under their own names, which may differ from the attribute names <ProductName /> uses locally (for example, a provider may emit `given_name` where your user type defines `firstName`). Configure the IdP's `attributeConfiguration` to map external attributes to local user attributes.
+
+```json
+{
+  "name": "My OIDC Provider",
+  "type": "OIDC",
+  "properties": [ /* ... */ ],
+  "attributeConfiguration": {
+    "userTypeResolution": {
+      "default": "person"
+    },
+    "userTypeAttributeMappings": [
+      {
+        "userType": "person",
+        "attributes": [
+          { "externalAttribute": "given_name", "localAttribute": "firstName" },
+          { "externalAttribute": "email.work", "localAttribute": "email" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `userTypeResolution` | **Required.** Resolves the local user type for an incoming identity. |
+| `userTypeAttributeMappings` | An array where each entry holds the attribute mappings for one user type. |
+
+Each entry has a `userType` (the user type whose schema defines the valid local targets) and an `attributes` array. Each item in `attributes` has the following fields:
+
+| Field | Description |
+|-------|-------------|
+| `externalAttribute` | **Required.** The external attribute name. |
+| `localAttribute` | **Required.** The target local attribute. Must be an attribute defined in `userType` schema. |
+
+Behavior:
+
+- The `externalAttribute` (source) supports attributes in complex forms. We can use **dot notation** to read a value nested inside another attribute — for example, `email.work` reads the `work` field from an `email` object.
+- The `localAttribute` (target) must be an attribute defined in the profile's `userType` schema; this is validated when the IdP is created or updated.
+- An attribute whose name is mapped is renamed to its local attribute; attributes without a mapping pass through unchanged.
+
+The mapping applies both when a user signs in through this IdP in an authentication flow and when a token from this IdP is exchanged (see [Trusted Issuer](../../trusted-issuer#attribute-configuration)). The resulting local attributes flow into the issued access and ID tokens, subject to the application's `userAttributes` configuration.
+
 Example with token exchange enabled:
 
 ```bash

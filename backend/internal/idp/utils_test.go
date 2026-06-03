@@ -727,3 +727,126 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_SecretPropertyValueUnreada
 	s.NotNil(err)
 	s.Equal(ErrorInvalidIDPProperty.Code, err.Code)
 }
+
+func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_NilMappings_NoOp() {
+	attrs := map[string]interface{}{"email": "user@example.com"}
+	result := ApplyAttributeMappings(attrs, nil)
+	s.Equal(attrs, result)
+}
+
+func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_EmptyMappings_NoOp() {
+	attrs := map[string]interface{}{"email": "user@example.com"}
+	result := ApplyAttributeMappings(attrs, []AttributeMapping{})
+	s.Equal(attrs, result)
+}
+
+func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_RenamesMappedClaim() {
+	attrs := map[string]interface{}{
+		"http://schemas.example.com/emailaddress": "user@example.com",
+	}
+	result := ApplyAttributeMappings(attrs, []AttributeMapping{
+		{ExternalAttribute: "http://schemas.example.com/emailaddress", LocalAttribute: "email"},
+	})
+	s.Equal("user@example.com", result["email"])
+	_, present := result["http://schemas.example.com/emailaddress"]
+	s.False(present)
+}
+
+func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_OneSourceToMultipleTargets() {
+	attrs := map[string]interface{}{"email": "user@example.com"}
+	result := ApplyAttributeMappings(attrs, []AttributeMapping{
+		{ExternalAttribute: "email", LocalAttribute: "email"},
+		{ExternalAttribute: "email", LocalAttribute: "contactEmail"},
+	})
+	s.Equal("user@example.com", result["email"])
+	s.Equal("user@example.com", result["contactEmail"])
+}
+
+func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_UnmappedPassesThrough() {
+	attrs := map[string]interface{}{
+		"given_name": "Jane",
+		"department": "engineering",
+	}
+	result := ApplyAttributeMappings(
+		attrs, []AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}})
+	s.Equal("Jane", result["firstName"])
+	s.Equal("engineering", result["department"])
+	_, present := result["given_name"]
+	s.False(present)
+}
+
+func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_MappedValueOverridesCollision() {
+	attrs := map[string]interface{}{
+		"given_name": "Jane",
+		"firstName":  "stale",
+	}
+	result := ApplyAttributeMappings(
+		attrs, []AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}})
+	s.Equal("Jane", result["firstName"])
+}
+
+func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_MissingExternalClaimIgnored() {
+	attrs := map[string]interface{}{"email": "user@example.com"}
+	result := ApplyAttributeMappings(
+		attrs, []AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}})
+	s.Equal("user@example.com", result["email"])
+	_, present := result["firstName"]
+	s.False(present)
+}
+
+func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_NestedSourcePath() {
+	attrs := map[string]interface{}{
+		"address": map[string]interface{}{
+			"email": "user@example.com",
+		},
+		"keep": "value",
+	}
+	result := ApplyAttributeMappings(
+		attrs, []AttributeMapping{{ExternalAttribute: "address.email", LocalAttribute: "email"}})
+	s.Equal("user@example.com", result["email"])
+	// The containing nested object is read non-destructively and passes through.
+	s.Equal(attrs["address"], result["address"])
+	s.Equal("value", result["keep"])
+}
+
+func (s *IDPUtilsTestSuite) TestApplyAttributeMappings_DottedKeyMatchedLiterallyBeforePath() {
+	// A URI-style claim name containing dots must be matched literally, not split into a path.
+	attrs := map[string]interface{}{
+		"http://schemas.example.com/emailaddress": "user@example.com",
+	}
+	result := ApplyAttributeMappings(attrs, []AttributeMapping{
+		{ExternalAttribute: "http://schemas.example.com/emailaddress", LocalAttribute: "email"},
+	})
+	s.Equal("user@example.com", result["email"])
+}
+
+func (s *IDPUtilsTestSuite) TestGetAttributeMappings_NilIDP() {
+	s.Nil(GetAttributeMappings(nil))
+}
+
+func (s *IDPUtilsTestSuite) TestGetAttributeMappings_NilAttributeConfiguration() {
+	s.Nil(GetAttributeMappings(&IDPDTO{}))
+}
+
+func (s *IDPUtilsTestSuite) TestGetAttributeMappings_ReturnsMappings() {
+	mappings := []AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}}
+	idpDTO := &IDPDTO{AttributeConfiguration: &AttributeConfiguration{
+		UserTypeResolution:        &UserTypeResolution{Default: "person"},
+		UserTypeAttributeMappings: []UserTypeAttributeMapping{{UserType: "person", Attributes: mappings}},
+	}}
+	s.Equal(mappings, GetAttributeMappings(idpDTO))
+}
+
+func (s *IDPUtilsTestSuite) TestGetMappedUserType_NilIDP() {
+	s.Equal("", GetMappedUserType(nil))
+}
+
+func (s *IDPUtilsTestSuite) TestGetMappedUserType_NilAttributeConfiguration() {
+	s.Equal("", GetMappedUserType(&IDPDTO{}))
+}
+
+func (s *IDPUtilsTestSuite) TestGetMappedUserType_ReturnsUserType() {
+	s.Equal("person", GetMappedUserType(&IDPDTO{AttributeConfiguration: &AttributeConfiguration{
+		UserTypeResolution: &UserTypeResolution{Default: "person"},
+	}}))
+}

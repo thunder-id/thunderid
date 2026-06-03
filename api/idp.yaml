@@ -445,6 +445,8 @@ components:
           items:
             $ref: '#/components/schemas/IDPProperty'
           description: Properties of the identity provider
+        attributeConfiguration:
+          $ref: '#/components/schemas/AttributeConfiguration'
 
     IDPResponse:
       type: object
@@ -480,6 +482,8 @@ components:
           items:
             $ref: '#/components/schemas/IDPProperty'
           description: Properties of the identity provider
+        attributeConfiguration:
+          $ref: '#/components/schemas/AttributeConfiguration'
 
     BasicIDPResponse:
       type: object
@@ -520,6 +524,61 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/BasicIDPResponse'
+
+    AttributeConfiguration:
+      type: object
+      description: External-to-local attribute mapping configuration for the identity provider.
+      properties:
+        userTypeResolution:
+          $ref: '#/components/schemas/UserTypeResolution'
+        userTypeAttributeMappings:
+          type: array
+          description: Per-user-type attribute mapping profiles.
+          items:
+            $ref: '#/components/schemas/UserTypeAttributeMapping'
+
+    UserTypeResolution:
+      type: object
+      description: Resolves which local user type an incoming federated identity maps to.
+      properties:
+        default:
+          type: string
+          description: Default local user type for federated just-in-time provisioning.
+          example: "person"
+
+    UserTypeAttributeMapping:
+      type: object
+      required:
+        - userType
+      description: Attribute mapping profile for a single local user type.
+      properties:
+        userType:
+          type: string
+          description: Local user type this profile applies to.
+          example: "person"
+        attributes:
+          type: array
+          description: External-to-local attribute mappings for this user type.
+          items:
+            $ref: '#/components/schemas/AttributeMapping'
+
+    AttributeMapping:
+      type: object
+      required:
+        - externalAttribute
+        - localAttribute
+      description: Maps a single external IDP attribute to a local user attribute.
+      properties:
+        externalAttribute:
+          type: string
+          description: >
+            External claim name emitted by the IDP. May be a dot-notation path into a nested
+            claim (e.g. "address.email"). A literal name containing dots is matched first.
+          example: "given_name"
+        localAttribute:
+          type: string
+          description: Target local attribute name. Must exist in the user type's schema.
+          example: "firstName"
 
     IDPProperty:
       type: object

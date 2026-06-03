@@ -117,6 +117,28 @@ func (suite *OAuthUtilsTestSuite) TestParseIDPConfigWithAdditionalParams() {
 	suite.Equal("custom_value", config.AdditionalParams["custom_param"])
 }
 
+func (suite *OAuthUtilsTestSuite) TestParseIDPConfigExcludesInternalPropsFromAdditionalParams() {
+	clientIDProp, _ := cmodels.NewProperty("client_id", "test_client", false)
+	issuerProp, _ := cmodels.NewProperty(idp.PropIssuer, "https://idp.example.com/oauth2/token", false)
+	teProp, _ := cmodels.NewProperty(idp.PropTokenExchangeEnabled, "true", false)
+	customProp, _ := cmodels.NewProperty("custom_param", "custom_value", false)
+
+	idpDTO := &idp.IDPDTO{
+		Properties: []cmodels.Property{
+			*clientIDProp, *issuerProp, *teProp, *customProp,
+		},
+	}
+
+	config, err := parseIDPConfig(idpDTO)
+	suite.Nil(err)
+	suite.NotNil(config)
+	// Internal/server-side properties must not leak into the external authorize request.
+	suite.NotContains(config.AdditionalParams, idp.PropIssuer)
+	suite.NotContains(config.AdditionalParams, idp.PropTokenExchangeEnabled)
+	// Genuinely custom params still pass through.
+	suite.Equal("custom_value", config.AdditionalParams["custom_param"])
+}
+
 func (suite *OAuthUtilsTestSuite) TestParseIDPConfigWithEmptyValues() {
 	clientIDProp, _ := cmodels.NewProperty("client_id", "test_client", false)
 	emptyProp, _ := cmodels.NewProperty("custom_param", "", false)

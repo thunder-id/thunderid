@@ -32,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 )
 
 type mockTransactioner struct{}
@@ -43,6 +44,7 @@ func (m *mockTransactioner) Transact(ctx context.Context, operation func(txCtx c
 type IDPServiceTestSuite struct {
 	suite.Suite
 	mockStore  *idpStoreInterfaceMock
+	mockET     *entitytypemock.EntityTypeServiceInterfaceMock
 	idpService *idpService
 }
 
@@ -65,11 +67,13 @@ func (s *IDPServiceTestSuite) SetupTest() {
 	_ = config.InitializeServerRuntime("/tmp/test", testConfig)
 
 	s.mockStore = newIdpStoreInterfaceMock(s.T())
+	s.mockET = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
 	s.idpService = &idpService{
-		idpStore:      s.mockStore,
-		transactioner: &mockTransactioner{},
-		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
-		uuidGenerator: utils.GenerateUUIDv7,
+		idpStore:          s.mockStore,
+		transactioner:     &mockTransactioner{},
+		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
+		uuidGenerator:     utils.GenerateUUIDv7,
+		entityTypeService: s.mockET,
 	}
 }
 
@@ -881,7 +885,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_FailsForDeclarativeIDP(
 	fileStore.On("GetIdentityProviderByName", context.Background(), "Updated Name").
 		Return((*IDPDTO)(nil), ErrIDPNotFound)
 
-	service := newIDPService(compositeStore, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, &mockTransactioner{})
 
 	updatedIDP := &IDPDTO{
 		Name:        "Updated Name",
@@ -932,7 +936,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_SucceedsForMutableIDP()
 		return dto.ID == idpID && dto.Name == "Updated Name"
 	})).Return(nil)
 
-	service := newIDPService(compositeStore, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, &mockTransactioner{})
 
 	updatedIDP := &IDPDTO{
 		Name:        "Updated Name",
@@ -974,7 +978,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_FailsForDeclarativeIDP(
 	dbStore.On("GetIdentityProvider", context.Background(), idpID).Return((*IDPDTO)(nil), ErrIDPNotFound)
 	fileStore.On("GetIdentityProvider", context.Background(), idpID).Return(existingIDP, nil)
 
-	service := newIDPService(compositeStore, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, &mockTransactioner{})
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
 
@@ -1011,7 +1015,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_SucceedsForMutableIDP()
 	dbStore.On("GetIdentityProvider", context.Background(), idpID).Return(existingIDP, nil)
 	dbStore.On("DeleteIdentityProvider", context.Background(), idpID).Return(nil)
 
-	service := newIDPService(compositeStore, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, &mockTransactioner{})
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
 

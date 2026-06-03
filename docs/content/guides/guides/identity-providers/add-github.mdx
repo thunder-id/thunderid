@@ -83,6 +83,8 @@ You can include the following optional properties in the request `properties` ar
 | `scopes` | Space-separated list of OAuth scopes to request. Include `user:email` to ensure the user's email address is accessible. |
 | `prompt` | Controls GitHub's consent screen behavior. |
 
+To map GitHub's profile fields (e.g. `login`, `avatar_url`) to local user attributes, set the top-level `attributeConfiguration` field — see [Attribute Configuration](../add-oidc-provider#attribute-configuration).
+
 Example with optional properties:
 
 ```bash

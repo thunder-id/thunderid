@@ -56,7 +56,7 @@ func TestOIDCAuthExecutorSuite(t *testing.T) {
 	suite.Run(t, new(OIDCAuthExecutorTestSuite))
 }
 
-func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
+func (suite *OIDCAuthExecutorTestSuite) SetupTest() { //nolint:dupl // mirrors OAuth suite setup
 	suite.mockOIDCService = oidcmock.NewOIDCAuthnCoreServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
@@ -71,6 +71,11 @@ func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
 	suite.executor = newOIDCAuthExecutor(ExecutorNameOIDCAuth, defaultInputs, []common.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockEntityTypeService, suite.mockOIDCService,
 		suite.mockAuthnProvider, idp.IDPTypeOIDC)
+
+	// Default IDP (no claim mappings) for the standard "idp-123" used across tests. Tests that need
+	// claim mappings use a distinct IDP id with their own stub.
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").
+		Return(&idp.IDPDTO{ID: "idp-123", Name: "TestOIDCProvider"}, nil).Maybe()
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestNewOIDCAuthExecutor() {
@@ -90,9 +95,6 @@ func (suite *OIDCAuthExecutorTestSuite) TestExecute_CodeNotProvided_BuildsAuthor
 
 	suite.mockOIDCService.On("BuildAuthorizeURL", mock.Anything, "idp-123").
 		Return("https://oidc.provider.com/authorize?client_id=abc&scope=openid", nil)
-
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").
-		Return(&idp.IDPDTO{ID: "idp-123", Name: "TestOIDCProvider"}, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -255,6 +257,54 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailMismatc
 	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
 	assert.Equal(suite.T(), ErrInvalidFederatedUser.Error.DefaultValue, execResp.Error.Error.DefaultValue)
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_MappedEmailParticipatesInConsistencyCheck() {
+	// The IDP emits email under a non-standard external claim name ("emailAddress"). After mapping
+	// it to the local "email", the federated-identifier consistency check compares it against the
+	// invited email and detects the mismatch — which it could not do before mapping.
+	ctx := &core.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    common.FlowTypeRegistration,
+		UserInputs: map[string]string{
+			"code":  "auth_code_123",
+			"email": "invited@example.com",
+		},
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-mapped",
+		},
+	}
+
+	execResp := &common.ExecutorResponse{
+		AdditionalData: make(map[string]string),
+		RuntimeData:    make(map[string]string),
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
+			ExternalSub: "user-sub-123",
+			ExternalClaims: map[string]interface{}{
+				"sub":          "user-sub-123",
+				"emailAddress": "authenticated@example.com",
+			},
+			IsExistingUser: false,
+		}, (*serviceerror.ServiceError)(nil))
+
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-mapped").
+		Return(&idp.IDPDTO{ID: "idp-mapped", AttributeConfiguration: &idp.AttributeConfiguration{
+			UserTypeResolution: &idp.UserTypeResolution{Default: "person"},
+			UserTypeAttributeMappings: []idp.UserTypeAttributeMapping{{UserType: "person",
+				Attributes: []idp.AttributeMapping{{
+					ExternalAttribute: "emailAddress", LocalAttribute: "email"}}}}}}, nil)
+
+	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
+	assert.Equal(suite.T(), ErrInvalidFederatedUser.Error.DefaultValue, execResp.Error.Error.DefaultValue)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
+	suite.mockIDPService.AssertExpectations(suite.T())
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_SubMismatch_Fails() { //nolint:dupl
@@ -539,6 +589,63 @@ func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_EmailInIDTok
 	assert.Equal(suite.T(), "user@test.com", execResp.RuntimeData["email"])
 	assert.Equal(suite.T(), "user@test.com", execResp.AuthenticatedUser.Attributes["email"])
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
+}
+
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_AppliesAttributeMappings() {
+	ctx := &core.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    common.FlowTypeAuthentication,
+		UserInputs: map[string]string{
+			"code": "auth_code_123",
+		},
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-mapped",
+		},
+	}
+
+	execResp := &common.ExecutorResponse{
+		AdditionalData: make(map[string]string),
+		RuntimeData:    make(map[string]string),
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
+			ExternalSub: "user-sub-789",
+			ExternalClaims: map[string]interface{}{
+				"sub": "user-sub-789", "given_name": "Jane", "emailAddress": "jane@test.com",
+				"iss": "https://provider.com", "aud": "client-id",
+			},
+			IsExistingUser: true,
+			UserID:         "user-789",
+			OUID:           "ou-789",
+			UserType:       "INTERNAL",
+		}, (*serviceerror.ServiceError)(nil))
+
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-mapped").
+		Return(&idp.IDPDTO{ID: "idp-mapped", AttributeConfiguration: &idp.AttributeConfiguration{
+			UserTypeResolution: &idp.UserTypeResolution{Default: "person"},
+			UserTypeAttributeMappings: []idp.UserTypeAttributeMapping{{UserType: "person",
+				Attributes: []idp.AttributeMapping{
+					{ExternalAttribute: "given_name", LocalAttribute: "firstName"},
+					{ExternalAttribute: "emailAddress", LocalAttribute: "email"},
+				}}}}}, nil)
+
+	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
+	assert.Equal(suite.T(), "Jane", execResp.AuthenticatedUser.Attributes["firstName"])
+	assert.Equal(suite.T(), "jane@test.com", execResp.AuthenticatedUser.Attributes["email"])
+	// Email mapped to the local name is also surfaced in runtime data.
+	assert.Equal(suite.T(), "jane@test.com", execResp.RuntimeData["email"])
+	// Original external claim names are gone.
+	_, hasGivenName := execResp.AuthenticatedUser.Attributes["given_name"]
+	assert.False(suite.T(), hasGivenName)
+	_, hasEmailAddress := execResp.AuthenticatedUser.Attributes["emailAddress"]
+	assert.False(suite.T(), hasEmailAddress)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
+	suite.mockIDPService.AssertExpectations(suite.T())
 }
 
 func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_NoEmailInIDToken() {

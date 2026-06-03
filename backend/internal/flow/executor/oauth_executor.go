@@ -255,6 +255,11 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return errors.New("OAuth authentication failed")
 	}
 
+	// Rename external IDP claims to their configured local names before they are used for
+	// identifier consistency checks and propagated to the authenticated user attributes.
+	basicResult.ExternalClaims = applyIDPAttributeMappings(
+		ctx.Context, o.idpService, idpID, basicResult.ExternalClaims, logger)
+
 	if !validateFederatedIdentifierConsistency(ctx, basicResult) {
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
@@ -511,9 +516,16 @@ func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext
 		return nil
 	}
 
-	// Filter allowed user types to only those with self-registration enabled
+	// If the IDP has a configured user type, use it as a filter so that provisioning only
+	// considers that specific type — but self-registration and app-allowlist checks still apply.
+	idpUserType := o.mappedUserTypeForIDP(ctx)
+
+	// Filter allowed user types to only those with self-registration enabled.
 	selfRegEnabledSchemas := make([]entitytype.EntityType, 0)
 	for _, userType := range ctx.Application.AllowedUserTypes {
+		if idpUserType != "" && userType != idpUserType {
+			continue
+		}
 		entityType, svcErr := o.entityTypeService.GetEntityTypeByName(ctx.Context,
 			entitytype.TypeCategoryUser, userType)
 		if svcErr != nil {
@@ -522,11 +534,8 @@ func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext
 				execResp.Error = svcErr
 				return nil
 			}
-
-			logger.ErrorWithContext(ctx.Context, "Error while retrieving user type",
-				log.String("errorCode", svcErr.Code),
-				log.String("description", svcErr.ErrorDescription.DefaultValue))
-			return errors.New("error while retrieving user type")
+			return fmt.Errorf("error while retrieving user type %s: %s",
+				userType, svcErr.ErrorDescription.DefaultValue)
 		}
 		if entityType.AllowSelfRegistration {
 			selfRegEnabledSchemas = append(selfRegEnabledSchemas, *entityType)
@@ -558,8 +567,22 @@ func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext
 	return nil
 }
 
+// mappedUserTypeForIDP returns the user type configured in the IDP's attribute mapping, or an
+// empty string if none is configured or the IDP cannot be loaded (in which case the caller falls
+// back to app-level user type resolution).
+func (o *oAuthExecutor) mappedUserTypeForIDP(ctx *core.NodeContext) string {
+	idpID, err := o.GetIdpID(ctx)
+	if err != nil {
+		return ""
+	}
+	idpDTO, svcErr := o.idpService.GetIdentityProvider(ctx.Context, idpID)
+	if svcErr != nil || idpDTO == nil {
+		return ""
+	}
+	return idp.GetMappedUserType(idpDTO)
+}
+
 // getContextUserAttributes extracts and returns user attributes from the user info map.
-// TODO: Need to convert attributes as per the IDP to local attribute mapping when the support is implemented.
 func (o *oAuthExecutor) getContextUserAttributes(execResp *common.ExecutorResponse,
 	userInfo map[string]string) map[string]interface{} {
 	attributes := make(map[string]interface{})
