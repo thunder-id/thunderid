@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import {BaseSignIn, ThemeProvider} from '@thunderid/react';
 import {type Theme} from '@thunderid/design';
+import {BaseSignIn, ThemeProvider} from '@thunderid/react';
 import type {RecursivePartial} from '@thunderid/types';
 import {
   Box,

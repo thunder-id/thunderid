@@ -72,11 +72,13 @@ export default function EditGeneralSettings({
           onCopyToClipboard={onCopyToClipboard}
         />
         <OrganizationUnitSection agent={agent} copiedField={copiedField} onCopyToClipboard={onCopyToClipboard} />
-        <DangerZoneSection
-          showRegenerateSecret={isConfidentialClient}
-          onRegenerateClick={() => setRegenerateDialogOpen(true)}
-          onDeleteClick={() => setDeleteDialogOpen(true)}
-        />
+        {!agent.isReadOnly && (
+          <DangerZoneSection
+            showRegenerateSecret={isConfidentialClient}
+            onRegenerateClick={() => setRegenerateDialogOpen(true)}
+            onDeleteClick={() => setDeleteDialogOpen(true)}
+          />
+        )}
       </Stack>
 
       <RegenerateSecretDialog

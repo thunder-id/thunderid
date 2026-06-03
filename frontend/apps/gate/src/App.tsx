@@ -16,27 +16,35 @@
  * under the License.
  */
 
-import type {JSX} from 'react';
-import {BrowserRouter, Route, Routes} from 'react-router';
-import appRoutes, {type AppRoute} from './config/appRoutes';
+import {CallbackRoute} from '@thunderid/react-router';
+import {lazy, Suspense, type JSX} from 'react';
+import {BrowserRouter, Navigate, Route, Routes} from 'react-router';
+import {PageLoader} from '@thunderid/components';
+import ROUTES from './constants/routes';
+import DefaultLayout from './layouts/DefaultLayout';
+
+const AcceptInvitePage = lazy(() => import('./pages/AcceptInvitePage'));
+const ErrorPage = lazy(() => import('./pages/ErrorPage'));
+const RecoveryPage = lazy(() => import('./pages/RecoveryPage'));
+const SignInPage = lazy(() => import('./pages/SignInPage'));
+const SignUpPage = lazy(() => import('./pages/SignUpPage'));
 
 export default function App(): JSX.Element {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
-      <Routes>
-        {appRoutes.map((route: AppRoute) => (
-          <Route key={route.path} path={route.path} element={route.element}>
-            {route.children?.map((child: AppRoute, index: number) => (
-              <Route
-                key={child.path ?? `index-${index}`}
-                path={child.path}
-                index={child.index}
-                element={child.element}
-              />
-            ))}
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          <Route path={ROUTES.ROOT} element={<DefaultLayout />}>
+            <Route path={ROUTES.ROOT} element={<Navigate to={ROUTES.AUTH.SIGN_IN} replace />} />
+            <Route path={ROUTES.AUTH.SIGN_IN} element={<SignInPage />} />
+            <Route path={ROUTES.AUTH.SIGN_UP} element={<SignUpPage />} />
+            <Route path={ROUTES.AUTH.INVITE} element={<AcceptInvitePage />} />
+            <Route path={ROUTES.AUTH.RECOVERY} element={<RecoveryPage />} />
+            <Route path={ROUTES.AUTH.CALLBACK} element={<CallbackRoute />} />
+            <Route path={ROUTES.AUTH.ERROR} element={<ErrorPage />} />
           </Route>
-        ))}
-      </Routes>
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }

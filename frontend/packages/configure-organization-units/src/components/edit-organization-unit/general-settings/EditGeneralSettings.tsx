@@ -35,7 +35,7 @@ interface EditGeneralSettingsProps {
   /**
    * Callback function to open the delete confirmation dialog
    */
-  onDeleteClick: () => void;
+  onDeleteClick?: () => void;
 }
 
 /**
@@ -49,7 +49,10 @@ interface EditGeneralSettingsProps {
  * @param props - Component props
  * @returns General settings sections wrapped in a Stack
  */
-export default function EditGeneralSettings({organizationUnit, onDeleteClick}: EditGeneralSettingsProps): JSX.Element {
+export default function EditGeneralSettings({
+  organizationUnit,
+  onDeleteClick = undefined,
+}: EditGeneralSettingsProps): JSX.Element {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -81,7 +84,7 @@ export default function EditGeneralSettings({organizationUnit, onDeleteClick}: E
         onCopyToClipboard={handleCopyToClipboard}
       />
       <ParentSettingsSection organizationUnit={organizationUnit} />
-      <DangerZoneSection onDeleteClick={onDeleteClick} />
+      {onDeleteClick && <DangerZoneSection onDeleteClick={onDeleteClick} />}
     </Stack>
   );
 }

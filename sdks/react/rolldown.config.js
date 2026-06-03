@@ -66,16 +66,21 @@ const commonOptions = {
 
 const esmBundle = await rolldown(commonOptions);
 await esmBundle.write({
-  file: 'dist/index.js',
+  dir: 'dist',
   format: 'esm',
+  preserveModules: true,
+  preserveModulesRoot: 'src',
   sourcemap: true,
 });
 await esmBundle.close();
 
 const cjsBundle = await rolldown(commonOptions);
 await cjsBundle.write({
-  file: 'dist/cjs/index.js',
+  dir: 'dist/cjs',
+  entryFileNames: '[name].cjs',
   format: 'cjs',
+  preserveModules: true,
+  preserveModulesRoot: 'src',
   sourcemap: true,
 });
 await cjsBundle.close();

@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
+import {useThunderID} from '@thunderid/react';
 import {renderHook, waitFor, act} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import FlowQueryKeys from '../../constants/flow-query-keys';

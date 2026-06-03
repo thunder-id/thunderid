@@ -26,7 +26,7 @@ This guide explains how to instrument your code with observability events and pr
 Your component should accept `ObservabilityServiceInterface` in its constructor or initialization method.
 
 ```go
-import "github.com/thunder-id/thunderid/internal/observability"
+import "github.com/thunder-id/thunderid/internal/system/observability"
 
 type MyComponent struct {
     obsSvc observability.ObservabilityServiceInterface
@@ -44,7 +44,7 @@ func NewMyComponent(obsSvc observability.ObservabilityServiceInterface) *MyCompo
 Use the injected service to publish events. Always check if the service is enabled (though the service handles no-ops, checking avoids unnecessary object creation).
 
 ```go
-import "github.com/thunder-id/thunderid/internal/observability/event"
+import "github.com/thunder-id/thunderid/internal/system/observability/event"
 
 func (c *MyComponent) DoSomething(ctx context.Context) {
     // 1. Check if enabled
@@ -54,7 +54,7 @@ func (c *MyComponent) DoSomething(ctx context.Context) {
 
     // 2. Create event
     traceID := uuid.NewString() // Or get from context
-    evt := event.NewEvent(traceID, event.Type.MyOperation, "MyComponent").
+    evt := event.NewEvent(traceID, event.EventTypeTokenIssued, event.ComponentAuthHandler).
         WithStatus(event.StatusSuccess).
         WithData(event.DataKey.UserID, "user-123")
 
@@ -63,30 +63,108 @@ func (c *MyComponent) DoSomething(ctx context.Context) {
 }
 ```
 
+Use the predefined component constants when setting the component name:
+
+| Constant | Value | Usage |
+|----------|-------|-------|
+| `event.ComponentFlowEngine` | `FlowEngine` | Events from the flow execution engine |
+| `event.ComponentAuthHandler` | `AuthHandler` | Events from authentication handlers |
+
 ## Event Anatomy
 
 ### Required Fields
 - **TraceID**: UUID or hex string for trace correlation.
-- **EventType**: Predefined constant from `event.Type` (e.g., `event.Type.FlowStarted`).
-- **Component**: Your component name (e.g., `"AuthHandler"`, `"FlowEngine"`).
+- **EventType**: Predefined constant from the `event` package (e.g., `event.EventTypeFlowStarted`).
+- **Component**: Your component name. Use a predefined constant from the `event` package where one exists.
 
 ### Optional Fields
 - **Status**: `event.StatusSuccess`, `event.StatusFailure`, or `event.StatusInProgress`.
 - **Data**: Key-value pairs using `event.DataKey` constants.
 
+### Defined Event Types
+
+Always use the predefined constants. Do not pass raw strings as event types.
+
+**Authentication events** (category: `observability.authentication`):
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `event.EventTypeTokenIssuanceStarted` | `TOKEN_ISSUANCE_STARTED` | Token issuance begins |
+| `event.EventTypeTokenIssued` | `TOKEN_ISSUED` | Token successfully issued |
+| `event.EventTypeTokenIssuanceFailed` | `TOKEN_ISSUANCE_FAILED` | Token issuance failed |
+
+**Flow execution events** (category: `observability.flows`):
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `event.EventTypeFlowStarted` | `FLOW_STARTED` | Flow execution begins |
+| `event.EventTypeFlowNodeExecutionStarted` | `FLOW_NODE_EXECUTION_STARTED` | A flow node begins executing |
+| `event.EventTypeFlowNodeExecutionCompleted` | `FLOW_NODE_EXECUTION_COMPLETED` | A flow node completes successfully |
+| `event.EventTypeFlowNodeExecutionFailed` | `FLOW_NODE_EXECUTION_FAILED` | A flow node fails |
+| `event.EventTypeFlowUserInputRequired` | `FLOW_USER_INPUT_REQUIRED` | Flow pauses waiting for user input |
+| `event.EventTypeFlowCompleted` | `FLOW_COMPLETED` | Flow execution succeeds |
+| `event.EventTypeFlowFailed` | `FLOW_FAILED` | Flow execution fails |
+
+### Event Categories
+
+Categories control event routing. Each event type maps to exactly one category. Subscribers declare which categories they are interested in and receive only matching events.
+
+| Category | Description |
+|----------|-------------|
+| `observability.authentication` | Token issuance events |
+| `observability.authorization` | Authorization-related events |
+| `observability.flows` | Flow execution events |
+| `observability.all` | Special category that matches all events regardless of type |
+
 ### Common Data Keys
-Always use predefined keys from `event.DataKey` for consistency:
 
-| Key | Usage |
-|-----|-------|
-| `UserID` | Authenticated user identifier |
-| `ClientID` | OAuth client identifier |
-| `ExecutionID` | Flow execution identifier |
-| `Message` | Human-readable message |
-| `Error` | Error message for failures |
-| `LatencyUs` | Operation latency in microseconds |
+Always use predefined keys from `event.DataKey` for consistency. See <RepoLink path="/blob/main/backend/internal/system/observability/event/datakeys.go">`event/datakeys.go`</RepoLink> for the complete list.
 
-See <RepoLink path="/blob/main/backend/internal/observability/event/datakeys.go">`event/datakeys.go`</RepoLink> for the complete list.
+**Identity keys:**
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.UserID` | `user_id` | Authenticated user identifier |
+| `event.DataKey.Username` | `username` | Username |
+| `event.DataKey.ClientID` | `client_id` | OAuth client identifier |
+| `event.DataKey.EntityID` | `app_id` | Application identifier |
+
+**Flow execution keys:**
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.ExecutionID` | `execution_id` | Flow execution identifier |
+| `event.DataKey.FlowType` | `flow_type` | Type of flow being executed |
+| `event.DataKey.NodeID` | `node_id` | Flow node identifier |
+| `event.DataKey.NodeType` | `node_type` | Flow node type |
+| `event.DataKey.NodeStatus` | `node_status` | Execution status of the node |
+| `event.DataKey.ExecutorName` | `executor_name` | Name of the executor running the node |
+| `event.DataKey.ExecutorType` | `executor_type` | Type of the executor |
+| `event.DataKey.StepNumber` | `step_number` | Step number within the flow |
+| `event.DataKey.AttemptNumber` | `attempt_number` | Retry attempt number |
+| `event.DataKey.AuthMethod` | `auth_method` | Authentication method used |
+| `event.DataKey.RedirectTo` | `redirect_to` | Redirect destination |
+| `event.DataKey.FailedStep` | `failed_step` | Step at which the flow failed |
+| `event.DataKey.FailureReason` | `failure_reason` | Reason for failure |
+
+**OAuth and token keys:**
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.Scope` | `scope` | OAuth scopes |
+| `event.DataKey.GrantType` | `grant_type` | OAuth grant type |
+
+**Event metadata keys:**
+
+| Constant | Key | Usage |
+|----------|-----|-------|
+| `event.DataKey.Message` | `message` | Human-readable message |
+| `event.DataKey.Error` | `error` | Error message for failures |
+| `event.DataKey.ErrorCode` | `error_code` | Machine-readable error code |
+| `event.DataKey.ErrorType` | `error_type` | Error classification |
+| `event.DataKey.DurationMs` | `duration_ms` | Operation duration in milliseconds |
+| `event.DataKey.LatencyUs` | `latency_us` | Operation latency in microseconds |
+| `event.DataKey.TraceParent` | `trace_parent` | W3C traceparent header value for OTel span linking |
 
 ## Distributed Tracing
 
@@ -97,7 +175,7 @@ To create parent-child relationships between spans, include the `TraceParent` ke
 
 ```go
 // Child operation
-childEvt := event.NewEvent(traceID, event.Type.NodeExecutionStarted, "FlowEngine").
+childEvt := event.NewEvent(traceID, event.EventTypeFlowNodeExecutionStarted, event.ComponentFlowEngine).
     WithData(event.DataKey.TraceParent, parentSpanID)
 obs.PublishEvent(childEvt)
 ```
@@ -115,7 +193,7 @@ The Observability component follows a **Publisher-Subscriber** pattern, decouple
 ### Directory Structure
 
 ```
-backend/internal/observability/
+backend/internal/system/observability/
 ├── service.go          # Main service implementation
 ├── event/              # Event definitions
 ├── publisher/          # Publisher implementation
@@ -127,7 +205,7 @@ backend/internal/observability/
 
 To add a new subscriber (e.g., to send logs to a webhook):
 
-1.  **Create a new file** in `backend/internal/observability/subscriber/`.
+1.  **Create a new file** in `backend/internal/system/observability/subscriber/`.
 2.  **Implement `SubscriberInterface`**:
     ```go
     type SubscriberInterface interface {
@@ -151,4 +229,4 @@ To add a new subscriber (e.g., to send logs to a webhook):
 4.  **Add Configuration**: Update `backend/internal/system/config/config.go`.
 
 ## Further Reading
-- <RepoLink path="/tree/main/backend/internal/observability">Observability source code</RepoLink>
+- <RepoLink path="/tree/main/backend/internal/system/observability">Observability source code</RepoLink>

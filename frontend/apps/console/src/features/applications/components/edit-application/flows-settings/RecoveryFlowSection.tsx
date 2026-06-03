@@ -75,7 +75,7 @@ export default function RecoveryFlowSection({
       title={t('applications:edit.flows.labels.recoveryFlow')}
       description={t('applications:edit.flows.labels.recoveryFlow.description')}
       enabled={editedApp.isRecoveryFlowEnabled ?? application.isRecoveryFlowEnabled ?? false}
-      onToggle={(enabled) => onFieldChange('isRecoveryFlowEnabled', enabled)}
+      onToggle={application.isReadOnly ? undefined : (enabled) => onFieldChange('isRecoveryFlowEnabled', enabled)}
     >
       {(editedApp.recoveryFlowId ?? application.recoveryFlowId) && (
         <Alert severity="info" sx={{mb: 2}}>
@@ -106,6 +106,7 @@ export default function RecoveryFlowSection({
         }
         onChange={(_event, newValue) => onFieldChange('recoveryFlowId', newValue?.id ?? '')}
         loading={loadingRecoveryFlows}
+        disabled={application.isReadOnly}
         renderInput={(params) => (
           <TextField
             {...params}

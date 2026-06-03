@@ -41,6 +41,10 @@ interface ScopeSelectorProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether inputs should be disabled (e.g. read-only resource).
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -51,7 +55,12 @@ interface ScopeSelectorProps {
  * - An input + Add button lets users add any custom scope name.
  * All changes are reflected immediately via `onScopesChange`.
  */
-export default function ScopeSelector({scopes, onScopesChange, entityLabel = 'application'}: ScopeSelectorProps) {
+export default function ScopeSelector({
+  scopes,
+  onScopesChange,
+  entityLabel = 'application',
+  disabled = false,
+}: ScopeSelectorProps) {
   const {t} = useTranslation();
   const [customScopeInput, setCustomScopeInput] = useState('');
   const [customScopeError, setCustomScopeError] = useState<string | null>(null);
@@ -175,7 +184,7 @@ export default function ScopeSelector({scopes, onScopesChange, entityLabel = 'ap
                     size="small"
                     variant={isPendingRemoval ? 'outlined' : 'filled'}
                     color="default"
-                    onDelete={() => handleRemove(scope)}
+                    onDelete={disabled ? undefined : () => handleRemove(scope)}
                     sx={{transition: 'all 0.2s ease'}}
                   />
                 );
@@ -187,16 +196,20 @@ export default function ScopeSelector({scopes, onScopesChange, entityLabel = 'ap
                   size="small"
                   variant="outlined"
                   color="primary"
-                  onDelete={() => {
-                    const timer = additionTimers.current.get(scope);
-                    if (timer) clearTimeout(timer);
-                    additionTimers.current.delete(scope);
-                    setPendingAdditions((prev) => {
-                      const next = new Set(prev);
-                      next.delete(scope);
-                      return next;
-                    });
-                  }}
+                  onDelete={
+                    disabled
+                      ? undefined
+                      : () => {
+                          const timer = additionTimers.current.get(scope);
+                          if (timer) clearTimeout(timer);
+                          additionTimers.current.delete(scope);
+                          setPendingAdditions((prev) => {
+                            const next = new Set(prev);
+                            next.delete(scope);
+                            return next;
+                          });
+                        }
+                  }
                   sx={{transition: 'all 0.2s ease'}}
                 />
               ))}
@@ -221,8 +234,8 @@ export default function ScopeSelector({scopes, onScopesChange, entityLabel = 'ap
                     label={scope}
                     size="small"
                     variant="outlined"
-                    onClick={() => handleAdd(scope)}
-                    sx={{cursor: 'pointer', borderStyle: 'dashed'}}
+                    onClick={disabled ? undefined : () => handleAdd(scope)}
+                    sx={{cursor: disabled ? 'default' : 'pointer', borderStyle: 'dashed'}}
                   />
                 </Tooltip>
               ))}
@@ -257,8 +270,9 @@ export default function ScopeSelector({scopes, onScopesChange, entityLabel = 'ap
               error={!!customScopeError}
               helperText={customScopeError ?? ''}
               sx={{width: 240}}
+              disabled={disabled}
             />
-            <Button variant="outlined" size="small" onClick={handleAddCustom} sx={{mt: '1px'}}>
+            <Button variant="outlined" size="small" onClick={handleAddCustom} sx={{mt: '1px'}} disabled={disabled}>
               {t('applications:edit.token.scopes.add_custom.button', 'Add')}
             </Button>
           </Stack>

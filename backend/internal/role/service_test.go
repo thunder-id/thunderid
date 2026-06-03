@@ -1199,7 +1199,7 @@ func (suite *RoleServiceTestSuite) TestValidateAssignmentIDs_UserServiceError() 
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(ErrorInternalServerError.Code, err.Code)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
 }
 
 func (suite *RoleServiceTestSuite) TestValidateAssignmentIDs_GroupServiceError() {

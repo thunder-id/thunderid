@@ -200,6 +200,11 @@ export default function OrganizationUnitEditPage(): JSX.Element {
 
   return (
     <PageContent>
+      {organizationUnit.isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={fromOU ? `/organization-units/${fromOU.id}` : listUrl} />}>
@@ -207,7 +212,7 @@ export default function OrganizationUnitEditPage(): JSX.Element {
         </PageTitle.BackButton>
         <PageTitle.Avatar sx={{overflow: 'visible'}}>
           <ResourceAvatar
-            editable
+            editable={!organizationUnit.isReadOnly}
             value={editedOU.logoUrl ?? organizationUnit.logoUrl ?? undefined}
             fallback="emoji:🏛️"
             editAriaLabel={t('organizationUnits:edit.page.logoUpdate.label')}
@@ -242,19 +247,21 @@ export default function OrganizationUnitEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{editedOU.name ?? organizationUnit.name}</Typography>
-                <IconButton
-                  size="small"
-                  onClick={() => {
-                    setTempName(editedOU.name ?? organizationUnit.name);
-                    setIsEditingName(true);
-                  }}
-                  sx={{
-                    opacity: 0.6,
-                    '&:hover': {opacity: 1},
-                  }}
-                >
-                  <Edit size={16} />
-                </IconButton>
+                {!organizationUnit.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setTempName(editedOU.name ?? organizationUnit.name);
+                      setIsEditingName(true);
+                    }}
+                    sx={{
+                      opacity: 0.6,
+                      '&:hover': {opacity: 1},
+                    }}
+                  >
+                    <Edit size={16} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -304,22 +311,25 @@ export default function OrganizationUnitEditPage(): JSX.Element {
                   {(editedOU.description !== undefined ? editedOU.description : organizationUnit.description) ??
                     t('organizationUnits:edit.page.description.empty')}
                 </Typography>
-                <IconButton
-                  size="small"
-                  onClick={() => {
-                    setTempDescription(
-                      (editedOU.description !== undefined ? editedOU.description : organizationUnit.description) ?? '',
-                    );
-                    setIsEditingDescription(true);
-                  }}
-                  sx={{
-                    opacity: 0.6,
-                    '&:hover': {opacity: 1},
-                    mt: -0.5,
-                  }}
-                >
-                  <Edit size={14} />
-                </IconButton>
+                {!organizationUnit.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setTempDescription(
+                        (editedOU.description !== undefined ? editedOU.description : organizationUnit.description) ??
+                          '',
+                      );
+                      setIsEditingDescription(true);
+                    }}
+                    sx={{
+                      opacity: 0.6,
+                      '&:hover': {opacity: 1},
+                      mt: -0.5,
+                    }}
+                  >
+                    <Edit size={14} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -364,7 +374,10 @@ export default function OrganizationUnitEditPage(): JSX.Element {
       <>
         {/* General Settings Tab */}
         <TabPanel value={activeTab} index={0}>
-          <EditGeneralSettings organizationUnit={organizationUnit} onDeleteClick={() => setDeleteDialogOpen(true)} />
+          <EditGeneralSettings
+            organizationUnit={organizationUnit}
+            onDeleteClick={organizationUnit.isReadOnly ? undefined : () => setDeleteDialogOpen(true)}
+          />
         </TabPanel>
 
         {/* Child OUs Tab */}
@@ -420,6 +433,7 @@ export default function OrganizationUnitEditPage(): JSX.Element {
           saveLabel={t('organizationUnits:edit.actions.save.label')}
           savingLabel={t('organizationUnits:edit.actions.saving.label')}
           isSaving={updateOrganizationUnit.isPending}
+          saveDisabled={organizationUnit.isReadOnly === true}
           onReset={() => setEditedOU({})}
           onSave={() => {
             // Errors are handled in handleSave

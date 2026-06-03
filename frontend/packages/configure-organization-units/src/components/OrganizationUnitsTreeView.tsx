@@ -33,7 +33,7 @@ import {
   Avatar,
   Tooltip,
 } from '@wso2/oxygen-ui';
-import {Pencil, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Pencil, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useEffect, useRef, useMemo} from 'react';
 import type {ReactNode, MouseEvent, KeyboardEvent, SyntheticEvent, JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -312,47 +312,57 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
               </Typography>
             )}
           </Box>
-          <Tooltip title={addChildTooltip}>
-            <IconButton
-              size="small"
-              aria-label={addChildTooltip}
-              onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                e.stopPropagation();
-                onAddChild?.(e as unknown as MouseEvent<HTMLElement>, {
-                  id: itemId,
-                  name: labelStr,
-                  handle: itemData?.handle ?? '',
-                });
-              }}
-            >
-              <Plus size={16} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title={editTooltip}>
-            <IconButton
-              size="small"
-              aria-label={editTooltip}
-              onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                e.stopPropagation();
-                onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
-              }}
-            >
-              <Pencil size={16} />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title={deleteTooltip}>
-            <IconButton
-              size="small"
-              color="error"
-              aria-label={deleteTooltip}
-              onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                e.stopPropagation();
-                onDelete?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
-              }}
-            >
-              <Trash2 size={16} />
-            </IconButton>
-          </Tooltip>
+          {itemData?.isReadOnly ? (
+            <Tooltip title={t('common:status.readOnly', 'Read Only')}>
+              <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
+                <Eye size={16} />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <>
+              <Tooltip title={addChildTooltip}>
+                <IconButton
+                  size="small"
+                  aria-label={addChildTooltip}
+                  onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                    e.stopPropagation();
+                    onAddChild?.(e as unknown as MouseEvent<HTMLElement>, {
+                      id: itemId,
+                      name: labelStr,
+                      handle: itemData?.handle ?? '',
+                    });
+                  }}
+                >
+                  <Plus size={16} />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title={editTooltip}>
+                <IconButton
+                  size="small"
+                  aria-label={editTooltip}
+                  onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                    e.stopPropagation();
+                    onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
+                  }}
+                >
+                  <Pencil size={16} />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title={deleteTooltip}>
+                <IconButton
+                  size="small"
+                  color="error"
+                  aria-label={deleteTooltip}
+                  onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                    e.stopPropagation();
+                    onDelete?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
+                  }}
+                >
+                  <Trash2 size={16} />
+                </IconButton>
+              </Tooltip>
+            </>
+          )}
         </Box>
       }
     />

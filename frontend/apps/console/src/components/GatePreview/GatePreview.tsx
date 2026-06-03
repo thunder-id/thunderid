@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import type {EmbeddedFlowComponent} from '@thunderid/react';
 import type {ColorSchemeOption, Stylesheet, Theme} from '@thunderid/design';
+import type {EmbeddedFlowComponent} from '@thunderid/react';
 import {Box, CircularProgress, Typography, useColorScheme} from '@wso2/oxygen-ui';
 import {useCallback, useLayoutEffect, useRef, useState, type JSX, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';

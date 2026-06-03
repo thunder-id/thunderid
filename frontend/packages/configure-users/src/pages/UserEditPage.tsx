@@ -251,6 +251,11 @@ export default function UserEditPage() {
 
   return (
     <PageContent>
+      {user.isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to="/users" />}>
@@ -294,7 +299,7 @@ export default function UserEditPage() {
                 'View and manage user attribute values.',
               )}
               headerAction={
-                !isEditMode && hasEditableFields ? (
+                !isEditMode && hasEditableFields && !user.isReadOnly ? (
                   <Button variant="outlined" size="small" onClick={() => setIsEditMode(true)}>
                     {t('common:actions.edit', 'Edit')}
                   </Button>
@@ -494,26 +499,28 @@ export default function UserEditPage() {
             </SettingsCard>
 
             {/* Danger Zone */}
-            <SettingsCard
-              title={t('users:manageUser.sections.dangerZone.title', 'Danger Zone')}
-              description={t(
-                'users:manageUser.sections.dangerZone.description',
-                'Irreversible and destructive actions.',
-              )}
-            >
-              <Typography variant="h6" gutterBottom color="error">
-                {t('users:manageUser.sections.dangerZone.deleteUser', 'Delete User')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-                {t(
-                  'users:manageUser.sections.dangerZone.deleteUserDescription',
-                  'Once deleted, this user cannot be recovered. All associated data will be permanently removed.',
+            {!user.isReadOnly && (
+              <SettingsCard
+                title={t('users:manageUser.sections.dangerZone.title', 'Danger Zone')}
+                description={t(
+                  'users:manageUser.sections.dangerZone.description',
+                  'Irreversible and destructive actions.',
                 )}
-              </Typography>
-              <Button variant="contained" color="error" onClick={() => setDeleteDialogOpen(true)}>
-                {t('common:actions.delete', 'Delete')}
-              </Button>
-            </SettingsCard>
+              >
+                <Typography variant="h6" gutterBottom color="error">
+                  {t('users:manageUser.sections.dangerZone.deleteUser', 'Delete User')}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
+                  {t(
+                    'users:manageUser.sections.dangerZone.deleteUserDescription',
+                    'Once deleted, this user cannot be recovered. All associated data will be permanently removed.',
+                  )}
+                </Typography>
+                <Button variant="contained" color="error" onClick={() => setDeleteDialogOpen(true)}>
+                  {t('common:actions.delete', 'Delete')}
+                </Button>
+              </SettingsCard>
+            )}
           </Stack>
         </TabPanel>
       </>

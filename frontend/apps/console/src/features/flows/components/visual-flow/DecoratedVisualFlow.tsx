@@ -633,7 +633,12 @@ function DecoratedVisualFlow({
             }
           >
             <span>
-              <Button variant="contained" disabled={hasErrors} startIcon={<Save size={18} />} onClick={handleSave}>
+              <Button
+                variant="contained"
+                disabled={hasErrors || !onSave}
+                startIcon={<Save size={18} />}
+                onClick={handleSave}
+              >
                 {t('flows:core.headerPanel.save')}
               </Button>
             </span>

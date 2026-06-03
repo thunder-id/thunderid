@@ -322,6 +322,11 @@ export default function ViewUserTypePage(): JSX.Element {
 
   return (
     <PageContent>
+      {userType.isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={listUrl} />}>
@@ -358,20 +363,22 @@ export default function ViewUserTypePage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{effectiveName}</Typography>
-                <IconButton
-                  size="small"
-                  aria-label={t('userTypes:edit.editName', 'Edit user type name')}
-                  onClick={() => {
-                    setTempName(effectiveName);
-                    setIsEditingName(true);
-                  }}
-                  sx={{
-                    opacity: 0.6,
-                    '&:hover': {opacity: 1},
-                  }}
-                >
-                  <Edit size={16} />
-                </IconButton>
+                {!userType.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    aria-label={t('userTypes:edit.editName', 'Edit user type name')}
+                    onClick={() => {
+                      setTempName(effectiveName);
+                      setIsEditingName(true);
+                    }}
+                    sx={{
+                      opacity: 0.6,
+                      '&:hover': {opacity: 1},
+                    }}
+                  >
+                    <Edit size={16} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -403,7 +410,7 @@ export default function ViewUserTypePage(): JSX.Element {
             editedAllowSelfRegistration={editedUserType.allowSelfRegistration}
             editedDisplayAttribute={editedUserType.displayAttribute}
             onFieldChange={handleFieldChange}
-            onDeleteClick={() => setDeleteDialogOpen(true)}
+            onDeleteClick={userType.isReadOnly ? undefined : () => setDeleteDialogOpen(true)}
             eligibleDisplayProperties={eligibleDisplayProperties}
           />
         </TabPanel>
@@ -413,6 +420,7 @@ export default function ViewUserTypePage(): JSX.Element {
             properties={effectiveProperties}
             onPropertiesChange={handlePropertiesChange}
             userTypeName={effectiveName}
+            disabled={userType.isReadOnly}
           />
         </TabPanel>
       </>
@@ -433,6 +441,7 @@ export default function ViewUserTypePage(): JSX.Element {
           saveLabel={t('common:actions.save', 'Save')}
           savingLabel={t('common:status.saving', 'Saving...')}
           isSaving={updateUserTypeMutation.isPending}
+          saveDisabled={userType.isReadOnly === true}
           onReset={handleReset}
           onSave={() => {
             handleSave().catch(() => null);

@@ -412,14 +412,89 @@ Authorization resource settings.
 
 ## Observability Configuration
 
-Monitoring and observability settings.
+Monitoring and observability settings. <ProductName /> supports three output backends — console, file, and OpenTelemetry (OTel) — and you can enable any combination of them independently.
+
+### Top-Level Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `observability.enabled` | `false` | If `true`, enables observability features |
-| `observability.output.console.enabled` | `false` | If `true`, outputs observability data to console |
-| `observability.output.console.format` | `json` | Console output format (`json` or `text`) |
-| `observability.output.console.categories` | `["observability.all"]` | Observability categories to output |
+| `observability.enabled` | `false` | If `true`, enables the observability system. All output backends are inactive when this is `false`. |
+| `observability.failure_mode` | `lenient` | Controls how initialization failures in subscribers are handled. `lenient` logs a warning and continues with the remaining subscribers. `strict` stops initialization and returns an error if any subscriber fails. |
+
+### Console Output
+
+Writes events to standard output. Useful for local development and containerized deployments that collect stdout logs.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `observability.output.console.enabled` | `false` | If `true`, outputs observability events to the console |
+| `observability.output.console.format` | `json` | Output format: `json` or `text` |
+| `observability.output.console.categories` | `["observability.all"]` | Event categories to output. See [Event Categories](#event-categories) for valid values. |
+
+### File Output
+
+Writes events to a local file. The file subscriber appends events in the configured format and creates the output directory automatically if it does not exist.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `observability.output.file.enabled` | `false` | If `true`, outputs observability events to a file |
+| `observability.output.file.file_path` | `logs/observability/observability.log` (relative to the installation directory) | Path to the output file. The directory is created automatically. |
+| `observability.output.file.format` | `json` | Output format: `json` |
+| `observability.output.file.categories` | `["observability.all"]` | Event categories to write. See [Event Categories](#event-categories) for valid values. |
+
+### OpenTelemetry Output
+
+Exports events as OpenTelemetry spans to an OTLP-compatible backend such as Jaeger, Grafana Tempo, or an OpenTelemetry Collector. Events with the same `TraceID` are grouped into a single trace.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `observability.output.opentelemetry.enabled` | `false` | If `true`, exports observability events as OpenTelemetry spans |
+| `observability.output.opentelemetry.exporter_type` | `otlp` | Exporter type: `otlp` (gRPC, for production) or `stdout` (for debugging) |
+| `observability.output.opentelemetry.otlp_endpoint` | `""` | OTLP gRPC endpoint, for example `localhost:4317`. Required when `exporter_type` is `otlp`. |
+| `observability.output.opentelemetry.service_name` | `""` | Service name included in all emitted spans, for example `thunderid-iam` |
+| `observability.output.opentelemetry.service_version` | `""` | Service version included in span resource attributes, for example `1.0.0` |
+| `observability.output.opentelemetry.environment` | `""` | Deployment environment included in span resource attributes, for example `production` |
+| `observability.output.opentelemetry.sample_rate` | `1.0` | Fraction of traces to sample. `1.0` samples all traces; `0.5` samples half. |
+| `observability.output.opentelemetry.categories` | `["observability.all"]` | Event categories to export. See [Event Categories](#event-categories) for valid values. |
+| `observability.output.opentelemetry.insecure` | `false` | If `true`, disables TLS for the OTLP connection. Use only in development environments. |
+
+### Event Categories
+
+Use these values in any `categories` list to filter which events a subscriber receives:
+
+| Value | Description |
+|-------|-------------|
+| `observability.all` | Matches all events regardless of type (default) |
+| `observability.authentication` | Token issuance events |
+| `observability.authorization` | Authorization-related events |
+| `observability.flows` | Authentication and registration flow execution events |
+
+### Example
+
+The following `deployment.yaml` snippet enables console output and OpenTelemetry export to a local collector:
+
+```yaml
+observability:
+  enabled: true
+  failure_mode: lenient
+  output:
+    console:
+      enabled: true
+      format: json
+      categories:
+        - observability.all
+    opentelemetry:
+      enabled: true
+      exporter_type: otlp
+      otlp_endpoint: "localhost:4317"
+      service_name: "thunderid-iam"
+      service_version: "1.0.0"
+      environment: "production"
+      sample_rate: 1.0
+      insecure: false
+      categories:
+        - observability.all
+```
 
 ## Crypto Configuration
 

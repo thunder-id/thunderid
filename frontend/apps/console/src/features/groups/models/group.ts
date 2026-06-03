@@ -42,6 +42,8 @@ export interface GroupBasic {
   ouId: string;
   /** Handle of the organization unit, populated when include=display is used */
   ouHandle?: string;
+  /** Whether this group is read-only (declarative/immutable) */
+  isReadOnly?: boolean;
 }
 
 /**

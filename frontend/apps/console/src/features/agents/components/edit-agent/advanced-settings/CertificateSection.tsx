@@ -26,9 +26,15 @@ interface CertificateSectionProps {
   agent: Agent;
   editedAgent: Partial<Agent>;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
+  disabled?: boolean;
 }
 
-export default function CertificateSection({agent, editedAgent, onFieldChange}: CertificateSectionProps) {
+export default function CertificateSection({
+  agent,
+  editedAgent,
+  onFieldChange,
+  disabled = false,
+}: CertificateSectionProps) {
   const {t} = useTranslation();
 
   const certificateTypeOptions = [
@@ -60,6 +66,7 @@ export default function CertificateSection({agent, editedAgent, onFieldChange}: 
             isOptionEqualToValue={(option, value) => option.value === value.value}
             renderInput={(params) => <TextField {...params} fullWidth />}
             disableClearable
+            disabled={disabled}
           />
         </FormControl>
 
@@ -74,6 +81,7 @@ export default function CertificateSection({agent, editedAgent, onFieldChange}: 
                 agent.certificate ?? {type: CertificateTypes.NONE, value: ''};
               onFieldChange('certificate', {...currentCert, value: e.target.value});
             }}
+            disabled={disabled}
             placeholder={
               currentCertType === CertificateTypes.JWKS_URI
                 ? t('applications:edit.advanced.certificate.placeholder.jwksUri')

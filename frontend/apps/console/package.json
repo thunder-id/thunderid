@@ -22,6 +22,7 @@
     "directory": "frontend/apps/console"
   },
   "scripts": {
+    "analyze": "ANALYZE=true vite build",
     "build": "tsc -b && vite build",
     "clean": "pnpm clean:dist && pnpm clean:node_modules",
     "clean:dist": "rimraf dist",
@@ -79,7 +80,6 @@
     "i18next": "catalog:",
     "lexical": "0.38.2",
     "lodash-es": "catalog:",
-    "prismjs": "^1.30.0",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-hook-form": "catalog:",
@@ -99,7 +99,6 @@
     "@thunderid/types": "workspace:^",
     "@types/lodash-es": "catalog:",
     "@types/node": "catalog:",
-    "@types/prismjs": "^1.26.5",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/react-syntax-highlighter": "^15.5.13",

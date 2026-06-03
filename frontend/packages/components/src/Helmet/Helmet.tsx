@@ -54,7 +54,6 @@ export default function Helmet({children}: HelmetProps): null {
     return parts.join('\0');
   }, [children]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     const nodes: Element[] = [];
 

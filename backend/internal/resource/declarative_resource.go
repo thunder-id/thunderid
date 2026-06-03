@@ -113,29 +113,18 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		Resources:   []Resource{},
 	}
 
-	// Get all resources for this server
-	var allResources []Resource
-	resOffset := 0
-	for {
-		resources, err := e.service.GetResourceList(ctx, id, nil, serverconst.MaxPageSize, resOffset)
-		if err != nil {
-			return nil, "", err
-		}
-		if len(resources.Resources) == 0 {
-			break
-		}
-		allResources = append(allResources, resources.Resources...)
-		resOffset += len(resources.Resources)
-		if resOffset >= resources.TotalResults {
-			break
-		}
+	allResources, err := e.service.GetAllResourceList(ctx, id)
+	if err != nil {
+		return nil, "", err
 	}
 
-	// Build map for hierarchical structure keyed by resource ID
-	resourceIDMap := make(map[string]*Resource)
-	// Build separate map for ID to Handle lookups (for parent resolution)
+	// First pass: build ID-to-Handle map so parent handles can be resolved regardless of order
 	idToHandleMap := make(map[string]string)
+	for _, res := range allResources {
+		idToHandleMap[res.ID] = res.Handle
+	}
 
+	// Second pass: build declarative resources with resolved parent handles and actions
 	for _, res := range allResources {
 		resource := Resource{
 			Name:        res.Name,
@@ -144,7 +133,6 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 			Actions:     []Action{},
 		}
 
-		// Set parent handle from parent ID using the ID to Handle map
 		if res.Parent != nil && *res.Parent != "" {
 			if parentHandle, ok := idToHandleMap[*res.Parent]; ok {
 				resource.ParentHandle = parentHandle
@@ -152,44 +140,29 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		}
 
 		// Get actions for this resource
-		var allActions []Action
 		actOffset := 0
 		for {
-			actions, err := e.service.GetActionList(ctx, id, &res.ID, serverconst.MaxPageSize, actOffset)
-			if err != nil {
-				return nil, "", err
+			actions, actErr := e.service.GetActionList(ctx, id, &res.ID, serverconst.MaxPageSize, actOffset)
+			if actErr != nil {
+				return nil, "", actErr
 			}
 			if len(actions.Actions) == 0 {
 				break
 			}
-			allActions = append(allActions, actions.Actions...)
+			for _, action := range actions.Actions {
+				resource.Actions = append(resource.Actions, Action{
+					Name:        action.Name,
+					Handle:      action.Handle,
+					Description: action.Description,
+				})
+			}
 			actOffset += len(actions.Actions)
 			if actOffset >= actions.TotalResults {
 				break
 			}
 		}
 
-		for _, action := range allActions {
-			resource.Actions = append(resource.Actions, Action{
-				Name:        action.Name,
-				Handle:      action.Handle,
-				Description: action.Description,
-			})
-		}
-
-		// Store in map keyed by resource ID (not handle) to avoid duplicates
-		resourceIDMap[res.ID] = &resource
-		// Also store ID to Handle mapping for parent lookup
-		idToHandleMap[res.ID] = res.Handle
-	}
-
-	// Build the hierarchical structure - add root-level resources
-	for _, res := range allResources {
-		if res.ParentHandle == "" {
-			if resource, ok := resourceIDMap[res.ID]; ok {
-				rs.Resources = append(rs.Resources, *resource)
-			}
-		}
+		rs.Resources = append(rs.Resources, resource)
 	}
 
 	return rs, server.Name, nil

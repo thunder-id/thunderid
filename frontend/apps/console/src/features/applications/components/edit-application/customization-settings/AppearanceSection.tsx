@@ -88,6 +88,7 @@ export default function AppearanceSection({
           value={themeOptions.find((theme) => theme.id === (editedApp.themeId! ?? application.themeId!)) ?? null}
           onChange={(_event, newValue) => onFieldChange('themeId' as keyof Application, newValue?.id ?? '')}
           loading={loadingThemes}
+          disabled={application.isReadOnly}
           renderInput={(params) => (
             <TextField
               {...params}
@@ -117,6 +118,7 @@ export default function AppearanceSection({
           value={layoutOptions.find((layout) => layout.id === (editedApp.layoutId ?? application.layoutId)) ?? null}
           onChange={(_event, newValue) => onFieldChange('layoutId', newValue?.id ?? '')}
           loading={loadingLayouts}
+          disabled={application.isReadOnly}
           renderInput={(params) => (
             <TextField
               {...params}

@@ -29,6 +29,7 @@ interface ManageMembersSectionProps {
   groupId: string;
   onRemoveMember: (member: Member) => void;
   headerAction?: ReactNode;
+  isReadOnly?: boolean;
 }
 
 /**
@@ -38,6 +39,7 @@ export default function ManageMembersSection({
   groupId,
   onRemoveMember,
   headerAction = undefined,
+  isReadOnly = false,
 }: ManageMembersSectionProps): JSX.Element {
   const {t} = useTranslation();
   const dataGridLocaleText = useDataGridLocaleText();
@@ -52,7 +54,7 @@ export default function ManageMembersSection({
   );
   const {data: membersData, isLoading} = useGetGroupMembers(groupId, membersParams);
 
-  const columns: DataGrid.GridColDef<Member>[] = useMemo(
+  const baseColumns: DataGrid.GridColDef<Member>[] = useMemo(
     () => [
       {
         field: 'avatar',
@@ -128,6 +130,11 @@ export default function ManageMembersSection({
       },
     ],
     [t, onRemoveMember],
+  );
+
+  const columns = useMemo(
+    () => (isReadOnly ? baseColumns.filter((col) => col.field !== 'actions') : baseColumns),
+    [isReadOnly, baseColumns],
   );
 
   return (

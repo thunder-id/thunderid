@@ -180,6 +180,11 @@ export default function GroupEditPage(): JSX.Element {
 
   return (
     <PageContent>
+      {group.isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={listUrl} />}>{t('groups:edit.page.back')}</PageTitle.BackButton>
@@ -215,20 +220,22 @@ export default function GroupEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{editedGroup.name ?? group.name}</Typography>
-                <IconButton
-                  size="small"
-                  aria-label="Edit group name"
-                  onClick={() => {
-                    setTempName(editedGroup.name ?? group.name);
-                    setIsEditingName(true);
-                  }}
-                  sx={{
-                    opacity: 0.6,
-                    '&:hover': {opacity: 1},
-                  }}
-                >
-                  <Edit size={16} />
-                </IconButton>
+                {!group.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    aria-label="Edit group name"
+                    onClick={() => {
+                      setTempName(editedGroup.name ?? group.name);
+                      setIsEditingName(true);
+                    }}
+                    sx={{
+                      opacity: 0.6,
+                      '&:hover': {opacity: 1},
+                    }}
+                  >
+                    <Edit size={16} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -275,21 +282,23 @@ export default function GroupEditPage(): JSX.Element {
                 <Typography variant="body2" color="text.secondary">
                   {effectiveDescription || t('groups:edit.page.description.empty')}
                 </Typography>
-                <IconButton
-                  size="small"
-                  aria-label="Edit group description"
-                  onClick={() => {
-                    setTempDescription(effectiveDescription);
-                    setIsEditingDescription(true);
-                  }}
-                  sx={{
-                    opacity: 0.6,
-                    '&:hover': {opacity: 1},
-                    mt: -0.5,
-                  }}
-                >
-                  <Edit size={14} />
-                </IconButton>
+                {!group.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    aria-label="Edit group description"
+                    onClick={() => {
+                      setTempDescription(effectiveDescription);
+                      setIsEditingDescription(true);
+                    }}
+                    sx={{
+                      opacity: 0.6,
+                      '&:hover': {opacity: 1},
+                      mt: -0.5,
+                    }}
+                  >
+                    <Edit size={14} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -315,7 +324,10 @@ export default function GroupEditPage(): JSX.Element {
       {/* Tab Panels */}
       <>
         <TabPanel value={activeTab} index={0}>
-          <EditGeneralSettings group={group} onDeleteClick={() => setDeleteDialogOpen(true)} />
+          <EditGeneralSettings
+            group={group}
+            onDeleteClick={group.isReadOnly ? undefined : () => setDeleteDialogOpen(true)}
+          />
         </TabPanel>
 
         <TabPanel value={activeTab} index={1}>
@@ -379,7 +391,7 @@ export default function GroupEditPage(): JSX.Element {
               onClick={() => {
                 handleSave().catch(() => null);
               }}
-              disabled={updateGroup.isPending}
+              disabled={updateGroup.isPending || group.isReadOnly === true}
             >
               {updateGroup.isPending ? t('groups:edit.page.saving') : t('groups:edit.page.save')}
             </Button>

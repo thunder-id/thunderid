@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
+import {useThunderID} from '@thunderid/react';
 import UserTypeQueryKeys from '../constants/userTypeQueryKeys';
 import type {ApiUserType} from '../types/user-types';
 

@@ -37,6 +37,8 @@ type CacheManagerInterface interface {
 	getMutex() *sync.RWMutex
 	getCache(cacheKey string) (interface{}, bool)
 	addCache(cacheKey string, cacheInstance interface{})
+	getCacheConfig() config.CacheConfig
+	getDeploymentID() string
 	getRedisClient() *redis.Client
 	startCleanupRoutine()
 	cleanupAllCaches()
@@ -50,19 +52,21 @@ type CacheManager struct {
 	enabled         bool
 	cleanupInterval time.Duration
 	redisClient     *redis.Client
+	cacheConfig     config.CacheConfig
+	deploymentID    string
 }
 
-// Initialize creates and returns a new CacheManagerInterface instance.
 // Initialize creates, configures, and returns a ready-to-use CacheManagerInterface.
-func Initialize() CacheManagerInterface {
+func Initialize(cacheConfig config.CacheConfig, deploymentID string) CacheManagerInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CacheManager"))
 	logger.Debug("Initializing Cache Manager")
 
 	cm := &CacheManager{
-		caches: make(map[string]interface{}),
+		cacheConfig:  cacheConfig,
+		deploymentID: deploymentID,
+		caches:       make(map[string]interface{}),
 	}
 
-	cacheConfig := config.GetServerRuntime().Config.Cache
 	if cacheConfig.Disabled {
 		logger.Debug("Caching is disabled. Skipping initialization")
 		return cm
@@ -147,6 +151,16 @@ func (cm *CacheManager) addCache(cacheKey string, cacheInstance interface{}) {
 	}
 }
 
+// getCacheConfig returns the cache configuration used by the manager.
+func (cm *CacheManager) getCacheConfig() config.CacheConfig {
+	return cm.cacheConfig
+}
+
+// getDeploymentID returns the deployment identifier used for Redis key isolation.
+func (cm *CacheManager) getDeploymentID() string {
+	return cm.deploymentID
+}
+
 // getRedisClient returns the shared Redis client, or nil if Redis is not configured.
 func (cm *CacheManager) getRedisClient() *redis.Client {
 	return cm.redisClient
@@ -206,8 +220,7 @@ func (cm *CacheManager) reset() {
 }
 
 // buildRedisKeyPrefix composes the Redis key prefix with deployment ID for per-deployment isolation.
-func buildRedisKeyPrefix(basePrefix string) string {
-	deploymentID := config.GetServerRuntime().Config.Server.Identifier
+func buildRedisKeyPrefix(basePrefix, deploymentID string) string {
 	if deploymentID == "" {
 		return basePrefix
 	}
@@ -224,7 +237,7 @@ func newCache[T any](cm CacheManagerInterface, cacheName string) CacheInterface[
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CacheManager"),
 		log.String("cacheName", cacheName))
 
-	cacheConfig := config.GetServerRuntime().Config.Cache
+	cacheConfig := cm.getCacheConfig()
 	if cacheConfig.Disabled {
 		logger.Debug("Caching is disabled, returning empty")
 		return &Cache[T]{
@@ -266,7 +279,7 @@ func newCache[T any](cm CacheManagerInterface, cacheName string) CacheInterface[
 				cacheImpl: nil,
 			}
 		} else {
-			keyPrefix := buildRedisKeyPrefix(cacheConfig.Redis.KeyPrefix)
+			keyPrefix := buildRedisKeyPrefix(cacheConfig.Redis.KeyPrefix, cm.getDeploymentID())
 			internalCache = newRedisCache[T](
 				cacheName,
 				!cacheProperty.Disabled,
@@ -324,7 +337,7 @@ func GetInMemoryCache[T any](cm CacheManagerInterface, cacheName string) CacheIn
 
 	logger.Debug("Creating new in-memory cache", log.String("cacheName", cacheName), log.String("type", typeName))
 
-	cacheConfig := config.GetServerRuntime().Config.Cache
+	cacheConfig := cm.getCacheConfig()
 	cacheProperty := getCacheProperty(cacheConfig, cacheName)
 
 	var internalCache CacheInterface[T]

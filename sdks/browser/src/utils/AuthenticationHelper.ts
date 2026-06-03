@@ -542,7 +542,7 @@ class AuthenticationHelper<T> {
           resolve(false);
         }
 
-        if (data?.type == CHECK_SESSION_SIGNED_IN && (data?.data)!?.code) {
+        if (data?.type == CHECK_SESSION_SIGNED_IN && (data?.data)?.code) {
           const authInfo = data.data;
           requestAccessToken(authInfo.code, authInfo.sessionState, authInfo.state, tokenRequestConfig)
             .then((response: User) => {

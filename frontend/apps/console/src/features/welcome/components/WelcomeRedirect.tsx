@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
+import {useThunderID} from '@thunderid/react';
 import {useEffect, type JSX} from 'react';
 import {useLocation, useNavigate} from 'react-router';
 import getWelcomeDismissedStorageKey from '../utils/getWelcomeDismissedStorageKey';

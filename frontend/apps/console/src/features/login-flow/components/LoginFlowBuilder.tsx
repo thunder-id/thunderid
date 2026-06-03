@@ -280,6 +280,11 @@ function LoginFlowBuilder() {
         width: '100%',
       }}
     >
+      {existingFlowData?.isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
       <FlowBuilder
         resources={resources}
         nodeTypes={nodeTypes}
@@ -289,7 +294,7 @@ function LoginFlowBuilder() {
         onWidgetLoad={handleWidgetLoad}
         onStepLoad={handleStepLoad}
         onResourceAdd={handleResourceAdd}
-        onSave={handleSave}
+        onSave={existingFlowData?.isReadOnly ? undefined : handleSave}
         nodes={filteredNodes}
         edges={filteredEdges}
         setNodes={setNodes}

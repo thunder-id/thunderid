@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
+import {useThunderID} from '@thunderid/react';
 import GroupQueryKeys from '../constants/group-query-keys';
 import type {GroupListResponse} from '../models/group';
 import type {GroupListParams} from '../models/requests';

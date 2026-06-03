@@ -16,29 +16,36 @@
  * under the License.
  */
 
-import * as fs from 'fs';
 import * as path from 'path';
 import {intro, outro, text, spinner, note, cancel, isCancel} from '@clack/prompts';
 import colors from 'picocolors';
 import Product from './constants/Product';
 import {deploy} from './deploy';
 import {downloadAndExtract, getLatestThunderVersion} from './download';
-import {runSetup, runStart} from './setup';
+import {findThunderRoot, runSetup, runStart} from './setup';
 import {readState, writeState, markSetupComplete} from './state';
 
-function parseCliArgs(argv: string[]): {forceSetup: boolean; forwardedArgs: string[]} {
+function parseCliArgs(argv: string[]): {forceSetup: boolean; installDir?: string; forwardedArgs: string[]} {
   let forceSetup = false;
+  let installDir: string | undefined;
   const forwardedArgs: string[] = [];
 
-  for (const arg of argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
     if (arg === '--setup') {
       forceSetup = true;
-      continue;
+    } else if (arg === '--install-dir') {
+      if (i + 1 >= argv.length) {
+        process.stderr.write('Error: --install-dir requires a value\n');
+        process.exit(1);
+      }
+      installDir = argv[++i];
+    } else {
+      forwardedArgs.push(arg);
     }
-    forwardedArgs.push(arg);
   }
 
-  return {forceSetup, forwardedArgs};
+  return {forceSetup, installDir, forwardedArgs};
 }
 
 async function main(): Promise<void> {
@@ -51,7 +58,7 @@ async function main(): Promise<void> {
   // eslint-disable-next-line no-console
   console.clear();
 
-  const {forceSetup, forwardedArgs} = parseCliArgs(rawArgs);
+  const {forceSetup, installDir: cliInstallDir, forwardedArgs} = parseCliArgs(rawArgs);
 
   const s = spinner();
   s.start('Fetching latest Thunder release...');
@@ -67,7 +74,7 @@ async function main(): Promise<void> {
 
   const state = readState();
   const versionState = state.installs[VERSION];
-  const alreadyInstalled = Boolean(versionState?.installPath && fs.existsSync(versionState.installPath));
+  const alreadyInstalled = Boolean(versionState?.installPath && findThunderRoot(versionState.installPath) !== null);
 
   const BRAND_BLUE = '\x1b[38;2;54;136;255m';
   const RESET = '\x1b[0m';
@@ -116,19 +123,24 @@ async function main(): Promise<void> {
     }
   } else {
     const defaultPath = path.join(process.cwd(), VERSION);
+    const nonInteractivePath = cliInstallDir ?? process.env.THUNDER_INSTALL_DIR;
 
-    const rawInstallPath = await text({
-      message: 'Install directory',
-      placeholder: defaultPath,
-      defaultValue: defaultPath,
-    });
+    if (nonInteractivePath) {
+      installPath = nonInteractivePath;
+    } else {
+      const rawInstallPath = await text({
+        message: 'Install directory',
+        placeholder: defaultPath,
+        defaultValue: defaultPath,
+      });
 
-    if (isCancel(rawInstallPath)) {
-      cancel('Installation cancelled.');
-      process.exit(0);
+      if (isCancel(rawInstallPath)) {
+        cancel('Installation cancelled.');
+        process.exit(0);
+      }
+
+      installPath = rawInstallPath || defaultPath;
     }
-
-    installPath = rawInstallPath || defaultPath;
 
     const dl = spinner();
     dl.start(`Downloading Thunder v${VERSION}...`);

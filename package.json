@@ -19,7 +19,7 @@
     "workspace",
     "wso2"
   ],
-  "packageManager": "pnpm@11.3.0",
+  "packageManager": "pnpm@11.5.0",
   "scripts": {
     "build": "nx run-many --target=build --all",
     "build:docs": "nx run @thunderid/docs:build",
@@ -31,9 +31,11 @@
     "dev:frontend": "pnpm --dir frontend run dev",
     "format:check": "prettier --check --cache --config frontend/prettier.config.js --ignore-path frontend/.prettierignore frontend",
     "format:fix": "prettier --write --cache --config frontend/prettier.config.js --ignore-path frontend/.prettierignore frontend",
-    "lint": "nx run-many --target=lint --all --parallel --exclude=sdks/**",
-    "lint:fix": "nx run-many --target=fix:lint --all --parallel",
-    "test": "nx run-many --target=test --all --parallel --exclude=sdks/**,tools/**",
+    "lint": "nx run-many --target=lint --all --parallel --exclude=sdks/**,tests/**",
+    "lint:fix": "nx run-many --target=lint:fix --all --parallel --exclude=sdks/**,tests/**",
+    "test": "nx run-many --target=test --all --parallel --exclude=sdks/**,tools/**,tests/**",
+    "test:e2e-prepare": "pnpm exec playwright install --with-deps",
+    "test:e2e": "nx run @thunderid/e2e:test",
     "typecheck": "nx run-many --target=typecheck --all --parallel"
   },
   "devDependencies": {

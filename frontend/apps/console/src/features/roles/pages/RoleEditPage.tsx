@@ -176,6 +176,11 @@ export default function RoleEditPage(): JSX.Element {
 
   return (
     <PageContent>
+      {role.isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={listUrl} />}>{t('roles:edit.page.back')}</PageTitle.BackButton>
@@ -208,17 +213,19 @@ export default function RoleEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{editedRole.name ?? role.name}</Typography>
-                <IconButton
-                  size="small"
-                  aria-label={t('roles:edit.page.editName')}
-                  onClick={() => {
-                    setTempName(editedRole.name ?? role.name);
-                    setIsEditingName(true);
-                  }}
-                  sx={{opacity: 0.6, '&:hover': {opacity: 1}}}
-                >
-                  <Edit size={16} />
-                </IconButton>
+                {!role.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    aria-label={t('roles:edit.page.editName')}
+                    onClick={() => {
+                      setTempName(editedRole.name ?? role.name);
+                      setIsEditingName(true);
+                    }}
+                    sx={{opacity: 0.6, '&:hover': {opacity: 1}}}
+                  >
+                    <Edit size={16} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -258,17 +265,19 @@ export default function RoleEditPage(): JSX.Element {
                 <Typography component="span" variant="body2" color="text.secondary">
                   {effectiveDescription || t('roles:edit.page.description.empty')}
                 </Typography>
-                <IconButton
-                  size="small"
-                  aria-label={t('roles:edit.page.editDescription')}
-                  onClick={() => {
-                    setTempDescription(effectiveDescription);
-                    setIsEditingDescription(true);
-                  }}
-                  sx={{opacity: 0.6, '&:hover': {opacity: 1}, mt: -0.5}}
-                >
-                  <Edit size={14} />
-                </IconButton>
+                {!role.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    aria-label={t('roles:edit.page.editDescription')}
+                    onClick={() => {
+                      setTempDescription(effectiveDescription);
+                      setIsEditingDescription(true);
+                    }}
+                    sx={{opacity: 0.6, '&:hover': {opacity: 1}, mt: -0.5}}
+                  >
+                    <Edit size={14} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -294,11 +303,14 @@ export default function RoleEditPage(): JSX.Element {
       {/* Tab Panels */}
       <>
         <TabPanel value={activeTab} index={0}>
-          <EditGeneralSettings role={role} onDeleteClick={() => setDeleteDialogOpen(true)} />
+          <EditGeneralSettings
+            role={role}
+            onDeleteClick={role.isReadOnly ? undefined : () => setDeleteDialogOpen(true)}
+          />
         </TabPanel>
 
         <TabPanel value={activeTab} index={1}>
-          <EditAssignmentsSettings roleId={role.id} />
+          <EditAssignmentsSettings roleId={role.id} isReadOnly={role.isReadOnly} />
         </TabPanel>
       </>
 
@@ -366,7 +378,7 @@ export default function RoleEditPage(): JSX.Element {
                   /* noop */
                 });
               }}
-              disabled={updateRole.isPending}
+              disabled={updateRole.isPending || role.isReadOnly === true}
             >
               {updateRole.isPending ? t('roles:edit.page.saving') : t('roles:edit.page.save')}
             </Button>

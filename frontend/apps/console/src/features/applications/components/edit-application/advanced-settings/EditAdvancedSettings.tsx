@@ -85,8 +85,14 @@ export default function EditAdvancedSettings({
         oauth2Config={oauth2Config}
         oauth2Constraints={oauth2Constraints}
         onOAuth2ConfigChange={handleOAuth2ConfigChange}
+        disabled={application.isReadOnly}
       />
-      <CertificateSection application={application} editedApp={editedApp} onFieldChange={onFieldChange} />
+      <CertificateSection
+        application={application}
+        editedApp={editedApp}
+        onFieldChange={onFieldChange}
+        disabled={application.isReadOnly}
+      />
       <MetadataSection application={application} />
     </Stack>
   );

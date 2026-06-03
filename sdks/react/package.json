@@ -14,11 +14,12 @@
   "author": "WSO2",
   "license": "Apache-2.0",
   "type": "module",
-  "main": "dist/cjs/index.js",
+  "sideEffects": false,
+  "main": "dist/cjs/index.cjs",
   "module": "dist/index.js",
   "exports": {
     "import": "./dist/index.js",
-    "require": "./dist/cjs/index.js"
+    "require": "./dist/cjs/index.cjs"
   },
   "files": [
     "dist",

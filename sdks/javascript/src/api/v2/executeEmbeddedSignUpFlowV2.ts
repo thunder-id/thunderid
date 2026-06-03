@@ -22,6 +22,7 @@ import {
   EmbeddedSignUpFlowResponse as EmbeddedSignUpFlowResponseV2,
   EmbeddedSignUpFlowStatus as EmbeddedSignUpFlowStatusV2,
 } from '../../models/v2/embedded-signup-flow-v2';
+import injectRequestedPermissions from '../../utils/v2/injectRequestedPermissions';
 
 const executeEmbeddedSignUpFlowV2 = async ({
   url,
@@ -50,22 +51,25 @@ const executeEmbeddedSignUpFlowV2 = async ({
 
   // `verbose: true` is required to get the `meta` field in the response that includes component details.
   // Add verbose:true if:
-  // 1. payload contains only applicationId and flowType
-  // 2. payload contains only executionId
-  const hasOnlyAppIdAndFlowType: boolean =
+  // 1. payload contains applicationId and flowType (new flow start; may also carry scopes or other init params)
+  // 2. payload contains only executionId (flow resumption without step data)
+  const isNewFlowStart: boolean =
     typeof cleanPayload === 'object' &&
     cleanPayload !== null &&
     'applicationId' in cleanPayload &&
-    'flowType' in cleanPayload &&
-    Object.keys(cleanPayload).length === 2;
+    'flowType' in cleanPayload;
   const hasOnlyFlowId: boolean =
     typeof cleanPayload === 'object' &&
     cleanPayload !== null &&
     'executionId' in cleanPayload &&
     Object.keys(cleanPayload).length === 1;
 
+  const basePayload: Record<string, unknown> = isNewFlowStart
+    ? injectRequestedPermissions(cleanPayload as Record<string, unknown>)
+    : (cleanPayload as Record<string, unknown>);
+
   const requestPayload: Record<string, unknown> =
-    hasOnlyAppIdAndFlowType || hasOnlyFlowId ? {...cleanPayload, verbose: true} : cleanPayload;
+    isNewFlowStart || hasOnlyFlowId ? {...basePayload, verbose: true} : basePayload;
 
   const response: Response = await fetch(endpoint, {
     ...requestConfig,

@@ -105,6 +105,10 @@ interface TokenUserAttributesSectionProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether inputs should be disabled (e.g. read-only resource).
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -138,6 +142,7 @@ export default function TokenUserAttributesSection({
   onToggleUserInfo = undefined,
   sharedAttributes = undefined,
   entityLabel = 'application',
+  disabled = false,
 }: TokenUserAttributesSectionProps) {
   const {t} = useTranslation();
 
@@ -239,7 +244,7 @@ export default function TokenUserAttributesSection({
                               size="small"
                               variant={isActive ? 'filled' : 'outlined'}
                               color={isActive ? 'primary' : 'default'}
-                              onClick={() => onAttributeClick(attr, tokenType)}
+                              onClick={disabled ? undefined : () => onAttributeClick(attr, tokenType)}
                               sx={{
                                 cursor: 'pointer',
                                 transition: 'all 0.3s ease',
@@ -327,6 +332,7 @@ export default function TokenUserAttributesSection({
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => onToggleUserInfo?.(!e.target.checked)}
                       name="userinfo-inherit"
                       size="small"
+                      disabled={disabled}
                     />
                   }
                   label={

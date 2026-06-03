@@ -79,6 +79,9 @@ type ResourceServiceInterface interface {
 	GetResourceList(
 		ctx context.Context, resourceServerID string, parentID *string, limit, offset int,
 	) (*ResourceList, *serviceerror.ServiceError)
+	GetAllResourceList(
+		ctx context.Context, resourceServerID string,
+	) ([]Resource, *serviceerror.ServiceError)
 	UpdateResource(
 		ctx context.Context, resourceServerID, id string, res Resource,
 	) (*Resource, *serviceerror.ServiceError)
@@ -678,6 +681,37 @@ func (rs *resourceService) GetResourceList(
 	}
 
 	return response, nil
+}
+
+// GetAllResourceList retrieves all resources for a resource server without pagination.
+func (rs *resourceService) GetAllResourceList(
+	ctx context.Context, resourceServerID string,
+) ([]Resource, *serviceerror.ServiceError) {
+	if resourceServerID == "" {
+		return nil, &ErrorMissingID
+	}
+	if _, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID); svcErr != nil {
+		return nil, svcErr
+	}
+
+	totalCount, err := rs.resourceStore.GetResourceListCount(ctx, resourceServerID)
+	if err != nil {
+		rs.logger.Error("Failed to get resource count", log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+	if totalCount == 0 {
+		return []Resource{}, nil
+	}
+
+	resources, err := rs.resourceStore.GetResourceList(ctx, resourceServerID, totalCount, 0)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error("Failed to list all resources", log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+	return resources, nil
 }
 
 // UpdateResource updates a resource.

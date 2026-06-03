@@ -56,7 +56,7 @@ const SignUp: FC<SignUpProps> = ({
   children,
   ...rest
 }: SignUpProps): ReactElement => {
-  const {signUp, isInitialized, applicationId} = useThunderID();
+  const {signUp, isInitialized, applicationId, scopes} = useThunderID();
 
   /**
    * Initialize the sign-up flow.
@@ -73,6 +73,7 @@ const SignUp: FC<SignUpProps> = ({
     const initialPayload: any = payload || {
       flowType: EmbeddedFlowType.Registration,
       ...(effectiveApplicationId && {applicationId: effectiveApplicationId}),
+      ...(scopes && {scopes}),
     };
 
     return (await signUp(initialPayload)) as EmbeddedFlowExecuteResponse;
@@ -98,8 +99,14 @@ const SignUp: FC<SignUpProps> = ({
       return;
     }
 
-    // For non-redirection responses (regular sign-up completion), handle redirect if configured
-    if (shouldRedirectAfterSignUp && response?.type !== EmbeddedFlowResponseType.Redirection && afterSignUpUrl) {
+    // For non-redirection responses (regular sign-up completion), handle redirect if configured.
+    // Skip when assertion is present — the SDK stored the session and the caller handled navigation.
+    if (
+      shouldRedirectAfterSignUp &&
+      response?.type !== EmbeddedFlowResponseType.Redirection &&
+      afterSignUpUrl &&
+      !(response as any)?.assertion
+    ) {
       window.location.href = afterSignUpUrl;
     }
 

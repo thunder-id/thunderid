@@ -410,11 +410,11 @@ jobs:
 
       - name: 📦 Install E2E Dependencies
         working-directory: tests/e2e
-        run: npm ci
+        run: pnpm i
 
       - name: 🎭 Install Playwright Browsers
         working-directory: tests/e2e
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps
         timeout-minutes: 15
 
       - name: 🔍 Verify Services Before Tests
@@ -451,7 +451,7 @@ jobs:
 
       - name: 🎭 Run Playwright Tests (Chromium)
         working-directory: tests/e2e
-        run: npx playwright test --project=chromium
+        run: pnpm exec playwright test --project=chromium
         env:
           NODE_TLS_REJECT_UNAUTHORIZED: '0'
           BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL || vars.PLAYWRIGHT_BASE_URL || 'https://localhost:8090' }}

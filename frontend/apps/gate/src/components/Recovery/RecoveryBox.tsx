@@ -21,10 +21,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 
-import {EmbeddedFlowEventType, Recovery, type EmbeddedFlowComponent} from '@thunderid/react';
 import {FlowComponentRenderer, AuthCardLayout, useDesign} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
+import {EmbeddedFlowEventType, Recovery, type EmbeddedFlowComponent} from '@thunderid/react';
 import {TemplateLiteralType} from '@thunderid/utils';
 import {Box, Alert, AlertTitle, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX, ReactNode} from 'react';

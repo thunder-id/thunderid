@@ -52,6 +52,8 @@ export interface RoleSummary {
   ouId: string;
   /** Handle of the organization unit (resolved when include=display is used) */
   ouHandle?: string;
+  /** Whether this role is read-only (declarative/immutable) */
+  isReadOnly?: boolean;
 }
 
 /**

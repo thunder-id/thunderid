@@ -1,0 +1,20 @@
+name: Setup Node.js and pnpm
+description: Installs Node.js and pnpm with lockfile-based caching.
+
+inputs:
+  node-version:
+    description: Node.js version to use
+    required: false
+    default: 'lts/*'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      with:
+        run_install: false
+        cache_dependency_path: pnpm-lock.yaml

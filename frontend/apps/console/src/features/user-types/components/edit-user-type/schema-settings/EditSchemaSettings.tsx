@@ -49,6 +49,7 @@ export interface EditSchemaSettingsProps {
   properties: SchemaPropertyInput[];
   onPropertiesChange: (properties: SchemaPropertyInput[]) => void;
   userTypeName: string;
+  disabled?: boolean;
 }
 
 /**
@@ -59,6 +60,7 @@ export default function EditSchemaSettings({
   properties,
   onPropertiesChange,
   userTypeName,
+  disabled = false,
 }: EditSchemaSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [enumInput, setEnumInput] = useState<Record<string, string>>({});
@@ -152,7 +154,7 @@ export default function EditSchemaSettings({
           }}
         >
           {/* Remove button - visible on hover */}
-          {properties.length > 1 && (
+          {properties.length > 1 && !disabled && (
             <Tooltip title={t('userTypes:removeProperty', 'Remove property')}>
               <IconButton
                 className="property-delete-btn"
@@ -175,6 +177,7 @@ export default function EditSchemaSettings({
                   onChange={(e) => handlePropertyChange(property.id, 'name', e.target.value)}
                   placeholder={t('userTypes:propertyNamePlaceholder', 'e.g., email, age, address')}
                   size="small"
+                  disabled={disabled}
                 />
               </FormControl>
 
@@ -184,6 +187,7 @@ export default function EditSchemaSettings({
                   value={property.type}
                   onChange={(e) => handlePropertyChange(property.id, 'type', e.target.value as PropertyType)}
                   size="small"
+                  disabled={disabled}
                 >
                   <MenuItem value="string">{t('userTypes:types.string', 'String')}</MenuItem>
                   <MenuItem value="number">{t('userTypes:types.number', 'Number')}</MenuItem>
@@ -239,6 +243,7 @@ export default function EditSchemaSettings({
                     <Checkbox
                       checked={property.required}
                       onChange={(e) => handlePropertyChange(property.id, 'required', e.target.checked)}
+                      disabled={disabled}
                     />
                   }
                   label={
@@ -259,7 +264,7 @@ export default function EditSchemaSettings({
                     control={
                       <Checkbox
                         checked={property.unique}
-                        disabled={property.credential}
+                        disabled={property.credential || disabled}
                         onChange={(e) => handlePropertyChange(property.id, 'unique', e.target.checked)}
                       />
                     }
@@ -282,6 +287,7 @@ export default function EditSchemaSettings({
                     control={
                       <Checkbox
                         checked={property.credential}
+                        disabled={disabled}
                         onChange={({target: {checked}}) => {
                           if (!checked) {
                             setPendingCredentialRemoveId(property.id);
@@ -326,6 +332,7 @@ export default function EditSchemaSettings({
                   onChange={(e) => handlePropertyChange(property.id, 'regex', e.target.value)}
                   placeholder={t('userTypes:regexPlaceholder', 'e.g., ^[a-zA-Z0-9]+$')}
                   size="small"
+                  disabled={disabled}
                 />
               </FormControl>
             )}
@@ -347,8 +354,14 @@ export default function EditSchemaSettings({
                     placeholder={t('userTypes:enumPlaceholder', 'Add value and press Enter')}
                     size="small"
                     fullWidth
+                    disabled={disabled}
                   />
-                  <Button variant="outlined" size="small" onClick={() => handleAddEnumValue(property.id)}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => handleAddEnumValue(property.id)}
+                    disabled={disabled}
+                  >
                     {t('common:actions.add', 'Add')}
                   </Button>
                 </Box>
@@ -358,7 +371,7 @@ export default function EditSchemaSettings({
                       <Chip
                         key={val}
                         label={val}
-                        onDelete={() => handleRemoveEnumValue(property.id, val)}
+                        onDelete={disabled ? undefined : () => handleRemoveEnumValue(property.id, val)}
                         size="small"
                       />
                     ))}
@@ -376,6 +389,7 @@ export default function EditSchemaSettings({
         startIcon={<Plus size={16} />}
         onClick={handleAddProperty}
         fullWidth
+        disabled={disabled}
         sx={{
           py: 1.5,
           mb: 2,

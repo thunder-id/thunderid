@@ -2210,6 +2210,103 @@ func (suite *ResourceServiceTestSuite) TestGetResourceList() {
 	}
 }
 
+func (suite *ResourceServiceTestSuite) TestGetAllResourceList() {
+	testCases := []struct {
+		name             string
+		resourceServerID string
+		setupMocks       func()
+		expectedError    *serviceerror.ServiceError
+		expectedCount    int
+	}{
+		{
+			name:             "Success",
+			resourceServerID: "rs-123",
+			setupMocks: func() {
+				suite.mockStore.On("GetResourceServer", mock.Anything,
+					"rs-123").Return(ResourceServer{}, nil)
+				suite.mockStore.On("GetResourceListCount", mock.Anything,
+					"rs-123").Return(2, nil)
+				suite.mockStore.On("GetResourceList", mock.Anything,
+					"rs-123", 2, 0).Return([]Resource{
+					{ID: "res-1", Name: "Resource 1"},
+					{ID: "res-2", Name: "Resource 2"},
+				}, nil)
+			},
+			expectedCount: 2,
+		},
+		{
+			name:             "Success_Empty",
+			resourceServerID: "rs-123",
+			setupMocks: func() {
+				suite.mockStore.On("GetResourceServer", mock.Anything,
+					"rs-123").Return(ResourceServer{}, nil)
+				suite.mockStore.On("GetResourceListCount", mock.Anything,
+					"rs-123").Return(0, nil)
+			},
+			expectedCount: 0,
+		},
+		{
+			name:             "Error_EmptyResourceServerID",
+			resourceServerID: "",
+			setupMocks:       func() {},
+			expectedError:    &ErrorMissingID,
+		},
+		{
+			name:             "Error_ResourceServerNotFound",
+			resourceServerID: "rs-123",
+			setupMocks: func() {
+				suite.mockStore.On("GetResourceServer", mock.Anything,
+					"rs-123").Return(ResourceServer{}, errResourceServerNotFound)
+			},
+			expectedError: &ErrorResourceServerNotFound,
+		},
+		{
+			name:             "Error_CountError",
+			resourceServerID: "rs-123",
+			setupMocks: func() {
+				suite.mockStore.On("GetResourceServer", mock.Anything,
+					"rs-123").Return(ResourceServer{}, nil)
+				suite.mockStore.On("GetResourceListCount", mock.Anything,
+					"rs-123").Return(0, errors.New("database error"))
+			},
+			expectedError: &serviceerror.InternalServerError,
+		},
+		{
+			name:             "Error_ListError",
+			resourceServerID: "rs-123",
+			setupMocks: func() {
+				suite.mockStore.On("GetResourceServer", mock.Anything,
+					"rs-123").Return(ResourceServer{}, nil)
+				suite.mockStore.On("GetResourceListCount", mock.Anything,
+					"rs-123").Return(5, nil)
+				suite.mockStore.On("GetResourceList", mock.Anything,
+					"rs-123", 5, 0).Return(nil, errors.New("database error"))
+			},
+			expectedError: &serviceerror.InternalServerError,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			tc.setupMocks()
+
+			result, err := suite.service.GetAllResourceList(context.Background(), tc.resourceServerID)
+
+			if tc.expectedError != nil {
+				suite.Nil(result)
+				suite.NotNil(err)
+				suite.Equal(tc.expectedError.Code, err.Code)
+			} else {
+				suite.Nil(err)
+				suite.NotNil(result)
+				suite.Equal(tc.expectedCount, len(result))
+			}
+			suite.mockStore.AssertExpectations(suite.T())
+		})
+	}
+}
+
 // Action Tests
 
 func (suite *ResourceServiceTestSuite) TestCreateActionAtResourceServer_Success() {

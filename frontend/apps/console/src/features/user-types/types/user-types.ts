@@ -119,6 +119,7 @@ export interface ApiUserType {
   allowSelfRegistration: boolean;
   systemAttributes?: SystemAttributes;
   schema: UserTypeDefinition;
+  isReadOnly?: boolean;
 }
 
 /**
@@ -131,6 +132,7 @@ export interface UserTypeListItem {
   ouHandle?: string;
   allowSelfRegistration: boolean;
   systemAttributes?: SystemAttributes;
+  isReadOnly?: boolean;
 }
 
 /**

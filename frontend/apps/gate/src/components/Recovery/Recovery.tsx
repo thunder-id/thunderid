@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {AuthPageLayout} from '@thunderid/design';
+import {useThunderID} from '@thunderid/react';
 import type {JSX} from 'react';
 import RecoveryBox from './RecoveryBox';
 

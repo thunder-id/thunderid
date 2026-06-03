@@ -99,4 +99,9 @@ export interface OrganizationUnit {
    * @example 'https://example.com/logo.png'
    */
   logoUrl?: string;
+
+  /**
+   * Whether the organization unit is read-only and cannot be modified or deleted.
+   */
+  isReadOnly?: boolean;
 }

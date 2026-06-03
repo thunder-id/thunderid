@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useDesign, AuthPageLayout} from '@thunderid/design';
+import {useThunderID} from '@thunderid/react';
 import {ParticleBackground} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import SignInBox from './SignInBox';

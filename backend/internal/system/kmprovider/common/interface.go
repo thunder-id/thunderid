@@ -43,7 +43,7 @@ type RuntimeCryptoProvider interface {
 	Decrypt(ctx context.Context, keyRef *KeyRef, params cryptolib.AlgorithmParams, content []byte) ([]byte, error)
 	Sign(ctx context.Context, keyRef KeyRef, algorithm cryptolib.SignAlgorithm, content []byte) ([]byte, error)
 	GetPublicKeys(ctx context.Context, filter PublicKeyFilter) ([]PublicKeyInfo, error)
-	GetTLSMaterial(ctx context.Context, keyRef *KeyRef) (*TLSMaterial, error)
+	GetTLSMaterial(ctx context.Context) (*TLSMaterial, error)
 }
 
 // KeyRef identifies a cryptographic key by its ID.
@@ -69,4 +69,5 @@ type PublicKeyInfo struct {
 // TLSMaterial holds the TLS certificate material for a key reference.
 type TLSMaterial struct {
 	Certificate tls.Certificate
+	MinVersion  uint16
 }

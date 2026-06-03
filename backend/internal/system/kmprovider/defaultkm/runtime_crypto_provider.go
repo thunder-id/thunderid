@@ -192,9 +192,19 @@ func (s *runtimeCryptoService) GetPublicKeys(
 }
 
 func (s *runtimeCryptoService) GetTLSMaterial(
-	_ context.Context, _ *kmprovider.KeyRef,
+	_ context.Context,
 ) (*kmprovider.TLSMaterial, error) {
-	return nil, errors.New("not implemented")
+	if s.pkiService == nil {
+		return nil, errors.New("PKI service not initialized")
+	}
+	tlsCfg, err := s.pkiService.GetTLSConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load TLS config: %w", err)
+	}
+	return &kmprovider.TLSMaterial{
+		Certificate: tlsCfg.Certificates[0],
+		MinVersion:  tlsCfg.MinVersion,
+	}, nil
 }
 
 func (s *runtimeCryptoService) getRSAPublicKey(keyRef kmprovider.KeyRef) (*rsa.PublicKey, error) {

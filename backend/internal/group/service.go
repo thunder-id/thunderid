@@ -687,7 +687,7 @@ func (gs *groupService) resolveMembers(
 		entities, err := gs.entityService.GetEntitiesByIDs(ctx, entityIDs)
 		if err != nil {
 			logger.Error("Failed to batch-fetch entities for member resolution", log.Error(err))
-			return nil, &ErrorInternalServerError
+			return nil, &serviceerror.InternalServerError
 		}
 		entityMap = make(map[string]*entity.Entity, len(entities))
 		for i := range entities {
@@ -807,7 +807,7 @@ func (gs *groupService) modifyGroupMembers(
 			return nil, &ErrorGroupNotFound
 		}
 		logger.Error("Failed to fetch group", log.String("id", groupID), log.Error(err))
-		return nil, &ErrorInternalServerError
+		return nil, &serviceerror.InternalServerError
 	}
 
 	if svcErr := gs.checkGroupAccess(ctx, security.ActionUpdateGroup, existingGroup.OUID, groupID); svcErr != nil {
@@ -875,7 +875,7 @@ func (gs *groupService) modifyGroupMembers(
 
 	if err != nil {
 		logger.Error(errMsg, log.String("id", groupID), log.Error(err))
-		return nil, &ErrorInternalServerError
+		return nil, &serviceerror.InternalServerError
 	}
 
 	updatedGroup := convertGroupDAOToGroup(updatedGroupDAO)
@@ -957,7 +957,7 @@ func (gs *groupService) validateEntityMembers(
 	entities, err := gs.entityService.GetEntitiesByIDs(ctx, entityIDs)
 	if err != nil {
 		logger.Error("Failed to fetch entities for member validation", log.Error(err))
-		return &ErrorInternalServerError
+		return &serviceerror.InternalServerError
 	}
 
 	if len(entities) != len(entityIDs) {
@@ -994,7 +994,7 @@ func (gs *groupService) validateEntityMembers(
 	outOfScopeIDs, err := gs.entityService.ValidateEntityIDsInOUs(ctx, userIDs, accessibleOUs.IDs)
 	if err != nil {
 		logger.Error("Failed to validate user IDs in OUs", log.Error(err))
-		return &ErrorInternalServerError
+		return &serviceerror.InternalServerError
 	}
 
 	if len(outOfScopeIDs) > 0 {

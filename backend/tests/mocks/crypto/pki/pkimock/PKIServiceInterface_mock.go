@@ -6,6 +6,7 @@ package pkimock
 
 import (
 	"crypto"
+	"crypto/tls"
 	"crypto/x509"
 
 	mock "github.com/stretchr/testify/mock"
@@ -253,6 +254,61 @@ func (_c *PKIServiceInterfaceMock_GetSupportedSigningAlgorithms_Call) Return(str
 }
 
 func (_c *PKIServiceInterfaceMock_GetSupportedSigningAlgorithms_Call) RunAndReturn(run func() []string) *PKIServiceInterfaceMock_GetSupportedSigningAlgorithms_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetTLSConfig provides a mock function for the type PKIServiceInterfaceMock
+func (_mock *PKIServiceInterfaceMock) GetTLSConfig() (*tls.Config, error) {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTLSConfig")
+	}
+
+	var r0 *tls.Config
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func() (*tls.Config, error)); ok {
+		return returnFunc()
+	}
+	if returnFunc, ok := ret.Get(0).(func() *tls.Config); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*tls.Config)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func() error); ok {
+		r1 = returnFunc()
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// PKIServiceInterfaceMock_GetTLSConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTLSConfig'
+type PKIServiceInterfaceMock_GetTLSConfig_Call struct {
+	*mock.Call
+}
+
+// GetTLSConfig is a helper method to define mock.On call
+func (_e *PKIServiceInterfaceMock_Expecter) GetTLSConfig() *PKIServiceInterfaceMock_GetTLSConfig_Call {
+	return &PKIServiceInterfaceMock_GetTLSConfig_Call{Call: _e.mock.On("GetTLSConfig")}
+}
+
+func (_c *PKIServiceInterfaceMock_GetTLSConfig_Call) Run(run func()) *PKIServiceInterfaceMock_GetTLSConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *PKIServiceInterfaceMock_GetTLSConfig_Call) Return(config *tls.Config, err error) *PKIServiceInterfaceMock_GetTLSConfig_Call {
+	_c.Call.Return(config, err)
+	return _c
+}
+
+func (_c *PKIServiceInterfaceMock_GetTLSConfig_Call) RunAndReturn(run func() (*tls.Config, error)) *PKIServiceInterfaceMock_GetTLSConfig_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -10,7 +10,9 @@
     "vitest.config.ts",
     "jest.config.js",
     "**/*.test.ts",
+    "**/*.test.tsx",
     "**/*.spec.ts",
+    "**/*.spec.tsx",
     "**/*.test.js",
     "**/*.spec.js",
     "**/*.d.ts"

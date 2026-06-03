@@ -93,19 +93,22 @@ export default function EditMembersSettings({group}: EditMembersSettingsProps): 
       <ManageMembersSection
         groupId={group.id}
         onRemoveMember={handleRemoveMember}
+        isReadOnly={group.isReadOnly}
         headerAction={
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<Plus size={16} />}
-            onClick={() => setAddDialogOpen(true)}
-          >
-            {t('groups:edit.members.sections.manage.addMember')}
-          </Button>
+          !group.isReadOnly ? (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Plus size={16} />}
+              onClick={() => setAddDialogOpen(true)}
+            >
+              {t('groups:edit.members.sections.manage.addMember')}
+            </Button>
+          ) : undefined
         }
       />
 
-      {addDialogOpen && (
+      {addDialogOpen && !group.isReadOnly && (
         <AddMemberDialog open={addDialogOpen} onClose={() => setAddDialogOpen(false)} onAdd={handleAddMembers} />
       )}
     </Stack>

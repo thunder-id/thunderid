@@ -102,6 +102,7 @@ export default function AuthenticationFlowSection({
         value={authFlowOptions.find((flow) => flow.id === (editedApp.authFlowId ?? application.authFlowId)) ?? null}
         onChange={(_event, newValue) => onFieldChange('authFlowId', newValue?.id ?? '')}
         loading={loadingAuthFlows}
+        disabled={application.isReadOnly}
         renderInput={(params) => (
           <TextField
             {...params}

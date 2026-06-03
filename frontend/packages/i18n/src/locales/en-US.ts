@@ -101,6 +101,7 @@ const translations = {
     'status.inactive': 'Inactive',
     'status.enabled': 'Enabled',
     'status.disabled': 'Disabled',
+    'status.readOnly': 'Read Only',
     'status.completed': 'Completed',
     'status.failed': 'Failed',
 

@@ -217,7 +217,7 @@ const SignIn: FC<SignInProps> = ({
   variant,
   children,
 }: SignInProps): ReactElement => {
-  const {applicationId, afterSignInUrl, signIn, isInitialized, isLoading, meta, getStorageManager} = useThunderID();
+  const {applicationId, afterSignInUrl, signIn, isInitialized, isLoading, meta, getStorageManager, scopes} = useThunderID();
   const {t} = useTranslation(preferences?.i18n);
 
   // State management for the flow
@@ -445,6 +445,7 @@ const SignIn: FC<SignInProps> = ({
         response = (await signIn({
           applicationId: effectiveApplicationId,
           flowType: EmbeddedFlowType.Authentication,
+          ...(scopes && {scopes}),
         })) as EmbeddedSignInFlowResponseV2;
       }
 

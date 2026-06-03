@@ -40,6 +40,10 @@ interface CertificateSectionProps {
    * @param value - The new value for the field
    */
   onFieldChange: (field: keyof Application, value: unknown) => void;
+  /**
+   * Whether inputs should be disabled (e.g. read-only resource).
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -55,7 +59,12 @@ interface CertificateSectionProps {
  * @param props - Component props
  * @returns Certificate configuration UI within a SettingsCard
  */
-export default function CertificateSection({application, editedApp, onFieldChange}: CertificateSectionProps) {
+export default function CertificateSection({
+  application,
+  editedApp,
+  onFieldChange,
+  disabled = false,
+}: CertificateSectionProps) {
   const {t} = useTranslation();
 
   const certificateTypeOptions = [
@@ -96,6 +105,7 @@ export default function CertificateSection({application, editedApp, onFieldChang
             isOptionEqualToValue={(option, value) => option.value === value.value}
             renderInput={(params) => <TextField {...params} fullWidth />}
             disableClearable
+            disabled={disabled}
           />
         </FormControl>
 
@@ -121,6 +131,7 @@ export default function CertificateSection({application, editedApp, onFieldChang
               };
               onFieldChange('certificate', {...currentCert, value: e.target.value});
             }}
+            disabled={disabled}
             placeholder={
               ((editedApp.certificate as {type?: string})?.type ??
                 (application.certificate as {type?: string})?.type) === CertificateTypes.JWKS_URI

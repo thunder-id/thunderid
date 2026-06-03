@@ -137,18 +137,15 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 		Delimiter:   ":",
 	}
 
-	resources := &ResourceList{
-		TotalResults: 1,
-		Resources: []Resource{
-			{
-				ID:           "res1",
-				Name:         "Resource 1",
-				Handle:       "resource1",
-				Description:  "First resource",
-				Parent:       nil,
-				ParentHandle: "",
-				Permission:   "test-server:resource1",
-			},
+	resources := []Resource{
+		{
+			ID:           "res1",
+			Name:         "Resource 1",
+			Handle:       "resource1",
+			Description:  "First resource",
+			Parent:       nil,
+			ParentHandle: "",
+			Permission:   "test-server:resource1",
 		},
 	}
 
@@ -167,8 +164,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 
 	resourceID := "res1"
 	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
-	s.mockService.EXPECT().GetResourceList(
-		ctx, serverID, (*string)(nil), serverconst.MaxPageSize, 0).Return(resources, nil)
+	s.mockService.EXPECT().GetAllResourceList(ctx, serverID).Return(resources, nil)
 	s.mockService.EXPECT().GetActionList(ctx, serverID, &resourceID, serverconst.MaxPageSize, 0).Return(actions, nil)
 
 	result, name, err := s.exporter.GetResourceByID(ctx, serverID)

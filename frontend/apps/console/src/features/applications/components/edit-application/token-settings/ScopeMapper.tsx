@@ -46,6 +46,10 @@ interface ScopeMapperProps {
    * Callback fired when the scope → attributes mapping changes.
    */
   onScopeClaimsChange: (scopeClaims: ScopeClaims) => void;
+  /**
+   * Whether inputs should be disabled (e.g. read-only resource).
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -64,6 +68,7 @@ export default function ScopeMapper({
   userAttributes,
   isLoadingUserAttributes,
   onScopeClaimsChange,
+  disabled = false,
 }: ScopeMapperProps) {
   const {t} = useTranslation();
   const [selectedScope, setSelectedScope] = useState<string | null>(null);
@@ -205,7 +210,13 @@ export default function ScopeMapper({
               ) : (
                 <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                   {mappedAttributes.map((attr) => (
-                    <Chip key={attr} label={attr} size="small" color="primary" onDelete={() => handleRemove(attr)} />
+                    <Chip
+                      key={attr}
+                      label={attr}
+                      size="small"
+                      color="primary"
+                      onDelete={disabled ? undefined : () => handleRemove(attr)}
+                    />
                   ))}
                 </Stack>
               )}
@@ -252,13 +263,13 @@ export default function ScopeMapper({
                       label={attr}
                       size="small"
                       variant="outlined"
-                      onClick={() => handleAdd(attr)}
+                      onClick={disabled ? undefined : () => handleAdd(attr)}
                       sx={{
-                        cursor: 'pointer',
+                        cursor: disabled ? 'default' : 'pointer',
                         borderStyle: 'dashed',
                         '&:hover': {
                           borderStyle: 'solid',
-                          bgcolor: 'action.hover',
+                          bgcolor: disabled ? 'transparent' : 'action.hover',
                         },
                         transition: 'all 0.15s ease',
                       }}

@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
+import {useThunderID} from '@thunderid/react';
 import RoleQueryKeys from '../constants/role-query-keys';
 import type {RoleAssignmentListParams} from '../models/requests';
 import type {RoleAssignmentListResponse} from '../models/role';

@@ -544,6 +544,7 @@ const ThunderIDProvider: FC<PropsWithChildren<ThunderIDProviderProps>> = ({
       afterSignInUrl: config.afterSignInUrl,
       applicationId: config.applicationId,
       baseUrl,
+      scopes: config.scopes,
       clearSession,
       clientId,
       discovery: {
@@ -584,6 +585,7 @@ const ThunderIDProvider: FC<PropsWithChildren<ThunderIDProviderProps>> = ({
       applicationId,
       config?.organizationHandle,
       config.afterSignInUrl,
+      config.scopes,
       signInUrl,
       signUpUrl,
       baseUrl,

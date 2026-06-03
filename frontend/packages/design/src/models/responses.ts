@@ -33,6 +33,7 @@ export interface ThemeListItem {
   primaryColor?: string;
   createdAt?: string;
   updatedAt?: string;
+  isReadOnly?: boolean;
 }
 
 /**

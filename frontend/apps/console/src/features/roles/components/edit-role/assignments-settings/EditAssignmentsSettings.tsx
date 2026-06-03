@@ -28,13 +28,17 @@ import type {RoleAssignment} from '../../../models/role';
 
 interface EditAssignmentsSettingsProps {
   roleId: string;
+  isReadOnly?: boolean;
 }
 
 /**
  * Assignments tab content for the Role edit page.
  * Provides assignment listing, add, and remove functionality.
  */
-export default function EditAssignmentsSettings({roleId}: EditAssignmentsSettingsProps): JSX.Element {
+export default function EditAssignmentsSettings({
+  roleId,
+  isReadOnly = false,
+}: EditAssignmentsSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const addRoleAssignments = useAddRoleAssignments();
   const removeRoleAssignments = useRemoveRoleAssignments();
@@ -91,19 +95,22 @@ export default function EditAssignmentsSettings({roleId}: EditAssignmentsSetting
         onRemoveAssignment={handleRemoveAssignment}
         activeAssignmentTab={activeAssignmentTab}
         onAssignmentTabChange={setActiveAssignmentTab}
+        isReadOnly={isReadOnly}
         headerAction={
-          <Button
-            variant="contained"
-            size="small"
-            startIcon={<Plus size={16} />}
-            onClick={() => setAddDialogOpen(true)}
-          >
-            {t('roles:edit.assignments.sections.manage.addAssignment')}
-          </Button>
+          !isReadOnly ? (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<Plus size={16} />}
+              onClick={() => setAddDialogOpen(true)}
+            >
+              {t('roles:edit.assignments.sections.manage.addAssignment')}
+            </Button>
+          ) : undefined
         }
       />
 
-      {addDialogOpen && (
+      {addDialogOpen && !isReadOnly && (
         <AddAssignmentDialog
           open={addDialogOpen}
           roleId={roleId}

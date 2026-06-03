@@ -706,6 +706,11 @@ const sidebars: SidebarsConfig = {
           id: 'guides/deployment-patterns/production-guidelines',
           label: 'Production Guidelines',
         },
+        {
+          type: 'doc',
+          id: 'guides/deployment-patterns/observability',
+          label: 'Observability',
+        },
       ],
     },
   ],
@@ -750,7 +755,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       collapsible: false,
       items: [
-        {type: 'doc', id: 'community/contributing/overview', label: 'Contribute to ThunderID'},
+        {type: 'doc', id: 'community/contributing/overview', label: `Contribute to ${productConfig.project.name}`},
         {type: 'doc', id: 'community/contributing/sharing-ideas', label: 'Share Ideas'},
         {type: 'doc', id: 'community/contributing/proposing-features', label: 'Propose Features'},
         {type: 'doc', id: 'community/contributing/contributing-code/prerequisites', label: 'Prerequisites'},

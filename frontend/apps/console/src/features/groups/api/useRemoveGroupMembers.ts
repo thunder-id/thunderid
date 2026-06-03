@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig, useToast} from '@thunderid/contexts';
+import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import GroupQueryKeys from '../constants/group-query-keys';
 import type {Member} from '../models/group';

@@ -30,6 +30,8 @@
     "i18n:extract": "pnpm i18next-cli sync"
   },
   "devDependencies": {
+    "@axe-core/playwright": "catalog:",
+    "@playwright/test": "catalog:",
     "@thunderid/eslint-plugin": "workspace:^",
     "@thunderid/logger": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",

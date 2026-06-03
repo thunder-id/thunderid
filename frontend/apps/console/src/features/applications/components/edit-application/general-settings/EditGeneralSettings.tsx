@@ -128,7 +128,7 @@ export default function EditGeneralSettings({
           oauth2Config={oauth2Config}
           onFieldChange={onFieldChange}
         />
-        {oauth2Config?.clientId?.toUpperCase() !== systemConsoleClientId && (
+        {!application.isReadOnly && oauth2Config?.clientId?.toUpperCase() !== systemConsoleClientId && (
           <DangerZoneSection
             showRegenerateSecret={isConfidentialClient}
             onRegenerateClick={handleRegenerateClick}

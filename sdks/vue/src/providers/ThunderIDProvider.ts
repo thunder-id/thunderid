@@ -70,7 +70,7 @@ interface ThunderIDProviderProps {
   organizationChain: object | undefined;
   organizationHandle: string | undefined;
   platform: string | undefined;
-  scopes: string[] | undefined;
+  scopes: string | string[] | undefined;
   signInOptions: SignInOptions | undefined;
   signInUrl: string | undefined;
   signUpUrl: string | undefined;
@@ -156,7 +156,7 @@ const ThunderIDProvider: Component = defineComponent({
     /** The scopes to request. */
     scopes: {
       default: undefined,
-      type: Array as PropType<string[]>,
+      type: [Array, String] as PropType<string | string[]>,
     },
     /** Additional sign-in options. */
     signInOptions: {
@@ -345,6 +345,7 @@ const ThunderIDProvider: Component = defineComponent({
         await client.clearSession(...args);
       },
       clientId: props.clientId,
+      scopes: props.scopes,
       exchangeToken: (config: any): Promise<TokenResponse | Response> => client.exchangeToken(config),
       getAccessToken: (): Promise<string> => client.getAccessToken(),
       getDecodedIdToken: (): Promise<IdToken> => client.getDecodedIdToken(),

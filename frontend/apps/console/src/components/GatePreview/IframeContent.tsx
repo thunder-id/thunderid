@@ -16,7 +16,6 @@
  * under the License.
  */
 
-import type {EmbeddedFlowComponent} from '@thunderid/react';
 import createCache from '@emotion/cache';
 import {CacheProvider} from '@emotion/react';
 import {
@@ -30,6 +29,7 @@ import {
   type Stylesheet,
 } from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
+import type {EmbeddedFlowComponent} from '@thunderid/react';
 import {TemplateLiteralType} from '@thunderid/utils';
 import {Box} from '@wso2/oxygen-ui';
 import {useEffect, useMemo, type JSX} from 'react';

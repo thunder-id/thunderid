@@ -54,4 +54,9 @@ export interface User {
    * Human-readable display name for the user.
    */
   display?: string;
+
+  /**
+   * Whether the user is read-only and cannot be modified or deleted.
+   */
+  isReadOnly?: boolean;
 }

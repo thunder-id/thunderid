@@ -268,23 +268,6 @@ var (
 	}
 )
 
-// Server errors for role management operations.
-var (
-	// ErrorInternalServerError is the error returned when an internal server error occurs.
-	ErrorInternalServerError = serviceerror.ServiceError{
-		Type: serviceerror.ServerErrorType,
-		Code: "ROL-5000",
-		Error: core.I18nMessage{
-			Key:          "error.roleservice.internal_server_error",
-			DefaultValue: "Internal server error",
-		},
-		ErrorDescription: core.I18nMessage{
-			Key:          "error.roleservice.internal_server_error_description",
-			DefaultValue: "An unexpected error occurred while processing the request",
-		},
-	}
-)
-
 // Internal error constants for role management operations.
 var (
 	// ErrRoleNotFound is returned when the role is not found in the system.

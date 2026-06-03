@@ -66,7 +66,7 @@ const SignUp: Component = defineComponent({
     variant: {default: 'outlined', type: String as PropType<'elevated' | 'outlined' | 'flat'>},
   },
   setup(props: any, {slots}: SetupContext): () => VNode | null {
-    const {signUp, isInitialized, applicationId} = useThunderID();
+    const {signUp, isInitialized, applicationId, scopes} = useThunderID();
 
     const handleInitialize = async (
       payload?: EmbeddedFlowExecuteRequestPayload,
@@ -87,6 +87,7 @@ const SignUp: Component = defineComponent({
       const initialPayload: any = payload || {
         flowType: EmbeddedFlowType.Registration,
         ...(effectiveApplicationId && {applicationId: effectiveApplicationId}),
+        ...(scopes && {scopes}),
       };
 
       return (await signUp(initialPayload)) as EmbeddedFlowExecuteResponse;
@@ -108,7 +109,8 @@ const SignUp: Component = defineComponent({
       if (
         props.shouldRedirectAfterSignUp &&
         response?.type !== EmbeddedFlowResponseType.Redirection &&
-        props.afterSignUpUrl
+        props.afterSignUpUrl &&
+        !(response as any)?.assertion
       ) {
         await navigateTo(props.afterSignUpUrl, {external: true});
       }

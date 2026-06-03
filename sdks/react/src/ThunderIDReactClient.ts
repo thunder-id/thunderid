@@ -41,6 +41,7 @@ import {
   executeEmbeddedSignUpFlowV2,
   executeEmbeddedRecoveryFlowV2,
   EmbeddedSignInFlowStatusV2,
+  EmbeddedSignUpFlowStatusV2,
 } from '@thunderid/browser';
 import getAllOrganizations from './api/getAllOrganizations';
 import getMeOrganizations from './api/getMeOrganizations';
@@ -348,14 +349,50 @@ class ThunderIDReactClient<T extends ThunderIDReactConfig = ThunderIDReactConfig
       sessionStorage.setItem('thunderid_auth_id', authIdFromUrl);
     }
 
-    return executeEmbeddedSignUpFlowV2({
+    const response: any = await executeEmbeddedSignUpFlowV2({
       authId,
       baseUrl,
       payload:
         typeof firstArg === 'object' && 'flowType' in firstArg
           ? {...(firstArg as EmbeddedFlowExecuteRequestPayload), verbose: true}
           : (firstArg as EmbeddedFlowExecuteRequestPayload),
-    }) as any;
+    });
+
+    if (
+      response &&
+      typeof response === 'object' &&
+      response.flowStatus === EmbeddedSignUpFlowStatusV2.Complete &&
+      response.assertion
+    ) {
+      const decodedAssertion: {
+        [key: string]: unknown;
+        exp?: number;
+        iat?: number;
+        scope?: string;
+      } = await this.decodeJwtToken<{
+        [key: string]: unknown;
+        exp?: number;
+        iat?: number;
+        scope?: string;
+      }>(response.assertion);
+
+      const createdAt: number = decodedAssertion.iat ? decodedAssertion.iat * 1000 : Date.now();
+      const expiresIn: number =
+        decodedAssertion.exp && decodedAssertion.iat ? decodedAssertion.exp - decodedAssertion.iat : 3600;
+
+      await this.setSession({
+        access_token: response.assertion,
+        created_at: createdAt,
+        expires_in: expiresIn,
+        id_token: response.assertion,
+        scope: decodedAssertion.scope,
+        token_type: 'Bearer',
+      });
+
+      this.notifySignIn(extractUserClaimsFromIdToken(decodedAssertion as IdToken) as User);
+    }
+
+    return response;
   }
 
   override async recover(payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse> {

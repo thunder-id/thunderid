@@ -21,16 +21,19 @@ package mgt
 import (
 	"net/http"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
 // Initialize initializes the i18n service and registers its routes.
-func Initialize(mux *http.ServeMux) (I18nServiceInterface, declarativeresource.ResourceExporter, error) {
+func Initialize(mux *http.ServeMux,
+	translationConfig config.TranslationConfig,
+) (I18nServiceInterface, declarativeresource.ResourceExporter, error) {
 	var store i18nStoreInterface
 
-	storeMode := getI18nStoreMode()
+	storeMode := getI18nStoreMode(translationConfig)
 	switch storeMode {
 	case serverconst.StoreModeDeclarative:
 		fileStore := newFileBasedStore()

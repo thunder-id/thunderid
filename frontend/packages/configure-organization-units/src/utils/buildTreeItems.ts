@@ -27,6 +27,7 @@ export default function buildTreeItems(ous: OrganizationUnit[]): OrganizationUni
     handle: ou.handle,
     description: ou.description,
     logoUrl: ou.logoUrl,
+    isReadOnly: ou.isReadOnly,
     children: [
       {
         id: `${ou.id}${OrganizationUnitTreeConstants.PLACEHOLDER_SUFFIX}`,

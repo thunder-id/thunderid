@@ -68,6 +68,10 @@ func (t *dbTransactioner) Transact(ctx context.Context, txFunc func(context.Cont
 	// 1. Begin transaction
 	tx, err := t.db.BeginTx(ctx, nil)
 	if err != nil {
+		log.GetLogger().Error("failed to begin transaction",
+			log.String("dbName", t.dbName),
+			log.Error(err),
+		)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
@@ -116,6 +120,12 @@ func (t *dbTransactioner) Transact(ctx context.Context, txFunc func(context.Cont
 		} else {
 			// Success - commit
 			err = tx.Commit()
+			if err != nil {
+				log.GetLogger().Error("failed to commit transaction",
+					log.String("dbName", t.dbName),
+					log.Error(err),
+				)
+			}
 		}
 	}()
 

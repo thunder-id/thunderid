@@ -31,6 +31,7 @@ interface ManageAssignmentsSectionProps {
   headerAction?: ReactNode;
   activeAssignmentTab: number;
   onAssignmentTabChange: (tab: number) => void;
+  isReadOnly?: boolean;
 }
 
 /**
@@ -43,6 +44,7 @@ export default function ManageAssignmentsSection({
   headerAction = undefined,
   activeAssignmentTab,
   onAssignmentTabChange,
+  isReadOnly = false,
 }: ManageAssignmentsSectionProps): JSX.Element {
   const {t} = useTranslation();
   const dataGridLocaleText = useDataGridLocaleText();
@@ -147,6 +149,11 @@ export default function ManageAssignmentsSection({
     [t, onRemoveAssignment],
   );
 
+  const effectiveBaseColumns = useMemo(
+    () => (isReadOnly ? baseColumns.filter((col) => col.field !== 'actions') : baseColumns),
+    [isReadOnly, baseColumns],
+  );
+
   const userColumns: DataGrid.GridColDef<RoleAssignment>[] = useMemo(
     () => [
       {
@@ -163,9 +170,9 @@ export default function ManageAssignmentsSection({
           </Box>
         ),
       },
-      ...baseColumns,
+      ...effectiveBaseColumns,
     ],
-    [baseColumns],
+    [effectiveBaseColumns],
   );
 
   const groupColumns: DataGrid.GridColDef<RoleAssignment>[] = useMemo(
@@ -184,9 +191,9 @@ export default function ManageAssignmentsSection({
           </Box>
         ),
       },
-      ...baseColumns,
+      ...effectiveBaseColumns,
     ],
-    [baseColumns],
+    [effectiveBaseColumns],
   );
   const appColumns: DataGrid.GridColDef<RoleAssignment>[] = useMemo(
     () => [
@@ -204,9 +211,9 @@ export default function ManageAssignmentsSection({
           </Box>
         ),
       },
-      ...baseColumns,
+      ...effectiveBaseColumns,
     ],
-    [baseColumns],
+    [effectiveBaseColumns],
   );
   const agentColumns: DataGrid.GridColDef<RoleAssignment>[] = useMemo(
     () => [
@@ -224,9 +231,9 @@ export default function ManageAssignmentsSection({
           </Box>
         ),
       },
-      ...baseColumns,
+      ...effectiveBaseColumns,
     ],
-    [baseColumns],
+    [effectiveBaseColumns],
   );
 
   const handleTabChange = (_event: SyntheticEvent, newValue: number): void => {

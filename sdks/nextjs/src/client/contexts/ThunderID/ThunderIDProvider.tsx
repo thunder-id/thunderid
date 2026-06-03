@@ -105,6 +105,7 @@ const ThunderIDClientProvider: FC<PropsWithChildren<ThunderIDClientProviderProps
   updateProfile,
   applicationId,
   organizationHandle,
+  scopes,
   myOrganizations,
   revalidateMyOrganizations,
   getAllOrganizations,
@@ -303,6 +304,7 @@ const ThunderIDClientProvider: FC<PropsWithChildren<ThunderIDClientProviderProps
       isSignedIn,
       organizationHandle,
       refreshToken,
+      scopes,
       signIn: handleSignIn,
       signInUrl,
       signOut: handleSignOut,
@@ -310,7 +312,7 @@ const ThunderIDClientProvider: FC<PropsWithChildren<ThunderIDClientProviderProps
       signUpUrl,
       user,
     }),
-    [baseUrl, user, isSignedIn, isLoading, signInUrl, signUpUrl, applicationId, organizationHandle],
+    [baseUrl, user, isSignedIn, isLoading, signInUrl, signUpUrl, applicationId, organizationHandle, scopes],
   );
 
   const handleProfileUpdate = (payload: User): void => {

@@ -19,7 +19,7 @@
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
-import {Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -77,6 +77,9 @@ export default function RolesList(): JSX.Element {
         headerName: t('roles:listing.columns.name'),
         flex: 1,
         minWidth: 200,
+        renderCell: (params: DataGrid.GridRenderCellParams<RoleSummary>): JSX.Element => (
+          <Typography variant="body2">{params.row.name}</Typography>
+        ),
       },
       {
         field: 'description',
@@ -107,29 +110,39 @@ export default function RolesList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<RoleSummary>): JSX.Element => (
           <ListingTable.RowActions>
-            <Tooltip title={t('common:actions.edit')}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleViewClick(params.row.id);
-                }}
-              >
-                <Pencil size={16} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={t('common:actions.delete')}>
-              <IconButton
-                size="small"
-                color="error"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteClick(params.row.id);
-                }}
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            </Tooltip>
+            {params.row.isReadOnly ? (
+              <Tooltip title={t('common:status.readOnly', 'Read Only')}>
+                <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
+                  <Eye size={16} />
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <>
+                <Tooltip title={t('common:actions.edit')}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleViewClick(params.row.id);
+                    }}
+                  >
+                    <Pencil size={16} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={t('common:actions.delete')}>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClick(params.row.id);
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
           </ListingTable.RowActions>
         ),
       },

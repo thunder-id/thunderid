@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {SettingsCard} from '@thunderid/components';
+import {useThunderID} from '@thunderid/react';
 import {
   Box,
   Stack,
@@ -70,6 +70,10 @@ interface OAuth2ConfigSectionProps {
    * Callback to handle OAuth2 config field changes. When omitted the section is read-only.
    */
   onOAuth2ConfigChange?: (updates: Partial<OAuth2Config>) => void;
+  /**
+   * Whether inputs should be disabled (e.g. read-only resource).
+   */
+  disabled?: boolean;
 }
 
 function OAuth2Logo() {
@@ -146,6 +150,7 @@ export default function OAuth2ConfigSection({
   oauth2Config = undefined,
   oauth2Constraints = undefined,
   onOAuth2ConfigChange = undefined,
+  disabled = false,
 }: OAuth2ConfigSectionProps) {
   const {t} = useTranslation();
   const {discovery} = useThunderID();
@@ -156,7 +161,7 @@ export default function OAuth2ConfigSection({
   const availableResponseTypes = discovery?.wellKnown?.response_types_supported ?? [];
   const availableTokenEndpointAuthMethods: string[] =
     (discovery as {wellKnown?: OidcDiscovery} | undefined)?.wellKnown?.token_endpoint_auth_methods_supported ?? [];
-  const isEditable = Boolean(onOAuth2ConfigChange);
+  const isEditable = Boolean(onOAuth2ConfigChange) && !disabled;
 
   // Constraint helpers
   const constraint = <K extends keyof OAuth2Config>(field: K) => oauth2Constraints?.[field];

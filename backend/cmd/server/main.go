@@ -39,7 +39,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
-	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
+	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -72,7 +72,7 @@ func main() {
 	}
 
 	// Initialize the cache manager.
-	cacheManager := cache.Initialize()
+	cacheManager := cache.Initialize(cfg.Cache, cfg.Server.Identifier)
 
 	// Initialize system permission strings before any service or middleware uses them.
 	security.InitSystemPermissions(cfg.Server.SecurityConfig.SystemPermissionPrefix)
@@ -84,7 +84,7 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService := registerServices(mux, cacheManager)
+	jwtService, runtimeCryptoSvc := registerServices(mux, cacheManager)
 
 	// Register static file handlers for frontend applications.
 	registerStaticFileHandlers(logger, mux, serverHome)
@@ -100,7 +100,7 @@ func main() {
 		logger.Info("TLS is not enabled, starting server without TLS")
 		ln = createListener(logger, server)
 	} else {
-		tlsConfig := loadCertConfig(logger, cfg, serverHome)
+		tlsConfig := loadCertConfig(logger, runtimeCryptoSvc)
 		ln = createTLSListener(logger, server, tlsConfig)
 	}
 
@@ -164,18 +164,17 @@ func initThunderConfigurations(logger *log.Logger, serverHome string) *config.Co
 	return cfg
 }
 
-// loadCertConfig loads the certificate configuration and extracts the Key ID (kid).
-func loadCertConfig(logger *log.Logger, cfg *config.Config, serverHome string) *tls.Config {
-	// Build full paths for certificate and key files
-	certFilePath := path.Join(serverHome, cfg.TLS.CertFile)
-	keyFilePath := path.Join(serverHome, cfg.TLS.KeyFile)
-
-	// Load TLS configuration
-	tlsConfig, err := pki.LoadTLSConfig(cfg, certFilePath, keyFilePath)
+// loadCertConfig loads the TLS material via the runtime crypto provider.
+func loadCertConfig(logger *log.Logger, runtimeSvc kmprovider.RuntimeCryptoProvider) *tls.Config {
+	mat, err := runtimeSvc.GetTLSMaterial(context.Background())
 	if err != nil {
-		logger.Fatal("Failed to load TLS configuration", log.Error(err))
+		logger.Fatal("Failed to load TLS material", log.Error(err))
 	}
-	return tlsConfig
+	// #nosec G402 -- MinVersion is set to TLS 1.2 or higher by GetTLSMaterial
+	return &tls.Config{
+		Certificates: []tls.Certificate{mat.Certificate},
+		MinVersion:   mat.MinVersion,
+	}
 }
 
 // createHTTPServer creates and configures an HTTP server with common settings.

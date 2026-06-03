@@ -16,8 +16,7 @@
  * under the License.
  */
 
-import express, { Express, Request, Response } from "express";
-import { Server } from "http";
+import { createServer, IncomingMessage, Server, ServerResponse } from "http";
 
 /**
  * Represents a captured SMS message with extracted OTP
@@ -55,63 +54,58 @@ export interface SMSMessage {
  * ```
  */
 export class MockSMSServer {
-  private app: Express;
   private server: Server | null = null;
   private messages: SMSMessage[] = [];
   private port: number;
 
   constructor(port: number = 8098) {
     this.port = port;
-    this.app = express();
-    this.setupMiddleware();
-    this.setupRoutes();
   }
 
-  /**
-   * Configure Express middleware
-   */
-  private setupMiddleware(): void {
-    // Accept all content types as plain text - SMS messages are always text
-    this.app.use(express.text({ type: "*/*" }));
-  }
-
-  /**
-   * Setup HTTP routes
-   */
-  private setupRoutes(): void {
-    // Main endpoint that the Server calls to send SMS
-    this.app.post("/send-sms", this.handleSendSMS.bind(this));
-
-    // Endpoint for tests to retrieve all messages
-    this.app.get("/messages", this.handleGetMessages.bind(this));
-
-    // Endpoint for tests to get last message
-    this.app.get("/messages/last", this.handleGetLastMessage.bind(this));
-
-    // Endpoint to clear all messages
-    this.app.post("/clear", this.handleClearMessages.bind(this));
-
-    // Health check
-    this.app.get("/health", (_req: Request, res: Response) => {
-      res.json({ status: "ok", messagesCount: this.messages.length });
+  private readBody(req: IncomingMessage): Promise<string> {
+    return new Promise(resolve => {
+      let data = "";
+      req.setEncoding("utf8");
+      req.on("data", (chunk: string) => { data += chunk; });
+      req.on("end", () => resolve(data));
     });
   }
 
-  /**
-   * Handle incoming SMS from the Server
-   */
-  private handleSendSMS(req: Request, res: Response): void {
+  private sendJSON(res: ServerResponse, status: number, body: unknown): void {
+    const payload = JSON.stringify(body);
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(payload);
+  }
+
+  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const { method, url } = req;
+
+    if (method === "POST" && url === "/send-sms") {
+      await this.handleSendSMS(req, res);
+    } else if (method === "GET" && url === "/messages") {
+      this.sendJSON(res, 200, { count: this.messages.length, messages: this.messages });
+    } else if (method === "GET" && url === "/messages/last") {
+      const last = this.messages.length > 0 ? this.messages[this.messages.length - 1] : null;
+      this.sendJSON(res, 200, last);
+    } else if (method === "POST" && url === "/clear") {
+      const clearedCount = this.messages.length;
+      this.messages = [];
+      console.log(`[Mock SMS Server] Cleared ${clearedCount} message(s)`);
+      this.sendJSON(res, 200, { count: clearedCount, status: "cleared" });
+    } else if (method === "GET" && url === "/health") {
+      this.sendJSON(res, 200, { messagesCount: this.messages.length, status: "ok" });
+    } else {
+      this.sendJSON(res, 404, { error: "Not found" });
+    }
+  }
+
+  private async handleSendSMS(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
-      // SMS message is always plain text
-      const messageBody = typeof req.body === "string" ? req.body : String(req.body || "");
-
-      // Extract OTP from message
+      const messageBody = await this.readBody(req);
       const otp = this.extractOTP(messageBody);
-
-      // Store message
       const smsMessage: SMSMessage = {
         message: messageBody,
-        otp: otp,
+        otp,
         timestamp: new Date(),
       };
 
@@ -121,50 +115,15 @@ export class MockSMSServer {
         `[Mock SMS Server] Message received: "${messageBody.substring(0, 50)}${messageBody.length > 50 ? "..." : ""}" | OTP: ${otp || "none"}`
       );
 
-      // Return success response
-      res.status(200).json({
-        success: true,
+      this.sendJSON(res, 200, {
         messageId: `mock-msg-${this.messages.length}`,
+        success: true,
         timestamp: smsMessage.timestamp.toISOString(),
       });
     } catch (error) {
       console.error("[Mock SMS Server] Error handling SMS:", error);
-      res.status(500).json({
-        success: false,
-        error: "Failed to process SMS message",
-      });
+      this.sendJSON(res, 500, { error: "Failed to process SMS message", success: false });
     }
-  }
-
-  /**
-   * Handle request to retrieve all messages
-   */
-  private handleGetMessages(_req: Request, res: Response): void {
-    res.json({
-      count: this.messages.length,
-      messages: this.messages,
-    });
-  }
-
-  /**
-   * Handle request to get last message
-   */
-  private handleGetLastMessage(_req: Request, res: Response): void {
-    const lastMessage = this.messages.length > 0 ? this.messages[this.messages.length - 1] : null;
-    res.json(lastMessage);
-  }
-
-  /**
-   * Handle request to clear all messages
-   */
-  private handleClearMessages(_req: Request, res: Response): void {
-    const clearedCount = this.messages.length;
-    this.messages = [];
-    console.log(`[Mock SMS Server] Cleared ${clearedCount} message(s)`);
-    res.json({
-      status: "cleared",
-      count: clearedCount,
-    });
   }
 
   /**
@@ -180,29 +139,16 @@ export class MockSMSServer {
   private extractOTP(message: string): string {
     if (!message) return "";
 
-    // First, try to extract OTP from common patterns
-    // Pattern: "Your verification code is: 123456" or "code is: 123456" or "code: 123456"
     const patternMatch = message.match(/(?:verification code|code)\s*(?:is\s*)?:\s*(\d{4,8})/i);
     if (patternMatch && patternMatch[1]) {
       return patternMatch[1];
     }
 
-    // Fallback: Find all numeric sequences of 4-8 digits
     const matches = message.match(/\b\d{4,8}\b/g);
+    if (!matches || matches.length === 0) return "";
 
-    if (!matches || matches.length === 0) {
-      return "";
-    }
-
-    // Score each potential OTP
-    const scored = matches.map(match => ({
-      value: match,
-      score: this.calculateOTPScore(match),
-    }));
-
-    // Sort by score (highest first)
+    const scored = matches.map(match => ({ score: this.calculateOTPScore(match), value: match }));
     scored.sort((a, b) => b.score - a.score);
-
     return scored[0].value;
   }
 
@@ -220,21 +166,13 @@ export class MockSMSServer {
    * @returns Score value
    */
   private calculateOTPScore(sequence: string): number {
-    const length = sequence.length;
-
-    switch (length) {
-      case 6:
-        return 100; // Most common OTP length
-      case 4:
-        return 80;
-      case 5:
-        return 70;
-      case 8:
-        return 60;
-      case 7:
-        return 50;
-      default:
-        return 0;
+    switch (sequence.length) {
+      case 6: return 100;
+      case 4: return 80;
+      case 5: return 70;
+      case 8: return 60;
+      case 7: return 50;
+      default: return 0;
     }
   }
 
@@ -246,15 +184,22 @@ export class MockSMSServer {
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.server = this.app.listen(this.port, () => {
-          console.log(`[Mock SMS Server] Started on http://localhost:${this.port}`);
-          console.log(`[Mock SMS Server] SMS endpoint: http://localhost:${this.port}/send-sms`);
-          resolve();
+        this.server = createServer((req, res) => {
+          this.handleRequest(req, res).catch(err => {
+            console.error("[Mock SMS Server] Unhandled error:", err);
+            this.sendJSON(res, 500, { error: "Internal server error" });
+          });
         });
 
         this.server.on("error", (error: Error) => {
-          console.error(`[Mock SMS Server] Failed to start:`, error);
+          console.error("[Mock SMS Server] Failed to start:", error);
           reject(error);
+        });
+
+        this.server.listen(this.port, () => {
+          console.log(`[Mock SMS Server] Started on http://localhost:${this.port}`);
+          console.log(`[Mock SMS Server] SMS endpoint: http://localhost:${this.port}/send-sms`);
+          resolve();
         });
       } catch (error) {
         reject(error);

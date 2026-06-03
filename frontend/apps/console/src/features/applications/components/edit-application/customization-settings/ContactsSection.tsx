@@ -104,6 +104,7 @@ export default function ContactsSection({
         onInputChange={() => {
           if (inputError) setInputError('');
         }}
+        disabled={application.isReadOnly}
         renderTags={(value, getTagProps) =>
           value.map((option, index) => <Chip label={option} {...getTagProps({index})} key={option} />)
         }

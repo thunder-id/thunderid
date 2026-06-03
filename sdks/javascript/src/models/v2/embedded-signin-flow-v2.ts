@@ -298,6 +298,12 @@ export interface EmbeddedSignInFlowInitiateRequest {
    * Determines the authentication process and available options.
    */
   flowType: EmbeddedFlowTypeV1;
+
+  /**
+   * OAuth2 scopes to request during flow initialization.
+   * When provided, these scopes are forwarded to the platform at flow start.
+   */
+  scopes?: string | string[];
 }
 
 /**

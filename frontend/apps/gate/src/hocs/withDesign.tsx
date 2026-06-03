@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {DesignProvider, type DesignResolveResponse} from '@thunderid/design';
+import {useThunderID} from '@thunderid/react';
 import type {JSX, ComponentType} from 'react';
 
 export default function withDesign<P extends object>(WrappedComponent: ComponentType<P>) {

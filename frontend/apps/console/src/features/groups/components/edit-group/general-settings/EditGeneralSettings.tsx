@@ -36,14 +36,14 @@ import type {Group} from '../../../models/group';
 
 interface EditGeneralSettingsProps {
   group: Group;
-  onDeleteClick: () => void;
+  onDeleteClick?: () => void;
 }
 
 /**
  * General settings tab content for the Group edit page.
  * Displays Organization Unit and Danger Zone sections.
  */
-export default function EditGeneralSettings({group, onDeleteClick}: EditGeneralSettingsProps): JSX.Element {
+export default function EditGeneralSettings({group, onDeleteClick = undefined}: EditGeneralSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,20 +164,22 @@ export default function EditGeneralSettings({group, onDeleteClick}: EditGeneralS
       </SettingsCard>
 
       {/* Danger Zone */}
-      <SettingsCard
-        title={t('groups:edit.general.sections.dangerZone.title')}
-        description={t('groups:edit.general.sections.dangerZone.description')}
-      >
-        <Typography variant="h6" gutterBottom color="error">
-          {t('groups:edit.general.sections.dangerZone.deleteGroup')}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-          {t('groups:edit.general.sections.dangerZone.deleteGroupDescription')}
-        </Typography>
-        <Button variant="contained" color="error" onClick={onDeleteClick}>
-          {t('common:actions.delete')}
-        </Button>
-      </SettingsCard>
+      {onDeleteClick && (
+        <SettingsCard
+          title={t('groups:edit.general.sections.dangerZone.title')}
+          description={t('groups:edit.general.sections.dangerZone.description')}
+        >
+          <Typography variant="h6" gutterBottom color="error">
+            {t('groups:edit.general.sections.dangerZone.deleteGroup')}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
+            {t('groups:edit.general.sections.dangerZone.deleteGroupDescription')}
+          </Typography>
+          <Button variant="contained" color="error" onClick={onDeleteClick}>
+            {t('common:actions.delete')}
+          </Button>
+        </SettingsCard>
+      )}
     </Stack>
   );
 }

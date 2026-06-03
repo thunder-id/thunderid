@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
+import {useThunderID} from '@thunderid/react';
 import fetchChildOrganizationUnits from './fetchChildOrganizationUnits';
 import OrganizationUnitQueryKeys from '../constants/organization-unit-query-keys';
 import type {OrganizationUnitListParams} from '../models/requests';

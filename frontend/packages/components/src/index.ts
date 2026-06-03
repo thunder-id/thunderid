@@ -21,6 +21,7 @@ export {default as Helmet} from './Helmet/Helmet';
 export type {HelmetProps} from './Helmet/Helmet';
 export {default as I18nTextInput} from './I18nTextInput/I18nTextInput';
 export type {I18nTextInputLabels, I18nTextInputProps} from './I18nTextInput/I18nTextInput';
+export {default as PageLoader} from './PageLoader/PageLoader';
 
 /* -------------------------- LAB -------------------------- */
 

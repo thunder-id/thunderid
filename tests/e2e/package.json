@@ -4,22 +4,22 @@
   "description": "End-to-end tests for ThunderID using Playwright",
   "main": "index.js",
   "scripts": {
-    "pretest": "npm run clean-reports",
+    "pretest": "pnpm run clean-reports",
     "clean-reports": "rm -rf blob-report playwright-report test-results",
-    "test": "npx playwright test",
-    "test:chromium": "npx playwright test --project=chromium",
-    "test:firefox": "npx playwright test --project=firefox",
-    "test:webkit": "npx playwright test --project=webkit",
-    "test:headed": "npx playwright test --headed",
-    "test:debug": "npx playwright test --debug",
-    "test:trace": "npx playwright test --trace on",
-    "test:a11y": "npx playwright test --grep @accessibility",
-    "test:a11y:verbose": "npx playwright test --grep @accessibility --reporter=list",
-    "posttest": "npx playwright merge-reports --reporter html ./blob-report",
-    "ui": "npx playwright test --ui",
-    "report": "npx playwright show-report",
-    "lint": "eslint . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
+    "test": "playwright test",
+    "test:chromium": "playwright test --project=chromium",
+    "test:firefox": "playwright test --project=firefox",
+    "test:webkit": "playwright test --project=webkit",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:trace": "playwright test --trace on",
+    "test:a11y": "playwright test --grep @accessibility",
+    "test:a11y:verbose": "playwright test --grep @accessibility --reporter=list",
+    "posttest": "playwright merge-reports --reporter html ./blob-report",
+    "ui": "playwright test --ui",
+    "report": "playwright show-report",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{ts,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,json,md}\"",
     "type-check": "tsc --noEmit"
@@ -36,9 +36,9 @@
   "license": "Apache-2.0",
   "type": "commonjs",
   "devDependencies": {
-    "@axe-core/playwright": "^4.11.1",
-    "@playwright/test": "1.57.0",
-    "@types/express": "^5.0.6",
+    "@axe-core/playwright": "catalog:",
+    "@playwright/test": "catalog:",
+    "@types/express": "5.0.6",
     "@types/node": "25.0.2",
     "@typescript-eslint/eslint-plugin": "8.57.2",
     "@typescript-eslint/parser": "8.57.2",
@@ -50,9 +50,5 @@
   },
   "dependencies": {
     "dotenv": "17.2.3"
-  },
-  "overrides": {
-    "flatted": ">=3.4.2",
-    "path-to-regexp": ">=8.4.0"
   }
 }

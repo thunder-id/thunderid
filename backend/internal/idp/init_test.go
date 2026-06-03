@@ -86,7 +86,7 @@ func (s *IDPInitTestSuite) TestInitialize() {
 	_ = config.InitializeServerRuntime("", testConfig)
 	mux := http.NewServeMux()
 
-	service, _, err := Initialize(cache.Initialize(), mux)
+	service, _, err := Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), mux)
 	s.NoError(err)
 	s.NotNil(service)
 	s.Implements((*IDPServiceInterface)(nil), service)
@@ -317,7 +317,7 @@ func (suite *IDPInitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled()
 	mux := http.NewServeMux()
 
 	// Execute
-	service, _, err := Initialize(cache.Initialize(), mux)
+	service, _, err := Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), mux)
 
 	// Assert
 	suite.NoError(err)
@@ -368,7 +368,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_EmptyDirectory(t *testing.T)
 	mux := http.NewServeMux()
 
 	// Execute
-	service, _, err := Initialize(cache.Initialize(), mux)
+	service, _, err := Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), mux)
 
 	// Assert
 	assert.NoError(t, err)
@@ -467,7 +467,7 @@ properties:
 	mux := http.NewServeMux()
 
 	// Execute
-	service, _, err := Initialize(cache.Initialize(), mux)
+	service, _, err := Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), mux)
 
 	// Assert
 	assert.NoError(t, err)
@@ -557,7 +557,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML(t *testing.T) {
 	mux := http.NewServeMux()
 
 	// Initialize should return an error due to invalid YAML
-	_, _, err = Initialize(cache.Initialize(), mux)
+	_, _, err = Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), mux)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load identity provider resources")
 }
@@ -618,7 +618,7 @@ properties:
 	mux := http.NewServeMux()
 
 	// Initialize should return an error due to validation failure
-	_, _, err = Initialize(cache.Initialize(), mux)
+	_, _, err = Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), mux)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load identity provider resources")
 }
@@ -679,7 +679,7 @@ properties:
 	mux := http.NewServeMux()
 
 	// Initialize should return an error due to invalid IDP type
-	_, _, err = Initialize(cache.Initialize(), mux)
+	_, _, err = Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), mux)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load identity provider resources")
 }
@@ -818,7 +818,7 @@ func (s *IDPInitTestSuite) TestInitialize_DBClientError() {
 	}()
 
 	mux := http.NewServeMux()
-	_, _, err := Initialize(cache.Initialize(), mux)
+	_, _, err := Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), mux)
 
 	s.Error(err)
 	s.Equal("mock db client error", err.Error())
@@ -842,7 +842,7 @@ func (s *IDPInitTestSuite) TestInitialize_TransactionerError() {
 	}()
 
 	mux := http.NewServeMux()
-	_, _, err := Initialize(cache.Initialize(), mux)
+	_, _, err := Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"), mux)
 
 	s.Error(err)
 	s.Equal("mock transactioner error", err.Error())

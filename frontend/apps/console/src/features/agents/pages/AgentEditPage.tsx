@@ -264,6 +264,11 @@ export default function AgentEditPage(): JSX.Element {
 
   return (
     <PageContent>
+      {agent.isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
       <PageTitle>
         <PageTitle.BackButton component={<Link to="/agents" />}>
           {t('agents:edit.page.back', 'Back to agents')}
@@ -307,16 +312,18 @@ export default function AgentEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{editedAgent.name ?? agent.name}</Typography>
-                <IconButton
-                  size="small"
-                  onClick={() => {
-                    setTempName(editedAgent.name ?? agent.name);
-                    setIsEditingName(true);
-                  }}
-                  sx={{opacity: 0.6, '&:hover': {opacity: 1}}}
-                >
-                  <Edit size={16} />
-                </IconButton>
+                {!agent.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setTempName(editedAgent.name ?? agent.name);
+                      setIsEditingName(true);
+                    }}
+                    sx={{opacity: 0.6, '&:hover': {opacity: 1}}}
+                  >
+                    <Edit size={16} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -352,16 +359,18 @@ export default function AgentEditPage(): JSX.Element {
                     agent.description ??
                     t('agents:edit.page.description.empty', 'No description')}
                 </Typography>
-                <IconButton
-                  size="small"
-                  onClick={() => {
-                    setTempDescription(editedAgent.description ?? agent.description ?? '');
-                    setIsEditingDescription(true);
-                  }}
-                  sx={{opacity: 0.6, '&:hover': {opacity: 1}, mt: -0.5}}
-                >
-                  <Edit size={14} />
-                </IconButton>
+                {!agent.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setTempDescription(editedAgent.description ?? agent.description ?? '');
+                      setIsEditingDescription(true);
+                    }}
+                    sx={{opacity: 0.6, '&:hover': {opacity: 1}, mt: -0.5}}
+                  >
+                    <Edit size={14} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -393,7 +402,7 @@ export default function AgentEditPage(): JSX.Element {
           saveLabel={t('agents:edit.page.save', 'Save')}
           savingLabel={t('agents:edit.page.saving', 'Saving…')}
           isSaving={updateAgent.isPending}
-          saveDisabled={hasAnyValidationError}
+          saveDisabled={hasAnyValidationError || agent.isReadOnly === true}
           onReset={() => setEditedAgent({})}
           onSave={() => {
             void handleSave();

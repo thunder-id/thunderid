@@ -77,7 +77,7 @@ export default function RegistrationFlowSection({
       title={t('applications:edit.flows.labels.registrationFlow')}
       description={t('applications:edit.flows.labels.registrationFlow.description')}
       enabled={editedApp.isRegistrationFlowEnabled ?? application.isRegistrationFlowEnabled ?? false}
-      onToggle={(enabled) => onFieldChange('isRegistrationFlowEnabled', enabled)}
+      onToggle={application.isReadOnly ? undefined : (enabled) => onFieldChange('isRegistrationFlowEnabled', enabled)}
     >
       {(editedApp.registrationFlowId ?? application.registrationFlowId) && (
         <Alert severity="info" sx={{mb: 2}}>
@@ -108,6 +108,7 @@ export default function RegistrationFlowSection({
         }
         onChange={(_event, newValue) => onFieldChange('registrationFlowId', newValue?.id ?? '')}
         loading={loadingRegFlows}
+        disabled={application.isReadOnly}
         renderInput={(params) => (
           <TextField
             {...params}

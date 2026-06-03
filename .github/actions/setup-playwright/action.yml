@@ -1,0 +1,25 @@
+name: Setup Playwright Browsers
+description: Caches and installs Playwright Chromium browser for the workspace.
+
+inputs:
+  working-directory:
+    description: Directory to run playwright install from. Use the package directory to ensure the correct playwright version is resolved (e.g. tests/e2e).
+    required: false
+    default: '.'
+  browsers:
+    description: Space-separated list of browsers to install (e.g. "chromium firefox webkit"). Defaults to all browsers defined in the playwright config.
+    required: false
+    default: ''
+  scope:
+    description: Cache scope label to distinguish cache entries (e.g. "packages" or "e2e").
+    required: false
+    default: 'root'
+
+runs:
+  using: composite
+  steps:
+    - name: 🎭 Install Playwright Browsers
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: pnpm exec playwright install --with-deps ${{ inputs.browsers }}
+

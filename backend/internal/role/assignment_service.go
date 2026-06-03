@@ -170,7 +170,7 @@ func (as *roleAssignmentService) getAssignmentsByEntityCategory(
 			return nil, &ResultLimitExceededInCompositeMode
 		}
 		logger.Error("Failed to get entity assignments count", log.String("id", id), log.Error(err))
-		return nil, &ErrorInternalServerError
+		return nil, &serviceerror.InternalServerError
 	}
 
 	var allEntityAssignments []RoleAssignment
@@ -182,7 +182,7 @@ func (as *roleAssignmentService) getAssignmentsByEntityCategory(
 				return nil, &ResultLimitExceededInCompositeMode
 			}
 			logger.Error("Failed to get entity assignments", log.String("id", id), log.Error(err))
-			return nil, &ErrorInternalServerError
+			return nil, &serviceerror.InternalServerError
 		}
 	}
 
@@ -196,7 +196,7 @@ func (as *roleAssignmentService) getAssignmentsByEntityCategory(
 		entities, fetchErr := as.entityService.GetEntitiesByIDs(ctx, entityIDs)
 		if fetchErr != nil {
 			logger.Error("Failed to batch fetch entities for category filter", log.Error(fetchErr))
-			return nil, &ErrorInternalServerError
+			return nil, &serviceerror.InternalServerError
 		}
 		for _, e := range entities {
 			entityCategoryMap[e.ID] = string(e.Category)
@@ -305,7 +305,7 @@ func (as *roleAssignmentService) prepareAssignments(
 	exists, err := as.roleStore.IsRoleExist(ctx, id)
 	if err != nil {
 		logger.Error("Failed to check role existence", log.String("id", id), log.Error(err))
-		return nil, &ErrorInternalServerError
+		return nil, &serviceerror.InternalServerError
 	}
 	if !exists {
 		logger.Debug("Role not found", log.String("id", id))
@@ -382,7 +382,7 @@ func validateAssignmentIDs(
 		entities, err := entitySvc.GetEntitiesByIDs(ctx, entityIDs)
 		if err != nil {
 			logger.Error("Failed to fetch entities for assignment validation", log.Error(err))
-			return &ErrorInternalServerError
+			return &serviceerror.InternalServerError
 		}
 
 		if len(entities) != len(entityIDs) {
@@ -438,7 +438,7 @@ func (as *roleAssignmentService) resolveAssignments(
 		entities, err := as.entityService.GetEntitiesByIDs(ctx, entityIDs)
 		if err != nil {
 			logger.Error("Failed to batch fetch entities for assignments", log.Error(err))
-			return nil, &ErrorInternalServerError
+			return nil, &serviceerror.InternalServerError
 		}
 		entityMap = make(map[string]*entity.Entity, len(entities))
 		for i := range entities {

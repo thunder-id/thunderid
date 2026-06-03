@@ -233,6 +233,7 @@ export default function AccessSection({
             value={editedApp.allowedUserTypes ?? application.allowedUserTypes ?? []}
             onChange={(_event, newValue) => onFieldChange('allowedUserTypes', newValue)}
             loading={loadingUserTypes}
+            disabled={application.isReadOnly}
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -274,6 +275,7 @@ export default function AccessSection({
                 placeholder="https://example.com"
                 error={!!errors.url}
                 helperText={errors.url?.message ?? t('applications:edit.general.applicationUrl.hint')}
+                disabled={application.isReadOnly}
               />
             )}
           />
@@ -301,10 +303,16 @@ export default function AccessSection({
                       error={!!uriErrors[index]}
                       helperText={uriErrors[index]}
                       placeholder="https://example.com/callback"
+                      disabled={application.isReadOnly}
                     />
                   </FormControl>
                   <Tooltip title={t('common:actions.delete')}>
-                    <IconButton onClick={() => handleRemoveUri(index)} color="error" sx={{mt: 1}}>
+                    <IconButton
+                      onClick={() => handleRemoveUri(index)}
+                      color="error"
+                      sx={{mt: 1}}
+                      disabled={application.isReadOnly}
+                    >
                       <Trash size={20} />
                     </IconButton>
                   </Tooltip>
@@ -312,7 +320,13 @@ export default function AccessSection({
               ))}
 
               <Box>
-                <Button variant="outlined" startIcon={<Plus />} onClick={handleAddUri} size="small">
+                <Button
+                  variant="outlined"
+                  startIcon={<Plus />}
+                  onClick={handleAddUri}
+                  size="small"
+                  disabled={application.isReadOnly}
+                >
                   {t('applications:edit.general.redirectUris.addUri')}
                 </Button>
               </Box>

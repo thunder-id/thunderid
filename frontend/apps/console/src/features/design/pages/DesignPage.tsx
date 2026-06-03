@@ -125,6 +125,7 @@ export default function DesignPage(): JSX.Element {
                     <ItemCard
                       thumbnail={<ThemeThumbnail theme={theme} />}
                       name={theme.displayName}
+                      isReadOnly={theme.isReadOnly}
                       onClick={() => {
                         (async () => {
                           await navigate(`/design/themes/${theme.id}`);

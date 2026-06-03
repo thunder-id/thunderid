@@ -22,6 +22,7 @@
     "directory": "frontend/apps/gate"
   },
   "scripts": {
+    "analyze": "ANALYZE=true vite build",
     "build": "tsc -b && vite build",
     "clean": "pnpm clean:dist && pnpm clean:node_modules",
     "clean:dist": "rimraf dist",
@@ -74,6 +75,7 @@
     "eslint": "catalog:",
     "jsdom": "catalog:",
     "rimraf": "catalog:",
+    "rollup-plugin-visualizer": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plugin-svgr": "catalog:",

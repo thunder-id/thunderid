@@ -16,11 +16,11 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
 import {useGetChildOrganizationUnits} from '@thunderid/configure-organization-units';
 import {ConfigureOrganizationUnit} from '@thunderid/configure-users';
 import {useLogger} from '@thunderid/logger/react';
+import {useThunderID} from '@thunderid/react';
 import {Alert, Box, Breadcrumbs, Button, IconButton, LinearProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {ChevronRight, X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';

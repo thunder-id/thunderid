@@ -34,6 +34,7 @@ function createMockThunderIDContext(overrides: Partial<ThunderIDContext> = {}): 
     isInitialized: ref(true),
     user: ref(null),
     organization: ref(null),
+    scopes: undefined,
     signIn: vi.fn(),
     signOut: vi.fn(),
     signUp: vi.fn(),
@@ -73,9 +74,9 @@ describe('useThunderID', () => {
     });
 
     expect(result).toBeDefined();
-    expect(result.isSignedIn.value).toBe(false);
-    expect(result.isLoading.value).toBe(false);
-    expect(result.isInitialized.value).toBe(true);
+    expect(result!.isSignedIn.value).toBe(false);
+    expect(result!.isLoading.value).toBe(false);
+    expect(result!.isInitialized.value).toBe(true);
   });
 
   it('should throw an error when called outside of ThunderIDProvider', () => {
@@ -111,9 +112,9 @@ describe('useThunderID', () => {
       },
     });
 
-    expect(result.isSignedIn.value).toBe(false);
+    expect(result!.isSignedIn.value).toBe(false);
     isSignedIn.value = true;
-    expect(result.isSignedIn.value).toBe(true);
+    expect(result!.isSignedIn.value).toBe(true);
   });
 
   it('should expose signIn and signOut methods', () => {
@@ -135,9 +136,53 @@ describe('useThunderID', () => {
       },
     });
 
-    expect(typeof result.signIn).toBe('function');
-    expect(typeof result.signOut).toBe('function');
-    expect(typeof result.signUp).toBe('function');
-    expect(typeof result.getAccessToken).toBe('function');
+    expect(typeof result!.signIn).toBe('function');
+    expect(typeof result!.signOut).toBe('function');
+    expect(typeof result!.signUp).toBe('function');
+    expect(typeof result!.getAccessToken).toBe('function');
+  });
+
+  it('should expose scopes from context', () => {
+    const mockContext = createMockThunderIDContext({scopes: ['openid', 'profile']});
+    let result: ThunderIDContext | undefined;
+
+    const TestChild = defineComponent({
+      setup() {
+        result = useThunderID();
+        return () => h('div', 'test');
+      },
+    });
+
+    mount(TestChild, {
+      global: {
+        provide: {
+          [THUNDERID_KEY as symbol]: mockContext,
+        },
+      },
+    });
+
+    expect(result!.scopes).toEqual(['openid', 'profile']);
+  });
+
+  it('should expose scopes as undefined when not configured', () => {
+    const mockContext = createMockThunderIDContext();
+    let result: ThunderIDContext | undefined;
+
+    const TestChild = defineComponent({
+      setup() {
+        result = useThunderID();
+        return () => h('div', 'test');
+      },
+    });
+
+    mount(TestChild, {
+      global: {
+        provide: {
+          [THUNDERID_KEY as symbol]: mockContext,
+        },
+      },
+    });
+
+    expect(result!.scopes).toBeUndefined();
   });
 });

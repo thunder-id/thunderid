@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {I18nDefaultConstants} from '@thunderid/i18n';
 import enUS from '@thunderid/i18n/locales/en-US';
+import {useThunderID} from '@thunderid/react';
 import i18next from 'i18next';
 import type {JSX, ComponentType} from 'react';
 import {useEffect} from 'react';

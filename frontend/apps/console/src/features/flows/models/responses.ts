@@ -51,6 +51,11 @@ export interface BasicFlowDefinition {
    * Timestamp when the flow was last modified
    */
   updatedAt: string;
+
+  /**
+   * Whether the flow is read-only and cannot be modified or deleted.
+   */
+  isReadOnly?: boolean;
 }
 
 /**
@@ -336,4 +341,9 @@ export interface FlowDefinitionResponse {
    * Timestamp when the flow was last modified
    */
   updatedAt: string;
+
+  /**
+   * Whether the flow is read-only and cannot be modified or deleted.
+   */
+  isReadOnly?: boolean;
 }

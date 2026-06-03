@@ -99,11 +99,16 @@ const createMockSignUpRenderProps = (overrides: Partial<MockSignUpRenderProps> =
 let mockSignUpRenderProps: MockSignUpRenderProps = createMockSignUpRenderProps();
 let capturedOnFlowChange: ((response: unknown) => void) | undefined;
 let capturedAfterSignUpUrl: string | undefined;
+let mockMeta: {application?: {url?: string}} | null = null;
 
 vi.mock('@thunderid/react', async () => {
   const actual = await vi.importActual('@thunderid/react');
   return {
     ...actual,
+    useThunderID: () => ({
+      resolveFlowTemplateLiterals: (t: string) => t,
+      meta: mockMeta,
+    }),
     SignUp: ({
       children,
       onFlowChange = undefined,
@@ -140,6 +145,7 @@ describe('SignUpBox', () => {
     mockSignUpRenderProps = createMockSignUpRenderProps();
     capturedOnFlowChange = undefined;
     capturedAfterSignUpUrl = undefined;
+    mockMeta = null;
   });
 
   it('renders without crashing', () => {
@@ -550,10 +556,17 @@ describe('SignUpBox', () => {
     expect(screen.getByText('Sign in')).toBeInTheDocument();
   });
 
-  it('passes afterSignUpUrl as an absolute URL with origin and BASE_URL prefix to SignUp component', () => {
+  it('falls back to sign-in URL as afterSignUpUrl when meta has no application URL', () => {
+    mockMeta = null;
     render(<SignUpBox />);
     const expectedUrl = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/signin`;
     expect(capturedAfterSignUpUrl).toBe(expectedUrl);
+  });
+
+  it('uses application URL from flow meta as afterSignUpUrl when available', () => {
+    mockMeta = {application: {url: 'https://myapp.example.com/home'}};
+    render(<SignUpBox />);
+    expect(capturedAfterSignUpUrl).toBe('https://myapp.example.com/home');
   });
 
   it('navigates to sign in page when clicking sign in link', async () => {

@@ -208,6 +208,11 @@ export interface EmbeddedSignUpFlowCompleteResponse {
 export interface EmbeddedSignUpFlowInitiateRequest {
   applicationId: string;
   flowType: EmbeddedFlowTypeV1;
+  /**
+   * OAuth2 scopes to request during flow initialization.
+   * When provided, these scopes are forwarded to the platform at flow start.
+   */
+  scopes?: string | string[];
 }
 
 /**

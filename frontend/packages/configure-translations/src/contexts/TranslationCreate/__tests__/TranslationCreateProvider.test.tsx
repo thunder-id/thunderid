@@ -19,9 +19,9 @@
 import userEvent from '@testing-library/user-event';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
-import {TranslationCreateFlowStep} from '@/models/translation-create-flow';
 import TranslationCreateProvider from '@/contexts/TranslationCreate/TranslationCreateProvider';
 import useTranslationCreate from '@/contexts/TranslationCreate/useTranslationCreate';
+import {TranslationCreateFlowStep} from '@/models/translation-create-flow';
 
 // Test component to consume the context
 function TestConsumer() {

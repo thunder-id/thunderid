@@ -61,6 +61,7 @@ export interface Agent {
   assertion?: AssertionConfig;
   loginConsent?: AgentLoginConsentConfig;
   certificate?: AgentCertificate;
+  isReadOnly?: boolean;
 }
 
 export interface BasicAgent {
@@ -71,6 +72,7 @@ export interface BasicAgent {
   name: string;
   description?: string;
   clientId?: string;
+  isReadOnly?: boolean;
 }
 
 export interface AgentListResponse {

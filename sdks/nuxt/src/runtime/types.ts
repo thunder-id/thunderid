@@ -82,7 +82,7 @@ export interface ThunderIDNuxtConfig {
     };
   };
   /** OAuth2 scopes to request */
-  scopes?: string[];
+  scopes?: string | string[];
   /** Secret for signing session JWTs (use THUNDERID_SESSION_SECRET env var) */
   sessionSecret?: string;
   /**

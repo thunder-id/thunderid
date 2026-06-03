@@ -55,6 +55,10 @@ interface ScopeSectionProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether inputs should be disabled (e.g. read-only resource).
+   */
+  disabled?: boolean;
 }
 
 /**
@@ -76,6 +80,7 @@ export default function ScopeSection({
   onScopesChange,
   onScopeClaimsChange,
   entityLabel = 'application',
+  disabled = false,
 }: ScopeSectionProps) {
   const {t} = useTranslation();
 
@@ -100,7 +105,12 @@ export default function ScopeSection({
     >
       <Stack spacing={3}>
         {/* ── Scopes ─────────────────────────────────────────────────── */}
-        <ScopeSelector scopes={scopes} onScopesChange={handleScopesChange} entityLabel={entityLabel} />
+        <ScopeSelector
+          scopes={scopes}
+          onScopesChange={handleScopesChange}
+          entityLabel={entityLabel}
+          disabled={disabled}
+        />
 
         <Divider />
 
@@ -122,6 +132,7 @@ export default function ScopeSection({
             userAttributes={userAttributes}
             isLoadingUserAttributes={isLoadingUserAttributes}
             onScopeClaimsChange={onScopeClaimsChange}
+            disabled={disabled}
           />
         </Box>
       </Stack>

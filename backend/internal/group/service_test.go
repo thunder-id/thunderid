@@ -2057,7 +2057,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_AddGroupMembers() {
 				storeMock.On("AddGroupMembers", mock.Anything, "grp-001", mock.Anything).
 					Return(errors.New("db error")).Once()
 			},
-			wantErr: &ErrorInternalServerError,
+			wantErr: &serviceerror.InternalServerError,
 		},
 		{
 			name:    "success",
@@ -2156,7 +2156,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_RemoveGroupMembers() {
 				storeMock.On("RemoveGroupMembers", mock.Anything, "grp-001", mock.Anything).
 					Return(errors.New("db error")).Once()
 			},
-			wantErr: &ErrorInternalServerError,
+			wantErr: &serviceerror.InternalServerError,
 		},
 		{
 			name:    "success",
@@ -2416,4 +2416,88 @@ func TestPopulateMemberDisplayNames_SchemaServiceError_WithGroupMember(t *testin
 	require.Equal(t, "user-1", resolved[0].Display)
 	// Group display still resolved via group name despite schema error (schema only affects users).
 	require.Equal(t, "Engineering", resolved[1].Display)
+}
+
+func TestGetGroup_DatabaseFailure(t *testing.T) {
+	groupStoreMock := newGroupStoreInterfaceMock(t)
+
+	// Fix the type mismatch here by returning an empty GroupBasicDAO{} instead of Group{}
+	groupStoreMock.On("GetGroup", mock.Anything, "group1").
+		Return(GroupDAO{}, errors.New("mock query timeout")).Once()
+
+	service := &groupService{
+		groupStore: groupStoreMock,
+	}
+
+	result, err := service.GetGroup(context.Background(), "group1", false)
+
+	require.Nil(t, result)
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+// Test Case to hit Line 960 (Entity service fetch failure)
+func TestUpdateGroupMembers_EntityFetchFailure(t *testing.T) {
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+
+	// Force the entity service tool to crash when called
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
+		Return([]entity.Entity{}, errors.New("mock network timeout")).Once()
+
+	service := &groupService{
+		entityService: entitySvcMock,
+	}
+	logger := log.GetLogger()
+
+	// This calls the internal member resolver method to trigger your modified Line 960
+	resolved, svcErr := service.resolveMembers(context.Background(), []Member{
+		{ID: "user-1", Type: memberTypeEntity},
+	}, true, logger)
+
+	require.Nil(t, resolved)
+	require.NotNil(t, svcErr)
+	require.Equal(t, serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func TestUpdateGroupMembers_OUValidationFailure(t *testing.T) {
+	groupStoreMock := newGroupStoreInterfaceMock(t)
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+	authzSvcMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+
+	groupStoreMock.On("GetGroup", mock.Anything, "group1").
+		Return(GroupDAO{ID: "group1", OUID: "ou-1"}, nil).Once()
+
+	authzSvcMock.On("IsActionAllowed", mock.Anything, security.ActionUpdateGroup, mock.Anything).
+		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
+		Return([]entity.Entity{
+			{
+				ID:       "user-1",
+				Category: entity.EntityCategoryUser,
+				Type:     "employee",
+			},
+		}, nil).Once()
+
+	authzSvcMock.On("GetAccessibleResources", mock.Anything, security.ActionUpdateGroup, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{"ou-1"}}, nil).Once()
+
+	entitySvcMock.On("ValidateEntityIDsInOUs", mock.Anything, []string{"user-1"}, []string{"ou-1"}).
+		Return([]string{}, errors.New("mock tracking validation failure")).Once()
+
+	service := &groupService{
+		groupStore:    groupStoreMock,
+		entityService: entitySvcMock,
+		authzService:  authzSvcMock,
+		transactioner: &stubTransactioner{},
+	}
+
+	members := []Member{
+		{ID: "user-1", Type: MemberTypeUser},
+	}
+
+	result, svcErr := service.AddGroupMembers(context.Background(), "group1", members)
+	require.Nil(t, result)
+	require.NotNil(t, svcErr)
+	require.Equal(t, serviceerror.InternalServerError.Code, svcErr.Code)
 }

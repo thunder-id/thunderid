@@ -191,6 +191,11 @@ export default function ApplicationEditPage() {
 
   return (
     <PageContent>
+      {application.isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to="/applications" />}>
@@ -198,7 +203,7 @@ export default function ApplicationEditPage() {
         </PageTitle.BackButton>
         <PageTitle.Avatar sx={{overflow: 'visible'}}>
           <ResourceAvatar
-            editable
+            editable={!application.isReadOnly}
             value={editedApp.logoUrl ?? application.logoUrl}
             fallback="emoji:🖥️"
             editAriaLabel={t('applications:edit.page.logoUpdate.label')}
@@ -233,19 +238,21 @@ export default function ApplicationEditPage() {
             ) : (
               <>
                 <Typography variant="h3">{editedApp.name ?? application.name}</Typography>
-                <IconButton
-                  size="small"
-                  onClick={() => {
-                    setTempName(editedApp.name ?? application.name);
-                    setIsEditingName(true);
-                  }}
-                  sx={{
-                    opacity: 0.6,
-                    '&:hover': {opacity: 1},
-                  }}
-                >
-                  <Edit size={16} />
-                </IconButton>
+                {!application.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setTempName(editedApp.name ?? application.name);
+                      setIsEditingName(true);
+                    }}
+                    sx={{
+                      opacity: 0.6,
+                      '&:hover': {opacity: 1},
+                    }}
+                  >
+                    <Edit size={16} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -293,20 +300,22 @@ export default function ApplicationEditPage() {
                 <Typography variant="body2" color="text.secondary">
                   {editedApp.description ?? application.description ?? t('applications:edit.page.description.empty')}
                 </Typography>
-                <IconButton
-                  size="small"
-                  onClick={() => {
-                    setTempDescription(editedApp.description ?? application.description ?? '');
-                    setIsEditingDescription(true);
-                  }}
-                  sx={{
-                    opacity: 0.6,
-                    '&:hover': {opacity: 1},
-                    mt: -0.5,
-                  }}
-                >
-                  <Edit size={14} />
-                </IconButton>
+                {!application.isReadOnly && (
+                  <IconButton
+                    size="small"
+                    onClick={() => {
+                      setTempDescription(editedApp.description ?? application.description ?? '');
+                      setIsEditingDescription(true);
+                    }}
+                    sx={{
+                      opacity: 0.6,
+                      '&:hover': {opacity: 1},
+                      mt: -0.5,
+                    }}
+                  >
+                    <Edit size={14} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -441,7 +450,7 @@ export default function ApplicationEditPage() {
           saveLabel={t('applications:edit.page.save')}
           savingLabel={t('applications:edit.page.saving')}
           isSaving={updateApplication.isPending}
-          saveDisabled={hasValidationErrors}
+          saveDisabled={hasValidationErrors || application.isReadOnly === true}
           onReset={() => setEditedApp({})}
           onSave={() => {
             handleSave().catch(() => null);

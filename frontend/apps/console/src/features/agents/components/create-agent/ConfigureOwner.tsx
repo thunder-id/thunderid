@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useGetUsers} from '@thunderid/configure-users';
+import {useThunderID} from '@thunderid/react';
 import {FormControl, FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
 import {useEffect, useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';

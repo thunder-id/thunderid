@@ -688,7 +688,7 @@ export function WayfinderAgentArchitecture() {
 // PersonIcon / AgentIcon so all three sit at the same size. Inner glyph is
 // a tiny "MCP" plug-and-socket — a small connector shape distinguishes the
 // external client from human consumers and from the in-product agent.
-function McpClientIcon({className}: {className?: string}) {
+function McpClientIcon({className = undefined}: {className?: string}) {
   return (
     <g className={className}>
       <circle cx="28" cy="28" r="26" />

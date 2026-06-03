@@ -34,7 +34,7 @@ import {
   Button,
   DataGrid,
 } from '@wso2/oxygen-ui';
-import {Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -115,6 +115,9 @@ export default function UserTypesList() {
         headerName: t('userTypes:listing.columns.name', 'Name'),
         flex: 1.5,
         minWidth: 220,
+        renderCell: (params: DataGrid.GridRenderCellParams<UserTypeListItem>) => (
+          <Typography variant="body2">{params.row.name}</Typography>
+        ),
       },
       {
         field: 'id',
@@ -160,29 +163,39 @@ export default function UserTypesList() {
         hideable: false,
         renderCell: (params: GridRenderCellParams<UserTypeListItem>) => (
           <ListingTable.RowActions>
-            <Tooltip title={t('common:actions.edit')}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleViewClick(params.row.id);
-                }}
-              >
-                <Pencil size={16} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={t('common:actions.delete')}>
-              <IconButton
-                size="small"
-                color="error"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteClick(params.row.id);
-                }}
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            </Tooltip>
+            {params.row.isReadOnly ? (
+              <Tooltip title={t('common:status.readOnly', 'Read Only')}>
+                <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
+                  <Eye size={16} />
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <>
+                <Tooltip title={t('common:actions.edit')}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleViewClick(params.row.id);
+                    }}
+                  >
+                    <Pencil size={16} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={t('common:actions.delete')}>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClick(params.row.id);
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
           </ListingTable.RowActions>
         ),
       },

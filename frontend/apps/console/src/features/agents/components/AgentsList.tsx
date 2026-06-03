@@ -19,7 +19,7 @@
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
-import {Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -66,27 +66,29 @@ export default function AgentsList(): JSX.Element {
         flex: 1,
         minWidth: 200,
         renderCell: (params: DataGrid.GridRenderCellParams<BasicAgent>): JSX.Element => (
-          <ListingTable.CellIcon
-            sx={{width: '100%'}}
-            icon={
-              <Box
-                sx={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: '50%',
-                  bgcolor: 'primary.light',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1rem',
-                }}
-              >
-                🤖
-              </Box>
-            }
-            primary={params.row.name}
-            secondary={params.row.description}
-          />
+          <Box sx={{display: 'flex', alignItems: 'center', gap: 1, width: '100%', overflow: 'hidden'}}>
+            <ListingTable.CellIcon
+              sx={{flex: 1, minWidth: 0}}
+              icon={
+                <Box
+                  sx={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: '50%',
+                    bgcolor: 'primary.light',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1rem',
+                  }}
+                >
+                  🤖
+                </Box>
+              }
+              primary={params.row.name}
+              secondary={params.row.description}
+            />
+          </Box>
         ),
       },
       {
@@ -122,29 +124,39 @@ export default function AgentsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<BasicAgent>): JSX.Element => (
           <ListingTable.RowActions>
-            <Tooltip title={t('common:actions.edit')}>
-              <IconButton
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditClick(params.row.id);
-                }}
-              >
-                <Pencil size={16} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={t('common:actions.delete')}>
-              <IconButton
-                size="small"
-                color="error"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteClick(params.row.id);
-                }}
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            </Tooltip>
+            {params.row.isReadOnly ? (
+              <Tooltip title={t('common:status.readOnly', 'Read Only')}>
+                <IconButton size="small" disableRipple sx={{cursor: 'default'}}>
+                  <Eye size={16} />
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <>
+                <Tooltip title={t('common:actions.edit')}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditClick(params.row.id);
+                    }}
+                  >
+                    <Pencil size={16} />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title={t('common:actions.delete')}>
+                  <IconButton
+                    size="small"
+                    color="error"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteClick(params.row.id);
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
           </ListingTable.RowActions>
         ),
       },

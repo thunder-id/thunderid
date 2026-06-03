@@ -702,6 +702,76 @@ func (_c *ResourceServiceInterfaceMock_GetActionList_Call) RunAndReturn(run func
 	return _c
 }
 
+// GetAllResourceList provides a mock function for the type ResourceServiceInterfaceMock
+func (_mock *ResourceServiceInterfaceMock) GetAllResourceList(ctx context.Context, resourceServerID string) ([]resource.Resource, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, resourceServerID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetAllResourceList")
+	}
+
+	var r0 []resource.Resource
+	var r1 *serviceerror.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]resource.Resource, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, resourceServerID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []resource.Resource); ok {
+		r0 = returnFunc(ctx, resourceServerID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]resource.Resource)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, resourceServerID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ResourceServiceInterfaceMock_GetAllResourceList_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAllResourceList'
+type ResourceServiceInterfaceMock_GetAllResourceList_Call struct {
+	*mock.Call
+}
+
+// GetAllResourceList is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceServerID string
+func (_e *ResourceServiceInterfaceMock_Expecter) GetAllResourceList(ctx interface{}, resourceServerID interface{}) *ResourceServiceInterfaceMock_GetAllResourceList_Call {
+	return &ResourceServiceInterfaceMock_GetAllResourceList_Call{Call: _e.mock.On("GetAllResourceList", ctx, resourceServerID)}
+}
+
+func (_c *ResourceServiceInterfaceMock_GetAllResourceList_Call) Run(run func(ctx context.Context, resourceServerID string)) *ResourceServiceInterfaceMock_GetAllResourceList_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_GetAllResourceList_Call) Return(resources []resource.Resource, serviceError *serviceerror.ServiceError) *ResourceServiceInterfaceMock_GetAllResourceList_Call {
+	_c.Call.Return(resources, serviceError)
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_GetAllResourceList_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string) ([]resource.Resource, *serviceerror.ServiceError)) *ResourceServiceInterfaceMock_GetAllResourceList_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetResource provides a mock function for the type ResourceServiceInterfaceMock
 func (_mock *ResourceServiceInterfaceMock) GetResource(ctx context.Context, resourceServerID string, id string) (*resource.Resource, *serviceerror.ServiceError) {
 	ret := _mock.Called(ctx, resourceServerID, id)

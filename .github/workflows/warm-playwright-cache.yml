@@ -3,7 +3,7 @@
 # Caches created on a PR ref are scoped to that PR only; only entries created on
 # main are readable by every other scope.
 
-name: 🔥 Warm Playwright Cache
+name: 💾 Prepare Dependency Cache
 
 on:
   push:
@@ -19,81 +19,29 @@ env:
 
 jobs:
   warm-frontend-playwright:
-    name: 🎭 Warm Frontend Playwright Cache
+    name: 🎭 Cache Playwright
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: 📥 Checkout Code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: ⚙️ Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: 📦 Install pnpm
-        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
-        with:
-          run_install: false
-          cache_dependency_path: pnpm-lock.yaml
-
-      - name: 🎭 Check Playwright Cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        id: playwright-cache-packages
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          lookup-only: true
-
-      - name: 📦 Install Frontend Dependencies
-        if: steps.playwright-cache-packages.outputs.cache-hit != 'true'
+      - name: 📦 Install Dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: 🎭 Install Playwright Browsers
-        if: steps.playwright-cache-packages.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install chromium
-
-      - name: 🎭 Save Playwright Cache
-        if: steps.playwright-cache-packages.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: 🎭 Set up Playwright Browsers (packages)
+        uses: ./.github/actions/setup-playwright
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          working-directory: frontend
+          scope: packages
 
-  warm-e2e-playwright:
-    name: 🎭 Warm E2E Playwright Cache
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-
-      - name: ⚙️ Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - name: 🎭 Set up Playwright Browsers (e2e)
+        uses: ./.github/actions/setup-playwright
         with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: 🎭 Check Playwright Cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        id: playwright-cache-e2e
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
-          lookup-only: true
-
-      - name: 📦 Install E2E Dependencies
-        if: steps.playwright-cache-e2e.outputs.cache-hit != 'true'
-        run: npm ci
-        working-directory: tests/e2e
-
-      - name: 🎭 Install Playwright Browsers
-        if: steps.playwright-cache-e2e.outputs.cache-hit != 'true'
-        run: npx playwright install
-        working-directory: tests/e2e
-
-      - name: 🎭 Save Playwright Cache
-        if: steps.playwright-cache-e2e.outputs.cache-hit != 'true'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package-lock.json') }}
+          working-directory: tests/e2e
+          scope: e2e

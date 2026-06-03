@@ -16,10 +16,10 @@
  * under the License.
  */
 
-import {AcceptInvite, useThunderID, type EmbeddedFlowComponent} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
 import {useDesign, FlowComponentRenderer, AuthCardLayout} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
+import {AcceptInvite, useThunderID, type EmbeddedFlowComponent} from '@thunderid/react';
 import {Box, Alert, Typography, AlertTitle, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useState} from 'react';

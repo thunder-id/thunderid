@@ -114,7 +114,7 @@ const SignIn: Component = defineComponent({
     props: Readonly<{className: string; size: 'small' | 'medium' | 'large'; variant: 'elevated' | 'outlined' | 'flat'}>,
     {slots, emit, attrs}: SetupContext,
   ): () => VNode | null {
-    const {applicationId, afterSignInUrl, signIn, isInitialized, isLoading: sdkLoading} = useThunderID();
+    const {applicationId, afterSignInUrl, signIn, isInitialized, isLoading: sdkLoading, scopes} = useThunderID();
     const {meta: flowMeta} = useFlowMeta();
     const {t} = useI18n();
 
@@ -238,6 +238,7 @@ const SignIn: Component = defineComponent({
           response = (await signIn({
             applicationId: effectiveApplicationId,
             flowType: EmbeddedFlowType.Authentication,
+            ...(scopes && {scopes}),
           })) as EmbeddedSignInFlowResponseV2;
         }
 

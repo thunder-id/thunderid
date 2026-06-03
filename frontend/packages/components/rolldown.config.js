@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {defineConfig} from 'rolldown';
 import {readFileSync} from 'fs';
 import {join, resolve} from 'path';
+import {defineConfig} from 'rolldown';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf8'));
 

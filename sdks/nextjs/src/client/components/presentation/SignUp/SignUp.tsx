@@ -70,7 +70,7 @@ const SignUp: FC<SignUpProps> = ({
   afterSignUpUrl,
   onError,
 }: SignUpProps) => {
-  const {signUp} = useThunderID();
+  const {signUp, applicationId: contextApplicationId, scopes} = useThunderID();
 
   /**
    * Initialize the sign-up flow.
@@ -89,6 +89,8 @@ const SignUp: FC<SignUpProps> = ({
     return (await signUp(
       payload || {
         flowType: EmbeddedFlowType.Registration,
+        ...(contextApplicationId && {applicationId: contextApplicationId}),
+        ...(scopes && {scopes}),
       },
     )) as unknown as Promise<EmbeddedFlowExecuteResponse>;
   };

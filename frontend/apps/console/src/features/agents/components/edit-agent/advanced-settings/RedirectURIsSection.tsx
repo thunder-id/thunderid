@@ -35,6 +35,10 @@ interface RedirectURIsSectionProps {
    * is configured.
    */
   onValidationChange?: (hasErrors: boolean) => void;
+  /**
+   * Whether inputs should be disabled (e.g. read-only resource).
+   */
+  disabled?: boolean;
 }
 
 const isValidURL = (value: string): boolean => {
@@ -49,6 +53,7 @@ export default function RedirectURIsSection({
   oauth2Config = undefined,
   onOAuth2ConfigChange = undefined,
   onValidationChange = undefined,
+  disabled = false,
 }: RedirectURIsSectionProps): JSX.Element | null {
   const {t} = useTranslation();
   const [errors, setErrors] = useState<Record<number, string>>({});
@@ -90,7 +95,7 @@ export default function RedirectURIsSection({
   // Hide entirely when no redirect-using grant is selected — redirect URIs are meaningless then.
   if (!oauth2Config || !usesRedirect) return null;
 
-  const isEditable = Boolean(onOAuth2ConfigChange);
+  const isEditable = Boolean(onOAuth2ConfigChange) && !disabled;
 
   const commit = (next: string[]): void => {
     if (!isEditable) return;

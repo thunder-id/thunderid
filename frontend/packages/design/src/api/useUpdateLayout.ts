@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
+import {useThunderID} from '@thunderid/react';
 import DesignQueryKeys from '../constants/design-query-keys';
 import type {UpdateLayoutRequest} from '../models/requests';
 import type {LayoutResponse} from '../models/responses';

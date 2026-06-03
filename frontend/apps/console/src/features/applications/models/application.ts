@@ -60,6 +60,7 @@ export type BasicApplication = Pick<
   | 'registrationFlowId'
   | 'isRegistrationFlowEnabled'
   | 'template'
+  | 'isReadOnly'
 > & {
   /**
    * OAuth2 client identifier
@@ -288,4 +289,9 @@ export interface Application {
    * Defines how assertions are generated for this application.
    */
   assertion?: AssertionConfig;
+
+  /**
+   * Whether this application is read-only (declarative/immutable)
+   */
+  isReadOnly?: boolean;
 }

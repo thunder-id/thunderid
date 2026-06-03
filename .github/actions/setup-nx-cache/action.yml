@@ -1,0 +1,21 @@
+name: Setup Nx Cache
+description: Restores and saves the Nx task output cache backed by GitHub Actions cache.
+
+runs:
+  using: composite
+  steps:
+    - name: 🗂️ Restore Nx Cache
+      id: nx-cache
+      uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+      with:
+        path: .nx/cache
+        key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          nx-${{ runner.os }}-
+
+    - name: 🗂️ Save Nx Cache
+      if: steps.nx-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+      with:
+        path: .nx/cache
+        key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}

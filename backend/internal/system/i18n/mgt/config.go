@@ -21,7 +21,7 @@ package mgt
 import (
 	"strings"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
+	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
@@ -35,10 +35,9 @@ import (
 //     - If disabled: return "mutable"
 //
 // Returns normalized store mode: "mutable", "declarative", or "composite"
-func getI18nStoreMode() serverconst.StoreMode {
-	cfg := config.GetServerRuntime().Config
-	if cfg.Translation.Store != "" {
-		mode := serverconst.StoreMode(strings.ToLower(strings.TrimSpace(cfg.Translation.Store)))
+func getI18nStoreMode(translationConfig sysconfig.TranslationConfig) serverconst.StoreMode {
+	if translationConfig.Store != "" {
+		mode := serverconst.StoreMode(strings.ToLower(strings.TrimSpace(translationConfig.Store)))
 		switch mode {
 		case serverconst.StoreModeMutable, serverconst.StoreModeDeclarative, serverconst.StoreModeComposite:
 			return mode

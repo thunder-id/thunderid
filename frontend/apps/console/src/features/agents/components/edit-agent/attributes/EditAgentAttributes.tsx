@@ -122,7 +122,7 @@ export default function EditAgentAttributes({agent, onSaved = undefined}: EditAg
       title={t('agents:edit.attributes.title', 'Attributes')}
       description={t('agents:edit.attributes.description', 'View and manage agent attribute values.')}
       headerAction={
-        !isEditMode && hasEditableFields ? (
+        !isEditMode && hasEditableFields && !agent.isReadOnly ? (
           <Button variant="outlined" size="small" onClick={() => setIsEditMode(true)}>
             {t('common:actions.edit', 'Edit')}
           </Button>

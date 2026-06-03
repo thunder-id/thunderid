@@ -25,7 +25,9 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -637,4 +639,46 @@ func TestGetPublicKeys_FilterByAlgorithm(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, keys, 1)
 	assert.Equal(t, "ec-key", keys[0].KeyID)
+}
+
+// GetTLSMaterial
+
+func TestGetTLSMaterial_NilPKIService(t *testing.T) {
+	svc := &runtimeCryptoService{pkiService: nil}
+	material, err := svc.GetTLSMaterial(context.Background())
+	assert.Nil(t, material)
+	assert.EqualError(t, err, "PKI service not initialized")
+}
+
+func TestGetTLSMaterial_GetTLSConfigFailure(t *testing.T) {
+	pkiMock := pkimock.NewPKIServiceInterfaceMock(t)
+	pkiMock.EXPECT().GetTLSConfig().Return(nil, errors.New("cert file not found"))
+
+	svc := &runtimeCryptoService{pkiService: pkiMock}
+	material, err := svc.GetTLSMaterial(context.Background())
+	assert.Nil(t, material)
+	assert.ErrorContains(t, err, "cert file not found")
+}
+
+func TestGetTLSMaterial_Success(t *testing.T) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	tlsCert := tls.Certificate{
+		PrivateKey: rsaKey,
+	}
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{tlsCert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	pkiMock := pkimock.NewPKIServiceInterfaceMock(t)
+	pkiMock.EXPECT().GetTLSConfig().Return(tlsCfg, nil)
+
+	svc := &runtimeCryptoService{pkiService: pkiMock}
+	material, err := svc.GetTLSMaterial(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, material)
+	assert.Equal(t, tlsCert, material.Certificate)
+	assert.Equal(t, uint16(tls.VersionTLS12), material.MinVersion)
 }

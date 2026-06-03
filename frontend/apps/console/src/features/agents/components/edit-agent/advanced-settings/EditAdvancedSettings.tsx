@@ -51,13 +51,23 @@ export default function EditAdvancedSettings({
 
   return (
     <Stack spacing={3}>
-      <OAuth2ConfigSection oauth2Config={oauth2Config} onOAuth2ConfigChange={handleOAuth2ConfigChange} />
+      <OAuth2ConfigSection
+        oauth2Config={oauth2Config}
+        onOAuth2ConfigChange={handleOAuth2ConfigChange}
+        disabled={agent.isReadOnly}
+      />
       <RedirectURIsSection
         oauth2Config={oauth2Config}
         onOAuth2ConfigChange={handleOAuth2ConfigChange}
         onValidationChange={onValidationChange}
+        disabled={agent.isReadOnly}
       />
-      <CertificateSection agent={agent} editedAgent={editedAgent} onFieldChange={onFieldChange} />
+      <CertificateSection
+        agent={agent}
+        editedAgent={editedAgent}
+        onFieldChange={onFieldChange}
+        disabled={agent.isReadOnly}
+      />
     </Stack>
   );
 }

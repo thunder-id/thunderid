@@ -16,8 +16,8 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {SettingsCard} from '@thunderid/components';
+import {useThunderID} from '@thunderid/react';
 import {
   Box,
   Checkbox,
@@ -54,6 +54,7 @@ interface OidcDiscovery {
 interface OAuth2ConfigSectionProps {
   oauth2Config?: OAuth2Config;
   onOAuth2ConfigChange?: (updates: Partial<OAuth2Config>) => void;
+  disabled?: boolean;
 }
 
 function OAuth2Logo() {
@@ -110,6 +111,7 @@ function OAuth2Logo() {
 export default function OAuth2ConfigSection({
   oauth2Config = undefined,
   onOAuth2ConfigChange = undefined,
+  disabled = false,
 }: OAuth2ConfigSectionProps) {
   const {t} = useTranslation();
   const {discovery} = useThunderID();
@@ -120,7 +122,7 @@ export default function OAuth2ConfigSection({
   const availableGrantTypes = wellKnown?.grant_types_supported ?? [];
   const availableResponseTypes = wellKnown?.response_types_supported ?? [];
   const availableTokenEndpointAuthMethods: string[] = wellKnown?.token_endpoint_auth_methods_supported ?? [];
-  const isEditable = Boolean(onOAuth2ConfigChange);
+  const isEditable = Boolean(onOAuth2ConfigChange) && !disabled;
 
   const grantTypes = oauth2Config.grantTypes ?? [];
   const flags = deriveOAuth2Flags(oauth2Config);

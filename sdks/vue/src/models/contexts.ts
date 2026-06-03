@@ -56,6 +56,8 @@ export interface ThunderIDContext {
   clearSession: (...args: any[]) => void;
   /** The OAuth2 client ID. */
   clientId: string | undefined;
+  /** The OAuth2 scopes requested during flow initialization. */
+  scopes: string | string[] | undefined;
 
   exchangeToken: (config: TokenExchangeRequestConfig) => Promise<TokenResponse | Response>;
   // ── Token ──

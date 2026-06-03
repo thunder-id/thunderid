@@ -9,6 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/config"
 )
 
 // NewCacheManagerInterfaceMock creates a new instance of CacheManagerInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -252,6 +253,94 @@ func (_c *CacheManagerInterfaceMock_getCache_Call) Return(ifaceVal interface{}, 
 }
 
 func (_c *CacheManagerInterfaceMock_getCache_Call) RunAndReturn(run func(cacheKey string) (interface{}, bool)) *CacheManagerInterfaceMock_getCache_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// getCacheConfig provides a mock function for the type CacheManagerInterfaceMock
+func (_mock *CacheManagerInterfaceMock) getCacheConfig() config.CacheConfig {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for getCacheConfig")
+	}
+
+	var r0 config.CacheConfig
+	if returnFunc, ok := ret.Get(0).(func() config.CacheConfig); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(config.CacheConfig)
+	}
+	return r0
+}
+
+// CacheManagerInterfaceMock_getCacheConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'getCacheConfig'
+type CacheManagerInterfaceMock_getCacheConfig_Call struct {
+	*mock.Call
+}
+
+// getCacheConfig is a helper method to define mock.On call
+func (_e *CacheManagerInterfaceMock_Expecter) getCacheConfig() *CacheManagerInterfaceMock_getCacheConfig_Call {
+	return &CacheManagerInterfaceMock_getCacheConfig_Call{Call: _e.mock.On("getCacheConfig")}
+}
+
+func (_c *CacheManagerInterfaceMock_getCacheConfig_Call) Run(run func()) *CacheManagerInterfaceMock_getCacheConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *CacheManagerInterfaceMock_getCacheConfig_Call) Return(cacheConfig config.CacheConfig) *CacheManagerInterfaceMock_getCacheConfig_Call {
+	_c.Call.Return(cacheConfig)
+	return _c
+}
+
+func (_c *CacheManagerInterfaceMock_getCacheConfig_Call) RunAndReturn(run func() config.CacheConfig) *CacheManagerInterfaceMock_getCacheConfig_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// getDeploymentID provides a mock function for the type CacheManagerInterfaceMock
+func (_mock *CacheManagerInterfaceMock) getDeploymentID() string {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for getDeploymentID")
+	}
+
+	var r0 string
+	if returnFunc, ok := ret.Get(0).(func() string); ok {
+		r0 = returnFunc()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	return r0
+}
+
+// CacheManagerInterfaceMock_getDeploymentID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'getDeploymentID'
+type CacheManagerInterfaceMock_getDeploymentID_Call struct {
+	*mock.Call
+}
+
+// getDeploymentID is a helper method to define mock.On call
+func (_e *CacheManagerInterfaceMock_Expecter) getDeploymentID() *CacheManagerInterfaceMock_getDeploymentID_Call {
+	return &CacheManagerInterfaceMock_getDeploymentID_Call{Call: _e.mock.On("getDeploymentID")}
+}
+
+func (_c *CacheManagerInterfaceMock_getDeploymentID_Call) Run(run func()) *CacheManagerInterfaceMock_getDeploymentID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *CacheManagerInterfaceMock_getDeploymentID_Call) Return(s string) *CacheManagerInterfaceMock_getDeploymentID_Call {
+	_c.Call.Return(s)
+	return _c
+}
+
+func (_c *CacheManagerInterfaceMock_getDeploymentID_Call) RunAndReturn(run func() string) *CacheManagerInterfaceMock_getDeploymentID_Call {
 	_c.Call.Return(run)
 	return _c
 }

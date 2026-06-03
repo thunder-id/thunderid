@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {LanguageSwitcher} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
 import {useDesign, GoogleFontLoader, StylesheetInjector, DefaultTheme, type Theme} from '@thunderid/design';
+import {LanguageSwitcher} from '@thunderid/react';
 import {
   OxygenUIThemeProvider,
   ColorSchemeToggle,

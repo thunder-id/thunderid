@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {EmbeddedFlowComponentType, SignIn, type EmbeddedFlowComponent} from '@thunderid/react';
 import {useDesign, FlowComponentRenderer, AuthCardLayout} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
+import {EmbeddedFlowComponentType, SignIn, type EmbeddedFlowComponent} from '@thunderid/react';
 import {TemplateLiteralType} from '@thunderid/utils';
 import {Box, Alert, CircularProgress} from '@wso2/oxygen-ui';
 import {useState} from 'react';

@@ -138,6 +138,11 @@ export interface BasicIdentityProvider {
    * The type of identity provider
    */
   type: IdentityProviderType;
+
+  /**
+   * Whether this identity provider is read-only (declarative/immutable)
+   */
+  isReadOnly?: boolean;
 }
 
 /**

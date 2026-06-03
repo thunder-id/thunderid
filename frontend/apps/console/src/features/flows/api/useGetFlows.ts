@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {useThunderID} from '@thunderid/react';
 import {useQuery, type UseQueryResult} from '@tanstack/react-query';
 import {useConfig} from '@thunderid/contexts';
+import {useThunderID} from '@thunderid/react';
 import FlowQueryKeys from '../constants/flow-query-keys';
 import type {FlowType} from '../models/flows';
 import type {FlowListResponse} from '../models/responses';

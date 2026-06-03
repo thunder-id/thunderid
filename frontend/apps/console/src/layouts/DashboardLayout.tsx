@@ -16,9 +16,9 @@
  * under the License.
  */
 
-import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
+import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {
   AppShell,
   Box,

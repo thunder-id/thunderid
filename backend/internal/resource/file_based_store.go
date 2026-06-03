@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
@@ -316,9 +317,22 @@ func (f *fileBasedResourceStore) GetResourceListByParent(
 
 			// Add resources that match the parent
 			for _, res := range rs.Resources {
-				// Check if this resource matches the parent (by handle or UUID)
-				if parentID == nil && res.Parent == nil {
-					// Root level resources
+				matched := false
+				if parentID == nil {
+					// Root level: no UUID parent and no handle parent
+					matched = res.Parent == nil && res.ParentHandle == ""
+				} else {
+					if res.Parent != nil {
+						// DB resource: match by UUID
+						matched = *res.Parent == parentResUUID
+					} else if res.ParentHandle != "" {
+						// Declarative resource: Parent UUID not set; match by handle
+						// extracted from the synthetic parent ID (format: rsID_handle).
+						parentHandle := strings.TrimPrefix(parentResUUID, rs.ID+"_")
+						matched = res.ParentHandle == parentHandle
+					}
+				}
+				if matched {
 					resources = append(resources, Resource{
 						ID:           fmt.Sprintf("%s_%s", rs.ID, res.Handle),
 						Name:         res.Name,
@@ -328,19 +342,6 @@ func (f *fileBasedResourceStore) GetResourceListByParent(
 						ParentHandle: res.ParentHandle,
 						Permission:   res.Permission,
 					})
-				} else if parentID != nil && res.Parent != nil {
-					// Check if parent handle matches the parent resource UUID
-					if *res.Parent == parentResUUID {
-						resources = append(resources, Resource{
-							ID:           fmt.Sprintf("%s_%s", rs.ID, res.Handle),
-							Name:         res.Name,
-							Handle:       res.Handle,
-							Description:  res.Description,
-							Parent:       res.Parent,
-							ParentHandle: res.ParentHandle,
-							Permission:   res.Permission,
-						})
-					}
 				}
 			}
 		}

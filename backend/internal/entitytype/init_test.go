@@ -49,6 +49,42 @@ func (m *mockTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 	return txFunc(ctx)
 }
 
+func testCacheManager() cache.CacheManagerInterface {
+	return cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment")
+}
+
+func setupEntityTypeStoreRuntime(t *testing.T, entityTypeStore string, declarativeEnabled bool) {
+	t.Helper()
+
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{
+			Enabled: declarativeEnabled,
+		},
+		EntityType: config.EntityTypeConfig{
+			Store: entityTypeStore,
+		},
+		Database: config.DatabaseConfig{
+			Config: config.DataSource{
+				Type:   "sqlite",
+				SQLite: config.SQLiteDataSource{Path: ":memory:"},
+			},
+		},
+	}
+
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("", testConfig)
+	assert.NoError(t, err)
+}
+
+func assertMutableEntityTypeStore(t *testing.T, store entityTypeStoreInterface) {
+	t.Helper()
+
+	_, isComposite := store.(*compositeEntityTypeStore)
+	assert.False(t, isComposite, "Store should not be composite in mutable mode")
+	_, isFileBased := store.(*entityTypeFileBasedStore)
+	assert.False(t, isFileBased, "Store should not be file-based in mutable mode")
+}
+
 // InitTestSuite contains comprehensive tests for the init.go file.
 type InitTestSuite struct {
 	suite.Suite
@@ -89,7 +125,7 @@ func (suite *InitTestSuite) TestInitialize() {
 	assert.NoError(suite.T(), err)
 
 	service, _, err := Initialize(
-		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	suite.NotNil(service)
@@ -113,7 +149,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_ListEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodGet, "/user-types", nil)
@@ -141,7 +177,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CreateEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodPost, "/user-types", nil)
@@ -177,7 +213,7 @@ func (suite *InitTestSuite) TestInitialize_DBTransactionerError() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.Error(suite.T(), err)
 	if err != nil {
 		assert.Contains(suite.T(), err.Error(), "failed to get config database client")
@@ -201,7 +237,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_GetByIDEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodGet, "/user-types/test-id", nil)
@@ -229,7 +265,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_UpdateEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodPut, "/user-types/test-id", nil)
@@ -257,7 +293,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_DeleteEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodDelete, "/user-types/test-id", nil)
@@ -285,7 +321,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSPreflight() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodOptions, "/user-types", nil)
@@ -313,7 +349,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSPreflightByID() {
 	assert.NoError(suite.T(), err)
 
 	_, _, err = Initialize(
-		suite.mux, nil, cache.Initialize(), suite.mockOUService, nil, suite.mockConsentService)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, suite.mockConsentService)
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodOptions, "/user-types/test-id", nil)
@@ -521,7 +557,7 @@ func TestInitialize_Standalone(t *testing.T) {
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
-	service, exporter, err := Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
+	service, exporter, err := Initialize(mux, nil, testCacheManager(), mockOUService, nil, mockConsentService)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, service)
@@ -530,35 +566,14 @@ func TestInitialize_Standalone(t *testing.T) {
 
 // TestInitializeStore_MutableMode tests initializeStore with mutable mode (database only).
 func TestInitializeStore_MutableMode(t *testing.T) {
-	testConfig := &config.Config{
-		DeclarativeResources: config.DeclarativeResources{
-			Enabled: false,
-		},
-		EntityType: config.EntityTypeConfig{
-			Store: "mutable",
-		},
-		Database: config.DatabaseConfig{
-			Config: config.DataSource{
-				Type:   "sqlite",
-				SQLite: config.SQLiteDataSource{Path: ":memory:"},
-			},
-		},
-	}
+	setupEntityTypeStoreRuntime(t, "mutable", false)
 
-	config.ResetServerRuntime()
-	err := config.InitializeServerRuntime("", testConfig)
-	assert.NoError(t, err)
-
-	store, transactioner, err := initializeStore(getEntityTypeStoreMode(), cache.Initialize())
+	store, transactioner, err := initializeStore(getEntityTypeStoreMode(), testCacheManager())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
 	assert.NotNil(t, transactioner)
-	// In mutable mode, should return entityTypeStore (not composite or file-based)
-	_, isComposite := store.(*compositeEntityTypeStore)
-	assert.False(t, isComposite, "Store should not be composite in mutable mode")
-	_, isFileBased := store.(*entityTypeFileBasedStore)
-	assert.False(t, isFileBased, "Store should not be file-based in mutable mode")
+	assertMutableEntityTypeStore(t, store)
 }
 
 // TestInitializeStore_DeclarativeMode tests initializeStore with declarative mode (file-based only).
@@ -582,7 +597,7 @@ func TestInitializeStore_DeclarativeMode(t *testing.T) {
 	err := config.InitializeServerRuntime("", testConfig)
 	assert.NoError(t, err)
 
-	store, transactioner, err := initializeStore(getEntityTypeStoreMode(), cache.Initialize())
+	store, transactioner, err := initializeStore(getEntityTypeStoreMode(), testCacheManager())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
@@ -613,7 +628,7 @@ func TestInitializeStore_CompositeMode(t *testing.T) {
 	err := config.InitializeServerRuntime("", testConfig)
 	assert.NoError(t, err)
 
-	store, transactioner, err := initializeStore(getEntityTypeStoreMode(), cache.Initialize())
+	store, transactioner, err := initializeStore(getEntityTypeStoreMode(), testCacheManager())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
@@ -627,35 +642,14 @@ func TestInitializeStore_CompositeMode(t *testing.T) {
 
 // TestInitializeStore_DefaultFallbackToMutable tests that default config falls back to mutable mode.
 func TestInitializeStore_DefaultFallbackToMutable(t *testing.T) {
-	testConfig := &config.Config{
-		DeclarativeResources: config.DeclarativeResources{
-			Enabled: false, // Disabled, should default to mutable
-		},
-		EntityType: config.EntityTypeConfig{
-			Store: "", // Not specified
-		},
-		Database: config.DatabaseConfig{
-			Config: config.DataSource{
-				Type:   "sqlite",
-				SQLite: config.SQLiteDataSource{Path: ":memory:"},
-			},
-		},
-	}
+	setupEntityTypeStoreRuntime(t, "", false)
 
-	config.ResetServerRuntime()
-	err := config.InitializeServerRuntime("", testConfig)
-	assert.NoError(t, err)
-
-	store, transactioner, err := initializeStore(getEntityTypeStoreMode(), cache.Initialize())
+	store, transactioner, err := initializeStore(getEntityTypeStoreMode(), testCacheManager())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
 	assert.NotNil(t, transactioner)
-	// Should default to mutable mode (database store)
-	_, isComposite := store.(*compositeEntityTypeStore)
-	assert.False(t, isComposite, "Store should not be composite when not specified")
-	_, isFileBased := store.(*entityTypeFileBasedStore)
-	assert.False(t, isFileBased, "Store should not be file-based when declarative disabled")
+	assertMutableEntityTypeStore(t, store)
 }
 
 // TestInitializeStore_GlobalDeclarativeEnabled tests fallback to global declarative setting.
@@ -679,7 +673,7 @@ func TestInitializeStore_GlobalDeclarativeEnabled(t *testing.T) {
 	err := config.InitializeServerRuntime("", testConfig)
 	assert.NoError(t, err)
 
-	store, transactioner, err := initializeStore(getEntityTypeStoreMode(), cache.Initialize())
+	store, transactioner, err := initializeStore(getEntityTypeStoreMode(), testCacheManager())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
@@ -714,7 +708,7 @@ func TestInitialize_MutableMode(t *testing.T) {
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
-	service, exporter, err := Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
+	service, exporter, err := Initialize(mux, nil, testCacheManager(), mockOUService, nil, mockConsentService)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, service)
@@ -757,7 +751,7 @@ func TestInitialize_StoreModes(t *testing.T) {
 				Maybe()
 			mockConsentService := mockConsentServiceWithDisabled(t)
 
-			service, exporter, err := Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
+			service, exporter, err := Initialize(mux, nil, testCacheManager(), mockOUService, nil, mockConsentService)
 
 			assert.NoError(t, err)
 			assert.NotNil(t, service)
@@ -1148,7 +1142,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML(t *testing.T) {
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
 	// Initialize should return an error due to invalid YAML
-	_, _, err = Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
+	_, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil, mockConsentService)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 }
@@ -1208,7 +1202,7 @@ schema: |
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
 	// Initialize should return an error due to validation failure
-	_, _, err = Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
+	_, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil, mockConsentService)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 }
@@ -1282,7 +1276,7 @@ schema: |
 		}).Once()
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
-	_, _, err = Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
+	_, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil, mockConsentService)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 
@@ -1342,7 +1336,7 @@ schema: |
 	mockConsentService := mockConsentServiceWithDisabled(t)
 
 	// Initialize should return an error due to invalid JSON
-	_, _, err = Initialize(mux, nil, cache.Initialize(), mockOUService, nil, mockConsentService)
+	_, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil, mockConsentService)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 }

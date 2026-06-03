@@ -486,7 +486,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestAddAssignments_GetRoleError() {
 	err := suite.service.AddAssignments(context.Background(), "role1", request)
 
 	suite.NotNil(err)
-	suite.Equal(ErrorInternalServerError.Code, err.Code)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
 }
 
 func (suite *RoleAssignmentServiceTestSuite) TestAddAssignments_StoreError() {
@@ -579,7 +579,7 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_GetRoleError(
 	err := suite.service.RemoveAssignments(context.Background(), "role1", request)
 
 	suite.NotNil(err)
-	suite.Equal(ErrorInternalServerError.Code, err.Code)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
 }
 
 func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_StoreError() {
@@ -625,4 +625,57 @@ func (suite *RoleAssignmentServiceTestSuite) TestRemoveAssignments_Success() {
 	err := suite.service.RemoveAssignments(context.Background(), "role1", request)
 
 	suite.Nil(err)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestGetRoleAssignments_IsRoleExist_DatabaseError() {
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").
+		Return(false, errors.New("mock database tracking timeout")).Once()
+
+	result, err := suite.service.GetRoleAssignments(context.Background(), "role1", 10, 0, false)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestAddAssignments_Transaction_DatabaseError() {
+	assignments := []RoleAssignment{{ID: "user1", Type: "user"}}
+
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role1").Return(true, nil).Once()
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{"user1"}).
+		Return([]entity.Entity{{ID: "user1", Category: entity.EntityCategoryUser}}, nil).Once()
+
+	suite.transactioner.err = errors.New("failed to commit transaction block")
+
+	err := suite.service.AddAssignments(context.Background(), "role1", assignments)
+
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestGetRoleAssignmentsByType_CountStoreError() {
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role-1").Return(true, nil).Once()
+
+	suite.mockStore.On("GetRoleAssignmentsCountByType", mock.Anything, "role-1", "entity").
+		Return(0, errors.New("mock db counter crash")).Once()
+
+	result, err := suite.service.GetRoleAssignmentsByType(context.Background(), "role-1", 10, 0, false, "user")
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *RoleAssignmentServiceTestSuite) TestGetRoleAssignmentsByType_ListStoreError() {
+	suite.mockStore.On("IsRoleExist", mock.Anything, "role-1").Return(true, nil).Once()
+
+	suite.mockStore.On("GetRoleAssignmentsCountByType", mock.Anything, "role-1", "entity").
+		Return(1, nil).Once()
+
+	suite.mockStore.On("GetRoleAssignmentsByType", mock.Anything, "role-1", 1, 0, "entity").
+		Return([]RoleAssignment{}, errors.New("mock db row scan failure")).Once()
+
+	result, err := suite.service.GetRoleAssignmentsByType(context.Background(), "role-1", 10, 0, false, "user")
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
 }

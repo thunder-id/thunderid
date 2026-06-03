@@ -115,7 +115,7 @@ export default defineNuxtModule<ThunderIDNuxtConfig>({
       clientId: string;
       platform?: ThunderIDNuxtConfig['platform'];
       preferences: ThunderIDNuxtConfig['preferences'];
-      scopes: string[];
+      scopes: string | string[];
       signInUrl?: string;
       signUpUrl?: string;
       tokenRequest?: ThunderIDNuxtConfig['tokenRequest'];
@@ -348,7 +348,7 @@ declare module '@nuxt/schema' {
       clientId: string;
       platform?: ThunderIDNuxtConfig['platform'];
       preferences?: ThunderIDNuxtConfig['preferences'];
-      scopes: string[];
+      scopes: string | string[];
       signInUrl?: string;
       signUpUrl?: string;
     };

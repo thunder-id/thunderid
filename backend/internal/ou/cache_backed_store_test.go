@@ -609,7 +609,7 @@ func (s *CacheBackedOUStoreTestSuite) TestWrapWithCache_WithCacheManager() {
 	err := config.InitializeServerRuntime(tmpDir, &config.Config{})
 	s.Require().NoError(err)
 
-	cm := cache.Initialize()
+	cm := cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment")
 	defer cm.Close()
 
 	result := wrapWithCache(s.mockStore, cm)

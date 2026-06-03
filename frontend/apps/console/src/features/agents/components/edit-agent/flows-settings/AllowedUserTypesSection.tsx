@@ -60,6 +60,7 @@ export default function AllowedUserTypesSection({
           options={userTypeOptions}
           value={value}
           onChange={(_event, newValue) => onFieldChange('allowedUserTypes', newValue)}
+          disabled={agent.isReadOnly}
           renderInput={(params) => (
             <TextField
               {...params}

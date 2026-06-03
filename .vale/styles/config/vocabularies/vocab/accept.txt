@@ -170,3 +170,6 @@ client_id
 [Dd]ownscope
 [Dd]ownscoping
 [Ss]uperset
+Grafana
+Jaeger'?s?
+Tempo

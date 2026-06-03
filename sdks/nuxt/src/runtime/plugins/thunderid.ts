@@ -55,7 +55,7 @@ export default defineNuxtPlugin((nuxtApp: NuxtApp) => {
     baseUrl: string;
     clientId: string;
     organizationHandle?: string;
-    scopes: string[];
+    scopes: string | string[];
     signInUrl?: string;
     signUpUrl?: string;
   } = useRuntimeConfig().public.thunderid as {
@@ -65,7 +65,7 @@ export default defineNuxtPlugin((nuxtApp: NuxtApp) => {
     baseUrl: string;
     clientId: string;
     organizationHandle?: string;
-    scopes: string[];
+    scopes: string | string[];
     signInUrl?: string;
     signUpUrl?: string;
   };
@@ -222,6 +222,7 @@ export default defineNuxtPlugin((nuxtApp: NuxtApp) => {
     organizationHandle: publicConfig.organizationHandle,
     platform: undefined,
     reInitialize: async () => false,
+    scopes: publicConfig.scopes,
     signIn,
     signInOptions: undefined,
     signInSilently: noop,
