@@ -57,7 +57,7 @@ func TestOAuthExecutorSuite(t *testing.T) {
 	suite.Run(t, new(OAuthExecutorTestSuite))
 }
 
-func (suite *OAuthExecutorTestSuite) SetupTest() {
+func (suite *OAuthExecutorTestSuite) SetupTest() { //nolint:dupl // mirrors OIDC suite setup
 	suite.mockOAuthService = oauthmock.NewOAuthAuthnCoreServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
@@ -72,6 +72,11 @@ func (suite *OAuthExecutorTestSuite) SetupTest() {
 	suite.executor = newOAuthExecutor(ExecutorNameOAuth, defaultInputs, []common.Input{},
 		suite.mockFlowFactory, suite.mockIDPService, suite.mockEntityTypeService, suite.mockOAuthService,
 		suite.mockAuthnProvider, idp.IDPTypeOAuth)
+
+	// Default IDP (no claim mappings) for the standard "idp-123" used across tests. Tests that need
+	// claim mappings use a distinct IDP id with their own stub.
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").
+		Return(&idp.IDPDTO{ID: "idp-123", Name: "TestIDP"}, nil).Maybe()
 }
 
 func (suite *OAuthExecutorTestSuite) TestNewOAuthExecutor() {
@@ -91,9 +96,6 @@ func (suite *OAuthExecutorTestSuite) TestExecute_CodeNotProvided_BuildsAuthorize
 
 	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, "idp-123").
 		Return("https://oauth.provider.com/authorize?client_id=abc", nil)
-
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").
-		Return(&idp.IDPDTO{ID: "idp-123", Name: "TestIDP"}, nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -144,6 +146,57 @@ func (suite *OAuthExecutorTestSuite) TestExecute_CodeProvided_AuthenticatesUser(
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
+func (suite *OAuthExecutorTestSuite) TestProcessAuthFlowResponse_AppliesAttributeMappings() {
+	ctx := &core.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    common.FlowTypeAuthentication,
+		UserInputs: map[string]string{
+			"code": "auth_code_123",
+		},
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-mapped",
+		},
+	}
+
+	execResp := &common.ExecutorResponse{
+		AdditionalData: make(map[string]string),
+		RuntimeData:    make(map[string]string),
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
+			ExternalSub: "user-sub-123",
+			ExternalClaims: map[string]interface{}{
+				"sub": "user-sub-123", "given_name": "Jane", "emailAddress": "jane@example.com"},
+			IsExistingUser: true,
+			UserID:         "user-123",
+			OUID:           "ou-123",
+			UserType:       "INTERNAL",
+		}, (*serviceerror.ServiceError)(nil))
+
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-mapped").
+		Return(&idp.IDPDTO{ID: "idp-mapped", AttributeConfiguration: &idp.AttributeConfiguration{
+			UserTypeResolution: &idp.UserTypeResolution{Default: "person"},
+			UserTypeAttributeMappings: []idp.UserTypeAttributeMapping{{UserType: "person",
+				Attributes: []idp.AttributeMapping{
+					{ExternalAttribute: "given_name", LocalAttribute: "firstName"},
+					{ExternalAttribute: "emailAddress", LocalAttribute: "email"},
+				}}}}}, nil)
+
+	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
+	assert.Equal(suite.T(), "Jane", execResp.AuthenticatedUser.Attributes["firstName"])
+	assert.Equal(suite.T(), "jane@example.com", execResp.AuthenticatedUser.Attributes["email"])
+	assert.Equal(suite.T(), "jane@example.com", execResp.RuntimeData["email"])
+	_, hasGivenName := execResp.AuthenticatedUser.Attributes["given_name"]
+	assert.False(suite.T(), hasGivenName)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
+	suite.mockIDPService.AssertExpectations(suite.T())
+}
+
 func (suite *OAuthExecutorTestSuite) TestBuildAuthorizeFlow_Success() {
 	ctx := &core.NodeContext{
 		ExecutionID: "flow-123",
@@ -160,8 +213,6 @@ func (suite *OAuthExecutorTestSuite) TestBuildAuthorizeFlow_Success() {
 
 	suite.mockOAuthService.On("BuildAuthorizeURL", mock.Anything, "idp-123").
 		Return("https://oauth.provider.com/authorize", nil)
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-123").
-		Return(&idp.IDPDTO{ID: "idp-123", Name: "GoogleIDP"}, nil)
 
 	err := suite.executor.BuildAuthorizeFlow(ctx, execResp)
 
@@ -169,7 +220,7 @@ func (suite *OAuthExecutorTestSuite) TestBuildAuthorizeFlow_Success() {
 	assert.Equal(suite.T(), common.ExecExternalRedirection, execResp.Status)
 	assert.Contains(suite.T(), execResp.RedirectURL, "https://oauth.provider.com/authorize")
 	assert.Contains(suite.T(), execResp.RedirectURL, "state=")
-	assert.Equal(suite.T(), "GoogleIDP", execResp.AdditionalData[common.DataIDPName])
+	assert.Equal(suite.T(), "TestIDP", execResp.AdditionalData[common.DataIDPName])
 	assert.NotEmpty(suite.T(), execResp.RuntimeData[common.RuntimeKeyOAuthState])
 	suite.mockOAuthService.AssertExpectations(suite.T())
 	suite.mockIDPService.AssertExpectations(suite.T())
@@ -1015,6 +1066,106 @@ func (suite *OAuthExecutorTestSuite) TestResolveUserTypeForAutoProvisioning_GetE
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "error while retrieving user type")
 	suite.mockEntityTypeService.AssertExpectations(suite.T())
+}
+
+func (suite *OAuthExecutorTestSuite) TestResolveUserTypeForAutoProvisioning_MappedUserType_Success() {
+	ctx := &core.NodeContext{
+		ExecutionID: "flow-123",
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-mapped",
+		},
+	}
+	execResp := &common.ExecutorResponse{
+		RuntimeData: make(map[string]string),
+	}
+
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-mapped").
+		Return(&idp.IDPDTO{ID: "idp-mapped", AttributeConfiguration: &idp.AttributeConfiguration{
+			UserTypeResolution: &idp.UserTypeResolution{Default: "person"}}}, nil)
+	suite.mockEntityTypeService.On("GetEntityTypeByName", mock.Anything, mock.Anything, "person").
+		Return(&entitytype.EntityType{Name: "person", OUID: "ou-person"}, nil)
+
+	err := suite.executor.(*oAuthExecutor).resolveUserTypeForAutoProvisioning(ctx, execResp)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "person", execResp.RuntimeData[userTypeKey])
+	assert.Equal(suite.T(), "ou-person", execResp.RuntimeData[defaultOUIDKey])
+	suite.mockIDPService.AssertExpectations(suite.T())
+	suite.mockEntityTypeService.AssertExpectations(suite.T())
+}
+
+func (suite *OAuthExecutorTestSuite) TestResolveUserTypeForAutoProvisioning_MappedUserType_ClientError() {
+	ctx := &core.NodeContext{
+		ExecutionID: "flow-123",
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-mapped",
+		},
+	}
+	execResp := &common.ExecutorResponse{
+		RuntimeData: make(map[string]string),
+	}
+
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-mapped").
+		Return(&idp.IDPDTO{ID: "idp-mapped", AttributeConfiguration: &idp.AttributeConfiguration{
+			UserTypeResolution: &idp.UserTypeResolution{Default: "unknown"}}}, nil)
+	suite.mockEntityTypeService.On("GetEntityTypeByName", mock.Anything, mock.Anything, "unknown").
+		Return(nil, &serviceerror.ServiceError{
+			Type:             serviceerror.ClientErrorType,
+			Code:             "ET-4000",
+			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "user type not found"},
+		})
+
+	err := suite.executor.(*oAuthExecutor).resolveUserTypeForAutoProvisioning(ctx, execResp)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
+	suite.mockIDPService.AssertExpectations(suite.T())
+	suite.mockEntityTypeService.AssertExpectations(suite.T())
+}
+
+func (suite *OAuthExecutorTestSuite) TestResolveUserTypeForAutoProvisioning_MappedUserType_ServerError() {
+	ctx := &core.NodeContext{
+		ExecutionID: "flow-123",
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-mapped",
+		},
+	}
+	execResp := &common.ExecutorResponse{
+		RuntimeData: make(map[string]string),
+	}
+
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-mapped").
+		Return(&idp.IDPDTO{ID: "idp-mapped", AttributeConfiguration: &idp.AttributeConfiguration{
+			UserTypeResolution: &idp.UserTypeResolution{Default: "person"}}}, nil)
+	suite.mockEntityTypeService.On("GetEntityTypeByName", mock.Anything, mock.Anything, "person").
+		Return(nil, &serviceerror.ServiceError{
+			Type:             serviceerror.ServerErrorType,
+			Code:             "ET-5000",
+			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "internal error"},
+		})
+
+	err := suite.executor.(*oAuthExecutor).resolveUserTypeForAutoProvisioning(ctx, execResp)
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "error while retrieving user type")
+	suite.mockIDPService.AssertExpectations(suite.T())
+	suite.mockEntityTypeService.AssertExpectations(suite.T())
+}
+
+func (suite *OAuthExecutorTestSuite) TestMappedUserTypeForIDP_IDPServiceError() {
+	ctx := &core.NodeContext{
+		ExecutionID: "flow-123",
+		NodeProperties: map[string]interface{}{
+			"idpId": "idp-err",
+		},
+	}
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, "idp-err").
+		Return(nil, &serviceerror.ServiceError{Code: "IDP-5000"})
+
+	result := suite.executor.(*oAuthExecutor).mappedUserTypeForIDP(ctx)
+
+	assert.Equal(suite.T(), "", result)
+	suite.mockIDPService.AssertExpectations(suite.T())
 }
 
 func (suite *OAuthExecutorTestSuite) TestGetContextUserForRegistration_WithExistingUser_SkipProvisioningFlag() {

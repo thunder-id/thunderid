@@ -124,6 +124,20 @@ var (
 			DefaultValue: "One or more identity provider properties are not supported",
 		},
 	}
+	// ErrorInvalidAttributeConfiguration is the error returned when the identity provider's identity
+	// profile configuration is invalid.
+	ErrorInvalidAttributeConfiguration = serviceerror.ServiceError{
+		Type: serviceerror.ClientErrorType,
+		Code: "IDP-1012",
+		Error: core.I18nMessage{
+			Key:          "error.idpservice.invalid_attribute_configuration",
+			DefaultValue: "Invalid attribute configuration",
+		},
+		ErrorDescription: core.I18nMessage{
+			Key:          "error.idpservice.invalid_attribute_configuration_description",
+			DefaultValue: "The identity provider's attribute configuration is invalid",
+		},
+	}
 	// ErrorIDPNil is the error returned when the identity provider object is nil.
 	ErrorIDPNil = serviceerror.ServiceError{
 		Type: serviceerror.ClientErrorType,

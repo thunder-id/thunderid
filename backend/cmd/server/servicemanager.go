@@ -205,7 +205,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, roleExporter)
 	authZService := authz.Initialize(roleService)
 
-	idpService, idpExporter, err := idp.Initialize(cacheManager, mux)
+	idpService, idpExporter, err := idp.Initialize(cacheManager, mux, entityTypeService)
 	if err != nil {
 		logger.Fatal("Failed to initialize IDPService", log.Error(err))
 	}

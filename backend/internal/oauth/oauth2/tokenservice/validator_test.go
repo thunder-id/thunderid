@@ -2297,6 +2297,70 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 	suite.mockIDPService.AssertExpectations(suite.T())
 }
 
+// buildExternalIDPDTOsWithMappings builds an external IDP with an attribute mapping.
+func buildExternalIDPDTOsWithMappings(mappings []idp.AttributeMapping) []idp.IDPDTO {
+	dtos := buildExternalIDPDTOs()
+	dtos[0].AttributeConfiguration = &idp.AttributeConfiguration{
+		UserTypeResolution:        &idp.UserTypeResolution{Default: "person"},
+		UserTypeAttributeMappings: []idp.UserTypeAttributeMapping{{UserType: "person", Attributes: mappings}},
+	}
+	return dtos
+}
+
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_Mappings_Renamed() {
+	now := time.Now().Unix()
+	externalAttribute := "https://claims.example.com/email"
+	claims := map[string]interface{}{
+		"sub":             "ext-user-123",
+		"iss":             testExternalIssuer,
+		"aud":             "https://example.com",
+		"exp":             float64(now + 3600),
+		externalAttribute: "user@example.com",
+	}
+	token := suite.createExternalJWT(claims)
+	idpDTOs := buildExternalIDPDTOsWithMappings(
+		[]idp.AttributeMapping{{ExternalAttribute: externalAttribute, LocalAttribute: "email"}})
+
+	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
+		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
+	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "user@example.com", result.UserAttributes["email"])
+	_, originalPresent := result.UserAttributes[externalAttribute]
+	assert.False(suite.T(), originalPresent)
+	suite.mockIDPService.AssertExpectations(suite.T())
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_NoMappings_Verbatim() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":   "ext-user-123",
+		"iss":   testExternalIssuer,
+		"aud":   "https://example.com",
+		"exp":   float64(now + 3600),
+		"email": "user@example.com",
+	}
+	token := suite.createExternalJWT(claims)
+	idpDTOs := buildExternalIDPDTOs()
+
+	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
+		idp.PropIssuer, testExternalIssuer).Return(idpDTOs, nil)
+	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), "user@example.com", result.UserAttributes["email"])
+	suite.mockIDPService.AssertExpectations(suite.T())
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
 func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_PopulatesCnfJkt() {
 	defaultAudience := suite.getDefaultAudience()
 
