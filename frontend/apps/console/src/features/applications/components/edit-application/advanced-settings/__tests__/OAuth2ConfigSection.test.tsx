@@ -17,6 +17,7 @@
  */
 
 import {render, screen} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {describe, it, expect, vi} from 'vitest';
 import type {OAuth2Config} from '../../../../models/oauth';
 import OAuth2ConfigSection from '../OAuth2ConfigSection';
@@ -24,6 +25,23 @@ import OAuth2ConfigSection from '../OAuth2ConfigSection';
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
+  }),
+}));
+
+vi.mock('@thunderid/react', () => ({
+  useThunderID: () => ({
+    discovery: {
+      wellKnown: {
+        grant_types_supported: [
+          'authorization_code',
+          'refresh_token',
+          'client_credentials',
+          'urn:openid:params:grant-type:ciba',
+        ],
+        response_types_supported: ['code', 'token'],
+        token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
+      },
+    },
   }),
 }));
 
@@ -293,6 +311,48 @@ describe('OAuth2ConfigSection', () => {
       expect(screen.getByText('refresh_token')).toBeInTheDocument();
       expect(screen.getByText('client_credentials')).toBeInTheDocument();
       expect(screen.getByText('urn:ietf:params:oauth:grant-type:token-exchange')).toBeInTheDocument();
+    });
+  });
+
+  describe('CIBA Grant Type', () => {
+    it('renders the friendly label for the CIBA URN in the grant type picker', async () => {
+      const user = userEvent.setup();
+      const oauth2Config: OAuth2Config = {
+        grantTypes: [],
+        responseTypes: [],
+        pkceRequired: false,
+        publicClient: false,
+      };
+
+      render(<OAuth2ConfigSection oauth2Config={oauth2Config} onOAuth2ConfigChange={vi.fn()} />);
+
+      const grantTypesSelect = document.getElementById('grant_types')!;
+      await user.click(grantTypesSelect);
+
+      expect(screen.getByText('applications:edit.advanced.grantTypes.labels.ciba')).toBeInTheDocument();
+    });
+
+    it('calls onOAuth2ConfigChange with the raw CIBA URN when the CIBA option is selected', async () => {
+      const user = userEvent.setup();
+      const onOAuth2ConfigChange = vi.fn();
+      const oauth2Config: OAuth2Config = {
+        grantTypes: [],
+        responseTypes: [],
+        pkceRequired: false,
+        publicClient: false,
+      };
+
+      render(<OAuth2ConfigSection oauth2Config={oauth2Config} onOAuth2ConfigChange={onOAuth2ConfigChange} />);
+
+      const grantTypesSelect = document.getElementById('grant_types')!;
+      await user.click(grantTypesSelect);
+      await user.click(screen.getByText('applications:edit.advanced.grantTypes.labels.ciba'));
+
+      expect(onOAuth2ConfigChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grantTypes: expect.arrayContaining(['urn:openid:params:grant-type:ciba']) as unknown,
+        }),
+      );
     });
   });
 });
