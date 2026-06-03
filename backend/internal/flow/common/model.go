@@ -125,6 +125,19 @@ type ExecutorResponse struct {
 	AuthUser          authnprovidermgr.AuthUser  `json:"-"`
 }
 
+// InterceptorResponse represents the response from an interceptor execution
+type InterceptorResponse struct {
+	Status InterceptorStatus          `json:"status"`
+	Error  *serviceerror.ServiceError `json:"error,omitempty"`
+
+	// EngineOutputs passes data from interceptors back to the engine.
+	EngineOutputs map[string]string `json:"engineOutputs,omitempty"`
+
+	// Flow step data returned to the client.
+	ChallengeToken string       `json:"challengeToken,omitempty"`
+	FieldErrors    []FieldError `json:"fieldErrors,omitempty"`
+}
+
 // NodeExecutionRecord represents a record of a node execution in the flow.
 type NodeExecutionRecord struct {
 	NodeID       string             `json:"nodeId"`

@@ -235,6 +235,52 @@ func (_c *GraphInterfaceMock_GetID_Call) RunAndReturn(run func() string) *GraphI
 	return _c
 }
 
+// GetInterceptors provides a mock function for the type GraphInterfaceMock
+func (_mock *GraphInterfaceMock) GetInterceptors() []core.InterceptorUnitInterface {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetInterceptors")
+	}
+
+	var r0 []core.InterceptorUnitInterface
+	if returnFunc, ok := ret.Get(0).(func() []core.InterceptorUnitInterface); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]core.InterceptorUnitInterface)
+		}
+	}
+	return r0
+}
+
+// GraphInterfaceMock_GetInterceptors_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetInterceptors'
+type GraphInterfaceMock_GetInterceptors_Call struct {
+	*mock.Call
+}
+
+// GetInterceptors is a helper method to define mock.On call
+func (_e *GraphInterfaceMock_Expecter) GetInterceptors() *GraphInterfaceMock_GetInterceptors_Call {
+	return &GraphInterfaceMock_GetInterceptors_Call{Call: _e.mock.On("GetInterceptors")}
+}
+
+func (_c *GraphInterfaceMock_GetInterceptors_Call) Run(run func()) *GraphInterfaceMock_GetInterceptors_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *GraphInterfaceMock_GetInterceptors_Call) Return(interceptorUnitInterfaces []core.InterceptorUnitInterface) *GraphInterfaceMock_GetInterceptors_Call {
+	_c.Call.Return(interceptorUnitInterfaces)
+	return _c
+}
+
+func (_c *GraphInterfaceMock_GetInterceptors_Call) RunAndReturn(run func() []core.InterceptorUnitInterface) *GraphInterfaceMock_GetInterceptors_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetNode provides a mock function for the type GraphInterfaceMock
 func (_mock *GraphInterfaceMock) GetNode(nodeID string) (core.NodeInterface, bool) {
 	ret := _mock.Called(nodeID)
@@ -775,6 +821,46 @@ func (_c *GraphInterfaceMock_SetEdges_Call) Return() *GraphInterfaceMock_SetEdge
 }
 
 func (_c *GraphInterfaceMock_SetEdges_Call) RunAndReturn(run func(edges map[string][]string)) *GraphInterfaceMock_SetEdges_Call {
+	_c.Run(run)
+	return _c
+}
+
+// SetInterceptors provides a mock function for the type GraphInterfaceMock
+func (_mock *GraphInterfaceMock) SetInterceptors(interceptors []core.InterceptorUnitInterface) {
+	_mock.Called(interceptors)
+	return
+}
+
+// GraphInterfaceMock_SetInterceptors_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetInterceptors'
+type GraphInterfaceMock_SetInterceptors_Call struct {
+	*mock.Call
+}
+
+// SetInterceptors is a helper method to define mock.On call
+//   - interceptors []core.InterceptorUnitInterface
+func (_e *GraphInterfaceMock_Expecter) SetInterceptors(interceptors interface{}) *GraphInterfaceMock_SetInterceptors_Call {
+	return &GraphInterfaceMock_SetInterceptors_Call{Call: _e.mock.On("SetInterceptors", interceptors)}
+}
+
+func (_c *GraphInterfaceMock_SetInterceptors_Call) Run(run func(interceptors []core.InterceptorUnitInterface)) *GraphInterfaceMock_SetInterceptors_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 []core.InterceptorUnitInterface
+		if args[0] != nil {
+			arg0 = args[0].([]core.InterceptorUnitInterface)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *GraphInterfaceMock_SetInterceptors_Call) Return() *GraphInterfaceMock_SetInterceptors_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *GraphInterfaceMock_SetInterceptors_Call) RunAndReturn(run func(interceptors []core.InterceptorUnitInterface)) *GraphInterfaceMock_SetInterceptors_Call {
 	_c.Run(run)
 	return _c
 }

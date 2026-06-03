@@ -2232,6 +2232,83 @@ When the user selects a gated action, the matched ACR string is included as the 
 - **`acr_values` not sent:** All actions are shown.
 
 
+## Interceptors
+
+Interceptors are cross-cutting operations that execute at defined lifecycle points around each flow request. They are declared at the flow level — not on individual nodes — and run automatically based on their `mode` and `scope`.
+
+### Declaration
+
+Add an `interceptors` array to the flow definition body when creating or updating a flow:
+
+```json
+{
+  "handle": "my-login-flow",
+  "name": "My Login Flow",
+  "flowType": "AUTHENTICATION",
+  "interceptors": [
+    {
+      "name": "CaptchaInterceptor",
+      "mode": "PRE_REQUEST",
+      "scope": "SELECTED",
+      "applyTo": ["login-screen"],
+      "properties": {
+        "siteKey": "abc123"
+      }
+    }
+  ],
+  "nodes": [...]
+}
+```
+
+The `interceptors` array is included in create, update, get, and version payloads. Omit it or pass an empty array if you do not need configurable interceptors.
+
+### Fields
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | Yes | Name of the interceptor as registered in the interceptor registry. |
+| `mode` | Yes | Lifecycle point at which the interceptor runs. See [Modes](#interceptor-modes). |
+| `scope` | No | Determines which nodes the interceptor applies to for per-node modes. Defaults to `ALL`. |
+| `applyTo` | No | List of node IDs the interceptor applies to. Only used when `scope` is `SELECTED`. |
+| `properties` | No | Interceptor-specific configuration as a key-value map. |
+
+### Interceptor Modes
+
+| Mode | When it runs |
+|---|---|
+| `PRE_REQUEST` | Before the flow processes the incoming request, once per request cycle. |
+| `PRE_NODE` | Before a specific node executes. |
+| `POST_NODE` | After a specific node executes. |
+| `POST_REQUEST` | After the flow has produced its response, once per request cycle. |
+
+### Scope
+
+`scope` controls which nodes a `PRE_NODE` or `POST_NODE` interceptor applies to. It has no effect on `PRE_REQUEST` and `POST_REQUEST` interceptors.
+
+| Scope | Behavior |
+|---|---|
+| `ALL` | Runs for every node, unless the node's `skipInterceptors` property lists this interceptor by name. |
+| `SELECTED` | Runs only for the node IDs listed in `applyTo`. |
+
+To exclude an `ALL`-scoped interceptor from a specific node, add a `skipInterceptors` entry in that node's `properties`:
+
+```json
+{
+  "id": "skip-node",
+  "type": "TASK_EXECUTION",
+  "properties": {
+    "skipInterceptors": ["CaptchaInterceptor"]
+  },
+  ...
+}
+```
+
+### Built-in Interceptors
+
+Some interceptors are always active and cannot be declared in the flow definition. They run at system-level priority before any configurable interceptors.
+
+**Challenge Token** — Active on every flow. On `POST_REQUEST`, generates a per-step challenge token and includes it in the flow step response under the `challengeToken` field. On `PRE_REQUEST`, validates the token submitted with the incoming request to prevent replay and out-of-order submissions. Validation is skipped on the first request of a new flow instance (no prior token issued yet) and when the engine permits a segment restart. The <ProductName /> JavaScript SDK reads and forwards the challenge token transparently — no client-side handling is required.
+
 ## Try Out
 
 - [Build a Flow](../build-a-flow) — Step-by-step guide to creating a flow in the <ProductName /> Console.

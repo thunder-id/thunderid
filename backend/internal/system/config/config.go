@@ -287,11 +287,12 @@ type OAuthConfig struct {
 
 // FlowConfig holds the configuration details for the flow service.
 type FlowConfig struct {
-	DefaultAuthFlowHandle    string `yaml:"default_auth_flow_handle" json:"default_auth_flow_handle"`
-	UserOnboardingFlowHandle string `yaml:"user_onboarding_flow_handle" json:"user_onboarding_flow_handle"`
-	MaxVersionHistory        int    `yaml:"max_version_history" json:"max_version_history"`
-	AutoInferRegistration    bool   `yaml:"auto_infer_registration" json:"auto_infer_registration"`
-	Store                    string `yaml:"store" json:"store"`
+	DefaultAuthFlowHandle    string   `yaml:"default_auth_flow_handle" json:"default_auth_flow_handle"`
+	UserOnboardingFlowHandle string   `yaml:"user_onboarding_flow_handle" json:"user_onboarding_flow_handle"`
+	MaxVersionHistory        int      `yaml:"max_version_history" json:"max_version_history"`
+	AutoInferRegistration    bool     `yaml:"auto_infer_registration" json:"auto_infer_registration"`
+	Interceptors             []string `yaml:"interceptors" json:"interceptors"`
+	Store                    string   `yaml:"store" json:"store"`
 	// Executors lists built-in executor names to register (e.g. BasicAuthExecutor).
 	// When empty, all built-in executors are registered. When set, only listed executors
 	// are available; omit only executors you intentionally disable on this node.

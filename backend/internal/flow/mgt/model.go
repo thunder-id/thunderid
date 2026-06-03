@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -32,33 +32,36 @@ import (
 
 // FlowDefinition represents the structure of a flow definition.
 type FlowDefinition struct {
-	ID       string           `json:"id,omitempty" yaml:"id,omitempty" jsonschema:"Optional explicit ID for the flow. When omitted a UUID is generated."`
-	Handle   string           `json:"handle" validate:"required" jsonschema:"Unique identifier for the flow (lowercase, alphanumeric with dashes/underscores). Example: 'basic-login', 'invite-registration'"`
-	Name     string           `json:"name" validate:"required" jsonschema:"Display name for the flow. Example: 'Basic Login Flow', 'Invite Registration'"`
-	FlowType common.FlowType  `json:"flowType" validate:"required" jsonschema:"Type of flow: 'AUTHENTICATION' for login flows or 'REGISTRATION' for signup flows"`
-	Nodes    []NodeDefinition `json:"nodes" validate:"required" jsonschema:"Array of nodes defining the flow steps. Must include START and END nodes. Use get_flow on existing flows to see node structure examples."`
+	ID           string                  `json:"id,omitempty" yaml:"id,omitempty" jsonschema:"Optional explicit ID for the flow. When omitted a UUID is generated."`
+	Handle       string                  `json:"handle" validate:"required" jsonschema:"Unique identifier for the flow (lowercase, alphanumeric with dashes/underscores). Example: 'basic-login', 'invite-registration'"`
+	Name         string                  `json:"name" validate:"required" jsonschema:"Display name for the flow. Example: 'Basic Login Flow', 'Invite Registration'"`
+	FlowType     common.FlowType         `json:"flowType" validate:"required" jsonschema:"Type of flow: 'AUTHENTICATION' for login flows or 'REGISTRATION' for signup flows"`
+	Interceptors []InterceptorDefinition `json:"interceptors,omitempty" yaml:"interceptors,omitempty" jsonschema:"Optional array of interceptor declarations for cross-cutting concerns (e.g., CAPTCHA, rate limiting)."`
+	Nodes        []NodeDefinition        `json:"nodes" validate:"required" jsonschema:"Array of nodes defining the flow steps. Must include START and END nodes. Use get_flow on existing flows to see node structure examples."`
 }
 
 // FlowDefinitionRequest represents the API request body for create/update flow operations.
 // ID is intentionally excluded from API payloads.
 type FlowDefinitionRequest struct {
-	Handle   string           `json:"handle" validate:"required"`
-	Name     string           `json:"name" validate:"required"`
-	FlowType common.FlowType  `json:"flowType" validate:"required"`
-	Nodes    []NodeDefinition `json:"nodes" validate:"required"`
+	Handle       string                  `json:"handle" validate:"required"`
+	Name         string                  `json:"name" validate:"required"`
+	FlowType     common.FlowType         `json:"flowType" validate:"required"`
+	Interceptors []InterceptorDefinition `json:"interceptors,omitempty"`
+	Nodes        []NodeDefinition        `json:"nodes" validate:"required"`
 }
 
 // CompleteFlowDefinition represents a complete flow definition with all details.
 type CompleteFlowDefinition struct {
-	ID            string           `json:"id" yaml:"id" jsonschema:"Unique identifier of the flow. UUID format."`
-	Handle        string           `json:"handle" yaml:"handle" jsonschema:"URL-friendly handle for the flow."`
-	Name          string           `json:"name" yaml:"name" jsonschema:"Display name of the flow."`
-	FlowType      common.FlowType  `json:"flowType" yaml:"flowType" jsonschema:"Type of flow (AUTHENTICATION or REGISTRATION)."`
-	ActiveVersion int              `json:"activeVersion,omitempty" yaml:"activeVersion" jsonschema:"Current active version number of the flow."`
-	Nodes         []NodeDefinition `json:"nodes,omitempty" yaml:"nodes" jsonschema:"List of nodes defining the flow logic."`
-	CreatedAt     string           `json:"createdAt,omitempty" yaml:"createdAt" jsonschema:"Timestamp when the flow was created."`
-	UpdatedAt     string           `json:"updatedAt,omitempty" yaml:"updatedAt" jsonschema:"Timestamp when the flow was last updated."`
-	IsReadOnly    bool             `json:"isReadOnly" yaml:"isReadOnly" jsonschema:"Whether the flow is immutable (declarative)."`
+	ID            string                  `json:"id" yaml:"id" jsonschema:"Unique identifier of the flow. UUID format."`
+	Handle        string                  `json:"handle" yaml:"handle" jsonschema:"URL-friendly handle for the flow."`
+	Name          string                  `json:"name" yaml:"name" jsonschema:"Display name of the flow."`
+	FlowType      common.FlowType         `json:"flowType" yaml:"flowType" jsonschema:"Type of flow (AUTHENTICATION or REGISTRATION)."`
+	ActiveVersion int                     `json:"activeVersion,omitempty" yaml:"activeVersion" jsonschema:"Current active version number of the flow."`
+	Interceptors  []InterceptorDefinition `json:"interceptors,omitempty" yaml:"interceptors,omitempty" jsonschema:"Interceptor declarations for cross-cutting concerns."`
+	Nodes         []NodeDefinition        `json:"nodes,omitempty" yaml:"nodes" jsonschema:"List of nodes defining the flow logic."`
+	CreatedAt     string                  `json:"createdAt,omitempty" yaml:"createdAt" jsonschema:"Timestamp when the flow was created."`
+	UpdatedAt     string                  `json:"updatedAt,omitempty" yaml:"updatedAt" jsonschema:"Timestamp when the flow was last updated."`
+	IsReadOnly    bool                    `json:"isReadOnly" yaml:"isReadOnly" jsonschema:"Whether the flow is immutable (declarative)."`
 }
 
 // BasicFlowDefinition represents basic information about a flow definition.
@@ -84,14 +87,15 @@ type FlowListResponse struct {
 
 // FlowVersion represents a specific version of a flow definition.
 type FlowVersion struct {
-	ID        string           `json:"id"`
-	Handle    string           `json:"handle"`
-	Name      string           `json:"name"`
-	FlowType  string           `json:"flowType"`
-	Version   int              `json:"version"`
-	IsActive  bool             `json:"isActive"`
-	Nodes     []NodeDefinition `json:"nodes"`
-	CreatedAt string           `json:"createdAt"`
+	ID           string                  `json:"id"`
+	Handle       string                  `json:"handle"`
+	Name         string                  `json:"name"`
+	FlowType     string                  `json:"flowType"`
+	Version      int                     `json:"version"`
+	IsActive     bool                    `json:"isActive"`
+	Interceptors []InterceptorDefinition `json:"interceptors,omitempty"`
+	Nodes        []NodeDefinition        `json:"nodes"`
+	CreatedAt    string                  `json:"createdAt"`
 }
 
 // FlowVersionListResponse represents a list of flow versions.
@@ -116,6 +120,15 @@ type RestoreVersionRequest struct {
 type Link struct {
 	Href string `json:"href"`
 	Rel  string `json:"rel"`
+}
+
+// InterceptorDefinition describes how an interceptor is declared in the flow definition.
+type InterceptorDefinition struct {
+	Name       string                  `json:"name"`
+	Mode       common.InterceptorMode  `json:"mode"`
+	Scope      common.InterceptorScope `json:"scope,omitempty"`
+	ApplyTo    []string                `json:"applyTo,omitempty"`
+	Properties map[string]interface{}  `json:"properties,omitempty"`
 }
 
 // NodeLayout represents the layout information for a node in the flow composer UI.
@@ -274,9 +287,10 @@ type getFlowByHandleInput struct {
 
 // updateFlowInput represents the input for update_flow tool.
 type updateFlowInput struct {
-	ID    string           `json:"id" jsonschema:"The unique identifier of the flow to update. Required."`
-	Name  string           `json:"name" jsonschema:"Display name for the flow. Required for PUT."`
-	Nodes []NodeDefinition `json:"nodes" jsonschema:"Array of nodes defining the flow steps. Required for PUT."`
+	ID           string                  `json:"id" jsonschema:"The unique identifier of the flow to update. Required."`
+	Name         string                  `json:"name" jsonschema:"Display name for the flow. Required for PUT."`
+	Nodes        []NodeDefinition        `json:"nodes" jsonschema:"Array of nodes defining the flow steps. Required for PUT."`
+	Interceptors []InterceptorDefinition `json:"interceptors,omitempty" jsonschema:"Optional array of interceptor declarations for cross-cutting concerns."`
 }
 
 // segmentBoundary holds the parameters of a segment boundary, which is identified by a display-only prompt node.

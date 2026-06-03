@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -23,6 +23,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -41,6 +42,7 @@ func Initialize(
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	executorRegistry executor.ExecutorRegistryInterface,
+	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	cryptoSvc kmprovider.RuntimeCryptoProvider,
 ) (FlowExecServiceInterface, error) {
@@ -59,9 +61,10 @@ func Initialize(
 		}
 		flowStore = newFlowStore(dbProvider)
 	}
-	flowEngine := newFlowEngine(executorRegistry, observabilitySvc)
+	interceptorRunner := newInterceptorRunner(interceptorRegistry)
+	flowEngine := newFlowEngine(executorRegistry, interceptorRunner, observabilitySvc)
 	flowExecService := newFlowExecService(flowMgtService, flowStore, flowEngine,
-		inboundClientService, entityProvider, observabilitySvc, transactioner, cryptoSvc)
+		inboundClientService, entityProvider, interceptorRunner, observabilitySvc, transactioner, cryptoSvc)
 
 	handler := newFlowExecutionHandler(flowExecService)
 	registerRoutes(mux, handler)

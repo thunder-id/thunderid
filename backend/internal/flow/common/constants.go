@@ -356,3 +356,39 @@ const (
 	DefaultValidationMessageMinLength = "validation.minLength.invalid"
 	DefaultValidationMessageMaxLength = "validation.maxLength.invalid"
 )
+
+// InterceptorMode represents the lifecycle point at which an interceptor executes.
+type InterceptorMode string
+
+// Interceptor mode constants.
+const (
+	InterceptorModePreRequest  InterceptorMode = "PRE_REQUEST"
+	InterceptorModePreNode     InterceptorMode = "PRE_NODE"
+	InterceptorModePostNode    InterceptorMode = "POST_NODE"
+	InterceptorModePostRequest InterceptorMode = "POST_REQUEST"
+)
+
+// InterceptorStatus represents the outcome of an interceptor execution.
+type InterceptorStatus string
+
+// Interceptor status constants.
+const (
+	InterceptorStatusComplete   InterceptorStatus = "COMPLETE"
+	InterceptorStatusIncomplete InterceptorStatus = "INCOMPLETE"
+	InterceptorStatusFail       InterceptorStatus = "FAIL"
+)
+
+// Interceptor shared data keys for incoming request data populated before interceptor execution.
+const (
+	// InterceptorDataKeyChallengeTokenIn is the shared data key for the incoming challenge token.
+	InterceptorDataKeyChallengeTokenIn = "challengeTokenIn"
+)
+
+// InterceptorScope determines which nodes a per-node interceptor applies to.
+type InterceptorScope string
+
+// Interceptor scope constants.
+const (
+	InterceptorScopeAll      InterceptorScope = "ALL"
+	InterceptorScopeSelected InterceptorScope = "SELECTED"
+)

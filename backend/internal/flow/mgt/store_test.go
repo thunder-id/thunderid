@@ -952,7 +952,7 @@ func (s *FlowStoreTestSuite) TestCreateFlow_InsertFlowVersionError() {
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "login-handle", "Login Flow",
 		common.FlowTypeAuthentication, int64(1), s.store.deploymentID).Return(int64(0), nil)
-	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 1, nodesJSON,
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 1, nodesJSON, "null",
 		s.store.deploymentID).Return(int64(0), errors.New("version insert error"))
 
 	result, err := s.store.CreateFlow(context.Background(), "flow-1", flowDef)
@@ -1004,7 +1004,7 @@ func (s *FlowStoreTestSuite) TestUpdateFlow_PushToVersionStackError() {
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
 	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlow, "flow-1", s.store.deploymentID).
 		Return(flowData, nil)
-	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 4, "[]",
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 4, "[]", "null",
 		s.store.deploymentID).Return(int64(0), errors.New("insert version error"))
 
 	result, err := s.store.UpdateFlow(context.Background(), "flow-1", flowDef)
@@ -1063,7 +1063,8 @@ func (s *FlowStoreTestSuite) TestRestoreFlowVersion_PushToVersionStackError() {
 		colUpdatedAt:     "2025-01-01T00:00:00Z",
 	}}
 	versionData := []map[string]interface{}{{
-		colNodes: "[]",
+		colNodes:        "[]",
+		colInterceptors: "null",
 	}}
 
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
@@ -1071,7 +1072,7 @@ func (s *FlowStoreTestSuite) TestRestoreFlowVersion_PushToVersionStackError() {
 		Return(flowData, nil)
 	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlowVersion, "flow-3", 1, s.store.deploymentID).
 		Return(versionData, nil)
-	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-3", 2, "[]",
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-3", 2, "[]", "null",
 		s.store.deploymentID).Return(int64(0), errors.New("insert error"))
 
 	result, err := s.store.RestoreFlowVersion(context.Background(), "flow-3", 1)
@@ -1085,12 +1086,12 @@ func (s *FlowStoreTestSuite) TestPushToVersionStack_CountVersionsQueryError() {
 	mockDBClient := providermock.NewDBClientInterfaceMock(s.T())
 
 	mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion,
-		"flow-1", 2, `[]`, s.store.deploymentID).
+		"flow-1", 2, `[]`, `null`, s.store.deploymentID).
 		Return(int64(0), nil)
 	mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowVersions, "flow-1", s.store.deploymentID).
 		Return(nil, errors.New("count query error"))
 
-	err := s.store.pushToVersionStack(context.Background(), mockDBClient, "flow-1", 2, `[]`)
+	err := s.store.pushToVersionStack(context.Background(), mockDBClient, "flow-1", 2, `[]`, `null`)
 
 	s.Error(err)
 	s.Contains(err.Error(), "failed to count versions")
@@ -1102,14 +1103,14 @@ func (s *FlowStoreTestSuite) TestPushToVersionStack_DeleteOldestVersionError() {
 	countResults := []map[string]interface{}{{"count": int64(6)}}
 
 	mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion,
-		"flow-1", 2, `[]`, s.store.deploymentID).
+		"flow-1", 2, `[]`, `null`, s.store.deploymentID).
 		Return(int64(0), nil)
 	mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowVersions, "flow-1", s.store.deploymentID).
 		Return(countResults, nil)
 	mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryDeleteOldestVersion, "flow-1", s.store.deploymentID).
 		Return(int64(0), errors.New("delete error"))
 
-	err := s.store.pushToVersionStack(context.Background(), mockDBClient, "flow-1", 2, `[]`)
+	err := s.store.pushToVersionStack(context.Background(), mockDBClient, "flow-1", 2, `[]`, `null`)
 
 	s.Error(err)
 	s.Contains(err.Error(), "failed to delete oldest version")
@@ -1119,10 +1120,10 @@ func (s *FlowStoreTestSuite) TestPushToVersionStack_InsertVersionError() {
 	mockDBClient := providermock.NewDBClientInterfaceMock(s.T())
 
 	mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion,
-		"flow-1", 2, `[]`, s.store.deploymentID).
+		"flow-1", 2, `[]`, `null`, s.store.deploymentID).
 		Return(int64(0), errors.New("insert error"))
 
-	err := s.store.pushToVersionStack(context.Background(), mockDBClient, "flow-1", 2, `[]`)
+	err := s.store.pushToVersionStack(context.Background(), mockDBClient, "flow-1", 2, `[]`, `null`)
 
 	s.Error(err)
 	s.Contains(err.Error(), "failed to insert flow version")
@@ -1155,4 +1156,249 @@ func (s *FlowStoreTestSuite) TestGetMaxVersionHistory() {
 			s.Equal(tt.expected, result)
 		})
 	}
+}
+
+// Interceptors Tests
+
+func (s *FlowStoreTestSuite) TestGetFlowByIDWithInterceptors() {
+	interceptorsJSON := `[{"name":"captcha","mode":"PRE"}]`
+	flowData := map[string]interface{}{
+		colFlowID:        "flow-int-1",
+		colHandle:        "interceptor-handle",
+		colName:          "Flow With Interceptors",
+		colFlowType:      string(common.FlowTypeAuthentication),
+		colActiveVersion: int64(1),
+		colNodes:         `[{"id":"START","type":"START"}]`,
+		colInterceptors:  interceptorsJSON,
+		colCreatedAt:     "2025-01-01T00:00:00Z",
+		colUpdatedAt:     "2025-01-01T00:00:00Z",
+	}
+
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlow, "flow-int-1", "test-deployment").
+		Return([]map[string]interface{}{flowData}, nil).Once()
+
+	flow, err := s.store.GetFlowByID(context.Background(), "flow-int-1")
+
+	s.NoError(err)
+	s.NotNil(flow)
+	s.Len(flow.Interceptors, 1)
+	s.Equal("captcha", flow.Interceptors[0].Name)
+	s.Equal(common.InterceptorMode("PRE"), flow.Interceptors[0].Mode)
+}
+
+func (s *FlowStoreTestSuite) TestGetFlowByIDWithNullInterceptors() {
+	flowData := map[string]interface{}{
+		colFlowID:        "flow-int-2",
+		colHandle:        "no-interceptor-handle",
+		colName:          "Flow Without Interceptors",
+		colFlowType:      string(common.FlowTypeAuthentication),
+		colActiveVersion: int64(1),
+		colNodes:         `[{"id":"START","type":"START"}]`,
+		colCreatedAt:     "2025-01-01T00:00:00Z",
+		colUpdatedAt:     "2025-01-01T00:00:00Z",
+	}
+
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlow, "flow-int-2", "test-deployment").
+		Return([]map[string]interface{}{flowData}, nil).Once()
+
+	flow, err := s.store.GetFlowByID(context.Background(), "flow-int-2")
+
+	s.NoError(err)
+	s.NotNil(flow)
+	s.Nil(flow.Interceptors)
+}
+
+func (s *FlowStoreTestSuite) TestBuildCompleteFlowDefinitionFromRowWithInterceptors() {
+	row := map[string]interface{}{
+		colFlowID:        "flow-1",
+		colHandle:        "test-handle",
+		colName:          "Test Flow",
+		colFlowType:      string(common.FlowTypeAuthentication),
+		colActiveVersion: int64(1),
+		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
+		colInterceptors:  `[{"name":"rate-limit","mode":"PRE"},{"name":"audit","mode":"POST"}]`,
+		colCreatedAt:     "2025-01-01T00:00:00Z",
+		colUpdatedAt:     "2025-01-01T00:00:00Z",
+	}
+
+	flow, err := s.store.buildCompleteFlowDefinitionFromRow(row)
+
+	s.NoError(err)
+	s.NotNil(flow)
+	s.Len(flow.Interceptors, 2)
+	s.Equal("rate-limit", flow.Interceptors[0].Name)
+	s.Equal(common.InterceptorMode("PRE"), flow.Interceptors[0].Mode)
+	s.Equal("audit", flow.Interceptors[1].Name)
+	s.Equal(common.InterceptorMode("POST"), flow.Interceptors[1].Mode)
+}
+
+func (s *FlowStoreTestSuite) TestBuildCompleteFlowDefinitionFromRowInvalidInterceptorsJSON() {
+	row := map[string]interface{}{
+		colFlowID:        "flow-1",
+		colHandle:        "test-handle",
+		colName:          "Test Flow",
+		colFlowType:      string(common.FlowTypeAuthentication),
+		colActiveVersion: int64(1),
+		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
+		colInterceptors:  "invalid-json",
+		colCreatedAt:     "2025-01-01T00:00:00Z",
+		colUpdatedAt:     "2025-01-01T00:00:00Z",
+	}
+
+	flow, err := s.store.buildCompleteFlowDefinitionFromRow(row)
+
+	s.Error(err)
+	s.Nil(flow)
+	s.Contains(err.Error(), "failed to unmarshal interceptors")
+}
+
+func (s *FlowStoreTestSuite) TestBuildFlowVersionFromRowWithInterceptors() {
+	row := map[string]interface{}{
+		colFlowID:        "flow-1",
+		colHandle:        "test-handle",
+		colName:          "Test Flow",
+		colFlowType:      string(common.FlowTypeAuthentication),
+		colVersion:       int64(2),
+		colActiveVersion: int64(2),
+		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
+		colInterceptors:  `[{"name":"captcha","mode":"PRE"}]`,
+		colCreatedAt:     "2025-01-02T00:00:00Z",
+	}
+
+	version, err := s.store.buildFlowVersionFromRow(row)
+
+	s.NoError(err)
+	s.NotNil(version)
+	s.Len(version.Interceptors, 1)
+	s.Equal("captcha", version.Interceptors[0].Name)
+}
+
+func (s *FlowStoreTestSuite) TestBuildFlowVersionFromRowWithNullInterceptors() {
+	row := map[string]interface{}{
+		colFlowID:        "flow-1",
+		colHandle:        "test-handle",
+		colName:          "Test Flow",
+		colFlowType:      string(common.FlowTypeAuthentication),
+		colVersion:       int64(2),
+		colActiveVersion: int64(2),
+		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
+		colCreatedAt:     "2025-01-02T00:00:00Z",
+	}
+
+	version, err := s.store.buildFlowVersionFromRow(row)
+
+	s.NoError(err)
+	s.NotNil(version)
+	s.Nil(version.Interceptors)
+}
+
+func (s *FlowStoreTestSuite) TestBuildFlowVersionFromRowInvalidInterceptorsJSON() {
+	row := map[string]interface{}{
+		colFlowID:        "flow-1",
+		colHandle:        "test-handle",
+		colName:          "Test Flow",
+		colFlowType:      string(common.FlowTypeAuthentication),
+		colVersion:       int64(2),
+		colActiveVersion: int64(2),
+		colNodes:         `[{"id":"node-1","type":"basic-auth"}]`,
+		colInterceptors:  "invalid-json",
+		colCreatedAt:     "2025-01-02T00:00:00Z",
+	}
+
+	version, err := s.store.buildFlowVersionFromRow(row)
+
+	s.Error(err)
+	s.Nil(version)
+	s.Contains(err.Error(), "failed to unmarshal interceptors")
+}
+
+func (s *FlowStoreTestSuite) TestCreateFlowWithInterceptors() {
+	flowDef := &FlowDefinition{
+		Handle:   "login-handle",
+		Name:     "Login Flow",
+		FlowType: common.FlowTypeAuthentication,
+		Interceptors: []InterceptorDefinition{
+			{Name: "captcha", Mode: common.InterceptorMode("PRE")},
+		},
+		Nodes: []NodeDefinition{{Type: "start", ID: "node1"}},
+	}
+
+	nodesJSON := `[{"id":"node1","type":"start"}]`
+	interceptorsJSON := `[{"name":"captcha","mode":"PRE"}]`
+
+	getFlowData := map[string]interface{}{
+		colFlowID:        "flow-1",
+		colHandle:        "login-handle",
+		colName:          "Login Flow",
+		colFlowType:      string(common.FlowTypeAuthentication),
+		colActiveVersion: int64(1),
+		colNodes:         nodesJSON,
+		colInterceptors:  interceptorsJSON,
+		colCreatedAt:     "2025-01-01T00:00:00Z",
+		colUpdatedAt:     "2025-01-01T00:00:00Z",
+	}
+
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "login-handle", "Login Flow",
+		common.FlowTypeAuthentication, int64(1), s.store.deploymentID).Return(int64(1), nil)
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 1, nodesJSON,
+		interceptorsJSON, s.store.deploymentID).Return(int64(1), nil)
+
+	// GetFlowByID call after create
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlow, "flow-1", "test-deployment").
+		Return([]map[string]interface{}{getFlowData}, nil).Once()
+
+	result, err := s.store.CreateFlow(context.Background(), "flow-1", flowDef)
+
+	s.NoError(err)
+	s.NotNil(result)
+	s.Len(result.Interceptors, 1)
+	s.Equal("captcha", result.Interceptors[0].Name)
+}
+
+func (s *FlowStoreTestSuite) TestGetFlowByHandleWithInterceptors() {
+	interceptorsJSON := `[{"name":"audit","mode":"POST"}]`
+	flowData := map[string]interface{}{
+		colFlowID:        "flow-int-3",
+		colHandle:        "interceptor-handle",
+		colName:          "Flow With Interceptors",
+		colFlowType:      string(common.FlowTypeAuthentication),
+		colActiveVersion: int64(1),
+		colNodes:         `[{"id":"START","type":"START"}]`,
+		colInterceptors:  interceptorsJSON,
+		colCreatedAt:     "2025-01-01T00:00:00Z",
+		colUpdatedAt:     "2025-01-01T00:00:00Z",
+	}
+
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlowByHandle, "interceptor-handle",
+		string(common.FlowTypeAuthentication), "test-deployment").Return(
+		[]map[string]interface{}{flowData}, nil).Once()
+
+	flow, err := s.store.GetFlowByHandle(context.Background(), "interceptor-handle", common.FlowTypeAuthentication)
+
+	s.NoError(err)
+	s.NotNil(flow)
+	s.Len(flow.Interceptors, 1)
+	s.Equal("audit", flow.Interceptors[0].Name)
+	s.Equal(common.InterceptorMode("POST"), flow.Interceptors[0].Mode)
+}
+
+func (s *FlowStoreTestSuite) TestPushToVersionStack_WithInterceptors() {
+	mockDBClient := providermock.NewDBClientInterfaceMock(s.T())
+
+	mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion,
+		"flow-1", 2, `[{"id":"START","type":"START"}]`, `[{"name":"captcha","mode":"PRE"}]`,
+		s.store.deploymentID).
+		Return(int64(1), nil)
+	mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowVersions, "flow-1", s.store.deploymentID).
+		Return([]map[string]interface{}{{colCount: int64(2)}}, nil)
+
+	err := s.store.pushToVersionStack(context.Background(), mockDBClient, "flow-1", 2,
+		`[{"id":"START","type":"START"}]`, `[{"name":"captcha","mode":"PRE"}]`)
+
+	s.NoError(err)
 }

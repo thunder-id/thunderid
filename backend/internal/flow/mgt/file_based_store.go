@@ -40,10 +40,11 @@ func (f *fileBasedStore) Create(id string, data interface{}) error {
 		return errors.New("invalid flow data type")
 	}
 	_, err := f.CreateFlow(context.Background(), flow.ID, &FlowDefinition{
-		Handle:   flow.Handle,
-		Name:     flow.Name,
-		FlowType: flow.FlowType,
-		Nodes:    flow.Nodes,
+		Handle:       flow.Handle,
+		Name:         flow.Name,
+		FlowType:     flow.FlowType,
+		Interceptors: flow.Interceptors,
+		Nodes:        flow.Nodes,
 	})
 	return err
 }
@@ -57,6 +58,7 @@ func (f *fileBasedStore) CreateFlow(_ context.Context, flowID string, flow *Flow
 		Name:          flow.Name,
 		FlowType:      flow.FlowType,
 		ActiveVersion: 1,
+		Interceptors:  flow.Interceptors,
 		Nodes:         flow.Nodes,
 		CreatedAt:     "",
 		UpdatedAt:     "",

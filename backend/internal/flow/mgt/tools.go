@@ -193,10 +193,11 @@ func (t *flowTools) updateFlow(
 
 	// Build update definition with immutable fields preserved and input fields replaced
 	updateDef := &FlowDefinition{
-		Handle:   currentFlow.Handle,
-		FlowType: currentFlow.FlowType,
-		Name:     input.Name,
-		Nodes:    input.Nodes,
+		Handle:       currentFlow.Handle,
+		FlowType:     currentFlow.FlowType,
+		Name:         input.Name,
+		Nodes:        input.Nodes,
+		Interceptors: input.Interceptors,
 	}
 
 	updatedFlow, svcErr := t.flowService.UpdateFlow(ctx, input.ID, updateDef)

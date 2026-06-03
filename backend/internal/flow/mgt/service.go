@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
@@ -564,7 +565,67 @@ func validateFlowDefinition(flowDef *FlowDefinition) *serviceerror.ServiceError 
 		})
 	}
 
+	if err := validateInterceptors(flowDef.Interceptors); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// validateInterceptors validates the interceptor definitions declared in a flow.
+func validateInterceptors(interceptors []InterceptorDefinition) *serviceerror.ServiceError {
+	validModes := map[common.InterceptorMode]bool{
+		common.InterceptorModePreRequest:  true,
+		common.InterceptorModePreNode:     true,
+		common.InterceptorModePostNode:    true,
+		common.InterceptorModePostRequest: true,
+	}
+	validScopes := map[common.InterceptorScope]bool{
+		common.InterceptorScopeAll:      true,
+		common.InterceptorScopeSelected: true,
+	}
+
+	for i, ic := range interceptors {
+		if ic.Name == "" {
+			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+				Key:          "error.flowmgtservice.interceptor_name_required",
+				DefaultValue: fmt.Sprintf("Interceptor at index %d must have a name", i),
+			})
+		}
+		if isDefaultInterceptor(ic.Name) {
+			msg := fmt.Sprintf("Default interceptor '%s' cannot be configured in a flow definition", ic.Name)
+			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+				Key:          "error.flowmgtservice.interceptor_default_not_configurable",
+				DefaultValue: msg,
+			})
+		}
+		if !validModes[ic.Mode] {
+			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+				Key:          "error.flowmgtservice.interceptor_invalid_mode",
+				DefaultValue: fmt.Sprintf("Interceptor '%s' has invalid mode '%s'", ic.Name, ic.Mode),
+			})
+		}
+		if ic.Scope != "" && !validScopes[ic.Scope] {
+			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+				Key:          "error.flowmgtservice.interceptor_invalid_scope",
+				DefaultValue: fmt.Sprintf("Interceptor '%s' has invalid scope '%s'", ic.Name, ic.Scope),
+			})
+		}
+		if ic.Scope == common.InterceptorScopeSelected && len(ic.ApplyTo) == 0 {
+			return serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
+				Key:          "error.flowmgtservice.interceptor_selected_scope_requires_apply_to",
+				DefaultValue: "Interceptor with scope SELECTED must specify at least one node in applyTo",
+			})
+		}
+	}
+
+	return nil
+}
+
+// isDefaultInterceptor checks whether the given interceptor name matches any default interceptor.
+func isDefaultInterceptor(name string) bool {
+	_, ok := interceptor.DefaultInterceptorNames[name]
+	return ok
 }
 
 // isValidHandleFormat validates that the handle follows the required format:

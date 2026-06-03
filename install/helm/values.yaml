@@ -381,6 +381,9 @@ configuration:
     # Optional whitelist of built-in executor names to register at startup.
     # Leave empty to register all built-in executors.
     executors: []
+    # Optional whitelist of built-in interceptor names to register at startup.
+    # Leave empty to register all built-in interceptors.
+    interceptors: []
 
   # CORS configuration
   cors:

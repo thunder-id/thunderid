@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -62,8 +63,34 @@ type EngineContext struct {
 	Assertion         string
 	ExecutionHistory  map[string]*common.NodeExecutionRecord
 
-	ChallengeTokenIn   string
-	ChallengeTokenHash string
+	InterceptorSharedData map[string]string
+}
+
+// MergeRuntimeData merges the given data into RuntimeData.
+func (ec *EngineContext) MergeRuntimeData(data map[string]string) {
+	if ec.RuntimeData == nil {
+		ec.RuntimeData = make(map[string]string)
+	}
+	for k, v := range data {
+		ec.RuntimeData[k] = v
+	}
+}
+
+// InterceptorRunnerContext is a self-contained, request-scoped context built by the engine
+// for each RunInterceptors call. It carries everything the interceptor service needs without
+// requiring access to the engine context itself.
+type InterceptorRunnerContext struct {
+	Ctx                 context.Context
+	ExecutionID         string
+	AppID               string
+	FlowType            common.FlowType
+	CurrentNode         core.NodeInterface
+	AllowSegmentRestart bool
+	UserInputs          map[string]string
+	ForwardedData       map[string]interface{}
+	AdditionalData      map[string]string
+	Interceptors        []core.InterceptorUnitInterface
+	SharedData          map[string]string
 }
 
 // FlowStep represents the outcome of a individual flow step
@@ -131,24 +158,24 @@ type FlowContextDB struct {
 
 // flowContextContent holds all flow state serialized into the CONTEXT JSON column.
 type flowContextContent struct {
-	AppID               string  `json:"appId"`
-	Verbose             bool    `json:"verbose"`
-	CurrentNodeID       *string `json:"currentNodeId,omitempty"`
-	CurrentAction       *string `json:"currentAction,omitempty"`
-	CurrentSegmentID    *string `json:"currentSegmentId,omitempty"`
-	GraphID             string  `json:"graphId"`
-	RuntimeData         *string `json:"runtimeData,omitempty"`
-	ExecutionHistory    *string `json:"executionHistory,omitempty"`
-	IsAuthenticated     bool    `json:"isAuthenticated"`
-	UserID              *string `json:"userId,omitempty"`
-	OUID                *string `json:"ouId,omitempty"`
-	UserType            *string `json:"userType,omitempty"`
-	UserInputs          *string `json:"userInputs,omitempty"`
-	UserAttributes      *string `json:"userAttributes,omitempty"`
-	Token               *string `json:"token,omitempty"`
-	AvailableAttributes *string `json:"availableAttributes,omitempty"`
-	AuthUser            *string `json:"authUser,omitempty"`
-	ChallengeTokenHash  *string `json:"challengeTokenHash,omitempty"`
+	AppID                 string  `json:"appId"`
+	Verbose               bool    `json:"verbose"`
+	CurrentNodeID         *string `json:"currentNodeId,omitempty"`
+	CurrentAction         *string `json:"currentAction,omitempty"`
+	CurrentSegmentID      *string `json:"currentSegmentId,omitempty"`
+	GraphID               string  `json:"graphId"`
+	RuntimeData           *string `json:"runtimeData,omitempty"`
+	ExecutionHistory      *string `json:"executionHistory,omitempty"`
+	IsAuthenticated       bool    `json:"isAuthenticated"`
+	UserID                *string `json:"userId,omitempty"`
+	OUID                  *string `json:"ouId,omitempty"`
+	UserType              *string `json:"userType,omitempty"`
+	UserInputs            *string `json:"userInputs,omitempty"`
+	UserAttributes        *string `json:"userAttributes,omitempty"`
+	Token                 *string `json:"token,omitempty"`
+	AvailableAttributes   *string `json:"availableAttributes,omitempty"`
+	AuthUser              *string `json:"authUser,omitempty"`
+	InterceptorSharedData *string `json:"interceptorSharedData,omitempty"`
 }
 
 // GetGraphID extracts the graph ID from the context JSON.
@@ -267,29 +294,33 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context, graph core.GraphInt
 		}
 	}
 
-	// Get challenge token hash from JSON content
-	challengeTokenHash := ""
-	if content.ChallengeTokenHash != nil {
-		challengeTokenHash = *content.ChallengeTokenHash
+	// Parse interceptor shared data
+	var interceptorSharedData map[string]string
+	if content.InterceptorSharedData != nil {
+		if err := json.Unmarshal([]byte(*content.InterceptorSharedData), &interceptorSharedData); err != nil {
+			return EngineContext{}, err
+		}
+	} else {
+		interceptorSharedData = make(map[string]string)
 	}
 
 	return EngineContext{
-		Context:            ctx,
-		ExecutionID:        f.ExecutionID,
-		TraceID:            "", // TraceID is transient and set from request context
-		FlowType:           graph.GetType(),
-		AppID:              content.AppID,
-		Verbose:            content.Verbose,
-		UserInputs:         userInputs,
-		RuntimeData:        runtimeData,
-		CurrentNode:        currentNode,
-		CurrentAction:      currentAction,
-		CurrentSegmentID:   currentSegmentID,
-		Graph:              graph,
-		AuthenticatedUser:  authenticatedUser,
-		AuthUser:           authUser,
-		ExecutionHistory:   executionHistory,
-		ChallengeTokenHash: challengeTokenHash,
+		Context:               ctx,
+		ExecutionID:           f.ExecutionID,
+		TraceID:               "", // TraceID is transient and set from request context
+		FlowType:              graph.GetType(),
+		AppID:                 content.AppID,
+		Verbose:               content.Verbose,
+		UserInputs:            userInputs,
+		RuntimeData:           runtimeData,
+		CurrentNode:           currentNode,
+		CurrentAction:         currentAction,
+		CurrentSegmentID:      currentSegmentID,
+		Graph:                 graph,
+		AuthenticatedUser:     authenticatedUser,
+		AuthUser:              authUser,
+		ExecutionHistory:      executionHistory,
+		InterceptorSharedData: interceptorSharedData,
 	}, nil
 }
 
@@ -393,31 +424,32 @@ func FromEngineContext(ctx EngineContext) (*FlowContextDB, error) {
 	}
 	graphID := ctx.Graph.GetID()
 
-	// Get challenge token hash
-	var challengeTokenHash *string
-	if ctx.ChallengeTokenHash != "" {
-		challengeTokenHash = &ctx.ChallengeTokenHash
+	// Serialize interceptorSharedData
+	interceptorSharedDataJSON, err := json.Marshal(ctx.InterceptorSharedData)
+	if err != nil {
+		return nil, err
 	}
+	interceptorSharedData := string(interceptorSharedDataJSON)
 
 	content := flowContextContent{
-		AppID:               ctx.AppID,
-		Verbose:             ctx.Verbose,
-		CurrentNodeID:       currentNodeID,
-		CurrentAction:       currentAction,
-		CurrentSegmentID:    currentSegmentID,
-		GraphID:             graphID,
-		RuntimeData:         &runtimeData,
-		ExecutionHistory:    &executionHistory,
-		IsAuthenticated:     ctx.AuthenticatedUser.IsAuthenticated,
-		UserID:              authenticatedUserID,
-		OUID:                oUID,
-		UserType:            userType,
-		UserInputs:          &userInputs,
-		UserAttributes:      &userAttributes,
-		Token:               token,
-		AvailableAttributes: availableAttributes,
-		AuthUser:            authUserStr,
-		ChallengeTokenHash:  challengeTokenHash,
+		AppID:                 ctx.AppID,
+		Verbose:               ctx.Verbose,
+		CurrentNodeID:         currentNodeID,
+		CurrentAction:         currentAction,
+		CurrentSegmentID:      currentSegmentID,
+		GraphID:               graphID,
+		RuntimeData:           &runtimeData,
+		ExecutionHistory:      &executionHistory,
+		IsAuthenticated:       ctx.AuthenticatedUser.IsAuthenticated,
+		UserID:                authenticatedUserID,
+		OUID:                  oUID,
+		UserType:              userType,
+		UserInputs:            &userInputs,
+		UserAttributes:        &userAttributes,
+		Token:                 token,
+		AvailableAttributes:   availableAttributes,
+		AuthUser:              authUserStr,
+		InterceptorSharedData: &interceptorSharedData,
 	}
 
 	contextJSON, err := json.Marshal(content)

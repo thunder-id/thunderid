@@ -377,6 +377,14 @@ packages:
       pkgname: executormock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/flow/interceptor:
+    config:
+      all: true
+      dir: tests/mocks/flow/interceptormock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: interceptormock
+      filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/entitytype:
     config:
       all: true

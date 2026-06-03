@@ -71,3 +71,34 @@ type ExecutionPolicy struct {
 	SkipChallengeValidation bool
 	AllowSegmentRestart     bool
 }
+
+// InterceptorContext is the per-invocation context built by the InterceptorService for each
+// interceptor call. It is assembled from the EngineContext plus the matched interceptor
+// definition's properties and the cross-request SharedData.
+type InterceptorContext struct {
+	Context context.Context
+
+	// Flow identity
+	ExecutionID string
+	AppID       string
+	FlowType    common.FlowType
+
+	// Mode is the lifecycle point at which this interceptor is executing.
+	Mode common.InterceptorMode
+
+	// Engine state
+	UserInputs          map[string]string
+	CurrentNode         NodeInterface
+	CurrentNodeID       string
+	NodeType            common.NodeType
+	AllowSegmentRestart bool
+	ForwardedData       map[string]interface{}
+	AdditionalData      map[string]string
+	AuthenticatedUser   authncm.AuthenticatedUser
+
+	// SharedData is interceptor-layer state shared across interceptors and preserved across
+	// the requests of a single flow instance. Interceptors may read and write this map directly.
+	// Each interceptor is responsible for reading any information it needs from SharedData and
+	// populating relevant values into EngineOutputs.
+	SharedData map[string]string
+}
