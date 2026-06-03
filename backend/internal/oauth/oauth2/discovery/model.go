@@ -30,6 +30,9 @@ type OAuth2AuthorizationServerMetadata struct {
 	IntrospectionEndpoint                      string   `json:"introspection_endpoint,omitempty"`
 	PushedAuthorizationRequestEndpoint         string   `json:"pushed_authorization_request_endpoint,omitempty"`
 	RequirePushedAuthorizationRequests         bool     `json:"require_pushed_authorization_requests,omitempty"`
+	BackchannelAuthenticationEndpoint          string   `json:"backchannel_authentication_endpoint,omitempty"`
+	BackchannelTokenDeliveryModesSupported     []string `json:"backchannel_token_delivery_modes_supported,omitempty"`
+	BackchannelUserCodeParameterSupported      bool     `json:"backchannel_user_code_parameter_supported"`
 	ScopesSupported                            []string `json:"scopes_supported"`
 	ResponseTypesSupported                     []string `json:"response_types_supported"`
 	GrantTypesSupported                        []string `json:"grant_types_supported"`

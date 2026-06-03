@@ -112,6 +112,7 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 		ActorTokenType:     r.FormValue(constants.RequestParamActorTokenType),
 		RequestedTokenType: r.FormValue(constants.RequestParamRequestedTokenType),
 		Audiences:          r.Form[constants.RequestParamAudience],
+		AuthReqID:          r.FormValue(constants.RequestParamAuthReqID),
 	}
 
 	// Delegate all business logic to the token service.

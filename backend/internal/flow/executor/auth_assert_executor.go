@@ -169,6 +169,13 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *core.NodeContext, logger
 		jwtClaims[oauth2const.ClaimCompletedAuthClass] = completedACR
 	}
 
+	// Bind the assertion to the originating CIBA request when present, so the CIBA callback can
+	// verify that this assertion authorizes the specific auth_req_id it accompanies. This key is
+	// only set for CIBA-initiated flows, leaving the interactive authorization_code assertion unchanged.
+	if cibaAuthReqID, exists := ctx.RuntimeData[common.RuntimeKeyCIBAAuthReqID]; exists && cibaAuthReqID != "" {
+		jwtClaims[oauth2const.ClaimCIBAAuthReqID] = cibaAuthReqID
+	}
+
 	requiredAttributes := a.getRequiredUserAttributes(ctx)
 
 	resolvedAttributes, attrErr := a.resolveUserAttributes(ctx, requiredAttributes)

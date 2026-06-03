@@ -66,6 +66,9 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		IntrospectionEndpoint:                      ds.getIntrospectionEndpoint(),
 		PushedAuthorizationRequestEndpoint:         ds.getPAREndpoint(),
 		RequirePushedAuthorizationRequests:         ds.isGlobalPARRequired(),
+		BackchannelAuthenticationEndpoint:          ds.getBackchannelAuthenticationEndpoint(),
+		BackchannelTokenDeliveryModesSupported:     []string{"poll"},
+		BackchannelUserCodeParameterSupported:      false,
 		ScopesSupported:                            ds.getSupportedScopes(),
 		ResponseTypesSupported:                     ds.getSupportedResponseTypes(),
 		GrantTypesSupported:                        ds.getSupportedGrantTypes(),
@@ -155,6 +158,10 @@ func (ds *discoveryService) getSupportedCodeChallengeMethods() []string {
 
 func (ds *discoveryService) getPAREndpoint() string {
 	return ds.baseURL + constants.OAuth2PAREndpoint
+}
+
+func (ds *discoveryService) getBackchannelAuthenticationEndpoint() string {
+	return ds.baseURL + constants.OAuth2BackchannelAuthEndpoint
 }
 
 func (ds *discoveryService) isGlobalPARRequired() bool {
