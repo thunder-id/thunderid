@@ -19,9 +19,18 @@
 import {usePluginData} from '@docusaurus/useGlobalData';
 import OriginalDocSidebarItemLink from '@theme-original/DocSidebarItem/Link';
 import React from 'react';
+import type {Maturity} from '@site/plugins/maturityPlugin';
 
 interface PersonaPluginData {
   personaMap: Record<string, string>;
+}
+
+interface MaturityPluginData {
+  maturityMap: Record<string, Maturity>;
+}
+
+interface FeatureFlagPluginData {
+  hiddenDocIds: string[];
 }
 
 interface SidebarItem {
@@ -34,14 +43,29 @@ type OriginalProps = Omit<React.ComponentProps<typeof OriginalDocSidebarItemLink
   item: SidebarItem;
 };
 
-export default function DocSidebarItemLink({item, ...rest}: OriginalProps): React.ReactElement {
+export default function DocSidebarItemLink({item, ...rest}: OriginalProps): React.ReactElement | null {
   const {personaMap} = usePluginData('product-persona-plugin') as PersonaPluginData;
-  const persona = item.docId ? personaMap[item.docId] : undefined;
+  const {maturityMap} = usePluginData('product-maturity-plugin') as MaturityPluginData;
+  const {hiddenDocIds} = usePluginData('product-feature-flag-plugin') as FeatureFlagPluginData;
 
-  if (persona) {
+  if (item.docId && hiddenDocIds.includes(item.docId)) {
+    return null;
+  }
+
+  const persona = item.docId ? personaMap[item.docId] : undefined;
+  const maturity = item.docId ? maturityMap[item.docId] : undefined;
+
+  const extraClasses = [
+    persona && `sidebar-persona-${persona}`,
+    maturity && `sidebar-maturity-${maturity}`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  if (extraClasses) {
     const enrichedItem: SidebarItem = {
       ...item,
-      className: `${item.className ?? ''} sidebar-persona-${persona}`.trim(),
+      className: `${item.className ?? ''} ${extraClasses}`.trim(),
     };
     return <OriginalDocSidebarItemLink {...rest} item={enrichedItem} />;
   }
