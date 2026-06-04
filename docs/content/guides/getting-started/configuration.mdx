@@ -715,7 +715,7 @@ If the system resource server has a custom handle, set `system_permission_prefix
 
 Maps to `TrustedIssuerConfig` in the backend, nested under `server.security.trusted_issuer`. Setting `server.security.trusted_issuer.issuer` activates the feature: <ProductName /> trusts access tokens issued by an external authorization server and validates them against the external server's JWKS endpoint. When `issuer` is set, `jwks_url` and `audience` are required and <ProductName /> fails to start if either is missing. This is used for federated authentication scenarios where a central <ProductName /> instance issues tokens that tenant instances accept.
 
-Enabling a trusted issuer is additive and non-breaking. <ProductName /> still accepts the tokens it issues itself, routed by the token's `iss` claim. Existing `client_credentials`, system, and console callers keep working without configuration changes. See [Self-Issued Tokens](/docs/next/guides/guides/trusted-issuer#self-issued-tokens) in the Trusted Issuer guide.
+Enabling a trusted issuer is additive and non-breaking. <ProductName /> still accepts the tokens it issues itself, routed by the token's `iss` claim. Existing `client_credentials`, system, and console callers keep working without configuration changes. See [Self-Issued Tokens](/docs/next/guides/deployment-patterns/trusted-issuer#self-issued-tokens) in the Trusted Issuer guide.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -738,5 +738,5 @@ server:
 ```
 
 :::note
-The frontend must include a matching `resource` parameter in the authorization request so the external authorization server sets the token's `aud` claim to this server's identifier. See the [Trusted Issuer](/docs/next/guides/guides/trusted-issuer) guide for the end-to-end setup.
+The frontend must include a matching `resource` parameter in the authorization request so the external authorization server sets the token's `aud` claim to this server's identifier. See the [Trusted Issuer](/docs/next/guides/deployment-patterns/trusted-issuer) guide for the end-to-end setup.
 :::
