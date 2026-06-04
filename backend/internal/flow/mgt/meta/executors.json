@@ -1,0 +1,908 @@
+[
+    {
+        "name": "BasicAuthExecutor",
+        "displayName": "Identifier + Credential Authentication",
+        "description": "Authenticates a user using an identifier (e.g. username or email) and a credential (e.g. password).",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING"
+        ],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "defaultInputs": [
+            {
+                "identifier": "username",
+                "type": "TEXT_INPUT",
+                "required": true
+            },
+            {
+                "identifier": "password",
+                "type": "PASSWORD_INPUT",
+                "required": true
+            }
+        ],
+        "properties": []
+    },
+    {
+        "name": "SMSOTPAuthExecutor",
+        "displayName": "SMS OTP Authentication",
+        "description": "Authenticates a user by sending and verifying a one-time passcode via SMS.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "modes": [
+            {
+                "value": "send",
+                "displayName": "Send SMS OTP",
+                "defaultInputs": [],
+                "properties": []
+            },
+            {
+                "value": "verify",
+                "displayName": "Verify SMS OTP",
+                "defaultInputs": [
+                    {
+                        "identifier": "otp",
+                        "type": "OTP_INPUT",
+                        "required": true
+                    }
+                ],
+                "properties": []
+            }
+        ],
+        "defaultInputs": [],
+        "properties": [
+            {
+                "name": "senderId",
+                "displayName": "Sender ID",
+                "type": "string",
+                "required": true,
+                "description": "ID of the configured SMS sender."
+            }
+        ]
+    },
+    {
+        "name": "MagicLinkAuthExecutor",
+        "displayName": "Magic Link Authentication",
+        "description": "Sends a magic link to the user's email and authenticates them when the link is clicked.",
+        "supportedFlowTypes": ["AUTHENTICATION", "REGISTRATION", "RECOVERY"],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "defaultInputs": [
+            {
+                "identifier": "token",
+                "type": "HIDDEN",
+                "required": true
+            }
+        ],
+        "properties": [
+            {
+                "name": "tokenExpiry",
+                "displayName": "Token Expiry",
+                "type": "string",
+                "required": false,
+                "description": "Magic link token expiry in seconds."
+            },
+            {
+                "name": "magicLinkURL",
+                "displayName": "Magic Link URL",
+                "type": "string",
+                "required": false,
+                "description": "Base URL prefix used when constructing the magic link sent to the user."
+            }
+        ]
+    },
+    {
+        "name": "PasskeyAuthExecutor",
+        "displayName": "Passkey Authentication",
+        "description": "Authenticates a user using a FIDO2/WebAuthn passkey.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "modes": [
+            {
+                "value": "challenge",
+                "displayName": "Request Passkey",
+                "defaultInputs": [],
+                "properties": [
+                    {
+                        "name": "relyingPartyId",
+                        "displayName": "Relying Party ID",
+                        "type": "string",
+                        "required": false,
+                        "description": "Relying Party identifier used for WebAuthn passkey ceremonies."
+                    },
+                    {
+                        "name": "relyingPartyName",
+                        "displayName": "Relying Party Name",
+                        "type": "string",
+                        "required": false,
+                        "description": "Relying Party name presented to the authenticator during registration."
+                    }
+                ]
+            },
+            {
+                "value": "verify",
+                "displayName": "Verify Passkey",
+                "defaultInputs": [
+                    {
+                        "identifier": "credentialId",
+                        "type": "HIDDEN",
+                        "required": true
+                    },
+                    {
+                        "identifier": "clientDataJSON",
+                        "type": "HIDDEN",
+                        "required": true
+                    },
+                    {
+                        "identifier": "authenticatorData",
+                        "type": "HIDDEN",
+                        "required": true
+                    },
+                    {
+                        "identifier": "signature",
+                        "type": "HIDDEN",
+                        "required": true
+                    },
+                    {
+                        "identifier": "userHandle",
+                        "type": "HIDDEN",
+                        "required": false
+                    }
+                ],
+                "properties": []
+            },
+            {
+                "value": "register_start",
+                "displayName": "Start Passkey Registration",
+                "defaultInputs": [],
+                "properties": [
+                    {
+                        "name": "relyingPartyId",
+                        "displayName": "Relying Party ID",
+                        "type": "string",
+                        "required": false,
+                        "description": "Relying Party identifier used for WebAuthn passkey ceremonies."
+                    },
+                    {
+                        "name": "relyingPartyName",
+                        "displayName": "Relying Party Name",
+                        "type": "string",
+                        "required": false,
+                        "description": "Relying Party name presented to the authenticator during registration."
+                    },
+                    {
+                        "name": "authenticatorSelection",
+                        "displayName": "Authenticator Selection",
+                        "type": "object",
+                        "required": false,
+                        "description": "Authenticator selection criteria for the passkey ceremony."
+                    },
+                    {
+                        "name": "attestation",
+                        "displayName": "Attestation",
+                        "type": "string",
+                        "required": false,
+                        "description": "Attestation conveyance preference."
+                    }
+                ]
+            },
+            {
+                "value": "register_finish",
+                "displayName": "Finish Passkey Registration",
+                "defaultInputs": [
+                    {
+                        "identifier": "credentialId",
+                        "type": "HIDDEN",
+                        "required": true
+                    },
+                    {
+                        "identifier": "clientDataJSON",
+                        "type": "HIDDEN",
+                        "required": true
+                    },
+                    {
+                        "identifier": "attestationObject",
+                        "type": "HIDDEN",
+                        "required": true
+                    },
+                    {
+                        "identifier": "credentialName",
+                        "type": "TEXT_INPUT",
+                        "required": false
+                    }
+                ],
+                "properties": []
+            }
+        ],
+        "defaultInputs": [],
+        "properties": []
+    },
+    {
+        "name": "OAuthExecutor",
+        "displayName": "OAuth Authentication",
+        "description": "Authenticates a user via a generic OAuth 2.0 identity provider.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING"
+        ],
+        "fixedInputs": true,
+        "maxInputs": -1,
+        "defaultInputs": [
+            {
+                "identifier": "code",
+                "type": "HIDDEN",
+                "required": true
+            }
+        ],
+        "properties": [
+            {
+                "name": "idpId",
+                "displayName": "IdP ID",
+                "type": "string",
+                "required": true,
+                "description": "ID of the configured OAuth IdP."
+            },
+            {
+                "name": "allowAuthenticationWithoutLocalUser",
+                "displayName": "Allow Authentication Without Local User",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow the authentication flow to proceed even when no matching local user account exists. Useful when a downstream provisioning step will create the user."
+            },
+            {
+                "name": "allowRegistrationWithExistingUser",
+                "displayName": "Allow Registration With Existing User",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow the registration flow to complete successfully when an existing user account is found instead of failing with a duplicate-user error."
+            },
+            {
+                "name": "allowCrossOUProvisioning",
+                "displayName": "Allow Cross-OU Provisioning",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow provisioning to proceed when the resolved organization unit differs from the existing user's organization unit."
+            }
+        ]
+    },
+    {
+        "name": "OIDCAuthExecutor",
+        "displayName": "OIDC Authentication",
+        "description": "Authenticates a user via a generic OpenID Connect identity provider.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING"
+        ],
+        "fixedInputs": true,
+        "maxInputs": -1,
+        "defaultInputs": [
+            {
+                "identifier": "code",
+                "type": "HIDDEN",
+                "required": true
+            }
+        ],
+        "properties": [
+            {
+                "name": "idpId",
+                "displayName": "IdP ID",
+                "type": "string",
+                "required": true,
+                "description": "ID of the configured OIDC IdP."
+            },
+            {
+                "name": "allowAuthenticationWithoutLocalUser",
+                "displayName": "Allow Authentication Without Local User",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow the authentication flow to proceed even when no matching local user account exists. Useful when a downstream provisioning step will create the user."
+            },
+            {
+                "name": "allowRegistrationWithExistingUser",
+                "displayName": "Allow Registration With Existing User",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow the registration flow to complete successfully when an existing user account is found instead of failing with a duplicate-user error."
+            },
+            {
+                "name": "allowCrossOUProvisioning",
+                "displayName": "Allow Cross-OU Provisioning",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow provisioning to proceed when the resolved organization unit differs from the existing user's organization unit."
+            }
+        ]
+    },
+    {
+        "name": "GithubOAuthExecutor",
+        "displayName": "GitHub Authentication",
+        "description": "Authenticates a user via GitHub OAuth.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING"
+        ],
+        "fixedInputs": true,
+        "maxInputs": -1,
+        "defaultInputs": [
+            {
+                "identifier": "code",
+                "type": "HIDDEN",
+                "required": true
+            }
+        ],
+        "properties": [
+            {
+                "name": "idpId",
+                "displayName": "IdP ID",
+                "type": "string",
+                "required": true,
+                "description": "ID of the configured GitHub OAuth IdP."
+            },
+            {
+                "name": "allowAuthenticationWithoutLocalUser",
+                "displayName": "Allow Authentication Without Local User",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow the authentication flow to proceed even when no matching local user account exists. Useful when a downstream provisioning step will create the user."
+            },
+            {
+                "name": "allowRegistrationWithExistingUser",
+                "displayName": "Allow Registration With Existing User",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow the registration flow to complete successfully when an existing user account is found instead of failing with a duplicate-user error."
+            },
+            {
+                "name": "allowCrossOUProvisioning",
+                "displayName": "Allow Cross-OU Provisioning",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow provisioning to proceed when the resolved organization unit differs from the existing user's organization unit."
+            }
+        ]
+    },
+    {
+        "name": "GoogleOIDCAuthExecutor",
+        "displayName": "Google Authentication",
+        "description": "Authenticates a user via Google OpenID Connect.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING"
+        ],
+        "fixedInputs": true,
+        "maxInputs": -1,
+        "defaultInputs": [
+            {
+                "identifier": "code",
+                "type": "HIDDEN",
+                "required": true
+            },
+            {
+                "identifier": "nonce",
+                "type": "HIDDEN",
+                "required": false
+            }
+        ],
+        "properties": [
+            {
+                "name": "idpId",
+                "displayName": "IdP ID",
+                "type": "string",
+                "required": true,
+                "description": "ID of the configured Google OIDC IdP."
+            },
+            {
+                "name": "allowAuthenticationWithoutLocalUser",
+                "displayName": "Allow Authentication Without Local User",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow the authentication flow to proceed even when no matching local user account exists. Useful when a downstream provisioning step will create the user."
+            },
+            {
+                "name": "allowRegistrationWithExistingUser",
+                "displayName": "Allow Registration With Existing User",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow the registration flow to complete successfully when an existing user account is found instead of failing with a duplicate-user error."
+            },
+            {
+                "name": "allowCrossOUProvisioning",
+                "displayName": "Allow Cross-OU Provisioning",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow provisioning to proceed when the resolved organization unit differs from the existing user's organization unit."
+            }
+        ]
+    },
+    {
+        "name": "IdentifyingExecutor",
+        "displayName": "User Identification",
+        "description": "Identifies or resolves a user based on supplied identifiers.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "modes": [
+            {
+                "value": "identify",
+                "displayName": "Identify User",
+                "defaultInputs": [],
+                "properties": []
+            },
+            {
+                "value": "resolve",
+                "displayName": "Resolve User",
+                "defaultInputs": [],
+                "properties": []
+            }
+        ],
+        "defaultInputs": [
+            {
+                "identifier": "username",
+                "type": "TEXT_INPUT",
+                "required": true
+            }
+        ],
+        "properties": []
+    },
+    {
+        "name": "AuthAssertExecutor",
+        "displayName": "Authentication Assertion",
+        "description": "Asserts the user has been authenticated by an earlier step in the flow and issues an auth assertion.",
+        "supportedFlowTypes": ["AUTHENTICATION", "REGISTRATION", "RECOVERY"],
+        "fixedInputs": true,
+        "maxInputs": 0,
+        "defaultInputs": [],
+        "properties": []
+    },
+    {
+        "name": "ProvisioningExecutor",
+        "displayName": "User Provisioning",
+        "description": "Provisions a user account using attributes collected during the flow.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "defaultInputs": [],
+        "properties": [
+            {
+                "name": "includeOptional",
+                "displayName": "Include Optional Attributes",
+                "type": "boolean",
+                "required": false,
+                "description": "Include optional attributes when prompting for missing inputs."
+            },
+            {
+                "name": "includeOptionalCredentials",
+                "displayName": "Include Optional Credentials",
+                "type": "boolean",
+                "required": false,
+                "description": "Include optional credential attributes when prompting for missing inputs."
+            },
+            {
+                "name": "maxPerPrompt",
+                "displayName": "Max Attributes Per Prompt",
+                "type": "integer",
+                "required": false,
+                "description": "Maximum number of attributes to prompt for in a single iteration."
+            },
+            {
+                "name": "assignGroup",
+                "displayName": "Assign Group",
+                "type": "string",
+                "required": false,
+                "description": "ID of the group to assign the provisioned user to."
+            },
+            {
+                "name": "assignRole",
+                "displayName": "Assign Role",
+                "type": "string",
+                "required": false,
+                "description": "ID of the role to assign the provisioned user to."
+            },
+            {
+                "name": "allowCrossOUProvisioning",
+                "displayName": "Allow Cross-OU Provisioning",
+                "type": "boolean",
+                "required": false,
+                "description": "Allow provisioning to proceed when the resolved organization unit differs from the existing user's organization unit."
+            }
+        ]
+    },
+    {
+        "name": "AttributeCollector",
+        "displayName": "Attribute Collector",
+        "description": "Collects user attributes via dynamic prompts.",
+        "supportedFlowTypes": ["AUTHENTICATION"],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "defaultInputs": [],
+        "properties": []
+    },
+    {
+        "name": "AuthorizationExecutor",
+        "displayName": "Authorization",
+        "description": "Performs an authorization decision against the current user.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING"
+        ],
+        "fixedInputs": true,
+        "maxInputs": 0,
+        "defaultInputs": [],
+        "properties": []
+    },
+    {
+        "name": "PermissionValidator",
+        "displayName": "Permission Validator",
+        "description": "Validates that the user holds the required scopes to proceed.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": true,
+        "maxInputs": 0,
+        "defaultInputs": [],
+        "properties": [
+            {
+                "name": "requiredScopes",
+                "displayName": "Required Scopes",
+                "type": "array",
+                "required": false,
+                "description": "List of scopes the user must hold to proceed."
+            }
+        ]
+    },
+    {
+        "name": "OUExecutor",
+        "displayName": "Organization Unit Creation",
+        "description": "Creates an organization unit during the flow.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING"
+        ],
+        "fixedInputs": true,
+        "maxInputs": -1,
+        "defaultInputs": [
+            {
+                "identifier": "ouName",
+                "type": "TEXT_INPUT",
+                "required": true
+            },
+            {
+                "identifier": "ouHandle",
+                "type": "TEXT_INPUT",
+                "required": true
+            },
+            {
+                "identifier": "ouDescription",
+                "type": "TEXT_INPUT",
+                "required": false
+            }
+        ],
+        "properties": [
+            {
+                "name": "parentOuId",
+                "displayName": "Parent OU ID",
+                "type": "string",
+                "required": false,
+                "description": "ID of the parent organization unit."
+            }
+        ]
+    },
+    {
+        "name": "HTTPRequestExecutor",
+        "displayName": "HTTP Request",
+        "description": "Performs an outbound HTTP request and maps the response into flow context.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "defaultInputs": [],
+        "properties": [
+            {
+                "name": "url",
+                "displayName": "URL",
+                "type": "string",
+                "required": true,
+                "description": "Target URL of the HTTP request."
+            },
+            {
+                "name": "method",
+                "displayName": "Method",
+                "type": "string",
+                "required": false,
+                "description": "HTTP method to use."
+            },
+            {
+                "name": "timeout",
+                "displayName": "Timeout",
+                "type": "integer",
+                "required": false,
+                "description": "Request timeout in seconds."
+            },
+            {
+                "name": "headers",
+                "displayName": "Headers",
+                "type": "object",
+                "required": false,
+                "description": "Map of HTTP request headers."
+            },
+            {
+                "name": "body",
+                "displayName": "Body",
+                "type": "object",
+                "required": false,
+                "description": "Request body."
+            },
+            {
+                "name": "responseMapping",
+                "displayName": "Response Mapping",
+                "type": "object",
+                "required": false,
+                "description": "Mapping from response fields to runtime data keys."
+            },
+            {
+                "name": "errorHandling",
+                "displayName": "Error Handling",
+                "type": "object",
+                "required": false,
+                "description": "Error handling configuration."
+            }
+        ]
+    },
+    {
+        "name": "UserTypeResolver",
+        "displayName": "User Type Resolver",
+        "description": "Resolves the user type to apply for the current flow.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING"
+        ],
+        "fixedInputs": true,
+        "maxInputs": 1,
+        "defaultInputs": [
+            {
+                "identifier": "userType",
+                "type": "SELECT",
+                "required": true
+            }
+        ],
+        "properties": [
+            {
+                "name": "allowedUserTypes",
+                "displayName": "Allowed User Types",
+                "type": "array",
+                "required": false,
+                "description": "Optional list of user types to restrict resolution to."
+            }
+        ]
+    },
+    {
+        "name": "InviteExecutor",
+        "displayName": "Invitation",
+        "description": "Generates or verifies a user invitation token.",
+        "supportedFlowTypes": ["REGISTRATION", "USER_ONBOARDING", "RECOVERY"],
+        "fixedInputs": true,
+        "maxInputs": 1,
+        "modes": [
+            {
+                "value": "generate",
+                "displayName": "Generate Invite",
+                "defaultInputs": [],
+                "properties": []
+            },
+            {
+                "value": "verify",
+                "displayName": "Verify Invite",
+                "defaultInputs": [
+                    {
+                        "identifier": "inviteToken",
+                        "type": "HIDDEN",
+                        "required": true
+                    }
+                ],
+                "properties": []
+            }
+        ],
+        "defaultInputs": [],
+        "properties": []
+    },
+    {
+        "name": "EmailExecutor",
+        "displayName": "Email Notification",
+        "description": "Sends an email notification using the configured template.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "defaultInputs": [],
+        "properties": [
+            {
+                "name": "emailTemplate",
+                "displayName": "Email Template",
+                "type": "string",
+                "required": false,
+                "description": "Template key for the email to send."
+            }
+        ]
+    },
+    {
+        "name": "CredentialSetter",
+        "displayName": "Credential Setter",
+        "description": "Sets or updates the user's credential (e.g. password).",
+        "supportedFlowTypes": ["AUTHENTICATION", "RECOVERY"],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "defaultInputs": [
+            {
+                "identifier": "password",
+                "type": "PASSWORD_INPUT",
+                "required": true
+            }
+        ],
+        "properties": []
+    },
+    {
+        "name": "ConsentExecutor",
+        "displayName": "Consent Capture",
+        "description": "Captures user consent decisions during the flow.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": true,
+        "maxInputs": 1,
+        "defaultInputs": [
+            {
+                "identifier": "consent_decisions",
+                "type": "CONSENT_INPUT",
+                "required": true
+            }
+        ],
+        "properties": [
+            {
+                "name": "timeout",
+                "displayName": "Timeout",
+                "type": "string",
+                "required": false,
+                "description": "Consent prompt timeout in seconds."
+            }
+        ]
+    },
+    {
+        "name": "OUResolverExecutor",
+        "displayName": "Organization Unit Resolver",
+        "description": "Resolves the organization unit context for the current flow.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "defaultInputs": [
+            {
+                "identifier": "ouId",
+                "type": "OU_SELECT",
+                "required": true
+            }
+        ],
+        "properties": [
+            {
+                "name": "resolveFrom",
+                "displayName": "Resolve From",
+                "type": "string",
+                "required": false,
+                "description": "Strategy used to resolve the organization unit."
+            }
+        ]
+    },
+    {
+        "name": "AttributeUniquenessValidator",
+        "displayName": "Attribute Uniqueness Validator",
+        "description": "Validates that user attribute values are unique within the configured scope.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": true,
+        "maxInputs": 0,
+        "defaultInputs": [],
+        "properties": []
+    },
+    {
+        "name": "SMSExecutor",
+        "displayName": "SMS Notification",
+        "description": "Sends an SMS notification using the configured sender and template.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "defaultInputs": [
+            {
+                "identifier": "mobileNumber",
+                "type": "PHONE_INPUT",
+                "required": true
+            }
+        ],
+        "properties": [
+            {
+                "name": "senderId",
+                "displayName": "Sender ID",
+                "type": "string",
+                "required": true,
+                "description": "ID of the configured SMS sender."
+            },
+            {
+                "name": "smsTemplate",
+                "displayName": "SMS Template",
+                "type": "string",
+                "required": false,
+                "description": "Template key for the SMS message."
+            }
+        ]
+    },
+    {
+        "name": "FederatedAuthResolverExecutor",
+        "displayName": "Federated Authentication Resolver",
+        "description": "Resolves which federated identity provider to invoke for the user.",
+        "supportedFlowTypes": [
+            "AUTHENTICATION",
+            "REGISTRATION",
+            "USER_ONBOARDING",
+            "RECOVERY"
+        ],
+        "fixedInputs": false,
+        "maxInputs": -1,
+        "defaultInputs": [],
+        "properties": []
+    }
+]

@@ -280,6 +280,20 @@ var (
 			DefaultValue: "Flow ID already exists",
 		},
 	}
+	// ErrorInvalidFieldsParam is the error returned when the fields query parameter contains an unknown
+	// or malformed catalog name.
+	ErrorInvalidFieldsParam = serviceerror.ServiceError{
+		Type: serviceerror.ClientErrorType,
+		Code: "FLM-1020",
+		Error: core.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_fields_parameter",
+			DefaultValue: "Invalid fields parameter",
+		},
+		ErrorDescription: core.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_fields_parameter_description",
+			DefaultValue: "The fields parameter must be a comma-separated list of supported catalog names",
+		},
+	}
 )
 
 // Internal errors

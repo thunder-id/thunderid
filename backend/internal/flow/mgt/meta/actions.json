@@ -1,0 +1,20 @@
+[
+    {
+        "resourceType": "ACTION",
+        "name": "NAVIGATION",
+        "displayName": "Navigation",
+        "category": "NAVIGATION",
+        "types": [
+            {
+                "action": {
+                    "type": "NEXT"
+                },
+                "display": {
+                    "label": "Next",
+                    "image": "assets/images/icons/arrowhead-right-outline.svg",
+                    "defaultVariant": "PRIMARY"
+                }
+            }
+        ]
+    }
+]

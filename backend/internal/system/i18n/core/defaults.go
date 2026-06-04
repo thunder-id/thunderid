@@ -555,6 +555,8 @@ var defaultMessages = map[string]string{
 	"error.flowmgtservice.graph_build_failure_description": "Failed to build executable graph from flow definition",
 	"error.flowmgtservice.handle_update_not_allowed": "Invalid update request",
 	"error.flowmgtservice.handle_update_not_allowed_description": "The flow handle cannot be modified after creation",
+	"error.flowmgtservice.invalid_fields_parameter": "Invalid fields parameter",
+	"error.flowmgtservice.invalid_fields_parameter_description": "The fields parameter must be a comma-separated list of supported catalog names",
 	"error.flowmgtservice.invalid_flow_data": "Invalid flow data",
 	"error.flowmgtservice.invalid_flow_data_description": "The flow definition contains invalid data",
 	"error.flowmgtservice.invalid_flow_handle": "Invalid flow handle",

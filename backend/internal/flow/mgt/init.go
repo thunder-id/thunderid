@@ -44,6 +44,10 @@ func Initialize(
 	executorRegistry executor.ExecutorRegistryInterface,
 	graphCache core.GraphCacheInterface,
 ) (FlowMgtServiceInterface, declarativeresource.ResourceExporter, error) {
+	if err := initCatalog(); err != nil {
+		return nil, nil, err
+	}
+
 	store, compositeStore, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
 		return nil, nil, err
@@ -154,6 +158,19 @@ func isCompositeModeEnabled() bool {
 
 // registerRoutes registers the HTTP routes for flow management.
 func registerRoutes(mux *http.ServeMux, handler *flowMgtHandler) {
+	// /flows/meta must be registered before the /flows wildcard routes so that
+	// the static path segment "meta" is not captured by {flowId}
+	optsMeta := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /flows/meta", handler.getFlowsMeta, optsMeta))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /flows/meta", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}, optsMeta))
+
 	opts1 := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET", "POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,

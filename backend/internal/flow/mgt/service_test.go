@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -1464,4 +1465,81 @@ func (s *FlowMgtServiceTestSuite) TestDeleteFlow_MutableFlowAllowed() {
 	s.Nil(err)
 	s.mockStore.AssertExpectations(s.T())
 	s.mockGraphBuilder.AssertExpectations(s.T())
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetFlowsMeta_RegisteredExecutorsFiltered() {
+	mockRegistry := executormock.NewExecutorRegistryInterfaceMock(s.T())
+
+	// Only BasicAuthExecutor is "registered" in this test
+	s.Require().NoError(initCatalog())
+	mockRegistry.EXPECT().IsRegistered(executor.ExecutorNameBasicAuth).Return(true)
+	for _, e := range parsedExecutors {
+		if e.Name != executor.ExecutorNameBasicAuth {
+			mockRegistry.EXPECT().IsRegistered(e.Name).Return(false)
+		}
+	}
+
+	svc := &flowMgtService{executorRegistry: mockRegistry}
+	meta := svc.GetFlowsMeta(nil)
+
+	s.Len(meta.Executors, 1)
+	s.Equal(executor.ExecutorNameBasicAuth, meta.Executors[0].Name)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetFlowsMeta_StructureIsComplete() {
+	mockRegistry := executormock.NewExecutorRegistryInterfaceMock(s.T())
+	mockRegistry.EXPECT().IsRegistered(mock.Anything).Return(false).Maybe()
+
+	svc := &flowMgtService{executorRegistry: mockRegistry}
+	meta := svc.GetFlowsMeta(nil)
+
+	s.NotNil(meta.FlowTypes)
+	s.NotEmpty(meta.FlowTypes)
+	s.NotNil(meta.NodeTypes)
+	s.NotEmpty(meta.NodeTypes)
+	s.NotNil(meta.ComponentTypes)
+	s.NotEmpty(meta.ComponentTypes)
+	s.NotNil(meta.InputTypes)
+	s.NotEmpty(meta.InputTypes)
+	s.NotNil(meta.Executors)
+	s.NotNil(meta.Actions)
+	s.NotNil(meta.Elements)
+	s.NotEmpty(meta.Elements)
+	s.NotNil(meta.Steps)
+	s.NotEmpty(meta.Steps)
+	s.NotNil(meta.Templates)
+	s.NotEmpty(meta.Templates)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetFlowsMeta_FilteredFields() {
+	mockRegistry := executormock.NewExecutorRegistryInterfaceMock(s.T())
+	mockRegistry.EXPECT().IsRegistered(mock.Anything).Return(false).Maybe()
+	svc := &flowMgtService{executorRegistry: mockRegistry}
+
+	meta := svc.GetFlowsMeta([]string{MetaFieldExecutors, MetaFieldTemplates})
+
+	// Requested catalogs are populated.
+	s.NotNil(meta.Executors)
+	s.NotNil(meta.Templates)
+	s.NotEmpty(meta.Templates)
+
+	// Non-requested catalogs are nil (and thus omitted from JSON via omitempty).
+	s.Nil(meta.FlowTypes)
+	s.Nil(meta.NodeTypes)
+	s.Nil(meta.ComponentTypes)
+	s.Nil(meta.InputTypes)
+	s.Nil(meta.Actions)
+	s.Nil(meta.Elements)
+	s.Nil(meta.Steps)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetFlowsMeta_SingleField() {
+	mockRegistry := executormock.NewExecutorRegistryInterfaceMock(s.T())
+	svc := &flowMgtService{executorRegistry: mockRegistry}
+
+	meta := svc.GetFlowsMeta([]string{MetaFieldFlowTypes})
+
+	s.NotEmpty(meta.FlowTypes)
+	s.Nil(meta.Executors)
+	s.Nil(meta.Templates)
 }

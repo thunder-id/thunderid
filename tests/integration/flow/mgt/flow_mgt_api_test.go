@@ -28,13 +28,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
-	testServerURL = "https://localhost:8095"
-	flowsEndpoint = "/flows"
+	testServerURL     = "https://localhost:8095"
+	flowsEndpoint     = "/flows"
+	flowsMetaEndpoint = "/flows/meta"
 )
 
 var (
@@ -848,6 +849,200 @@ func (suite *FlowMgtAPITestSuite) TestRestoreFlowVersion_FlowNotFound() {
 	suite.restoreFlowVersionExpectError("non-existent-id", restoreReq, http.StatusNotFound, "FLM-1008")
 }
 
+// Flow metadata tests
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta() {
+	req, _ := http.NewRequest(http.MethodGet, testServerURL+flowsMetaEndpoint, nil)
+	client := testutils.GetHTTPClient()
+	resp, err := client.Do(req)
+	suite.NoError(err)
+	defer resp.Body.Close()
+
+	suite.Equal(http.StatusOK, resp.StatusCode)
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_ResponseStructure() {
+	meta := suite.getFlowsMeta()
+
+	suite.NotEmpty(meta.FlowTypes, "flowTypes must not be empty")
+	suite.NotEmpty(meta.NodeTypes, "nodeTypes must not be empty")
+	suite.NotEmpty(meta.InputTypes, "inputTypes must not be empty")
+	suite.NotNil(meta.Executors, "executors must be present (may be empty in test env)")
+	suite.NotEmpty(meta.ComponentTypes, "componentTypes must not be empty")
+	suite.NotNil(meta.Actions, "actions must be present")
+	suite.NotEmpty(meta.Elements, "elements must not be empty")
+	suite.NotEmpty(meta.Steps, "steps must not be empty")
+	suite.NotEmpty(meta.Templates, "templates must not be empty")
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_FlowTypes() {
+	meta := suite.getFlowsMeta()
+
+	flowTypeNames := make(map[string]struct{}, len(meta.FlowTypes))
+	for _, ft := range meta.FlowTypes {
+		suite.NotEmpty(ft.Name, "flowType.name must not be empty")
+		suite.NotEmpty(ft.DisplayName, "flowType.displayName must not be empty")
+		flowTypeNames[ft.Name] = struct{}{}
+	}
+
+	suite.Contains(flowTypeNames, "AUTHENTICATION")
+	suite.Contains(flowTypeNames, "REGISTRATION")
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_NodeTypes() {
+	meta := suite.getFlowsMeta()
+
+	nodeTypeNames := make(map[string]NodeTypeItem, len(meta.NodeTypes))
+	for _, nt := range meta.NodeTypes {
+		suite.NotEmpty(nt.Name, "nodeType.name must not be empty")
+		suite.NotEmpty(nt.DisplayName, "nodeType.displayName must not be empty")
+		suite.NotNil(nt.AllowedFields, "nodeType.allowedFields must not be nil")
+		nodeTypeNames[nt.Name] = nt
+	}
+
+	suite.Contains(nodeTypeNames, "START")
+	suite.Contains(nodeTypeNames, "PROMPT")
+	suite.Contains(nodeTypeNames, "TASK_EXECUTION")
+	suite.Contains(nodeTypeNames, "END")
+
+	taskExec := nodeTypeNames["TASK_EXECUTION"]
+	suite.Contains(taskExec.AllowedFields, "executor")
+	suite.Contains(taskExec.AllowedFields, "onSuccess")
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_InputTypes() {
+	meta := suite.getFlowsMeta()
+
+	inputTypeNames := make(map[string]struct{}, len(meta.InputTypes))
+	for _, it := range meta.InputTypes {
+		suite.NotEmpty(it.Name, "inputType.name must not be empty")
+		suite.NotEmpty(it.DisplayName, "inputType.displayName must not be empty")
+		suite.NotEmpty(it.Category, "inputType.category must not be empty")
+		inputTypeNames[it.Name] = struct{}{}
+	}
+
+	suite.Contains(inputTypeNames, "TEXT_INPUT")
+	suite.Contains(inputTypeNames, "PASSWORD_INPUT")
+	suite.Contains(inputTypeNames, "OTP_INPUT")
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_ExecutorsHaveRequiredFields() {
+	meta := suite.getFlowsMeta()
+
+	for _, e := range meta.Executors {
+		suite.NotEmpty(e.Name, "executor.name must not be empty")
+		suite.NotEmpty(e.DisplayName, "executor %q must have a displayName", e.Name)
+		suite.NotEmpty(e.SupportedFlowTypes, "executor %q must have supportedFlowTypes", e.Name)
+		suite.NotNil(e.DefaultInputs, "executor %q must have inputs (may be empty)", e.Name)
+		suite.NotNil(e.Properties, "executor %q must have properties (may be empty)", e.Name)
+	}
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_BasicAuthExecutorPresent() {
+	meta := suite.getFlowsMeta()
+
+	var basicAuth *ExecutorItem
+	for i := range meta.Executors {
+		if meta.Executors[i].Name == "BasicAuthExecutor" {
+			basicAuth = &meta.Executors[i]
+			break
+		}
+	}
+
+	suite.Require().NotNil(basicAuth, "BasicAuthExecutor must be present in the executors catalog")
+	suite.Contains(basicAuth.SupportedFlowTypes, "AUTHENTICATION")
+
+	inputIdentifiers := make(map[string]struct{}, len(basicAuth.DefaultInputs))
+	for _, in := range basicAuth.DefaultInputs {
+		inputIdentifiers[in.Identifier] = struct{}{}
+	}
+	suite.Contains(inputIdentifiers, "username")
+	suite.Contains(inputIdentifiers, "password")
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_TemplatesHaveRequiredFields() {
+	meta := suite.getFlowsMeta()
+
+	for i, t := range meta.Templates {
+		tm, ok := t.(map[string]interface{})
+		suite.Require().True(ok, "template[%d] must be an object", i)
+
+		suite.NotEmpty(tm["name"], "template[%d] must have a name", i)
+		suite.NotEmpty(tm["displayName"], "template[%d] must have a displayName", i)
+		suite.NotEmpty(tm["flowType"], "template[%d] must have a flowType", i)
+		suite.NotEmpty(tm["category"], "template[%d] must have a category", i)
+		suite.NotNil(tm["config"], "template[%d] must have a config", i)
+	}
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_FieldsSingleCatalog() {
+	req, _ := http.NewRequest(http.MethodGet, testServerURL+flowsMetaEndpoint+"?fields=executors", nil)
+	client := testutils.GetHTTPClient()
+	resp, err := client.Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Equal(http.StatusOK, resp.StatusCode)
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var meta FlowsMeta
+	suite.Require().NoError(json.Unmarshal(bodyBytes, &meta))
+	suite.NotEmpty(meta.Executors, "executors must be populated when requested")
+	suite.Nil(meta.FlowTypes, "flowTypes must be absent when not requested")
+	suite.Nil(meta.NodeTypes, "nodeTypes must be absent when not requested")
+	suite.Nil(meta.Templates, "templates must be absent when not requested")
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_FieldsMultipleCatalogs() {
+	req, _ := http.NewRequest(http.MethodGet, testServerURL+flowsMetaEndpoint+"?fields=flowTypes,executors", nil)
+	client := testutils.GetHTTPClient()
+	resp, err := client.Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Equal(http.StatusOK, resp.StatusCode)
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var meta FlowsMeta
+	suite.Require().NoError(json.Unmarshal(bodyBytes, &meta))
+	suite.NotEmpty(meta.FlowTypes, "flowTypes must be populated when requested")
+	suite.NotEmpty(meta.Executors, "executors must be populated when requested")
+	suite.Nil(meta.Templates, "templates must be absent when not requested")
+	suite.Nil(meta.NodeTypes, "nodeTypes must be absent when not requested")
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_FieldsUnknownField() {
+	req, _ := http.NewRequest(http.MethodGet, testServerURL+flowsMetaEndpoint+"?fields=executors,bogus", nil)
+	client := testutils.GetHTTPClient()
+	resp, err := client.Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_FieldsEmptyToken() {
+	req, _ := http.NewRequest(http.MethodGet, testServerURL+flowsMetaEndpoint+"?fields=executors,,templates", nil)
+	client := testutils.GetHTTPClient()
+	resp, err := client.Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Equal(http.StatusBadRequest, resp.StatusCode)
+}
+
+func (suite *FlowMgtAPITestSuite) TestGetFlowsMeta_FieldsWhitespaceOnlyReturnsAll() {
+	req, _ := http.NewRequest(http.MethodGet, testServerURL+flowsMetaEndpoint+"?fields=%20%20%20", nil)
+	client := testutils.GetHTTPClient()
+	resp, err := client.Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Equal(http.StatusOK, resp.StatusCode)
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var meta FlowsMeta
+	suite.Require().NoError(json.Unmarshal(bodyBytes, &meta))
+	suite.NotEmpty(meta.FlowTypes, "all catalogs must be returned when fields param is whitespace-only")
+	suite.NotEmpty(meta.Executors)
+	suite.NotEmpty(meta.Templates)
+}
+
 // Helper methods for API interactions
 
 func (suite *FlowMgtAPITestSuite) createFlow(flowDef FlowDefinition) *CompleteFlowDefinition {
@@ -1116,4 +1311,19 @@ func (suite *FlowMgtAPITestSuite) restoreFlowVersionExpectError(
 	err = json.Unmarshal(bodyBytes, &errorResp)
 	suite.NoError(err)
 	suite.Equal(expectedCode, errorResp.Code)
+}
+
+func (suite *FlowMgtAPITestSuite) getFlowsMeta() *FlowsMeta {
+	req, _ := http.NewRequest(http.MethodGet, testServerURL+flowsMetaEndpoint, nil)
+	client := testutils.GetHTTPClient()
+	resp, err := client.Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var meta FlowsMeta
+	suite.Require().NoError(json.Unmarshal(bodyBytes, &meta))
+	return &meta
 }

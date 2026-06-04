@@ -391,6 +391,59 @@ func (_c *FlowMgtServiceInterfaceMock_GetFlowVersion_Call) RunAndReturn(run func
 	return _c
 }
 
+// GetFlowsMeta provides a mock function for the type FlowMgtServiceInterfaceMock
+func (_mock *FlowMgtServiceInterfaceMock) GetFlowsMeta(fields []string) *FlowsMeta {
+	ret := _mock.Called(fields)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetFlowsMeta")
+	}
+
+	var r0 *FlowsMeta
+	if returnFunc, ok := ret.Get(0).(func([]string) *FlowsMeta); ok {
+		r0 = returnFunc(fields)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*FlowsMeta)
+		}
+	}
+	return r0
+}
+
+// FlowMgtServiceInterfaceMock_GetFlowsMeta_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFlowsMeta'
+type FlowMgtServiceInterfaceMock_GetFlowsMeta_Call struct {
+	*mock.Call
+}
+
+// GetFlowsMeta is a helper method to define mock.On call
+//   - fields []string
+func (_e *FlowMgtServiceInterfaceMock_Expecter) GetFlowsMeta(fields interface{}) *FlowMgtServiceInterfaceMock_GetFlowsMeta_Call {
+	return &FlowMgtServiceInterfaceMock_GetFlowsMeta_Call{Call: _e.mock.On("GetFlowsMeta", fields)}
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowsMeta_Call) Run(run func(fields []string)) *FlowMgtServiceInterfaceMock_GetFlowsMeta_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 []string
+		if args[0] != nil {
+			arg0 = args[0].([]string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowsMeta_Call) Return(flowsMeta *FlowsMeta) *FlowMgtServiceInterfaceMock_GetFlowsMeta_Call {
+	_c.Call.Return(flowsMeta)
+	return _c
+}
+
+func (_c *FlowMgtServiceInterfaceMock_GetFlowsMeta_Call) RunAndReturn(run func(fields []string) *FlowsMeta) *FlowMgtServiceInterfaceMock_GetFlowsMeta_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetGraph provides a mock function for the type FlowMgtServiceInterfaceMock
 func (_mock *FlowMgtServiceInterfaceMock) GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *serviceerror.ServiceError) {
 	ret := _mock.Called(ctx, flowID)

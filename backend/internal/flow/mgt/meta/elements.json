@@ -1,0 +1,422 @@
+[
+    {
+        "resourceType": "ELEMENT",
+        "name": "BLOCK",
+        "displayName": "Form",
+        "category": "BLOCK",
+        "icon": "assets/images/icons/form.svg",
+        "showOnResourcePanel": true
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "TEXT_INPUT",
+        "displayName": "Text Input",
+        "category": "FIELD",
+        "icon": "assets/images/icons/textbox.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "inputType": "text",
+            "hint": "",
+            "label": "Text",
+            "required": true,
+            "placeholder": "Enter your text"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "PASSWORD_INPUT",
+        "displayName": "Password Input",
+        "category": "FIELD",
+        "icon": "assets/images/icons/password-input.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "ref": "password",
+            "inputType": "password",
+            "hint": "",
+            "label": "Password",
+            "required": true,
+            "placeholder": "Enter your password"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "EMAIL_INPUT",
+        "displayName": "Email Input",
+        "category": "FIELD",
+        "icon": "assets/images/icons/at.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "inputType": "email",
+            "hint": "",
+            "label": "Email",
+            "required": true,
+            "placeholder": "Enter your email"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "PHONE_INPUT",
+        "displayName": "Phone Input",
+        "category": "FIELD",
+        "icon": "assets/images/icons/phone.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "inputType": "tel",
+            "hint": "",
+            "label": "Phone",
+            "required": true,
+            "placeholder": "Enter your phone number"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "NUMBER_INPUT",
+        "displayName": "Number Input",
+        "category": "FIELD",
+        "icon": "assets/images/icons/number-input.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "inputType": "number",
+            "hint": "",
+            "label": "Number",
+            "required": true,
+            "placeholder": "Enter a number"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "DATE_INPUT",
+        "displayName": "Date Input",
+        "category": "FIELD",
+        "icon": "assets/images/icons/date.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "inputType": "date",
+            "hint": "",
+            "label": "Date",
+            "required": true,
+            "placeholder": "dd-mm-yyyy"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "OTP_INPUT",
+        "displayName": "OTP Input",
+        "category": "FIELD",
+        "icon": "assets/images/icons/transaction-password-otp-verification-code-security.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "inputType": "text",
+            "hint": "",
+            "ref": "otp",
+            "label": "OTP",
+            "required": true,
+            "placeholder": ""
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "CHECKBOX",
+        "displayName": "Checkbox",
+        "category": "FIELD",
+        "icon": "assets/images/icons/checkbox-check.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "hint": "",
+            "label": "Checkbox",
+            "required": true
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "SELECT",
+        "displayName": "Select",
+        "category": "FIELD",
+        "icon": "assets/images/icons/boolean.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "hint": "",
+            "label": "Select",
+            "required": true,
+            "placeholder": "Select an option",
+            "options": []
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "ACTION",
+        "displayName": "Button",
+        "category": "ACTION",
+        "icon": "assets/images/icons/button.svg",
+        "defaultVariant": "PRIMARY",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "variants": [
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "ACTION",
+                    "type": "ACTION",
+                    "variant": "PRIMARY",
+                    "eventType": "TRIGGER",
+                    "label": "Button",
+                    "display": {
+                        "label": "Primary Button",
+                        "image": "assets/images/icons/button.svg"
+                    }
+                },
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "ACTION",
+                    "type": "ACTION",
+                    "variant": "SECONDARY",
+                    "eventType": "TRIGGER",
+                    "label": "Secondary Button",
+                    "display": {
+                        "label": "Secondary Button",
+                        "image": "assets/images/icons/button.svg"
+                    }
+                },
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "ACTION",
+                    "type": "ACTION",
+                    "variant": "TEXT",
+                    "eventType": "TRIGGER",
+                    "label": "Text Button",
+                    "align": "center",
+                    "display": {
+                        "label": "Text Button",
+                        "image": "assets/images/icons/button.svg"
+                    }
+                },
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "ACTION",
+                    "type": "ACTION",
+                    "variant": "OUTLINED",
+                    "eventType": "TRIGGER",
+                    "label": "Outlined Button",
+                    "display": {
+                        "label": "Outlined Button",
+                        "image": "assets/images/icons/button.svg"
+                    }
+                }
+            ]
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "RESEND",
+        "displayName": "Resend",
+        "category": "ACTION",
+        "icon": "assets/images/icons/loop.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "eventType": "SUBMIT",
+            "label": "Resend"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "TEXT",
+        "displayName": "Text",
+        "category": "DISPLAY",
+        "icon": "assets/images/icons/text-size.svg",
+        "defaultVariant": "HEADING_3",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "variants": [
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "HEADING_1",
+                    "label": "Heading 1",
+                    "align": "left",
+                    "display": {
+                        "label": "Heading 1",
+                        "image": null
+                    }
+                },
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "HEADING_2",
+                    "label": "Heading 2",
+                    "align": "left",
+                    "display": {
+                        "label": "Heading 2",
+                        "image": null
+                    }
+                },
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "HEADING_3",
+                    "label": "Heading 3",
+                    "align": "left",
+                    "display": {
+                        "label": "Heading 3",
+                        "image": null
+                    }
+                },
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "HEADING_4",
+                    "label": "Heading 4",
+                    "align": "left",
+                    "display": {
+                        "label": "Heading 4",
+                        "image": null
+                    }
+                },
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "HEADING_5",
+                    "label": "Heading 5",
+                    "align": "left",
+                    "display": {
+                        "label": "Heading 5",
+                        "image": null
+                    }
+                },
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "HEADING_6",
+                    "label": "Heading 6",
+                    "align": "left",
+                    "display": {
+                        "label": "Heading 6",
+                        "image": null
+                    }
+                },
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "BODY_1",
+                    "label": "Body Text",
+                    "align": "left",
+                    "display": {
+                        "label": "Body 1",
+                        "image": null
+                    }
+                },
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "DISPLAY",
+                    "type": "TEXT",
+                    "variant": "BODY_2",
+                    "label": "Body Text - Muted",
+                    "align": "left",
+                    "display": {
+                        "label": "Body 2",
+                        "image": null
+                    }
+                }
+            ]
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "RICH_TEXT",
+        "displayName": "Rich Text",
+        "category": "DISPLAY",
+        "icon": "assets/images/icons/display-rich-text.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "label": "<h3>Rich Text</h3>"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "DIVIDER",
+        "displayName": "Divider",
+        "category": "DISPLAY",
+        "icon": "assets/images/icons/divider.svg",
+        "defaultVariant": "HORIZONTAL",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "variants": [
+                {
+                    "resourceType": "ELEMENT",
+                    "category": "DISPLAY",
+                    "type": "DIVIDER",
+                    "variant": "HORIZONTAL",
+                    "label": "Or",
+                    "display": {
+                        "label": "Horizontal Divider",
+                        "image": null
+                    }
+                }
+            ]
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "IMAGE",
+        "displayName": "Image",
+        "category": "DISPLAY",
+        "icon": "assets/images/icons/image-square.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "src": "",
+            "alt": ""
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "STACK",
+        "displayName": "Stack",
+        "category": "BLOCK",
+        "icon": "StretchHorizontal",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "items": 1,
+            "direction": "row",
+            "gap": 2,
+            "align": "center",
+            "justify": "center"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "ICON",
+        "displayName": "Icon",
+        "category": "DISPLAY",
+        "icon": "Star",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "name": "User",
+            "size": 24,
+            "color": "currentColor"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "TIMER",
+        "displayName": "Timer",
+        "category": "DISPLAY",
+        "icon": "assets/images/icons/clock.svg",
+        "showOnResourcePanel": true,
+        "defaults": {
+            "label": "Time remaining: {time}"
+        }
+    },
+    {
+        "resourceType": "ELEMENT",
+        "name": "CUSTOM",
+        "displayName": "Custom",
+        "category": "MISCELLANEOUS",
+        "icon": "Puzzle",
+        "showOnResourcePanel": true
+    }
+]

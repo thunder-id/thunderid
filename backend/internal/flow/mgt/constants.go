@@ -18,6 +18,33 @@
 
 package flowmgt
 
+// Field names accepted by the /flows/meta fields query parameter. They match the JSON keys returned
+// in the response so that clients can use the same identifier they see in the payload.
+const (
+	MetaFieldFlowTypes      = "flowTypes"
+	MetaFieldNodeTypes      = "nodeTypes"
+	MetaFieldInputTypes     = "inputTypes"
+	MetaFieldExecutors      = "executors"
+	MetaFieldComponentTypes = "componentTypes"
+	MetaFieldActions        = "actions"
+	MetaFieldElements       = "elements"
+	MetaFieldSteps          = "steps"
+	MetaFieldTemplates      = "templates"
+)
+
+// allowedMetaFields is the set of valid values for the fields query parameter on /flows/meta.
+var allowedMetaFields = map[string]bool{
+	MetaFieldFlowTypes:      true,
+	MetaFieldNodeTypes:      true,
+	MetaFieldInputTypes:     true,
+	MetaFieldExecutors:      true,
+	MetaFieldComponentTypes: true,
+	MetaFieldActions:        true,
+	MetaFieldElements:       true,
+	MetaFieldSteps:          true,
+	MetaFieldTemplates:      true,
+}
+
 const (
 	// defaultPageSize is the default number of items per page for paginated responses
 	defaultPageSize = 30
