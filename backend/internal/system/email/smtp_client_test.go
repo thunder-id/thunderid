@@ -83,6 +83,86 @@ func (suite *SMTPClientTestSuite) TestNewSMTPClient_Success() {
 	suite.NotNil(client)
 }
 
+func (suite *SMTPClientTestSuite) TestCheckSMTPConnectivity_Reachable() {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	suite.Require().NoError(err)
+	defer func() { _ = listener.Close() }()
+
+	serverAddress := listener.Addr().(*net.TCPAddr)
+	suite.NoError(checkSMTPConnectivity("127.0.0.1", serverAddress.Port))
+}
+
+func (suite *SMTPClientTestSuite) TestCheckSMTPConnectivity_Unreachable_Error() {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	suite.Require().NoError(err)
+	serverAddress := listener.Addr().(*net.TCPAddr)
+	err = listener.Close()
+	suite.Require().NoError(err)
+
+	err = checkSMTPConnectivity("127.0.0.1", serverAddress.Port)
+	suite.Error(err)
+	suite.True(errors.Is(err, ErrorUnreachableOrigin))
+	suite.NotEqual(ErrorUnreachableOrigin, err)
+}
+
+func (suite *SMTPClientTestSuite) initializeRuntimeWithHost(host string, port int) {
+	testConfig := &config.Config{
+		Email: config.EmailConfig{
+			SMTP: config.SMTPEmailConfig{
+				Host:        host,
+				Port:        port,
+				Username:    "testuser",
+				Password:    "testpass",
+				FromAddress: "noreply@example.com",
+			},
+		},
+	}
+	suite.Require().NoError(config.InitializeServerRuntime("", testConfig))
+}
+
+func (suite *SMTPClientTestSuite) TestInitialize_Reachable_Success() {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	suite.Require().NoError(err)
+	defer func() { _ = listener.Close() }()
+
+	serverAddress := listener.Addr().(*net.TCPAddr)
+
+	config.ResetServerRuntime()
+	defer config.ResetServerRuntime()
+	suite.initializeRuntimeWithHost("127.0.0.1", serverAddress.Port)
+
+	client, err := Initialize()
+	suite.Require().NoError(err)
+	suite.NotNil(client)
+}
+
+func (suite *SMTPClientTestSuite) TestInitialize_Unreachable_Error() {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	suite.Require().NoError(err)
+	serverAddress := listener.Addr().(*net.TCPAddr)
+	suite.Require().NoError(listener.Close())
+
+	config.ResetServerRuntime()
+	defer config.ResetServerRuntime()
+	suite.initializeRuntimeWithHost("127.0.0.1", serverAddress.Port)
+
+	client, err := Initialize()
+	suite.Error(err)
+	suite.True(errors.Is(err, ErrorUnreachableOrigin))
+	suite.Nil(client)
+}
+
+func (suite *SMTPClientTestSuite) TestInitialize_InvalidConfig_Error() {
+	config.ResetServerRuntime()
+	defer config.ResetServerRuntime()
+	suite.initializeRuntimeWithHost("", 587)
+
+	client, err := Initialize()
+	suite.Error(err)
+	suite.True(errors.Is(err, ErrorInvalidHost))
+	suite.Nil(client)
+}
+
 func (suite *SMTPClientTestSuite) TestNewSMTPClient_EmptyFrom_Error() {
 	conf := suite.getValidSMTPConfig("localhost", 25)
 	conf.from = ""
