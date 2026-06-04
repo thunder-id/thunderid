@@ -1,10 +1,26 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com). All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useThunderID } from "@thunderid/react";
+import { useAuth } from "../auth/useAuth";
 import { KeyRound, RefreshCw, Save } from "lucide-react";
 import { getMyUser, updateMyCredentials, updateMyUser } from "../api/userApi";
 
 export function ProfilePage() {
-  const { isSignedIn, isLoading: authLoading, signIn, getAccessToken } = useThunderID();
+  const { isSignedIn, isLoading: authLoading, signIn, getAccessToken } = useAuth();
 
   if (authLoading) {
     return (
@@ -26,7 +42,7 @@ export function ProfilePage() {
           <button
             className="dashboard-action dashboard-action--secondary"
             type="button"
-            onClick={() => signIn({ acr_values: "urn:thunder:auth:user" })}
+            onClick={() => signIn()}
           >
             Sign in
           </button>

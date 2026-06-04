@@ -38,6 +38,12 @@ a {
   text-decoration: none;
 }
 
+.rich-text-link {
+  color: #2563eb;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
+}
+
 .app-shell {
   min-height: 100vh;
   background: #ffffff;
@@ -2709,4 +2715,221 @@ h2 {
   .footer-links {
     justify-content: flex-start;
   }
+}
+
+/* ---- Native auth page ---- */
+
+.native-auth-page {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 64px 16px;
+  background: #f8fafc;
+}
+
+.native-auth-card {
+  width: 100%;
+  max-width: 400px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 32px;
+  box-shadow: 0 4px 24px rgba(24, 33, 37, 0.08);
+}
+
+.native-auth-heading {
+  margin: 0 0 24px;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.native-auth-error {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  font-size: 0.88rem;
+}
+
+.native-auth-status {
+  text-align: center;
+  color: #64748b;
+  padding: 24px 0;
+}
+
+.native-auth-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.native-auth-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.native-auth-field-label-text {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.native-auth-required {
+  color: #ef4444;
+}
+
+.native-auth-input {
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: #fff;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.native-auth-btn-primary {
+  width: 100%;
+  padding: 11px 18px;
+  background: #ffd166;
+  border: 0;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #151e24;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(255, 177, 66, 0.25);
+}
+
+.native-auth-btn-secondary {
+  width: 100%;
+  padding: 11px 18px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+}
+
+.native-auth-mode-links {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: #475569;
+}
+
+.native-auth-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #1e40af;
+  font-weight: 600;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.native-auth-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.native-auth-branding {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.native-auth-logo-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  flex-shrink: 0;
+}
+
+.native-auth-emoji-logo {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.native-auth-img-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.native-auth-brand-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+  text-align: center;
+}
+
+.native-auth-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0 8px;
+  text-align: center;
+}
+
+.native-auth-success-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.native-auth-success-heading {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.native-auth-success-message {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.native-auth-input:focus-visible {
+  border-color: #2563eb;
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 0;
+}
+
+.native-auth-btn-primary:focus-visible,
+.native-auth-btn-secondary:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.native-auth-link-btn:focus-visible {
+  outline: 2px solid #1e40af;
+  outline-offset: 2px;
+  border-radius: 2px;
 }

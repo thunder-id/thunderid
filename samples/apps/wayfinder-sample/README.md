@@ -61,17 +61,42 @@ The sample uses two OAuth clients and three token types:
 - A **self-service profile page** at `/profile` that calls Thunder's `/users/me` directly with the `WAYFINDER` user token to read account details, edit attributes, and change the password.
 - **Multi-LLM support** — the Wayfinder Concierge works with both **Anthropic Claude** and **Google Gemini**, selectable via an environment variable.
 
+## Auth Modes
+
+The sample supports three auth modes, toggled via environment variables in `frontend/.env`:
+
+| Mode | `VITE_AUTH_IS_REDIRECT_BASED` | `VITE_AUTH_IS_VERBOSE` | Description |
+|------|-------------------------------|------------------------|-------------|
+| **Redirect** | `true` | — | Standard OAuth2 authorization-code + PKCE. Users are redirected to the ThunderID Login Gate for sign-in, recovery, and sign-up. |
+| **App-native** | `false` | `false` | Embedded step-by-step flow. The app drives the `/flow/execute` loop directly and renders its own forms from the server's `inputs[]`/`actions[]` arrays. |
+| **App-native verbose** | `false` | `true` | Same as app-native, but the ThunderID SDK orchestrates the flow loop and exposes component trees; the app renders custom UI from those trees. |
+
+Pass `--redirect-based` or `--verbose` flags to `start.sh` to override the `.env` values at startup (see [Run](#run) below).
+
+## ThunderID Config Bundles
+
+Two config bundles are provided under `thunderid-config/`, one for each auth mode family:
+
+| Folder | Use with | Registration flow | Recovery `inviteBaseURL` |
+|--------|----------|-------------------|--------------------------|
+| `thunderid-config/redirect/` | Redirect mode | `wayfinder-registration-flow` (standard sign-up, redirects to Login Gate) | Not set — Login Gate handles the recovery link |
+| `thunderid-config/app-native/` | App-native modes | `wayfinder-registration-autosignin-flow` (embedded sign-up with auto sign-in) | `http://localhost:5173/recovery` — links open the in-app recovery page |
+
+Import the bundle matching your intended mode: upload the folder's `thunderid-config.yaml` along with its `thunderid.env` from the ThunderID Console welcome screen.
+
 ## Project Structure
 
 ```text
 wayfinder-sample/
-├── frontend/          React + Vite UI. Hosts the chat widget and the
-│                      /agent-callback route used by the consent popup.
-├── backend/           Node server backed by SQLite. Hosts both the REST API
-│                      (/api/*) and the MCP server (/mcp), validates JWTs,
-│                      enforces scopes per route and per MCP tool.
-├── ai-agent/          HTTP Wayfinder Concierge API (LangChain + Claude/Gemini).
-├── thunderid-config/  Importable YAML config for ThunderID setup.
+├── frontend/           React + Vite UI. Hosts the chat widget and the
+│                       /agent-callback route used by the consent popup.
+├── backend/            Node server backed by SQLite. Hosts both the REST API
+│                       (/api/*) and the MCP server (/mcp), validates JWTs,
+│                       enforces scopes per route and per MCP tool.
+├── ai-agent/           HTTP Wayfinder Concierge API (LangChain + Claude/Gemini).
+├── thunderid-config/
+│   ├── redirect/       ThunderID config + env for redirect-based auth mode.
+│   └── app-native/     ThunderID config + env for app-native auth modes.
 └── README.md
 ```
 
@@ -102,14 +127,12 @@ Restart the ThunderID server after the change. If you serve the frontend from a 
 
 ## ThunderID Setup
 
-The `thunderid-config/` directory contains a single importable YAML that creates all required ThunderID resources — resource servers, roles, users, the OAuth application, and the AI agent.
+The `thunderid-config/` directory contains two importable bundles — one for redirect mode and one for app-native modes. Pick the folder that matches your intended auth mode.
 
 ### Import Resources
 
-Import the bundle:
-
 1. Start ThunderID and open the Console.
-2. On the **welcome screen** (shown on first login, or accessible from the user profile menu), choose **Open** and upload `thunderid-config/thunderid-config.yaml`. Then for environment variables, upload `thunderid-config/thunderid.env`.
+2. On the **welcome screen** (shown on first login, or accessible from the user profile menu), choose **Open** and upload the `thunderid-config.yaml` from your chosen folder (`redirect/` or `app-native/`). Then upload the `thunderid.env` from the same folder.
 
 The import creates:
 
@@ -174,7 +197,23 @@ The agent secret defaults to `wayfinder-agent-secret` (matching `thunderid.env`)
 
 ## Run
 
-In three terminals:
+Use `start.sh` to start all three services together:
+
+```bash
+./start.sh
+```
+
+Optional flags override the frontend auth-mode environment variables without editing `.env`:
+
+```bash
+./start.sh --redirect-based        # force redirect mode (VITE_AUTH_IS_REDIRECT_BASED=true)
+./start.sh --redirect-based=false  # force app-native mode
+./start.sh --verbose               # enable verbose app-native mode (VITE_AUTH_IS_VERBOSE=true)
+```
+
+If any `backend/.env`, `ai-agent/.env`, or `frontend/.env` is missing, `start.sh` copies it automatically from the corresponding `.env.example` and prints a warning.
+
+Alternatively, start each service manually in separate terminals:
 
 ```bash
 cd backend  && npm install && npm run seed && npm start   # http://localhost:8787 (REST + /mcp)
@@ -182,7 +221,7 @@ cd ai-agent && npm install && npm start                   # http://localhost:879
 cd frontend && npm install && npm run dev                 # http://localhost:5173
 ```
 
-The Wayfinder server hosts both the REST API on `/api/*` and the MCP server on `/mcp`. `npm run seed` initializes the local SQLite database with sample flights, hotels, and trips. Run it once on first setup.
+`npm run seed` initializes the local SQLite database with sample flights, hotels, and trips. Run it once on first setup.
 
 ## Try It
 

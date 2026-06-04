@@ -31,6 +31,42 @@ FRONTEND_PORT=5173
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# ---------------------------------------------------------------------------
+# Flag parsing
+# Usage: ./start.sh [--redirect-based=<true|false>] [--verbose=<true|false>]
+# These override the corresponding VITE_* values in frontend/.env.
+# ---------------------------------------------------------------------------
+for arg in "$@"; do
+    case $arg in
+        --redirect-based=*)
+            export VITE_AUTH_IS_REDIRECT_BASED="${arg#*=}"
+            ;;
+        --redirect-based)
+            export VITE_AUTH_IS_REDIRECT_BASED="true"
+            ;;
+        --verbose=*)
+            export VITE_AUTH_IS_VERBOSE="${arg#*=}"
+            ;;
+        --verbose)
+            export VITE_AUTH_IS_VERBOSE="true"
+            ;;
+    esac
+done
+
+# ---------------------------------------------------------------------------
+# .env file check — warn and auto-copy from .env.example if missing
+# ---------------------------------------------------------------------------
+for dir in backend ai-agent frontend; do
+    if [ ! -f "$dir/.env" ]; then
+        if [ -f "$dir/.env.example" ]; then
+            cp "$dir/.env.example" "$dir/.env"
+            echo "⚠️  $dir/.env was missing — copied from .env.example. Review $dir/.env before continuing."
+        else
+            echo "⚠️  $dir/.env is missing and no .env.example found. The $dir service may not start correctly."
+        fi
+    fi
+done
+
 mkdir -p logs
 
 function kill_port() {

@@ -33,6 +33,39 @@ $FrontendPort = 5173
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Set-Location $ScriptDir
 
+# ---------------------------------------------------------------------------
+# Flag parsing
+# Usage: .\start.ps1 [--redirect-based[=<true|false>]] [--verbose[=<true|false>]]
+# These override the corresponding VITE_* values in frontend/.env.
+# ---------------------------------------------------------------------------
+foreach ($arg in $args) {
+    if ($arg -match '^--redirect-based=(.+)') {
+        $env:VITE_AUTH_IS_REDIRECT_BASED = $Matches[1]
+    } elseif ($arg -eq '--redirect-based') {
+        $env:VITE_AUTH_IS_REDIRECT_BASED = 'true'
+    } elseif ($arg -match '^--verbose=(.+)') {
+        $env:VITE_AUTH_IS_VERBOSE = $Matches[1]
+    } elseif ($arg -eq '--verbose') {
+        $env:VITE_AUTH_IS_VERBOSE = 'true'
+    }
+}
+
+# ---------------------------------------------------------------------------
+# .env file check — warn and auto-copy from .env.example if missing
+# ---------------------------------------------------------------------------
+foreach ($dir in @('backend', 'ai-agent', 'frontend')) {
+    $envFile = Join-Path $ScriptDir "$dir/.env"
+    $envExample = Join-Path $ScriptDir "$dir/.env.example"
+    if (-not (Test-Path $envFile)) {
+        if (Test-Path $envExample) {
+            Copy-Item $envExample $envFile
+            Write-Host "WARNING: $dir/.env was missing — copied from .env.example. Review $dir/.env before continuing."
+        } else {
+            Write-Host "WARNING: $dir/.env is missing and no .env.example found. The $dir service may not start correctly."
+        }
+    }
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $ScriptDir "logs") | Out-Null
 
 function Stop-Port {

@@ -232,7 +232,7 @@ nodes:
           identifier: password
           type: PASSWORD_INPUT
           required: true
-    onSuccess: auth_assert
+    onSuccess: end
     onIncomplete: prompt_schema_attrs
   - id: prompt_schema_attrs
     type: PROMPT
@@ -258,11 +258,6 @@ nodes:
         action:
           ref: action_schema_attrs
           nextNode: provisioning
-  - id: auth_assert
-    type: TASK_EXECUTION
-    executor:
-      name: AuthAssertExecutor
-    onSuccess: end
   - id: end
     type: END
 
@@ -823,6 +818,7 @@ inbound_auth_config:
         - http://localhost:5173
       grant_types:
         - authorization_code
+        - urn:ietf:params:oauth:grant-type:token-exchange
       response_types:
         - code
       token_endpoint_auth_method: none
@@ -897,7 +893,7 @@ nodes:
               required: true
               placeholder: "{{ t(signin:forms.credentials.fields.password.placeholder) }}"
             - type: ACTION
-              id: action_001
+              id: action_signin
               label: "{{ t(signin:forms.credentials.actions.submit.label) }}"
               variant: PRIMARY
               eventType: SUBMIT
@@ -912,7 +908,7 @@ nodes:
             type: PASSWORD_INPUT
             required: true
         action:
-          ref: action_001
+          ref: action_signin
           nextNode: basic_auth
   - id: basic_auth
     type: TASK_EXECUTION
