@@ -19,16 +19,129 @@
 package declarativeresource
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
+
+type resourceTypeHeader struct {
+	ResourceType string `yaml:"resource_type"`
+}
+
+// GetConfigsFromFile reads documents for the given resourceType from a single multi-document YAML file.
+// Documents are matched by a "resource_type: <type>" field.
+// Environment variable substitution is applied per-document so that non-variable content (e.g.
+// UI template expressions like {{ t(...) }}) in other documents does not interfere.
+func GetConfigsFromFile(filePath, resourceType string) ([][]byte, error) {
+	cleanPath := filepath.Clean(filePath)
+	file, err := os.Open(cleanPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read resources file: %w", err)
+	}
+	defer func() {
+		if cerr := file.Close(); cerr != nil {
+			log.GetLogger().Warn("Failed to close resources file", log.Error(cerr))
+		}
+	}()
+	fileContent, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read resources file: %w", err)
+	}
+
+	docs := splitYAMLDocuments(fileContent)
+	results := make([][]byte, 0, len(docs))
+	for _, doc := range docs {
+		if len(bytes.TrimSpace(doc)) == 0 {
+			continue
+		}
+		if !documentMatchesResourceType(doc, resourceType) {
+			continue
+		}
+		processed, err := utils.SubstituteEnvironmentVariables(doc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to substitute environment variables in resources file: %w", err)
+		}
+		results = append(results, processed)
+	}
+	return results, nil
+}
+
+// splitYAMLDocuments splits a multi-document YAML byte slice on "---" document separators.
+func splitYAMLDocuments(content []byte) [][]byte {
+	var docs [][]byte
+	var current []byte
+
+	for _, line := range bytes.Split(content, []byte("\n")) {
+		if bytes.Equal(bytes.TrimSpace(line), []byte("---")) && bytes.HasPrefix(line, []byte("---")) {
+			if len(bytes.TrimSpace(current)) > 0 {
+				docs = append(docs, current)
+			}
+			current = nil
+		} else {
+			current = append(current, line...)
+			current = append(current, '\n')
+		}
+	}
+	if len(bytes.TrimSpace(current)) > 0 {
+		docs = append(docs, current)
+	}
+	return docs
+}
+
+// documentMatchesResourceType checks whether a YAML document chunk declares the given resource type
+// via a "resource_type: <type>" field.
+func documentMatchesResourceType(doc []byte, resourceType string) bool {
+	var header resourceTypeHeader
+	if err := yaml.Unmarshal(doc, &header); err != nil {
+		return false
+	}
+	return header.ResourceType == resourceType
+}
+
+// GetConfigsFromRootDir scans the repository/resources/ directory for YAML files (*.yaml, *.yml)
+// that sit directly in that directory (not in subdirectories) and returns all documents whose
+// resource_type header matches resourceType.  Returns nil, nil when no matching YAML files exist
+// so callers can fall through to directory-based loading.
+func GetConfigsFromRootDir(resourceType string) ([][]byte, error) {
+	serverHome := config.GetServerRuntime().ServerHome
+	rootDir := filepath.Join(serverHome, "repository", "resources")
+
+	entries, err := os.ReadDir(rootDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read resources directory: %w", err)
+	}
+
+	var results [][]byte
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml") {
+			continue
+		}
+		docs, err := GetConfigsFromFile(filepath.Join(rootDir, name), resourceType)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, docs...)
+	}
+	return results, nil
+}
 
 // GetConfigs reads all configuration files from the specified directory within the resources directory.
 func GetConfigs(configDirectoryPath string) ([][]byte, error) {

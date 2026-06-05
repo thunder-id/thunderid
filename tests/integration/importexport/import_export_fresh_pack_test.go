@@ -902,7 +902,7 @@ permissions: []
 func (s *GroupRoleResourceImportExportSuite) TestImportResourceServerWithNestedResources() {
 	handle := "nested-rs-" + s.handleSuffix
 
-	yamlContent := fmt.Sprintf(`# resource_type: resource_server
+	yamlContent := fmt.Sprintf(`resource_type: resource_server
 name: Nested Resource Server %s
 description: Resource server with nested resources
 handle: %s
@@ -977,7 +977,7 @@ func (s *GroupRoleResourceImportExportSuite) TestImportResourceServerUpsertNeste
 		if id != "" {
 			idLine = "id: " + id + "\n"
 		}
-		return fmt.Sprintf(`# resource_type: resource_server
+		return fmt.Sprintf(`resource_type: resource_server
 %sname: Upsert Resource Server %s
 description: Resource server for upsert test
 handle: %s

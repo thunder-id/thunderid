@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -75,7 +74,10 @@ func parseDocuments(content string) ([]parsedDocument, error) {
 			return nil, fmt.Errorf("document %d root must be a YAML mapping", seq+1)
 		}
 
-		resourceType := classifyResourceTypeWithComments(&doc, root)
+		resourceType := resourceTypeFromField(root)
+		if resourceType == resourceTypeUnknown {
+			resourceType = classifyResourceType(root)
+		}
 		if resourceType == resourceTypeUnknown {
 			return nil, fmt.Errorf("unable to determine resource type for document %d", seq+1)
 		}
@@ -90,65 +92,15 @@ func parseDocuments(content string) ([]parsedDocument, error) {
 	return docs, nil
 }
 
-func classifyResourceTypeWithComments(doc *yaml.Node, node *yaml.Node) string {
-	commentCandidates := []string{
-		doc.HeadComment,
-		doc.LineComment,
-		doc.FootComment,
-		node.HeadComment,
-		node.LineComment,
-		node.FootComment,
-	}
-	for _, contentNode := range node.Content {
-		commentCandidates = append(
-			commentCandidates,
-			contentNode.HeadComment,
-			contentNode.LineComment,
-			contentNode.FootComment,
-		)
-	}
-
-	if resourceType := resourceTypeFromComments(commentCandidates...); resourceType != resourceTypeUnknown {
-		return resourceType
-	}
-
-	return classifyResourceType(node)
-}
-
-func resourceTypeFromComments(comments ...string) string {
-	for _, comment := range comments {
-		if resourceType := parseResourceTypeFromComment(comment); resourceType != resourceTypeUnknown {
-			return resourceType
-		}
-	}
-
-	return resourceTypeUnknown
-}
-
-func parseResourceTypeFromComment(comment string) string {
-	if strings.TrimSpace(comment) == "" {
-		return resourceTypeUnknown
-	}
-
-	for _, line := range strings.Split(comment, "\n") {
-		normalized := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(line, "#")))
-		if normalized == "" {
-			continue
-		}
-
-		for _, prefix := range []string{"resource_type:", "resource type:", "resourcetype:"} {
-			if !strings.HasPrefix(normalized, prefix) {
-				continue
-			}
-
-			resourceType := strings.TrimSpace(strings.TrimPrefix(normalized, prefix))
-			resourceType = strings.Trim(resourceType, "\"'")
-			if isKnownResourceType(resourceType) {
-				return resourceType
+func resourceTypeFromField(node *yaml.Node) string {
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == "resource_type" {
+			value := node.Content[i+1].Value
+			if isKnownResourceType(value) {
+				return value
 			}
 		}
 	}
-
 	return resourceTypeUnknown
 }
 

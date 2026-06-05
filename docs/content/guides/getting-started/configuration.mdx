@@ -360,6 +360,78 @@ Controls declarative configuration support.
 |---------|---------|-------------|
 | `declarative_resources.enabled` | `false` | If `true`, enables declarative resource configuration |
 
+### Resource Loading Precedence
+
+At startup, <ProductName /> resolves declarative resources using the following precedence. Only the first matching source is used — sources are not merged.
+
+| Priority | Source | When active |
+|----------|--------|-------------|
+| 1 | Single file passed via `./start.sh <file>` | `--resources` flag is set |
+| 2 | `*.yaml`/`*.yml` files placed directly in `repository/resources/` (not in subdirectories) | Flag not set; at least one root-level YAML file exists |
+| 3 | Per-type subdirectories under `repository/resources/` (e.g. `repository/resources/groups/`) | Flag not set; no root-level YAML files found |
+
+If `--resources` is set, `repository/resources/` is not read at all, regardless of what files it contains. The two sources never merge.
+
+### Start <ProductName/> With a Resources File
+
+Pass a single multi-document YAML file to the server at startup as a positional argument to `start.sh`. The file is forwarded to the server binary as the `-resources` flag and read directly at startup.
+
+```bash
+./start.sh resources.yml
+```
+
+With environment variable substitution:
+
+```bash
+./start.sh resources.yml --env my.env
+```
+
+Each document in the file must declare its type with a `# resource_type: <type>` comment at the top. Supported types:
+
+```
+application, flow, group, identity_provider, layout, notification_sender,
+organization_unit, resource_server, role, theme, translation, user, user_schema
+```
+
+Example single file:
+
+```yaml
+# resource_type: application
+name: My App
+ou_handle: default
+auth_flow_handle: default-basic-flow
+---
+# resource_type: group
+name: admins
+description: Administrators
+```
+
+:::warning
+When `--resources` is active, any files in `repository/resources/` — including per-type subdirectories — are silently ignored. If you need files from the directory to be loaded, do not pass a `--resources` argument.
+:::
+
+### Resources Directory (No Startup Flag)
+
+If you do not pass a `--resources` argument, <ProductName /> automatically picks up multi-document YAML files placed directly in the `repository/resources/` directory (not in subdirectories). This is priority 2 in the loading precedence and requires no configuration change or restart argument.
+
+Place a multi-document YAML file in `repository/resources/`:
+
+```
+repository/
+  resources/
+    my-resources.yaml   ← loaded automatically at startup
+    groups/             ← used only when no root-level YAML files exist
+      admins.yaml
+```
+
+The file must use the same `# resource_type: <type>` document headers as the single-file startup format. On startup, <ProductName /> scans all `*.yaml` and `*.yml` files at that root level and loads every document whose `resource_type` matches a configured declarative resource type.
+
+:::note
+If any `*.yaml` or `*.yml` file is found at the `repository/resources/` root, per-type subdirectories (priority 3) are skipped entirely for that resource type.
+:::
+
+### Helm Deployment
+
 For Helm deployments, this setting is managed through `declarativeResources.enabled` in the Helm values. When enabled, the chart also mounts declarative resource files from either a ConfigMap or Secret into the <ProductName /> `repository/resources` directory.
 
 Example Helm values:
