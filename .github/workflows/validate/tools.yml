@@ -1,0 +1,66 @@
+name: 🔧 Tools Validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "lts/*"
+  GOFLAGS: "-mod=readonly"
+
+jobs:
+  validate-i18n-extractor:
+    name: 🔍 Validate i18n-extractor
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: 🧪 Run Tests
+        run: |
+          cd tools/i18n-extractor
+          go test -v .
+
+      - name: 🔨 Build
+        run: |
+          cd tools/i18n-extractor
+          go build -v .
+
+  validate-npx-thunderid:
+    name: 🔍 Validate npx-thunderid
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Dependencies
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: 🔨 Build
+        run: |
+          pnpm --filter thunderid build
+
+      - name: 🧹 Lint
+        run: |
+          pnpm --filter thunderid lint
+
+      - name: 🧪 Test
+        run: |
+          pnpm --filter thunderid test
+
+      - name: 🔍 Typecheck
+        run: |
+          pnpm --filter thunderid typecheck

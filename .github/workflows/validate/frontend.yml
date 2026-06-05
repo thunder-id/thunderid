@@ -1,0 +1,287 @@
+name: 🎨 Frontend Validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOFLAGS: "-mod=readonly"
+  PRODUCT_NAME: "ThunderID"
+  PRODUCT_NAME_LOWER: "thunderid"
+  NODE_VERSION: "lts/*"
+
+jobs:
+  security-audit:
+    name: 🔒 Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🔍 Run pnpm audit (Frontend)
+        working-directory: frontend
+        run: |
+          echo "🔍 Running pnpm audit for frontend dependencies..."
+          pnpm audit --ignore-registry-errors --audit-level=high
+
+      - name: 🔍 Run npm audit (Sample Apps)
+        run: |
+          echo "🔍 Running npm audit for sample app dependencies..."
+          IGNORED_GHSAS=$(jq '[(.common + ."sample-apps")[].id]' "$GITHUB_WORKSPACE/.audit-ignore.json")
+          for app in samples/apps/*/; do
+            if [ -f "${app}package-lock.json" ]; then
+              echo "Auditing $app..."
+              cd "$app"
+              AUDIT_RESULT=$(npm audit --json --audit-level=high 2>&1) || true
+              REMAINING=$(echo "$AUDIT_RESULT" | jq --argjson ignored "$IGNORED_GHSAS" '
+                [.vulnerabilities[].via[] | select(type == "object")
+                 | select(.severity == "high" or .severity == "critical")
+                 | select(.url | test($ignored | join("|")) | not)
+                ] | length
+              ')
+              if [ "$REMAINING" -gt 0 ]; then
+                echo "❌ Found $REMAINING unignored high/critical advisories in $app:"
+                echo "$AUDIT_RESULT" | jq --argjson ignored "$IGNORED_GHSAS" '
+                  [.vulnerabilities[].via[] | select(type == "object")
+                   | select(.severity == "high" or .severity == "critical")
+                   | select(.url | test($ignored | join("|")) | not)
+                  ] | unique_by(.url) | .[] | "\(.severity): \(.name) - \(.url)"
+                '
+                exit 1
+              fi
+              echo "✅ $app - All high/critical advisories are in the ignored list."
+              cd - > /dev/null
+            fi
+          done
+
+  lint:
+    name: 🧹 Lint Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🔄 Fetch main branch for Nx affected base
+        run: git fetch origin main:main --update-head-ok || true
+
+      - name: 🐳 Set SHAs for Nx
+        id: set-shas
+        uses: nrwl/nx-set-shas@3e9ad7370203c1e93d109be57f3b72eb0eb511b1 # v4.4.0
+        with:
+          main-branch-name: "main"
+
+      - name: 🧩 Install Dependencies & Build Frontend
+        run: |
+          make build_frontend
+
+      - name: 🔍 Run Frontend Linter
+        run: |
+          pnpm nx affected --target=lint --parallel=3 --base=${{ steps.set-shas.outputs.base }} --head=${{ steps.set-shas.outputs.head }} --exclude=sdks/**,tests/**
+
+      - name: 🎨 Check Frontend Formatting
+        run: |
+          pnpm format:check
+
+  test-frontend-packages:
+    name: 🧪 Frontend Packages Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Frontend Dependencies
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: 🗂️ Set up Nx Cache
+        uses: ./.github/actions/setup-nx-cache
+
+      - name: 🎭 Set up Playwright Browsers
+        uses: ./.github/actions/setup-playwright
+        with:
+          working-directory: frontend
+          scope: packages
+
+      - name: 🔨 Build Frontend Packages
+        working-directory: frontend
+        run: |
+          pnpm build:packages
+
+      - name: 🧪 Run Tests for Frontend Packages
+        working-directory: frontend
+        run: |
+          pnpm test:packages
+
+  test-frontend-gate-app:
+    name: 🧪 Gate App Tests with Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Frontend Dependencies
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: 🗂️ Set up Nx Cache
+        uses: ./.github/actions/setup-nx-cache
+
+      - name: 🔨 Build Frontend
+        run: |
+          pnpm build:frontend
+
+      - name: 🧪 Run Gate Tests with Coverage
+        run: |
+          cd frontend/apps/gate
+          pnpm test:coverage
+
+      - name: 🧹 Strip branch data from gate LCOV report
+        run: |
+          if [ -f "frontend/apps/gate/coverage/lcov.info" ]; then
+            sed -i '/^BRDA:/d;/^BRF:/d;/^BRH:/d' "frontend/apps/gate/coverage/lcov.info"
+          fi
+
+      - name: 📦 Upload gate coverage artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: gate-coverage
+          path: frontend/apps/gate/coverage/lcov.info
+          if-no-files-found: error
+
+  test-frontend-console-app:
+    name: 🧪 Console App Tests with Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install Frontend Dependencies
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: 🗂️ Set up Nx Cache
+        uses: ./.github/actions/setup-nx-cache
+
+      - name: 🔨 Build Frontend
+        run: |
+          pnpm build:frontend
+
+      - name: 🧪 Run Console Tests with Coverage
+        run: |
+          cd frontend/apps/console
+          pnpm test:coverage
+
+      - name: 🧹 Strip branch data from console LCOV report
+        run: |
+          if [ -f "frontend/apps/console/coverage/lcov.info" ]; then
+            sed -i '/^BRDA:/d;/^BRF:/d;/^BRH:/d' "frontend/apps/console/coverage/lcov.info"
+          fi
+
+      - name: 📦 Upload console coverage artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: console-coverage
+          path: frontend/apps/console/coverage/lcov.info
+          if-no-files-found: error
+
+  upload-frontend-coverage:
+    name: 📊 Upload Frontend Coverage
+    needs: [test-frontend-gate-app, test-frontend-console-app]
+    if: always() && (needs.test-frontend-gate-app.result == 'success' && needs.test-frontend-console-app.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: 📥 Download console coverage artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: console-coverage
+          path: coverage/console
+
+      - name: 📥 Download gate coverage artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: gate-coverage
+          path: coverage/gate
+
+      - name: 📊 Upload `@thunderid/console` Unit Test Coverage Report to Codecov
+        uses: codecov/codecov-action@v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          use_oidc: true
+          files: coverage/console/lcov.info
+          disable_search: true
+          flags: frontend-apps-console-unit
+          name: Frontend Console App Unit Tests
+          fail_ci_if_error: false
+
+      - name: 📊 Upload `@thunderid/gate` Unit Test Coverage Report to Codecov
+        uses: codecov/codecov-action@v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          use_oidc: true
+          files: coverage/gate/lcov.info
+          disable_search: true
+          flags: frontend-apps-gate-unit
+          name: Frontend Gate App Unit Tests
+          fail_ci_if_error: false
+
+  cleanup-nx-cache:
+    name: 🗑️ Cleanup Stale Nx Cache
+    runs-on: ubuntu-latest
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    needs:
+      - test-frontend-packages
+      - test-frontend-gate-app
+      - test-frontend-console-app
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: 🗑️ Delete stale Nx caches
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/caches?per_page=100&key=nx-Linux-" \
+            --jq '.actions_caches | sort_by(.created_at) | reverse | .[1:] | .[].id' \
+          | xargs -r -I{} gh api --method DELETE "repos/${{ github.repository }}/actions/caches/{}"

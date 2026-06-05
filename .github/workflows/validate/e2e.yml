@@ -1,0 +1,357 @@
+name: 🎭 E2E Validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: "-mod=readonly"
+  PRODUCT_NAME: "ThunderID"
+  PRODUCT_NAME_LOWER: "thunderid"
+  NODE_VERSION: "lts/*"
+
+jobs:
+  build:
+    name: 🛠️ Build Product
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🗄️ Cache Go Modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: cache-go-modules
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-modules-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-modules-
+
+      - name: 📦 Install Backend Dependencies
+        run: |
+          cd backend
+          go mod download
+          cd ../tests/integration
+          go mod download
+
+      - name: 🗂️ Set up Nx Cache
+        uses: ./.github/actions/setup-nx-cache
+
+      - name: 📦 Install Frontend Dependencies
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: 🧹 Clean Previous Builds
+        run: |
+          set -e
+          make clean
+
+      - name: 🔨 Build Frontend
+        run: |
+          make build_frontend
+
+      - name: 🔨 Build Product with Coverage
+        run: |
+          set -e
+          export LOG_LEVEL=debug
+          make build_with_coverage_only OS=$(go env GOOS) ARCH=$(go env GOARCH)
+
+          # Find the built distribution
+          DIST_PATH=$(find target/dist -name "$PRODUCT_NAME_LOWER-*.zip" | head -1)
+          echo "Built distribution: $DIST_PATH"
+
+      - name: 📦 Upload Built Distribution
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: product-distribution-e2e
+          path: target/dist/*.zip
+          if-no-files-found: error
+
+  build_samples:
+    name: 🛠️ Build Sample Apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🧩 Build and Package Sample Apps
+        run: |
+          make build_samples
+          make package_samples OS=$(go env GOOS) ARCH=$(go env GOARCH)
+
+      - name: 📦 Upload Built Sample App
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sample-app-react-sdk-e2e
+          path: target/dist/sample-app-react-sdk-*.zip
+
+  test-e2e:
+    name: 🎭 Playwright E2E Tests
+    needs: [build, build_samples]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 'lts/*'
+
+      - name: 📦 Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          run_install: false
+          cache_dependency_path: pnpm-lock.yaml
+
+      - name: 📥 Download Built Distribution
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: product-distribution-e2e
+          path: target/dist/
+
+      - name: 📥 Download Built Sample App
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sample-app-react-sdk-e2e
+          path: target/dist/
+
+      - name: 📂 Extract Server to E2E
+        run: |
+          mkdir -p tests/e2e/server
+          unzip target/dist/$PRODUCT_NAME_LOWER-*.zip -d tests/e2e/server
+          cd tests/e2e/server
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "$PRODUCT_NAME_LOWER-*" | head -n 1)
+          if [ -n "$EXTRACTED_DIR" ]; then
+            mv "$EXTRACTED_DIR"/* .
+            rmdir "$EXTRACTED_DIR"
+          fi
+          chmod +x setup.sh start.sh
+
+      - name: 🚀 Start the Server
+        run: |
+          cd tests/e2e/server
+          ./setup.sh
+          SKIP_SECURITY=true ./start.sh &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+          # Wait for server to be ready
+          echo "Waiting for server to be ready on https://localhost:8090..."
+          for i in {1..60}; do
+            if curl -s -k https://localhost:8090/health/liveness > /dev/null; then
+              echo "Server is UP!"
+              break
+            fi
+            echo "Still waiting ($i/60)..."
+            sleep 2
+          done
+          
+          if ! curl -s -k https://localhost:8090/health/liveness > /dev/null; then
+            echo "Server failed to start within 2 minutes"
+            exit 1
+          fi
+          echo "Server started successfully!"
+      
+      - name: 📦 Import Sample App Resources
+        run: |
+          echo "Importing React Vanilla Sample declarative resources..."
+          YAML_CONTENT=$(cat samples/apps/react-vanilla-sample/thunderid-config/basic/thunderid-config.yaml)
+          HTTP_STATUS=$(curl -k -s -o /tmp/import_response.json -w "%{http_code}" \
+            -X POST https://localhost:8090/import \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"content\": $(echo "$YAML_CONTENT" | jq -Rs .),
+              \"variables\": {
+                \"SAMPLE_APP_CLIENT_ID\": \"sample_app_client\",
+                \"SAMPLE_APP_REDIRECT_URIS\": [\"https://localhost:3000\"],
+                \"SAMPLE_APP_GOOGLE_CLIENT_ID\": \"test-google-client-id\",
+                \"SAMPLE_APP_GOOGLE_CLIENT_SECRET\": \"test-google-client-secret\",
+                \"SAMPLE_APP_GOOGLE_REDIRECT_URI\": \"https://localhost:3000/\",
+                \"SAMPLE_APP_GOOGLE_SCOPES\": \"openid,email,profile\",
+                \"SAMPLE_APP_GITHUB_CLIENT_ID\": \"test-github-client-id\",
+                \"SAMPLE_APP_GITHUB_CLIENT_SECRET\": \"test-github-client-secret\",
+                \"SAMPLE_APP_GITHUB_REDIRECT_URI\": \"https://localhost:3000/\",
+                \"SAMPLE_APP_SMS_SENDER_ID\": \"test-sms-sender-id\"
+              },
+              \"options\": {\"upsert\": true}
+            }")
+          echo "Import HTTP status: $HTTP_STATUS"
+          cat /tmp/import_response.json | jq . || cat /tmp/import_response.json
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Failed to import React Vanilla Sample resources (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+          echo "✅ React Vanilla Sample resources imported successfully"
+
+          echo "Importing React SDK Sample declarative resources..."
+          YAML_CONTENT=$(cat samples/apps/react-sdk-sample/thunderid-config/thunderid-config.yaml)
+          HTTP_STATUS=$(curl -k -s -o /tmp/import_response.json -w "%{http_code}" \
+            -X POST https://localhost:8090/import \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"content\": $(echo "$YAML_CONTENT" | jq -Rs .),
+              \"variables\": {
+                \"REACT_SDK_SAMPLE_CLIENT_ID\": \"REACT_SDK_SAMPLE\",
+                \"REACT_SDK_SAMPLE_REDIRECT_URIS\": [\"https://localhost:3000\"]
+              },
+              \"options\": {\"upsert\": true}
+            }")
+          echo "Import HTTP status: $HTTP_STATUS"
+          cat /tmp/import_response.json | jq . || cat /tmp/import_response.json
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Failed to import React SDK Sample resources (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+          echo "✅ React SDK Sample resources imported successfully"
+
+      - name: 🔍 Extract Sample App ID
+        id: extract-app-id
+        run: |
+          echo "Fetching applications from the server..."
+          APPS_RESPONSE=$(curl -s -k https://localhost:8090/applications)
+          SAMPLE_APP_ID=$(echo "$APPS_RESPONSE" | jq -r '(.applications // [])[] | select(.name == "Sample App") | .id')
+
+          if [ -z "$SAMPLE_APP_ID" ] || [ "$SAMPLE_APP_ID" == "null" ]; then
+            echo "⚠️  Warning: Sample App not found in applications list"
+            echo "Available applications:"
+            echo "$APPS_RESPONSE" | jq -r '(.applications // [])[] | "  - \(.name) (\(.id))"'
+            echo "sample_app_id=" >> $GITHUB_OUTPUT
+          else
+            echo "✓ Sample App ID extracted: $SAMPLE_APP_ID"
+            echo "sample_app_id=$SAMPLE_APP_ID" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🔄 Restart the Server with Security Enabled
+        run: |
+          cd tests/e2e/server
+          echo "Stopping the server..."
+          kill $SERVER_PID 2>/dev/null || true
+          sleep 2
+          if lsof -ti tcp:8090 >/dev/null 2>&1; then
+            echo "Port 8090 still in use, killing remaining processes..."
+            kill -9 $(lsof -ti tcp:8090) 2>/dev/null || true
+          fi
+          sleep 3
+
+          echo "Starting the server with security enabled..."
+          ./start.sh &
+          SERVER_PID=$!
+          echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+          
+          echo "Waiting for server to be ready on https://localhost:8090..."
+          for i in {1..60}; do
+            if curl -s -k https://localhost:8090/health/liveness > /dev/null; then
+              echo "Server is UP with security enabled!"
+              break
+            fi
+            echo "Still waiting ($i/60)..."
+            sleep 2
+          done
+          
+          if ! curl -s -k https://localhost:8090/health/liveness > /dev/null; then
+            echo "Server failed to restart within 2 minutes"
+            exit 1
+          fi
+          echo "Server restarted successfully with security enabled!"
+      
+      - name: 📱 Extract and Start Sample App
+        run: |
+          echo "Extracting Sample App..."
+          mkdir -p tests/e2e/sample-app
+          SAMPLE_APP_ZIP=$(find target/dist -name "sample-app-react-sdk-*.zip" | head -n 1)
+          
+          if [ -z "$SAMPLE_APP_ZIP" ]; then
+            echo "⚠️  Warning: Sample app zip not found in target/dist"
+            echo "Available files:"
+            ls -la target/dist/
+            exit 1
+          fi
+          
+          echo "Found sample app: $SAMPLE_APP_ZIP"
+          unzip -q "$SAMPLE_APP_ZIP" -d tests/e2e/sample-app
+          cd tests/e2e/sample-app
+          
+          EXTRACTED_DIR=$(find . -maxdepth 1 -type d -name "sample-app-*" | head -n 1)
+          if [ -n "$EXTRACTED_DIR" ]; then
+            mv "$EXTRACTED_DIR"/* .
+            rmdir "$EXTRACTED_DIR"
+          fi
+          chmod +x start.sh
+
+          echo "Starting Sample App..."
+          ./start.sh &
+          
+          echo "Waiting for sample app to be ready on https://localhost:3000..."
+          for i in {1..60}; do
+            if curl -s -k https://localhost:3000 > /dev/null 2>&1; then
+              echo "Sample App is UP!"
+              break
+            fi
+            echo "Still waiting ($i/60)..."
+            sleep 2
+          done
+          
+          if ! curl -s -k https://localhost:3000 > /dev/null 2>&1; then
+            echo "Sample app failed to start within 2 minutes"
+            exit 1
+          fi
+          echo "Sample App started successfully!"
+
+      - name: 📦 Install E2E Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: 🎭 Set up Playwright Browsers
+        uses: ./.github/actions/setup-playwright
+        with:
+          working-directory: tests/e2e
+          scope: e2e
+        timeout-minutes: 5
+
+      - name: 🎭 Run Playwright E2E Tests
+        run: pnpm test
+        working-directory: tests/e2e
+        env:
+          BASE_URL: ${{ secrets.PLAYWRIGHT_BASE_URL || vars.PLAYWRIGHT_BASE_URL || 'https://localhost:8090' }}
+          ADMIN_USERNAME: ${{ secrets.PLAYWRIGHT_ADMIN_USERNAME || 'admin' }}
+          ADMIN_PASSWORD: ${{ secrets.PLAYWRIGHT_ADMIN_PASSWORD || 'admin' }}
+          TEST_USER_USERNAME: ${{ secrets.PLAYWRIGHT_TEST_USER_USERNAME || 'testuser' }}
+          TEST_USER_PASSWORD: ${{ secrets.PLAYWRIGHT_TEST_USER_PASSWORD || 'admin' }}
+          PLAYWRIGHT_WORKERS: ${{ vars.PLAYWRIGHT_WORKERS || 1 }}
+          DEBUG_AUTH: ${{ vars.PLAYWRIGHT_DEBUG_AUTH || 'false' }}
+          SAMPLE_APP_ID: ${{ steps.extract-app-id.outputs.sample_app_id }}
+          SAMPLE_APP_URL: 'https://localhost:3000'
+          SERVER_URL: 'https://localhost:8090'
+          AUTO_SETUP_MFA: ${{ vars.AUTO_SETUP_MFA || 'true' }}
+          MOCK_SMS_SERVER_PORT: ${{ vars.MOCK_SMS_SERVER_PORT || 8098 }}
+          SAMPLE_APP_USERNAME: ${{ secrets.SAMPLE_APP_USERNAME || 'e2e-test-user' }}
+          SAMPLE_APP_PASSWORD: ${{ secrets.SAMPLE_APP_PASSWORD || 'e2e-test-password' }}
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report/
+          retention-days: 30
