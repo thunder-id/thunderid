@@ -54,14 +54,14 @@ func (s *CompositeStoreTestSuite) SetupTest() {
 }
 
 // Helper function to create a test flow
-func (s *CompositeStoreTestSuite) createTestFlow(id, name string) *CompleteFlowDefinition {
-	return &CompleteFlowDefinition{
+func (s *CompositeStoreTestSuite) createTestFlow(id, name string) *common.CompleteFlowDefinition {
+	return &common.CompleteFlowDefinition{
 		ID:            id,
 		Handle:        testFlowHandle,
 		Name:          name,
 		FlowType:      common.FlowTypeAuthentication,
 		ActiveVersion: 1,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},

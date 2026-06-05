@@ -26,8 +26,8 @@ import (
 	"regexp"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/flowbuilder"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
@@ -54,18 +54,20 @@ var handleFormatRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0
 type FlowMgtServiceInterface interface {
 	ListFlows(ctx context.Context, limit, offset int, flowType common.FlowType) (
 		*FlowListResponse, *serviceerror.ServiceError)
-	CreateFlow(ctx context.Context, flowDef *FlowDefinition) (*CompleteFlowDefinition, *serviceerror.ServiceError)
-	GetFlow(ctx context.Context, flowID string) (*CompleteFlowDefinition, *serviceerror.ServiceError)
+	CreateFlow(ctx context.Context, flowDef *FlowDefinition) (
+		*common.CompleteFlowDefinition,
+		*serviceerror.ServiceError,
+	)
+	GetFlow(ctx context.Context, flowID string) (*common.CompleteFlowDefinition, *serviceerror.ServiceError)
 	GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (
-		*CompleteFlowDefinition, *serviceerror.ServiceError)
+		*common.CompleteFlowDefinition, *serviceerror.ServiceError)
 	UpdateFlow(ctx context.Context, flowID string, flowDef *FlowDefinition) (
-		*CompleteFlowDefinition, *serviceerror.ServiceError)
+		*common.CompleteFlowDefinition, *serviceerror.ServiceError)
 	DeleteFlow(ctx context.Context, flowID string) *serviceerror.ServiceError
 	ListFlowVersions(ctx context.Context, flowID string) (*FlowVersionListResponse, *serviceerror.ServiceError)
 	GetFlowVersion(ctx context.Context, flowID string, version int) (*FlowVersion, *serviceerror.ServiceError)
 	RestoreFlowVersion(ctx context.Context, flowID string, version int) (
-		*CompleteFlowDefinition, *serviceerror.ServiceError)
-	GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *serviceerror.ServiceError)
+		*common.CompleteFlowDefinition, *serviceerror.ServiceError)
 	IsValidFlow(ctx context.Context, flowID string, flowType common.FlowType) (bool, *serviceerror.ServiceError)
 }
 
@@ -73,8 +75,7 @@ type FlowMgtServiceInterface interface {
 type flowMgtService struct {
 	store            flowStoreInterface
 	inferenceService flowInferenceServiceInterface
-	graphBuilder     graphBuilderInterface
-	executorRegistry executor.ExecutorRegistryInterface
+	graphBuilder     flowbuilder.GraphBuilderInterface
 	compositeStore   *compositeFlowStore
 	transactioner    transaction.Transactioner
 	logger           *log.Logger
@@ -84,8 +85,7 @@ type flowMgtService struct {
 func newFlowMgtService(
 	store flowStoreInterface,
 	inferenceService flowInferenceServiceInterface,
-	graphBuilder graphBuilderInterface,
-	executorRegistry executor.ExecutorRegistryInterface,
+	graphBuilder flowbuilder.GraphBuilderInterface,
 	compositeStore *compositeFlowStore,
 	transactioner transaction.Transactioner,
 ) FlowMgtServiceInterface {
@@ -93,7 +93,6 @@ func newFlowMgtService(
 		store:            store,
 		inferenceService: inferenceService,
 		graphBuilder:     graphBuilder,
-		executorRegistry: executorRegistry,
 		compositeStore:   compositeStore,
 		transactioner:    transactioner,
 		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
@@ -138,7 +137,7 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 
 // CreateFlow creates a new flow definition with version 1.
 func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition) (
-	*CompleteFlowDefinition, *serviceerror.ServiceError) {
+	*common.CompleteFlowDefinition, *serviceerror.ServiceError) {
 	if err := validateFlowDefinition(flowDef); err != nil {
 		return nil, err
 	}
@@ -153,7 +152,11 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 		flowID = generated
 	}
 
-	var createdFlow *CompleteFlowDefinition
+	if err := s.validateExecutableGraph(ctx, completeFlowFromDefinition(flowID, flowDef)); err != nil {
+		return nil, err
+	}
+
+	var createdFlow *common.CompleteFlowDefinition
 	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if flowDef.ID != "" {
 			_, err := s.store.GetFlowByID(txCtx, flowID)
@@ -197,7 +200,7 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 
 // GetFlow retrieves a flow definition by its ID.
 func (s *flowMgtService) GetFlow(ctx context.Context, flowID string) (
-	*CompleteFlowDefinition, *serviceerror.ServiceError) {
+	*common.CompleteFlowDefinition, *serviceerror.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -216,7 +219,7 @@ func (s *flowMgtService) GetFlow(ctx context.Context, flowID string) (
 
 // GetFlowByHandle retrieves a flow definition by its handle and type.
 func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (
-	*CompleteFlowDefinition, *serviceerror.ServiceError) {
+	*common.CompleteFlowDefinition, *serviceerror.ServiceError) {
 	if handle == "" {
 		return nil, &ErrorMissingFlowHandle
 	}
@@ -240,7 +243,7 @@ func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flo
 // UpdateFlow updates an existing flow definition with the incremented version.
 // Old versions are retained up to the configured max_version_history limit.
 func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef *FlowDefinition) (
-	*CompleteFlowDefinition, *serviceerror.ServiceError) {
+	*common.CompleteFlowDefinition, *serviceerror.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -248,9 +251,13 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 		return nil, err
 	}
 
+	if err := s.validateExecutableGraph(ctx, completeFlowFromDefinition(flowID, flowDef)); err != nil {
+		return nil, err
+	}
+
 	logger := s.logger.With(log.String(logKeyFlowID, flowID))
 
-	var updatedFlow *CompleteFlowDefinition
+	var updatedFlow *common.CompleteFlowDefinition
 	var validationSvcErr *serviceerror.ServiceError
 	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		existingFlow, err := s.store.GetFlowByID(txCtx, flowID)
@@ -397,7 +404,7 @@ func (s *flowMgtService) GetFlowVersion(ctx context.Context, flowID string, vers
 // RestoreFlowVersion restores a specific version as the active version.
 // Creates a new version by copying the configuration from the specified version.
 func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, version int) (
-	*CompleteFlowDefinition, *serviceerror.ServiceError) {
+	*common.CompleteFlowDefinition, *serviceerror.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -407,15 +414,27 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 
 	logger := s.logger.With(log.String(logKeyFlowID, flowID), log.Int(logKeyVersion, version))
 
-	var restoredFlow *CompleteFlowDefinition
-	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		_, err := s.store.GetFlowVersion(txCtx, flowID, version)
-		if err != nil {
-			return err
+	flowVersion, err := s.store.GetFlowVersion(ctx, flowID, version)
+	if err != nil {
+		if errors.Is(err, errFlowNotFound) {
+			return nil, &ErrorFlowNotFound
 		}
+		if errors.Is(err, errVersionNotFound) {
+			return nil, &ErrorVersionNotFound
+		}
+		logger.Error("Failed to get flow version for restore", log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
 
-		restoredFlow, err = s.store.RestoreFlowVersion(txCtx, flowID, version)
-		return err
+	if err := s.validateExecutableGraph(ctx, completeFlowFromVersion(flowID, flowVersion)); err != nil {
+		return nil, err
+	}
+
+	var restoredFlow *common.CompleteFlowDefinition
+	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		var restoreErr error
+		restoredFlow, restoreErr = s.store.RestoreFlowVersion(txCtx, flowID, version)
+		return restoreErr
 	})
 	if txErr != nil {
 		if errors.Is(txErr, errFlowNotFound) {
@@ -434,29 +453,6 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 	s.graphBuilder.InvalidateCache(ctx, flowID)
 
 	return restoredFlow, nil
-}
-
-// Graph building methods
-
-// GetGraph retrieves or builds a graph for the given flow ID.
-func (s *flowMgtService) GetGraph(ctx context.Context, flowID string) (
-	core.GraphInterface, *serviceerror.ServiceError) {
-	if flowID == "" {
-		return nil, &ErrorMissingFlowID
-	}
-
-	// Fetch flow definition from store
-	flow, err := s.store.GetFlowByID(ctx, flowID)
-	if err != nil {
-		if errors.Is(err, errFlowNotFound) {
-			return nil, &ErrorFlowNotFound
-		}
-		s.logger.Error("Failed to get flow for graph building", log.String(logKeyFlowID, flowID),
-			log.Error(err))
-		return nil, &serviceerror.InternalServerError
-	}
-
-	return s.graphBuilder.GetGraph(ctx, flow)
 }
 
 // IsValidFlow checks if a flow exists for the given flow ID and matches the expected type.
@@ -564,6 +560,35 @@ func validateFlowDefinition(flowDef *FlowDefinition) *serviceerror.ServiceError 
 		})
 	}
 
+	return nil
+}
+
+func completeFlowFromDefinition(flowID string, flowDef *FlowDefinition) *common.CompleteFlowDefinition {
+	return &common.CompleteFlowDefinition{
+		ID:       flowID,
+		Handle:   flowDef.Handle,
+		Name:     flowDef.Name,
+		FlowType: flowDef.FlowType,
+		Nodes:    flowDef.Nodes,
+	}
+}
+
+func completeFlowFromVersion(flowID string, version *FlowVersion) *common.CompleteFlowDefinition {
+	return &common.CompleteFlowDefinition{
+		ID:       flowID,
+		Handle:   version.Handle,
+		Name:     version.Name,
+		FlowType: common.FlowType(version.FlowType),
+		Nodes:    version.Nodes,
+	}
+}
+
+func (s *flowMgtService) validateExecutableGraph(
+	ctx context.Context, flow *common.CompleteFlowDefinition,
+) *serviceerror.ServiceError {
+	if _, err := s.graphBuilder.GetGraph(ctx, flow); err != nil {
+		return err
+	}
 	return nil
 }
 

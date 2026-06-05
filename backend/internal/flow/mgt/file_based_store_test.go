@@ -49,7 +49,7 @@ func (s *FileBasedStoreTestSuite) createTestFlow(handle string) *FlowDefinition 
 		Handle:   handle,
 		Name:     "Test Flow",
 		FlowType: testFlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "login", Type: "BASIC_AUTHENTICATION"},
 			{ID: "end", Type: "END"},
@@ -252,13 +252,13 @@ func (s *FileBasedStoreTestSuite) TestRestoreFlowVersion_NotSupported() {
 }
 
 func (s *FileBasedStoreTestSuite) TestCreate_ImplementsStorer() {
-	completeFlow := &CompleteFlowDefinition{
+	completeFlow := &common.CompleteFlowDefinition{
 		ID:            "flow-001",
 		Handle:        "test-flow",
 		Name:          "Test Flow",
 		FlowType:      "AUTHENTICATION",
 		ActiveVersion: 1,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "login", Type: "BASIC_AUTHENTICATION"},
 			{ID: "end", Type: "END"},
@@ -379,13 +379,13 @@ func (s *FileBasedStoreTestSuite) TestCreate_WithCompleteFlow() {
 	// Test the Create method which is used by the resource loader
 	fileStore := s.store.(*fileBasedStore)
 
-	completeFlow := &CompleteFlowDefinition{
+	completeFlow := &common.CompleteFlowDefinition{
 		ID:            "flow-100",
 		Handle:        "complete-flow",
 		Name:          "Complete Flow",
 		FlowType:      testFlowTypeAuthentication,
 		ActiveVersion: 5,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},

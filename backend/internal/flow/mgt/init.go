@@ -24,8 +24,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/flowbuilder"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -40,9 +40,7 @@ func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
 	cacheManager cache.CacheManagerInterface,
-	flowFactory core.FlowFactoryInterface,
-	executorRegistry executor.ExecutorRegistryInterface,
-	graphCache core.GraphCacheInterface,
+	graphBuilder flowbuilder.GraphBuilderInterface,
 ) (FlowMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	store, compositeStore, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
@@ -50,18 +48,15 @@ func Initialize(
 	}
 
 	inferenceService := newFlowInferenceService()
-	graphBuilder := newGraphBuilder(flowFactory, executorRegistry, graphCache)
-	service := newFlowMgtService(store, inferenceService, graphBuilder, executorRegistry, compositeStore, transactioner)
+	service := newFlowMgtService(store, inferenceService, graphBuilder, compositeStore, transactioner)
 
 	handler := newFlowMgtHandler(service)
 	registerRoutes(mux, handler)
 
-	// Register MCP tools
 	if mcpServer != nil {
 		registerMCPTools(mcpServer, service)
 	}
 
-	// Create and return exporter
 	exporter := newFlowGraphExporter(service)
 	return service, exporter, nil
 }
@@ -91,8 +86,8 @@ func initializeStore(cacheManager cache.CacheManagerInterface) (
 
 	storeMode := getFlowStoreMode()
 
-	flowByIDCache := cache.GetCache[*CompleteFlowDefinition](cacheManager, "FlowByIDCache")
-	flowByHandleCache := cache.GetCache[*CompleteFlowDefinition](cacheManager, "FlowByHandleCache")
+	flowByIDCache := cache.GetCache[*common.CompleteFlowDefinition](cacheManager, "FlowByIDCache")
+	flowByHandleCache := cache.GetCache[*common.CompleteFlowDefinition](cacheManager, "FlowByHandleCache")
 
 	switch storeMode {
 	case serverconst.StoreModeComposite:

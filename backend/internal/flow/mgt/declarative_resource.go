@@ -88,7 +88,7 @@ func (e *flowGraphExporter) GetResourceByID(ctx context.Context, id string) (
 func (e *flowGraphExporter) ValidateResource(
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
-	flow, ok := resource.(*CompleteFlowDefinition)
+	flow, ok := resource.(*common.CompleteFlowDefinition)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeFlow, id)
 	}
@@ -121,7 +121,7 @@ func loadDeclarativeResources(flowStore flowStoreInterface) error {
 		Parser:        parseToCompleteFlowDefinition,
 		Validator:     validateFlowGraphWrapper,
 		IDExtractor: func(data interface{}) string {
-			flow, ok := data.(*CompleteFlowDefinition)
+			flow, ok := data.(*common.CompleteFlowDefinition)
 			if !ok || flow == nil {
 				return ""
 			}
@@ -139,7 +139,7 @@ func loadDeclarativeResources(flowStore flowStoreInterface) error {
 
 // parseToCompleteFlowDefinition parses YAML bytes to CompleteFlowDefinition.
 func parseToCompleteFlowDefinition(data []byte) (interface{}, error) {
-	var flowDef CompleteFlowDefinition
+	var flowDef common.CompleteFlowDefinition
 	err := yaml.Unmarshal(data, &flowDef)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal flow definition: %w", err)
@@ -149,9 +149,9 @@ func parseToCompleteFlowDefinition(data []byte) (interface{}, error) {
 
 // validateFlowGraphWrapper wraps flow validation to match ResourceConfig.Validator signature.
 func validateFlowGraphWrapper(dto interface{}) error {
-	flowDef, ok := dto.(*CompleteFlowDefinition)
+	flowDef, ok := dto.(*common.CompleteFlowDefinition)
 	if !ok {
-		return fmt.Errorf("invalid type: expected *CompleteFlowDefinition")
+		return fmt.Errorf("invalid type: expected *common.CompleteFlowDefinition")
 	}
 
 	// Convert to FlowDefinition for validation

@@ -223,22 +223,6 @@ var (
 		},
 	}
 
-	// ErrorGraphBuildFailure is the error returned when graph building fails.
-	// TODO: This should be removed and instead should return InternalServerError
-	// for graph build failures. Ideally there should be a graph validation step during
-	// flow creation/update to catch such errors early.
-	ErrorGraphBuildFailure = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
-		Code: "FLM-1016",
-		Error: core.I18nMessage{
-			Key:          "error.flowmgtservice.graph_build_failure",
-			DefaultValue: "Graph build failure",
-		},
-		ErrorDescription: core.I18nMessage{
-			Key:          "error.flowmgtservice.graph_build_failure_description",
-			DefaultValue: "Failed to build executable graph from flow definition",
-		},
-	}
 	// ErrorFlowDeclarativeReadOnly is the error returned when trying to modify a declarative (immutable) flow.
 	ErrorFlowDeclarativeReadOnly = serviceerror.ServiceError{
 		Type: serviceerror.ClientErrorType,

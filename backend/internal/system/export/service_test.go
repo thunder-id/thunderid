@@ -2209,13 +2209,13 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_JSONFormatF
 // TestExportResourcesWithExporter_Flow tests export with flow exporter.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_Flow() {
 	flowID := testFlowID
-	mockFlow := &flowmgt.CompleteFlowDefinition{
+	mockFlow := &flowcommon.CompleteFlowDefinition{
 		ID:            flowID,
 		Handle:        "basic-auth-flow",
 		Name:          "Basic Authentication Flow",
 		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []flowcommon.NodeDefinition{
 			{
 				ID:        "start",
 				Type:      "START",
@@ -2294,13 +2294,13 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_FlowWithCom
 		},
 	}
 
-	mockFlow := &flowmgt.CompleteFlowDefinition{
+	mockFlow := &flowcommon.CompleteFlowDefinition{
 		ID:            flowID,
 		Handle:        "prompt-flow",
 		Name:          "Flow with Complex Meta",
 		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []flowcommon.NodeDefinition{
 			{
 				ID:        "start",
 				Type:      "START",
@@ -2310,13 +2310,13 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_FlowWithCom
 				ID:   "prompt",
 				Type: "PROMPT",
 				Meta: complexMeta,
-				Prompts: []flowmgt.PromptDefinition{
+				Prompts: []flowcommon.PromptDefinition{
 					{
-						Inputs: []flowmgt.InputDefinition{
+						Inputs: []flowcommon.InputDefinition{
 							{Ref: "input_001", Type: "TEXT_INPUT", Identifier: "username", Required: true},
 							{Ref: "input_002", Type: "PASSWORD_INPUT", Identifier: "password", Required: true},
 						},
-						Action: &flowmgt.ActionDefinition{Ref: "action_001", NextNode: "end"},
+						Action: &flowcommon.ActionDefinition{Ref: "action_001", NextNode: "end"},
 					},
 				},
 			},
@@ -2351,25 +2351,25 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_FlowWithCom
 
 // TestExportResourcesWithExporter_MultipleFlows tests exporting multiple flows.
 func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_MultipleFlows() {
-	flow1 := &flowmgt.CompleteFlowDefinition{
+	flow1 := &flowcommon.CompleteFlowDefinition{
 		ID:            testFlow1ID,
 		Handle:        "flow-1",
 		Name:          "Flow One",
 		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []flowcommon.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
 	}
 
-	flow2 := &flowmgt.CompleteFlowDefinition{
+	flow2 := &flowcommon.CompleteFlowDefinition{
 		ID:            testFlow2ID,
 		Handle:        "flow-2",
 		Name:          "Flow Two",
 		FlowType:      flowcommon.FlowType("AUTHORIZATION"),
 		ActiveVersion: 2,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []flowcommon.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "check", Type: "AUTHORIZATION_CHECK"},
 			{ID: "end", Type: "END"},
@@ -2439,25 +2439,25 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFlo
 		},
 	}
 
-	flow1Complete := &flowmgt.CompleteFlowDefinition{
+	flow1Complete := &flowcommon.CompleteFlowDefinition{
 		ID:            testFlow1ID,
 		Handle:        "flow-1",
 		Name:          "Flow One",
 		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []flowcommon.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
 	}
 
-	flow2Complete := &flowmgt.CompleteFlowDefinition{
+	flow2Complete := &flowcommon.CompleteFlowDefinition{
 		ID:            testFlow2ID,
 		Handle:        "flow-2",
 		Name:          "Flow Two",
 		FlowType:      flowcommon.FlowType("AUTHORIZATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []flowcommon.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
@@ -2500,13 +2500,13 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFlo
 // TestExportResources_FlowOnly tests exporting only flows via main ExportResources method.
 func (suite *ExportServiceTestSuite) TestExportResources_FlowOnly() {
 	flowID := testFlowID
-	mockFlow := &flowmgt.CompleteFlowDefinition{
+	mockFlow := &flowcommon.CompleteFlowDefinition{
 		ID:            flowID,
 		Handle:        "test-flow",
 		Name:          "Test Flow",
 		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []flowcommon.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
@@ -2545,13 +2545,13 @@ func (suite *ExportServiceTestSuite) TestExportResources_MixedWithFlows() {
 		Description: "Test Description",
 	}
 
-	mockFlow := &flowmgt.CompleteFlowDefinition{
+	mockFlow := &flowcommon.CompleteFlowDefinition{
 		ID:            flowID,
 		Handle:        "test-flow",
 		Name:          "Test Flow",
 		FlowType:      flowcommon.FlowType("AUTHENTICATION"),
 		ActiveVersion: 1,
-		Nodes: []flowmgt.NodeDefinition{
+		Nodes: []flowcommon.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},

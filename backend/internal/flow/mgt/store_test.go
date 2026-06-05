@@ -685,7 +685,7 @@ func (s *FlowStoreTestSuite) TestCreateFlow_ExecError() {
 		Handle:   "login-handle",
 		Name:     "Login Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes:    []NodeDefinition{{Type: "start", ID: "node1"}},
+		Nodes:    []common.NodeDefinition{{Type: "start", ID: "node1"}},
 	}
 
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
@@ -945,7 +945,7 @@ func (s *FlowStoreTestSuite) TestCreateFlow_InsertFlowVersionError() {
 		Handle:   "login-handle",
 		Name:     "Login Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes:    []NodeDefinition{{Type: "start", ID: "node1"}},
+		Nodes:    []common.NodeDefinition{{Type: "start", ID: "node1"}},
 	}
 
 	nodesJSON := `[{"id":"node1","type":"start"}]`
@@ -968,7 +968,7 @@ func (s *FlowStoreTestSuite) TestUpdateFlow_FlowNotFound() {
 		Handle:   "updated-handle",
 		Name:     "Updated Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes:    []NodeDefinition{},
+		Nodes:    []common.NodeDefinition{},
 	}
 
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
@@ -987,7 +987,7 @@ func (s *FlowStoreTestSuite) TestUpdateFlow_PushToVersionStackError() {
 		Handle:   "updated-handle",
 		Name:     "Updated Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes:    []NodeDefinition{},
+		Nodes:    []common.NodeDefinition{},
 	}
 
 	flowData := []map[string]interface{}{{

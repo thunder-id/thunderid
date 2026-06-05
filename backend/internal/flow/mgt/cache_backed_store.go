@@ -32,16 +32,16 @@ const cacheBackedStoreLoggerComponentName = "CacheBackedFlowStore"
 
 // cacheBackedFlowStore is the implementation of flowStoreInterface that uses caching.
 type cacheBackedFlowStore struct {
-	flowByIDCache     cache.CacheInterface[*CompleteFlowDefinition]
-	flowByHandleCache cache.CacheInterface[*CompleteFlowDefinition]
+	flowByIDCache     cache.CacheInterface[*common.CompleteFlowDefinition]
+	flowByHandleCache cache.CacheInterface[*common.CompleteFlowDefinition]
 	store             flowStoreInterface
 	logger            *log.Logger
 }
 
 // newCacheBackedFlowStore creates a new instance of cacheBackedFlowStore.
 func newCacheBackedFlowStore(
-	flowByIDCache cache.CacheInterface[*CompleteFlowDefinition],
-	flowByHandleCache cache.CacheInterface[*CompleteFlowDefinition],
+	flowByIDCache cache.CacheInterface[*common.CompleteFlowDefinition],
+	flowByHandleCache cache.CacheInterface[*common.CompleteFlowDefinition],
 ) (flowStoreInterface, transaction.Transactioner, error) {
 	store, transactioner, err := newFlowStore()
 	if err != nil {
@@ -65,7 +65,7 @@ func (s *cacheBackedFlowStore) ListFlows(ctx context.Context, limit, offset int,
 
 // CreateFlow creates a new flow definition and caches it.
 func (s *cacheBackedFlowStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
-	*CompleteFlowDefinition, error) {
+	*common.CompleteFlowDefinition, error) {
 	createdFlow, err := s.store.CreateFlow(ctx, flowID, flow)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (s *cacheBackedFlowStore) CreateFlow(ctx context.Context, flowID string, fl
 }
 
 // GetFlowByID retrieves a flow definition by its ID, using cache if available.
-func (s *cacheBackedFlowStore) GetFlowByID(ctx context.Context, flowID string) (*CompleteFlowDefinition, error) {
+func (s *cacheBackedFlowStore) GetFlowByID(ctx context.Context, flowID string) (*common.CompleteFlowDefinition, error) {
 	cacheKey := cache.CacheKey{
 		Key: flowID,
 	}
@@ -96,7 +96,7 @@ func (s *cacheBackedFlowStore) GetFlowByID(ctx context.Context, flowID string) (
 
 // GetFlowByHandle retrieves a flow definition by handle and flow type, using cache if available.
 func (s *cacheBackedFlowStore) GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (
-	*CompleteFlowDefinition, error) {
+	*common.CompleteFlowDefinition, error) {
 	cacheKey := getFlowByHandleCacheKey(handle, flowType)
 	cachedFlow, ok := s.flowByHandleCache.Get(ctx, cacheKey)
 	if ok {
@@ -115,7 +115,7 @@ func (s *cacheBackedFlowStore) GetFlowByHandle(ctx context.Context, handle strin
 
 // UpdateFlow updates an existing flow definition and refreshes the cache.
 func (s *cacheBackedFlowStore) UpdateFlow(ctx context.Context, flowID string, flow *FlowDefinition) (
-	*CompleteFlowDefinition, error) {
+	*common.CompleteFlowDefinition, error) {
 	updatedFlow, err := s.store.UpdateFlow(ctx, flowID, flow)
 	if err != nil {
 		return nil, err
@@ -180,7 +180,7 @@ func (s *cacheBackedFlowStore) GetFlowVersion(ctx context.Context, flowID string
 
 // RestoreFlowVersion restores a flow to a specific version and invalidates the cache.
 func (s *cacheBackedFlowStore) RestoreFlowVersion(ctx context.Context, flowID string, version int) (
-	*CompleteFlowDefinition, error) {
+	*common.CompleteFlowDefinition, error) {
 	restoredFlow, err := s.store.RestoreFlowVersion(ctx, flowID, version)
 	if err != nil {
 		return nil, err
@@ -192,7 +192,7 @@ func (s *cacheBackedFlowStore) RestoreFlowVersion(ctx context.Context, flowID st
 }
 
 // cacheFlow caches the flow definition by ID and by handle.
-func (s *cacheBackedFlowStore) cacheFlow(ctx context.Context, flow *CompleteFlowDefinition) {
+func (s *cacheBackedFlowStore) cacheFlow(ctx context.Context, flow *common.CompleteFlowDefinition) {
 	if flow == nil {
 		return
 	}

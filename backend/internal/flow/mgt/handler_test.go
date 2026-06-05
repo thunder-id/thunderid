@@ -147,11 +147,11 @@ func (s *FlowMgtHandlerTestSuite) TestCreateFlow_Success() {
 		Handle:   "new-flow-handle",
 		Name:     "New Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
-	createdFlow := &CompleteFlowDefinition{
+	createdFlow := &common.CompleteFlowDefinition{
 		ID:       testFlowIDHandler,
 		Handle:   "new-flow-handle",
 		Name:     "New Flow",
@@ -169,7 +169,7 @@ func (s *FlowMgtHandlerTestSuite) TestCreateFlow_Success() {
 	s.handler.createFlow(w, req)
 
 	s.Equal(http.StatusCreated, w.Code)
-	var response CompleteFlowDefinition
+	var response common.CompleteFlowDefinition
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	s.NoError(err)
 	s.Equal(testFlowIDHandler, response.ID)
@@ -208,7 +208,7 @@ func (s *FlowMgtHandlerTestSuite) TestCreateFlow_ServiceError() {
 // Test getFlow
 
 func (s *FlowMgtHandlerTestSuite) TestGetFlow_Success() {
-	expectedFlow := &CompleteFlowDefinition{
+	expectedFlow := &common.CompleteFlowDefinition{
 		ID:       testFlowIDHandler,
 		Handle:   "test-handle",
 		Name:     "Test Flow",
@@ -224,7 +224,7 @@ func (s *FlowMgtHandlerTestSuite) TestGetFlow_Success() {
 	s.handler.getFlow(w, req)
 
 	s.Equal(http.StatusOK, w.Code)
-	var response CompleteFlowDefinition
+	var response common.CompleteFlowDefinition
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	s.NoError(err)
 	s.Equal(testFlowIDHandler, response.ID)
@@ -258,11 +258,11 @@ func (s *FlowMgtHandlerTestSuite) TestUpdateFlow_Success() {
 		Handle:   "test-handle",
 		Name:     "Updated Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
-	updatedFlow := &CompleteFlowDefinition{
+	updatedFlow := &common.CompleteFlowDefinition{
 		ID:       testFlowIDHandler,
 		Handle:   "test-handle",
 		Name:     "Updated Flow",
@@ -281,7 +281,7 @@ func (s *FlowMgtHandlerTestSuite) TestUpdateFlow_Success() {
 	s.handler.updateFlow(w, req)
 
 	s.Equal(http.StatusOK, w.Code)
-	var response CompleteFlowDefinition
+	var response common.CompleteFlowDefinition
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	s.NoError(err)
 	s.Equal(testFlowIDHandler, response.ID)
@@ -496,7 +496,7 @@ func (s *FlowMgtHandlerTestSuite) TestGetFlowVersion_NotFound() {
 
 func (s *FlowMgtHandlerTestSuite) TestRestoreFlowVersion_Success() {
 	request := &RestoreVersionRequest{Version: 1}
-	restoredFlow := &CompleteFlowDefinition{
+	restoredFlow := &common.CompleteFlowDefinition{
 		ID:       testFlowIDHandler,
 		Handle:   "test-handle",
 		Name:     "Restored Flow",
@@ -515,7 +515,7 @@ func (s *FlowMgtHandlerTestSuite) TestRestoreFlowVersion_Success() {
 	s.handler.restoreFlowVersion(w, req)
 
 	s.Equal(http.StatusOK, w.Code)
-	var response CompleteFlowDefinition
+	var response common.CompleteFlowDefinition
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	s.NoError(err)
 	s.Equal(testFlowIDHandler, response.ID)
@@ -627,7 +627,7 @@ func (s *FlowMgtHandlerTestSuite) TestSanitizeFlowDefinitionRequest() {
 		Handle:   "test-handle",
 		Name:     "  Test Flow  ",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}

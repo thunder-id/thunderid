@@ -21,6 +21,7 @@ package flowmgt
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,12 +41,27 @@ type DeclarativeResourceTestSuite struct {
 	suite.Suite
 }
 
+// extractMarshaledNodeMeta reads the Meta field from MarshalYAML output structs.
+func extractMarshaledNodeMeta(result interface{}) (interface{}, bool) {
+	value := reflect.ValueOf(result)
+	if value.Kind() != reflect.Struct {
+		return nil, false
+	}
+
+	metaField := value.FieldByName("Meta")
+	if !metaField.IsValid() {
+		return nil, false
+	}
+
+	return metaField.Interface(), true
+}
+
 func (s *DeclarativeResourceTestSuite) SetupTest() {
 	// Reset logger
 	_ = log.GetLogger()
 }
 
-// TestParseToCompleteFlowDefinition tests parsing YAML to CompleteFlowDefinition
+// TestParseToCompleteFlowDefinition tests parsing YAML to common.CompleteFlowDefinition
 func (s *DeclarativeResourceTestSuite) TestParseToCompleteFlowDefinition() {
 	yamlData := []byte(`
 id: "flow-001"
@@ -65,8 +81,8 @@ nodes:
 	result, err := parseToCompleteFlowDefinition(yamlData)
 	require.NoError(s.T(), err)
 
-	flow, ok := result.(*CompleteFlowDefinition)
-	require.True(s.T(), ok, "result should be *CompleteFlowDefinition")
+	flow, ok := result.(*common.CompleteFlowDefinition)
+	require.True(s.T(), ok, "result should be *common.CompleteFlowDefinition")
 
 	assert.Equal(s.T(), "flow-001", flow.ID)
 	assert.Equal(s.T(), "basic-auth", flow.Handle)
@@ -85,12 +101,12 @@ func (s *DeclarativeResourceTestSuite) TestParseToCompleteFlowDefinition_Invalid
 
 // TestValidateFlowGraphWrapper tests flow validation wrapper
 func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_ValidFlow() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-001",
 		Handle:   "basic-auth",
 		Name:     "Basic Auth",
 		FlowType: "AUTHENTICATION",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "login", Type: "BASIC_AUTHENTICATION"},
 			{ID: "mfa", Type: "TOTP_AUTHENTICATION"},
@@ -104,12 +120,12 @@ func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_ValidFlow() 
 
 // TestValidateFlowGraphWrapper_MissingHandle tests validation with missing handle
 func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_MissingHandle() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-001",
 		Handle:   "",
 		Name:     "Basic Auth",
 		FlowType: "AUTHENTICATION",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
@@ -129,12 +145,12 @@ func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_InvalidType(
 
 // TestValidateFlowGraphWrapper_InsufficientNodes tests validation with insufficient nodes
 func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_InsufficientNodes() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-001",
 		Handle:   "invalid-flow",
 		Name:     "Invalid Flow",
 		FlowType: "AUTHENTICATION",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "end", Type: "END"},
 		},
@@ -236,7 +252,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetAllResourceIDs_E
 func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_GetResourceByID() {
 	mockService := NewFlowMgtServiceInterfaceMock(s.T())
 
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:   "flow-001",
 		Name: "Auth Flow",
 	}
@@ -275,7 +291,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_ValidateResource() 
 	mockService := NewFlowMgtServiceInterfaceMock(s.T())
 	exporter := newFlowGraphExporter(mockService)
 
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:   "flow-001",
 		Name: "Valid Flow Name",
 	}
@@ -306,7 +322,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_ValidateResource_Em
 	mockService := NewFlowMgtServiceInterfaceMock(s.T())
 	exporter := newFlowGraphExporter(mockService)
 
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:   "flow-001",
 		Name: "",
 	}
@@ -331,7 +347,7 @@ func (s *DeclarativeResourceTestSuite) TestFileBasedStore_CreateFlow() {
 		Handle:   "test-flow",
 		Name:     "Test Flow",
 		FlowType: "AUTHENTICATION",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "login", Type: "BASIC_AUTHENTICATION"},
 			{ID: "end", Type: "END"},
@@ -355,7 +371,7 @@ func (s *DeclarativeResourceTestSuite) TestFileBasedStore_GetFlowByID() {
 		Handle:   "test-flow",
 		Name:     "Test Flow",
 		FlowType: "AUTHENTICATION",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "login", Type: "BASIC_AUTHENTICATION"},
 			{ID: "end", Type: "END"},
@@ -390,7 +406,7 @@ func (s *DeclarativeResourceTestSuite) TestFileBasedStore_GetFlowByHandle() {
 		Handle:   "test-flow",
 		Name:     "Test Flow",
 		FlowType: "AUTHENTICATION",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "login", Type: "BASIC_AUTHENTICATION"},
 			{ID: "end", Type: "END"},
@@ -417,7 +433,7 @@ func (s *DeclarativeResourceTestSuite) TestFileBasedStore_ListFlows() {
 			Handle:   fmt.Sprintf("flow-%d", i),
 			Name:     fmt.Sprintf("Flow %d", i),
 			FlowType: "AUTHENTICATION",
-			Nodes: []NodeDefinition{
+			Nodes: []common.NodeDefinition{
 				{ID: "start", Type: "START"},
 				{ID: "login", Type: "BASIC_AUTHENTICATION"},
 				{ID: "end", Type: "END"},
@@ -443,7 +459,7 @@ func (s *DeclarativeResourceTestSuite) TestFileBasedStore_UnsupportedOperations(
 		Handle:   "test-flow",
 		Name:     "Test Flow",
 		FlowType: "AUTHENTICATION",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 			{ID: "login", Type: "BASIC_AUTHENTICATION"},
 			{ID: "end", Type: "END"},
@@ -500,7 +516,7 @@ updatedAt: "2025-01-02T00:00:00Z"
 	result, err := parseToCompleteFlowDefinition(yamlData)
 	require.NoError(s.T(), err)
 
-	flow, ok := result.(*CompleteFlowDefinition)
+	flow, ok := result.(*common.CompleteFlowDefinition)
 	require.True(s.T(), ok)
 
 	assert.Equal(s.T(), "mfa-flow", flow.ID)
@@ -516,7 +532,7 @@ updatedAt: "2025-01-02T00:00:00Z"
 func (s *DeclarativeResourceTestSuite) TestFlowGraphExporterIntegration() {
 	mockService := NewFlowMgtServiceInterfaceMock(s.T())
 
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:            "flow-001",
 		Handle:        "auth-flow",
 		Name:          "Authentication Flow",
@@ -655,17 +671,17 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithComplex
 		},
 	}
 
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt_credentials",
 		Type: "PROMPT",
 		Meta: complexMeta,
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{Ref: "input_001", Type: "TEXT_INPUT", Identifier: "username", Required: true},
 					{Ref: "input_002", Type: "PASSWORD_INPUT", Identifier: "password", Required: true},
 				},
-				Action: &ActionDefinition{Ref: "action_001", NextNode: "basic_auth"},
+				Action: &common.ActionDefinition{Ref: "action_001", NextNode: "basic_auth"},
 			},
 		},
 	}
@@ -675,11 +691,11 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithComplex
 	require.NoError(s.T(), err)
 
 	// Verify the result
-	alias, ok := result.(nodeDefinitionAlias)
-	require.True(s.T(), ok, "result should be nodeDefinitionAlias")
+	metaAny, ok := extractMarshaledNodeMeta(result)
+	require.True(s.T(), ok, "result should include Meta field")
 
 	// Verify Meta is now a JSON string
-	metaStr, ok := alias.Meta.(string)
+	metaStr, ok := metaAny.(string)
 	require.True(s.T(), ok, "Meta should be converted to string")
 	assert.Contains(s.T(), metaStr, "components")
 	assert.Contains(s.T(), metaStr, "text_001")
@@ -688,7 +704,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithComplex
 
 // TestNodeDefinitionMarshalYAML_WithNilMeta tests YAML marshaling with nil meta
 func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithNilMeta() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "start",
 		Type: "START",
 		Meta: nil,
@@ -697,9 +713,9 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithNilMeta
 	result, err := nodeDef.MarshalYAML()
 	require.NoError(s.T(), err)
 
-	alias, ok := result.(nodeDefinitionAlias)
+	metaAny, ok := extractMarshaledNodeMeta(result)
 	require.True(s.T(), ok)
-	assert.Nil(s.T(), alias.Meta)
+	assert.Nil(s.T(), metaAny)
 }
 
 // TestNodeDefinitionUnmarshalYAML_WithComplexMeta tests YAML unmarshaling with complex meta
@@ -724,7 +740,7 @@ prompts:
 `, metaJSON))
 
 	// Parse the actual YAML
-	var nodeDef NodeDefinition
+	var nodeDef common.NodeDefinition
 	err := yaml.Unmarshal(yamlData, &nodeDef)
 	require.NoError(s.T(), err)
 
@@ -757,13 +773,13 @@ prompts:
 // TestCompleteFlowDefinition_MarshalUnmarshal_RoundTrip tests full round trip
 func (s *DeclarativeResourceTestSuite) TestCompleteFlowDefinition_MarshalUnmarshal_RoundTrip() {
 	// Create a complete flow definition with complex meta
-	originalFlow := &CompleteFlowDefinition{
+	originalFlow := &common.CompleteFlowDefinition{
 		ID:            "019b4495-793d-7172-b3e5-ebc3d61afe36",
 		Handle:        "console-app-flow",
 		Name:          "Console App Authentication Flow",
 		FlowType:      "AUTHENTICATION",
 		ActiveVersion: 1,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:        "start",
 				Type:      "START",
@@ -804,13 +820,13 @@ func (s *DeclarativeResourceTestSuite) TestCompleteFlowDefinition_MarshalUnmarsh
 						},
 					},
 				},
-				Prompts: []PromptDefinition{
+				Prompts: []common.PromptDefinition{
 					{
-						Inputs: []InputDefinition{
+						Inputs: []common.InputDefinition{
 							{Ref: "input_001", Type: "TEXT_INPUT", Identifier: "username", Required: true},
 							{Ref: "input_002", Type: "PASSWORD_INPUT", Identifier: "password", Required: true},
 						},
-						Action: &ActionDefinition{Ref: "action_001", NextNode: "basic_auth"},
+						Action: &common.ActionDefinition{Ref: "action_001", NextNode: "basic_auth"},
 					},
 				},
 			},
@@ -830,11 +846,11 @@ func (s *DeclarativeResourceTestSuite) TestCompleteFlowDefinition_MarshalUnmarsh
 	// The meta field should be present in the YAML
 	yamlStr := string(yamlBytes)
 	assert.Contains(s.T(), yamlStr, `meta:`)
-	// When using the custom MarshalYAML on NodeDefinition, meta will be present
+	// When using the custom MarshalYAML on common.NodeDefinition, meta will be present
 	// The structure may vary based on how yaml.v3 handles it
 
 	// Unmarshal back
-	var unmarshaledFlow CompleteFlowDefinition
+	var unmarshaledFlow common.CompleteFlowDefinition
 	err = yaml.Unmarshal(yamlBytes, &unmarshaledFlow)
 	require.NoError(s.T(), err)
 
@@ -864,7 +880,7 @@ type: PROMPT
 meta: 'this is not valid json {}'
 `)
 
-	var nodeDef NodeDefinition
+	var nodeDef common.NodeDefinition
 	err := yaml.Unmarshal(yamlData, &nodeDef)
 	require.NoError(s.T(), err)
 
@@ -878,13 +894,13 @@ meta: 'this is not valid json {}'
 func (s *DeclarativeResourceTestSuite) TestFlowExport_WithComplexMeta() {
 	mockService := &FlowMgtServiceInterfaceMock{}
 
-	complexFlow := &CompleteFlowDefinition{
+	complexFlow := &common.CompleteFlowDefinition{
 		ID:            "test-flow-001",
 		Handle:        "test-flow",
 		Name:          "Test Flow with Complex Meta",
 		FlowType:      "AUTHENTICATION",
 		ActiveVersion: 1,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:   "prompt",
 				Type: "PROMPT",
@@ -922,7 +938,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowExport_WithComplexMeta() {
 	require.Nil(s.T(), err)
 	assert.Equal(s.T(), "Test Flow with Complex Meta", name)
 
-	flow, ok := resource.(*CompleteFlowDefinition)
+	flow, ok := resource.(*common.CompleteFlowDefinition)
 	require.True(s.T(), ok)
 
 	// Verify meta is preserved
@@ -963,7 +979,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithPrimiti
 
 	for _, tc := range testCases {
 		s.T().Run(tc.name, func(t *testing.T) {
-			nodeDef := NodeDefinition{
+			nodeDef := common.NodeDefinition{
 				ID:   "test_node",
 				Type: "TEST",
 				Meta: tc.metaValue,
@@ -974,7 +990,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithPrimiti
 			assert.Contains(t, string(yamlBytes), "meta:")
 
 			// Unmarshal and verify
-			var unmarshaled NodeDefinition
+			var unmarshaled common.NodeDefinition
 			err = yaml.Unmarshal(yamlBytes, &unmarshaled)
 			require.NoError(t, err)
 
@@ -986,7 +1002,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithPrimiti
 
 // TestNodeDefinitionMarshalYAML_WithArrayMeta tests marshaling with array meta
 func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithArrayMeta() {
-	nodeDef := NodeDefinition{
+	nodeDef := common.NodeDefinition{
 		ID:   "test_node",
 		Type: "TEST",
 		Meta: []interface{}{
@@ -1004,7 +1020,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithArrayMe
 	assert.Contains(s.T(), string(yamlBytes), "meta:")
 
 	// Unmarshal and verify
-	var unmarshaled NodeDefinition
+	var unmarshaled common.NodeDefinition
 	err = yaml.Unmarshal(yamlBytes, &unmarshaled)
 	require.NoError(s.T(), err)
 	assert.NotNil(s.T(), unmarshaled.Meta)
@@ -1023,7 +1039,7 @@ type: TEST
 meta: ''
 `)
 
-	var nodeDef NodeDefinition
+	var nodeDef common.NodeDefinition
 	err := yaml.Unmarshal(yamlData, &nodeDef)
 	require.NoError(s.T(), err)
 
@@ -1039,7 +1055,7 @@ type: TEST
 meta: '{"valid": "json", "incomplete":'
 `)
 
-	var nodeDef NodeDefinition
+	var nodeDef common.NodeDefinition
 	err := yaml.Unmarshal(yamlData, &nodeDef)
 	require.NoError(s.T(), err)
 
@@ -1057,7 +1073,7 @@ type: TEST
 meta: '["item1", "item2", "item3"]'
 `)
 
-	var nodeDef NodeDefinition
+	var nodeDef common.NodeDefinition
 	err := yaml.Unmarshal(yamlData, &nodeDef)
 	require.NoError(s.T(), err)
 	assert.NotNil(s.T(), nodeDef.Meta)
@@ -1079,7 +1095,7 @@ type: TEST
 meta: '{"level1":{"level2":{"level3":{"value":"deep"}}}}'
 `)
 
-	var nodeDef NodeDefinition
+	var nodeDef common.NodeDefinition
 	err := yaml.Unmarshal(yamlData, &nodeDef)
 	require.NoError(s.T(), err)
 	assert.NotNil(s.T(), nodeDef.Meta)
@@ -1102,12 +1118,12 @@ meta: '{"level1":{"level2":{"level3":{"value":"deep"}}}}'
 
 // TestCompleteFlowDefinition_WithMultipleNodesWithMeta tests multiple nodes with different meta types
 func (s *DeclarativeResourceTestSuite) TestCompleteFlowDefinition_WithMultipleNodesWithMeta() {
-	flow := CompleteFlowDefinition{
+	flow := common.CompleteFlowDefinition{
 		ID:       "test-flow",
 		Handle:   "multi-meta-flow",
 		Name:     "Flow with Multiple Meta Types",
 		FlowType: "AUTHENTICATION",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:   "node1",
 				Type: "TYPE1",
@@ -1136,7 +1152,7 @@ func (s *DeclarativeResourceTestSuite) TestCompleteFlowDefinition_WithMultipleNo
 	require.NoError(s.T(), err)
 
 	// Unmarshal
-	var unmarshaled CompleteFlowDefinition
+	var unmarshaled common.CompleteFlowDefinition
 	err = yaml.Unmarshal(yamlBytes, &unmarshaled)
 	require.NoError(s.T(), err)
 
@@ -1164,7 +1180,7 @@ func (s *DeclarativeResourceTestSuite) TestCompleteFlowDefinition_WithMultipleNo
 
 // TestNodeDefinitionMarshalYAML_WithSpecialCharacters tests meta with special characters
 func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithSpecialCharacters() {
-	nodeDef := NodeDefinition{
+	nodeDef := common.NodeDefinition{
 		ID:   "test_node",
 		Type: "TEST",
 		Meta: map[string]interface{}{
@@ -1180,7 +1196,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithSpecial
 	require.NoError(s.T(), err)
 
 	// Unmarshal
-	var unmarshaled NodeDefinition
+	var unmarshaled common.NodeDefinition
 	err = yaml.Unmarshal(yamlBytes, &unmarshaled)
 	require.NoError(s.T(), err)
 
@@ -1203,7 +1219,7 @@ inputs:
   - malformed
 `)
 
-	var nodeDef NodeDefinition
+	var nodeDef common.NodeDefinition
 	err := yaml.Unmarshal(malformedYAML, &nodeDef)
 	// Should return an error because the YAML is malformed
 	assert.Error(s.T(), err)
@@ -1216,7 +1232,7 @@ meta: '{"key": "value"}'
 # Missing required fields like id and type
 `)
 
-	var nodeDef NodeDefinition
+	var nodeDef common.NodeDefinition
 	err := yaml.Unmarshal(invalidYAML, &nodeDef)
 	// Should succeed in unmarshaling but fields will be empty
 	require.NoError(s.T(), err)
@@ -1228,12 +1244,12 @@ meta: '{"key": "value"}'
 func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_RoundTrip() {
 	testCases := []struct {
 		name     string
-		nodeDef  NodeDefinition
-		validate func(*testing.T, NodeDefinition)
+		nodeDef  common.NodeDefinition
+		validate func(*testing.T, common.NodeDefinition)
 	}{
 		{
 			name: "complex nested structure",
-			nodeDef: NodeDefinition{
+			nodeDef: common.NodeDefinition{
 				ID:   "node1",
 				Type: "PROMPT",
 				Meta: map[string]interface{}{
@@ -1247,7 +1263,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_RoundTrip()
 					},
 				},
 			},
-			validate: func(t *testing.T, nd NodeDefinition) {
+			validate: func(t *testing.T, nd common.NodeDefinition) {
 				metaMap := nd.Meta.(map[string]interface{})
 				level1 := metaMap["level1"].(map[string]interface{})
 				level2 := level1["level2"].([]interface{})
@@ -1257,12 +1273,12 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_RoundTrip()
 		},
 		{
 			name: "array of primitives",
-			nodeDef: NodeDefinition{
+			nodeDef: common.NodeDefinition{
 				ID:   "node2",
 				Type: "TEST",
 				Meta: []interface{}{"string", float64(123), true, nil},
 			},
-			validate: func(t *testing.T, nd NodeDefinition) {
+			validate: func(t *testing.T, nd common.NodeDefinition) {
 				arr := nd.Meta.([]interface{})
 				assert.Len(t, arr, 4)
 				assert.Equal(t, "string", arr[0])
@@ -1282,23 +1298,23 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_RoundTrip()
 		},
 		{
 			name: "with all node fields",
-			nodeDef: NodeDefinition{
+			nodeDef: common.NodeDefinition{
 				ID:   "node3",
 				Type: "EXECUTOR",
 				Meta: map[string]interface{}{"config": "value"},
-				Layout: &NodeLayout{
-					Position: &NodePosition{X: 100, Y: 200},
-					Size:     &NodeSize{Width: 300, Height: 400},
+				Layout: &common.NodeLayout{
+					Position: &common.NodePosition{X: 100, Y: 200},
+					Size:     &common.NodeSize{Width: 300, Height: 400},
 				},
-				Executor: &ExecutorDefinition{
+				Executor: &common.ExecutorDefinition{
 					Name: "test-executor",
-					Inputs: []InputDefinition{
+					Inputs: []common.InputDefinition{
 						{Type: "TEXT", Identifier: "input1", Required: true},
 					},
 				},
-				Prompts: []PromptDefinition{
+				Prompts: []common.PromptDefinition{
 					{
-						Action: &ActionDefinition{Ref: "action1", NextNode: "next"},
+						Action: &common.ActionDefinition{Ref: "action1", NextNode: "next"},
 					},
 				},
 				Properties: map[string]interface{}{
@@ -1308,7 +1324,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_RoundTrip()
 				OnSuccess: "success-node",
 				OnFailure: "failure-node",
 			},
-			validate: func(t *testing.T, nd NodeDefinition) {
+			validate: func(t *testing.T, nd common.NodeDefinition) {
 				assert.Equal(t, "node3", nd.ID)
 				assert.Equal(t, "EXECUTOR", nd.Type)
 				assert.NotNil(t, nd.Layout)
@@ -1329,7 +1345,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_RoundTrip()
 			require.NoError(t, err)
 
 			// Unmarshal
-			var unmarshaled NodeDefinition
+			var unmarshaled common.NodeDefinition
 			err = yaml.Unmarshal(yamlBytes, &unmarshaled)
 			require.NoError(t, err)
 
@@ -1381,7 +1397,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithJSONMar
 
 	for _, tc := range testCases {
 		s.T().Run(tc.name, func(t *testing.T) {
-			nodeDef := NodeDefinition{
+			nodeDef := common.NodeDefinition{
 				ID:   "test",
 				Type: "TEST",
 				Meta: tc.meta,
@@ -1392,8 +1408,9 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithJSONMar
 				assert.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				alias := result.(nodeDefinitionAlias)
-				assert.IsType(t, "", alias.Meta)
+				metaAny, ok := extractMarshaledNodeMeta(result)
+				require.True(t, ok)
+				assert.IsType(t, "", metaAny)
 			}
 		})
 	}
@@ -1404,7 +1421,7 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionUnmarshalYAML_WithMixed
 	testCases := []struct {
 		name     string
 		yaml     string
-		validate func(*testing.T, NodeDefinition)
+		validate func(*testing.T, common.NodeDefinition)
 	}{
 		{
 			name: "JSON object string",
@@ -1413,7 +1430,7 @@ id: test1
 type: TEST
 meta: '{"key":"value","num":42}'
 `,
-			validate: func(t *testing.T, nd NodeDefinition) {
+			validate: func(t *testing.T, nd common.NodeDefinition) {
 				metaMap, ok := nd.Meta.(map[string]interface{})
 				require.True(t, ok)
 				assert.Equal(t, "value", metaMap["key"])
@@ -1427,7 +1444,7 @@ id: test2
 type: TEST
 meta: '[1,2,3]'
 `,
-			validate: func(t *testing.T, nd NodeDefinition) {
+			validate: func(t *testing.T, nd common.NodeDefinition) {
 				metaArr, ok := nd.Meta.([]interface{})
 				require.True(t, ok)
 				assert.Len(t, metaArr, 3)
@@ -1440,7 +1457,7 @@ id: test3
 type: TEST
 meta: 'just a plain string'
 `,
-			validate: func(t *testing.T, nd NodeDefinition) {
+			validate: func(t *testing.T, nd common.NodeDefinition) {
 				metaStr, ok := nd.Meta.(string)
 				require.True(t, ok)
 				assert.Equal(t, "just a plain string", metaStr)
@@ -1453,7 +1470,7 @@ id: test4
 type: TEST
 meta: 42
 `,
-			validate: func(t *testing.T, nd NodeDefinition) {
+			validate: func(t *testing.T, nd common.NodeDefinition) {
 				// When meta is a number in YAML, it's unmarshaled as int
 				assert.Equal(t, 42, nd.Meta)
 			},
@@ -1462,7 +1479,7 @@ meta: 42
 
 	for _, tc := range testCases {
 		s.T().Run(tc.name, func(t *testing.T) {
-			var nodeDef NodeDefinition
+			var nodeDef common.NodeDefinition
 			err := yaml.Unmarshal([]byte(tc.yaml), &nodeDef)
 			require.NoError(t, err)
 			tc.validate(t, nodeDef)
@@ -1482,7 +1499,7 @@ nodes:
     meta: this is invalid: {no quotes
 `)
 
-	var flow CompleteFlowDefinition
+	var flow common.CompleteFlowDefinition
 	err := yaml.Unmarshal(invalidYAML, &flow)
 	// Should return an error due to malformed YAML
 	assert.Error(s.T(), err)
@@ -1496,7 +1513,7 @@ type: TEST
 meta: '{"key": "value with spaces", "multiline": "line1\nline2"}'
 `)
 
-	var nodeDef NodeDefinition
+	var nodeDef common.NodeDefinition
 	err := yaml.Unmarshal(yamlData, &nodeDef)
 	require.NoError(s.T(), err)
 

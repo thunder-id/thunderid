@@ -125,14 +125,14 @@ func (s *flowInferenceService) generateRegistrationFlowName(authFlowName string)
 }
 
 // cloneNodes creates a deep copy of the nodes array
-func (s *flowInferenceService) cloneNodes(nodes []NodeDefinition) ([]NodeDefinition, error) {
+func (s *flowInferenceService) cloneNodes(nodes []common.NodeDefinition) ([]common.NodeDefinition, error) {
 	// Use JSON marshaling for deep copy
 	data, err := json.Marshal(nodes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal nodes: %w", err)
 	}
 
-	var clonedNodes []NodeDefinition
+	var clonedNodes []common.NodeDefinition
 	if err := json.Unmarshal(data, &clonedNodes); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
 	}
@@ -142,7 +142,7 @@ func (s *flowInferenceService) cloneNodes(nodes []NodeDefinition) ([]NodeDefinit
 
 // cleanAuthenticationProperties removes authentication-specific properties from nodes
 // and sets appropriate registration-specific defaults
-func (s *flowInferenceService) cleanAuthenticationProperties(nodes []NodeDefinition) {
+func (s *flowInferenceService) cleanAuthenticationProperties(nodes []common.NodeDefinition) {
 	for i := range nodes {
 		node := &nodes[i]
 
@@ -173,7 +173,7 @@ func replaceAuthLabel(label string) (string, bool) {
 
 // cleanPromptNodeMeta removes auth-specific UI components from a PROMPT node's meta
 // and updates labels to be appropriate for a registration flow.
-func (s *flowInferenceService) cleanPromptNodeMeta(node *NodeDefinition) {
+func (s *flowInferenceService) cleanPromptNodeMeta(node *common.NodeDefinition) {
 	meta, ok := node.Meta.(map[string]interface{})
 	if !ok {
 		return
@@ -238,7 +238,7 @@ func (s *flowInferenceService) cleanPromptNodeMeta(node *NodeDefinition) {
 }
 
 // findStartNode finds the START node in the flow
-func (s *flowInferenceService) findStartNode(nodes []NodeDefinition) (string, error) {
+func (s *flowInferenceService) findStartNode(nodes []common.NodeDefinition) (string, error) {
 	for _, node := range nodes {
 		if node.Type == string(common.NodeTypeStart) {
 			return node.ID, nil
@@ -248,7 +248,7 @@ func (s *flowInferenceService) findStartNode(nodes []NodeDefinition) (string, er
 }
 
 // findEndNode finds the END node in the flow
-func (s *flowInferenceService) findEndNode(nodes []NodeDefinition) (string, error) {
+func (s *flowInferenceService) findEndNode(nodes []common.NodeDefinition) (string, error) {
 	for _, node := range nodes {
 		if node.Type == string(common.NodeTypeEnd) {
 			return node.ID, nil
@@ -258,7 +258,7 @@ func (s *flowInferenceService) findEndNode(nodes []NodeDefinition) (string, erro
 }
 
 // hasLayoutInformation checks if any node in the flow has layout information
-func (s *flowInferenceService) hasLayoutInformation(nodes []NodeDefinition) bool {
+func (s *flowInferenceService) hasLayoutInformation(nodes []common.NodeDefinition) bool {
 	for _, node := range nodes {
 		if node.Layout != nil && (node.Layout.Size != nil || node.Layout.Position != nil) {
 			return true
@@ -268,13 +268,13 @@ func (s *flowInferenceService) hasLayoutInformation(nodes []NodeDefinition) bool
 }
 
 // addDefaultLayout adds default layout information to a node
-func (s *flowInferenceService) addDefaultLayout(node *NodeDefinition) {
-	node.Layout = &NodeLayout{
-		Size: &NodeSize{
+func (s *flowInferenceService) addDefaultLayout(node *common.NodeDefinition) {
+	node.Layout = &common.NodeLayout{
+		Size: &common.NodeSize{
 			Width:  defaultNodeWidth,
 			Height: defaultNodeHeight,
 		},
-		Position: &NodePosition{
+		Position: &common.NodePosition{
 			X: defaultNodeXPos,
 			Y: defaultNodeYPos,
 		},
@@ -282,7 +282,7 @@ func (s *flowInferenceService) addDefaultLayout(node *NodeDefinition) {
 }
 
 // findAuthAssertNode finds the AuthAssertExecutor node in the flow and returns its ID
-func (s *flowInferenceService) findAuthAssertNode(nodes []NodeDefinition) (string, bool) {
+func (s *flowInferenceService) findAuthAssertNode(nodes []common.NodeDefinition) (string, bool) {
 	for _, node := range nodes {
 		if node.Executor != nil && node.Executor.Name == executor.ExecutorNameAuthAssert {
 			return node.ID, true
@@ -292,7 +292,7 @@ func (s *flowInferenceService) findAuthAssertNode(nodes []NodeDefinition) (strin
 }
 
 // hasProvisioningNode checks if a provisioning node already exists in the flow
-func (s *flowInferenceService) hasProvisioningNode(nodes []NodeDefinition) bool {
+func (s *flowInferenceService) hasProvisioningNode(nodes []common.NodeDefinition) bool {
 	for _, node := range nodes {
 		if node.Executor != nil && node.Executor.Name == executor.ExecutorNameProvisioning {
 			return true
@@ -303,7 +303,7 @@ func (s *flowInferenceService) hasProvisioningNode(nodes []NodeDefinition) bool 
 
 // insertProvisioningNode inserts the provisioning node before AuthAssertExecutor if it exists,
 // otherwise before the END node
-func (s *flowInferenceService) insertProvisioningNode(nodes *[]NodeDefinition, includeLayout bool) error {
+func (s *flowInferenceService) insertProvisioningNode(nodes *[]common.NodeDefinition, includeLayout bool) error {
 	authAssertNodeID, hasAuthAssert := s.findAuthAssertNode(*nodes)
 
 	var targetNodeID string
@@ -325,11 +325,11 @@ func (s *flowInferenceService) insertProvisioningNode(nodes *[]NodeDefinition, i
 }
 
 // createProvisioningNode creates a TASK_EXECUTION node with ProvisioningExecutor
-func (s *flowInferenceService) createProvisioningNode(nextNodeID string, includeLayout bool) NodeDefinition {
-	node := NodeDefinition{
+func (s *flowInferenceService) createProvisioningNode(nextNodeID string, includeLayout bool) common.NodeDefinition {
+	node := common.NodeDefinition{
 		ID:   provisioningNodeID,
 		Type: string(common.NodeTypeTaskExecution),
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: executor.ExecutorNameProvisioning,
 		},
 		OnSuccess: nextNodeID,
@@ -343,7 +343,7 @@ func (s *flowInferenceService) createProvisioningNode(nextNodeID string, include
 }
 
 // hasUserTypeResolverNode checks if a user type resolver node already exists in the flow
-func (s *flowInferenceService) hasUserTypeResolverNode(nodes []NodeDefinition) bool {
+func (s *flowInferenceService) hasUserTypeResolverNode(nodes []common.NodeDefinition) bool {
 	for _, node := range nodes {
 		if node.Executor != nil && node.Executor.Name == executor.ExecutorNameUserTypeResolver {
 			return true
@@ -353,11 +353,14 @@ func (s *flowInferenceService) hasUserTypeResolverNode(nodes []NodeDefinition) b
 }
 
 // createUserTypeResolverNode creates a TASK_EXECUTION node with UserTypeResolverExecutor
-func (s *flowInferenceService) createUserTypeResolverNode(promptNodeID string, includeLayout bool) NodeDefinition {
-	node := NodeDefinition{
+func (s *flowInferenceService) createUserTypeResolverNode(
+	promptNodeID string,
+	includeLayout bool,
+) common.NodeDefinition {
+	node := common.NodeDefinition{
 		ID:   userTypeResolverNodeID,
 		Type: string(common.NodeTypeTaskExecution),
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: executor.ExecutorNameUserTypeResolver,
 		},
 		OnIncomplete: promptNodeID,
@@ -371,8 +374,8 @@ func (s *flowInferenceService) createUserTypeResolverNode(promptNodeID string, i
 }
 
 // createUserTypePromptNode creates a PROMPT node for collecting user type selection
-func (s *flowInferenceService) createUserTypePromptNode(nextNodeID string, includeLayout bool) NodeDefinition {
-	node := NodeDefinition{
+func (s *flowInferenceService) createUserTypePromptNode(nextNodeID string, includeLayout bool) common.NodeDefinition {
+	node := common.NodeDefinition{
 		ID:   userTypePromptNodeID,
 		Type: string(common.NodeTypePrompt),
 		Meta: map[string]interface{}{
@@ -407,9 +410,9 @@ func (s *flowInferenceService) createUserTypePromptNode(nextNodeID string, inclu
 				},
 			},
 		},
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{
 						Ref:        "usertype_input",
 						Identifier: "userType",
@@ -417,7 +420,7 @@ func (s *flowInferenceService) createUserTypePromptNode(nextNodeID string, inclu
 						Required:   true,
 					},
 				},
-				Action: &ActionDefinition{
+				Action: &common.ActionDefinition{
 					Ref:      "action_usertype",
 					NextNode: nextNodeID,
 				},
@@ -434,7 +437,7 @@ func (s *flowInferenceService) createUserTypePromptNode(nextNodeID string, inclu
 
 // createInputPromptNode creates a generic PROMPT node for collecting a specific input
 func (s *flowInferenceService) createInputPromptNode(nodeID string, input common.Input,
-	nextNodeID string, includeLayout bool) NodeDefinition {
+	nextNodeID string, includeLayout bool) common.NodeDefinition {
 	// Determine the component type based on input type
 	componentType := input.Type
 	if componentType == "" {
@@ -450,7 +453,7 @@ func (s *flowInferenceService) createInputPromptNode(nodeID string, input common
 	// Create placeholder by converting label to lowercase
 	placeholder := "Enter your " + strings.ToLower(label)
 
-	node := NodeDefinition{
+	node := common.NodeDefinition{
 		ID:   nodeID,
 		Type: string(common.NodeTypePrompt),
 		Meta: map[string]interface{}{
@@ -484,9 +487,9 @@ func (s *flowInferenceService) createInputPromptNode(nodeID string, input common
 				},
 			},
 		},
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{
 						Ref:        input.Ref,
 						Identifier: input.Identifier,
@@ -494,7 +497,7 @@ func (s *flowInferenceService) createInputPromptNode(nodeID string, input common
 						Required:   input.Required,
 					},
 				},
-				Action: &ActionDefinition{
+				Action: &common.ActionDefinition{
 					Ref:      "action_" + input.Identifier,
 					NextNode: nextNodeID,
 				},
@@ -512,7 +515,7 @@ func (s *flowInferenceService) createInputPromptNode(nodeID string, input common
 // insertPhoneInputPromptIfNeeded scans all nodes to determine if an SMS OTP send node exists
 // and whether a PHONE_INPUT is already collected by any prompt node in the flow. If SMS OTP send
 // is present but no PHONE_INPUT prompt exists, it inserts a phone input prompt before the SMS send node.
-func (s *flowInferenceService) insertPhoneInputPromptIfNeeded(nodes *[]NodeDefinition, includeLayout bool) {
+func (s *flowInferenceService) insertPhoneInputPromptIfNeeded(nodes *[]common.NodeDefinition, includeLayout bool) {
 	var smsSendNodeID string
 	var phoneInput *common.Input
 	hasPhoneInputPrompt := false
@@ -592,8 +595,8 @@ func (s *flowInferenceService) insertPhoneInputPromptIfNeeded(nodes *[]NodeDefin
 }
 
 // insertNodeBefore inserts a node before the target node by updating all nodes that point to the target
-func (s *flowInferenceService) insertNodeBefore(nodes *[]NodeDefinition,
-	newNode NodeDefinition, targetNodeID string) error {
+func (s *flowInferenceService) insertNodeBefore(nodes *[]common.NodeDefinition,
+	newNode common.NodeDefinition, targetNodeID string) error {
 	modified := false
 	for i := range *nodes {
 		node := &(*nodes)[i]
@@ -629,8 +632,8 @@ func (s *flowInferenceService) insertNodeBefore(nodes *[]NodeDefinition,
 }
 
 // insertNodeAfterStart inserts a node after the START node
-func (s *flowInferenceService) insertNodeAfterStart(nodes *[]NodeDefinition,
-	newNode NodeDefinition, startNodeID string) error {
+func (s *flowInferenceService) insertNodeAfterStart(nodes *[]common.NodeDefinition,
+	newNode common.NodeDefinition, startNodeID string) error {
 	// Append the new node to the array first
 	*nodes = append(*nodes, newNode)
 

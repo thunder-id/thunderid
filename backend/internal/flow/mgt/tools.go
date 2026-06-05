@@ -140,7 +140,7 @@ func (t *flowTools) getFlowByHandle(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	input getFlowByHandleInput,
-) (*mcp.CallToolResult, *CompleteFlowDefinition, error) {
+) (*mcp.CallToolResult, *flowCommon.CompleteFlowDefinition, error) {
 	flowType := flowCommon.FlowType(input.FlowType)
 
 	flow, svcErr := t.flowService.GetFlowByHandle(ctx, input.Handle, flowType)
@@ -156,7 +156,7 @@ func (t *flowTools) getFlowByID(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	input tool.IDInput,
-) (*mcp.CallToolResult, *CompleteFlowDefinition, error) {
+) (*mcp.CallToolResult, *flowCommon.CompleteFlowDefinition, error) {
 	flow, svcErr := t.flowService.GetFlow(ctx, input.ID)
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to get flow: %s", svcErr.ErrorDescription)
@@ -170,7 +170,7 @@ func (t *flowTools) createFlow(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	input FlowDefinition,
-) (*mcp.CallToolResult, *CompleteFlowDefinition, error) {
+) (*mcp.CallToolResult, *flowCommon.CompleteFlowDefinition, error) {
 	createdFlow, svcErr := t.flowService.CreateFlow(ctx, &input)
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to create flow: %s", svcErr.ErrorDescription)
@@ -184,7 +184,7 @@ func (t *flowTools) updateFlow(
 	ctx context.Context,
 	req *mcp.CallToolRequest,
 	input updateFlowInput,
-) (*mcp.CallToolResult, *CompleteFlowDefinition, error) {
+) (*mcp.CallToolResult, *flowCommon.CompleteFlowDefinition, error) {
 	// Get current flow to retrieve immutable fields (handle, flowType)
 	currentFlow, svcErr := t.flowService.GetFlow(ctx, input.ID)
 	if svcErr != nil {

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package flowmgt
+package flowbuilder
 
 import (
 	"context"
@@ -75,12 +75,12 @@ func (s *GraphBuilderTestSuite) TestGetGraph_NilFlow() {
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_EmptyNodes() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes:    []NodeDefinition{},
+		Nodes:    []common.NodeDefinition{},
 	}
 
 	graph, err := s.builder.GetGraph(context.Background(), flow)
@@ -92,12 +92,12 @@ func (s *GraphBuilderTestSuite) TestGetGraph_EmptyNodes() {
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_CacheHit() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
@@ -113,12 +113,12 @@ func (s *GraphBuilderTestSuite) TestGetGraph_CacheHit() {
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_BuildAndCache() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "end"},
 			{ID: "end", Type: "END"},
 		},
@@ -161,12 +161,12 @@ func (s *GraphBuilderTestSuite) TestGetGraph_BuildAndCache() {
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_BuildFailure() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
@@ -188,12 +188,12 @@ func (s *GraphBuilderTestSuite) TestGetGraph_BuildFailure() {
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_CacheSetError() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
@@ -248,17 +248,17 @@ func (s *GraphBuilderTestSuite) TestInvalidateCache_Error() {
 // Test buildGraph method
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutor() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:       "task",
 				Type:     "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{Name: "test-executor"},
+				Executor: &common.ExecutorDefinition{Name: "test-executor"},
 			},
 		},
 	}
@@ -299,16 +299,16 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutor() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_ExecutorNotRegistered() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:       "task",
 				Type:     "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{Name: "unknown-executor"},
+				Executor: &common.ExecutorDefinition{Name: "unknown-executor"},
 			},
 		},
 	}
@@ -333,20 +333,21 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_ExecutorNotRegistered() {
 	s.Contains(err.Error(), "executor with name unknown-executor not registered")
 }
 
+//nolint:dupl // Similar test setup required for OnFailure vs OnIncomplete navigation
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithOnFailure() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:        "task",
 				Type:      "TASK_EXECUTION",
 				OnSuccess: "end",
 				OnFailure: "error-prompt",
-				Executor:  &ExecutorDefinition{Name: "test-executor"},
+				Executor:  &common.ExecutorDefinition{Name: "test-executor"},
 			},
 			{ID: "error-prompt", Type: "PROMPT"},
 			{ID: "end", Type: "END"},
@@ -408,12 +409,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithOnFailure() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureNotPromptNode() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:        "task",
 				Type:      "TASK_EXECUTION",
@@ -443,13 +444,152 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureNotPromptNode() {
 	s.Contains(err.Error(), "onFailure must point to a PROMPT node")
 }
 
-func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureTargetNotFound() {
-	flow := &CompleteFlowDefinition{
+//nolint:dupl // Similar test setup required for OnFailure vs OnIncomplete navigation
+func (s *GraphBuilderTestSuite) TestBuildGraph_WithOnIncomplete() {
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
+			{ID: "start", Type: "START", OnSuccess: "task"},
+			{
+				ID:           "task",
+				Type:         "TASK_EXECUTION",
+				OnSuccess:    "end",
+				OnIncomplete: "incomplete-prompt",
+				Executor:     &common.ExecutorDefinition{Name: "test-executor"},
+			},
+			{ID: "incomplete-prompt", Type: "PROMPT"},
+			{ID: "end", Type: "END"},
+		},
+	}
+
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockStartNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
+	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockPromptNode := coremock.NewPromptNodeInterfaceMock(s.T())
+	mockEndNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
+
+	s.mockFlowFactory.EXPECT().CreateGraph(
+		"flow-1", common.FlowTypeAuthentication).Return(
+		mockGraph)
+	s.mockFlowFactory.EXPECT().CreateNode(
+		"start", "START", map[string]interface{}(nil), false, false).Return(
+		mockStartNode, nil)
+	s.mockFlowFactory.EXPECT().CreateNode(
+		"task", "TASK_EXECUTION", map[string]interface{}(nil), false, false).Return(
+		mockTaskNode, nil)
+	s.mockFlowFactory.EXPECT().CreateNode(
+		"incomplete-prompt", "PROMPT", map[string]interface{}(nil), false, true).Return(
+		mockPromptNode, nil)
+	s.mockFlowFactory.EXPECT().CreateNode(
+		"end", "END", map[string]interface{}(nil), false, true).Return(
+		mockEndNode, nil)
+
+	mockStartNode.EXPECT().SetOnSuccess("task")
+	mockTaskNode.EXPECT().SetOnSuccess("end")
+	mockTaskNode.EXPECT().SetOnIncomplete("incomplete-prompt")
+	mockTaskNode.EXPECT().SetInputs([]common.Input{})
+
+	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true)
+	mockTaskNode.EXPECT().SetExecutorName("test-executor")
+
+	mockGraph.EXPECT().AddNode(mockStartNode).Return(nil)
+	mockGraph.EXPECT().AddNode(mockTaskNode).Return(nil)
+	mockGraph.EXPECT().AddNode(mockPromptNode).Return(nil)
+	mockGraph.EXPECT().AddNode(mockEndNode).Return(nil)
+	mockGraph.EXPECT().AddEdge("start", "task").Return(nil)
+	mockGraph.EXPECT().AddEdge("task", "end").Return(nil)
+	mockGraph.EXPECT().AddEdge("task", "incomplete-prompt").Return(nil)
+	mockGraph.EXPECT().GetNodes().Return(
+		map[string]core.NodeInterface{"start": mockStartNode, "task": mockTaskNode,
+			"incomplete-prompt": mockPromptNode, "end": mockEndNode})
+	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
+	mockTaskNode.EXPECT().GetType().Return(common.NodeTypeTaskExecution).Maybe()
+	mockPromptNode.EXPECT().GetType().Return(common.NodeTypePrompt).Maybe()
+	mockEndNode.EXPECT().GetType().Return(common.NodeTypeEnd).Maybe()
+	mockStartNode.EXPECT().GetID().Return("start")
+	mockGraph.EXPECT().SetStartNode("start").Return(nil)
+
+	graph, err := s.builder.buildGraph(flow)
+
+	s.NotNil(graph)
+	s.Nil(err)
+}
+
+func (s *GraphBuilderTestSuite) TestBuildGraph_OnIncompleteNotPromptNode() {
+	flow := &common.CompleteFlowDefinition{
+		ID:       "flow-1",
+		Handle:   "test-handle",
+		Name:     "Test Flow",
+		FlowType: common.FlowTypeAuthentication,
+		Nodes: []common.NodeDefinition{
+			{
+				ID:           "task",
+				Type:         "TASK_EXECUTION",
+				OnIncomplete: "end",
+			},
+			{ID: "end", Type: "END"},
+		},
+	}
+
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+
+	s.mockFlowFactory.EXPECT().CreateGraph(
+		"flow-1", common.FlowTypeAuthentication).Return(
+		mockGraph)
+	s.mockFlowFactory.EXPECT().CreateNode(
+		"task", "TASK_EXECUTION", map[string]interface{}(nil), false, false).Return(
+		mockTaskNode, nil)
+
+	graph, err := s.builder.buildGraph(flow)
+
+	s.Nil(graph)
+	s.NotNil(err)
+	s.Contains(err.Error(), "onIncomplete must point to a PROMPT node")
+}
+
+func (s *GraphBuilderTestSuite) TestBuildGraph_OnIncompleteTargetNotFound() {
+	flow := &common.CompleteFlowDefinition{
+		ID:       "flow-1",
+		Handle:   "test-handle",
+		Name:     "Test Flow",
+		FlowType: common.FlowTypeAuthentication,
+		Nodes: []common.NodeDefinition{
+			{
+				ID:           "task",
+				Type:         "TASK_EXECUTION",
+				OnIncomplete: "non-existent",
+			},
+		},
+	}
+
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+
+	s.mockFlowFactory.EXPECT().CreateGraph(
+		"flow-1", common.FlowTypeAuthentication).Return(
+		mockGraph)
+	s.mockFlowFactory.EXPECT().CreateNode(
+		"task", "TASK_EXECUTION", map[string]interface{}(nil), false, false).Return(
+		mockTaskNode, nil)
+
+	graph, err := s.builder.buildGraph(flow)
+
+	s.Nil(graph)
+	s.NotNil(err)
+	s.Contains(err.Error(), "onIncomplete target node not found")
+}
+
+func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureTargetNotFound() {
+	flow := &common.CompleteFlowDefinition{
+		ID:       "flow-1",
+		Handle:   "test-handle",
+		Name:     "Test Flow",
+		FlowType: common.FlowTypeAuthentication,
+		Nodes: []common.NodeDefinition{
 			{
 				ID:        "task",
 				Type:      "TASK_EXECUTION",
@@ -478,18 +618,18 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureTargetNotFound() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithInputs() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:   "task",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
-					Inputs: []InputDefinition{
+				Executor: &common.ExecutorDefinition{
+					Inputs: []common.InputDefinition{
 						{Ref: "username", Type: "string", Identifier: "user", Required: true},
 						{Ref: "password", Type: "string", Identifier: "pass", Required: true},
 					},
@@ -536,19 +676,19 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithInputs() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithActions() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "prompt"},
 			{
 				ID:   "prompt",
 				Type: "PROMPT",
-				Prompts: []PromptDefinition{
-					{Action: &ActionDefinition{Ref: "login", NextNode: "task1"}},
-					{Action: &ActionDefinition{Ref: "signup", NextNode: "task2"}},
+				Prompts: []common.PromptDefinition{
+					{Action: &common.ActionDefinition{Ref: "login", NextNode: "task1"}},
+					{Action: &common.ActionDefinition{Ref: "signup", NextNode: "task2"}},
 				},
 			},
 			{ID: "task1", Type: "TASK_EXECUTION"},
@@ -620,12 +760,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithActions() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithMeta() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "prompt"},
 			{
 				ID:   "prompt",
@@ -672,12 +812,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithMeta() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_VariantExplicitlySet() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "chooser"},
 			{
 				ID:      "chooser",
@@ -718,17 +858,17 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_VariantExplicitlySet() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithCondition() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:   "task",
 				Type: "TASK_EXECUTION",
-				Condition: &ConditionDefinition{
+				Condition: &common.ConditionDefinition{
 					Key:    "userType",
 					Value:  "premium",
 					OnSkip: "end",
@@ -785,12 +925,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithCondition() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_NoStartNode() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "task", Type: "TASK_EXECUTION"},
 			{ID: "end", Type: "END"},
 		},
@@ -825,12 +965,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_NoStartNode() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_AddNodeError() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
@@ -855,12 +995,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_AddNodeError() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_AddEdgeError() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "end"},
 			{ID: "end", Type: "END"},
 		},
@@ -892,12 +1032,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_AddEdgeError() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_SetStartNodeError() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
@@ -931,12 +1071,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithProperties() {
 		"key2": 123,
 	}
 
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task", Properties: properties},
 			{ID: "task", Type: "TASK_EXECUTION"},
 		},
@@ -1000,17 +1140,17 @@ func (s *GraphBuilderTestSuite) TestValidateExecutorName_Success() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutorMode() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:       "task",
 				Type:     "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{Name: "SMSOTPAuthExecutor", Mode: "send"},
+				Executor: &common.ExecutorDefinition{Name: "SMSOTPAuthExecutor", Mode: "send"},
 			},
 		},
 	}
@@ -1051,7 +1191,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutorMode() {
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_NilExecutor() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:       "task",
 		Type:     "TASK_EXECUTION",
 		Executor: nil, // Nil executor
@@ -1066,10 +1206,10 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_NilExecutor() {
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_EmptyExecutorName() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "task",
 		Type: "TASK_EXECUTION",
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: "", // Empty executor name
 			Mode: "send",
 		},
@@ -1084,10 +1224,10 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_EmptyExecutorName() {
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_NodeDoesNotSupportExecutors() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt",
 		Type: "PROMPT",
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: "test-executor",
 		},
 	}
@@ -1101,10 +1241,10 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_NodeDoesNotSupportExec
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_ExecutorNameValidationFails() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "task",
 		Type: "TASK_EXECUTION",
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: "unregistered-executor",
 		},
 	}
@@ -1121,10 +1261,10 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_ExecutorNameValidation
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_WithModeSuccess() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "task",
 		Type: "TASK_EXECUTION",
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: "test-executor",
 			Mode: "verify",
 		},
@@ -1142,10 +1282,10 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_WithModeSuccess() {
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_WithoutModeSuccess() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "task",
 		Type: "TASK_EXECUTION",
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: "test-executor",
 			Mode: "", // Empty mode - should not call SetMode
 		},
@@ -1174,7 +1314,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_EmptyExecutorNameInVal
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_NoNextNodeDefined() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
 		Next: "", // No next node
@@ -1192,7 +1332,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_NoNextNodeDef
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithNextNode() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
 		Next: "next-node",
@@ -1213,7 +1353,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithNextNode(
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithMessage() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:      "prompt-1",
 		Type:    "PROMPT",
 		Next:    "next-node",
@@ -1235,7 +1375,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithMessage()
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_OnNonPromptNode() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "task-1",
 		Type: "TASK_EXECUTION",
 		Next: "next-node", // Not allowed on non-prompt nodes
@@ -1253,13 +1393,13 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_OnNonPromptNo
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithPromptsConflict() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
 		Next: "next-node",
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{Identifier: "username"},
 				},
 			},
@@ -1278,13 +1418,13 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithPromptsCo
 
 func (s *GraphBuilderTestSuite) TestProcessNode_IsFinalNode_WithNextField() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:        "node-1",
 		Type:      "PROMPT",
 		OnSuccess: "",
 		OnFailure: "",
 		Next:      "next-node", // Has next
-		Prompts:   []PromptDefinition{},
+		Prompts:   []common.PromptDefinition{},
 	}
 
 	mockGraph := coremock.NewGraphInterfaceMock(t)
@@ -1298,7 +1438,7 @@ func (s *GraphBuilderTestSuite) TestProcessNode_IsFinalNode_WithNextField() {
 	mockPromptNode.EXPECT().SetNextNode("next-node")
 	mockGraph.EXPECT().AddNode(mockPromptNode).Return(nil)
 
-	allNodes := []NodeDefinition{*nodeDef}
+	allNodes := []common.NodeDefinition{*nodeDef}
 	edges := map[string][]string{}
 
 	err := s.builder.processNode(nodeDef, allNodes, mockGraph, edges, nil)
@@ -1308,15 +1448,15 @@ func (s *GraphBuilderTestSuite) TestProcessNode_IsFinalNode_WithNextField() {
 
 func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_IncludesActionType() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{Identifier: "username"},
 				},
-				Action: &ActionDefinition{
+				Action: &common.ActionDefinition{
 					Ref:      "login",
 					Type:     "password_auth",
 					NextNode: "auth-node",
@@ -1346,19 +1486,19 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_IncludesActionType() {
 
 func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_WithMultipleActionsWithTypes() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Action: &ActionDefinition{
+				Action: &common.ActionDefinition{
 					Ref:      "google",
 					Type:     "social_google",
 					NextNode: "google-auth",
 				},
 			},
 			{
-				Action: &ActionDefinition{
+				Action: &common.ActionDefinition{
 					Ref:      "github",
 					Type:     "social_github",
 					NextNode: "github-auth",
@@ -1386,7 +1526,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_WithMultipleActionsWith
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_RecordsBoundary() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
 		Next: "task-1",
@@ -1414,7 +1554,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_RecordsMultip
 		{"prompt-1", "task-1"},
 		{"prompt-2", "task-2"},
 	} {
-		nodeDef := &NodeDefinition{ID: tc.id, Type: "PROMPT", Next: tc.next}
+		nodeDef := &common.NodeDefinition{ID: tc.id, Type: "PROMPT", Next: tc.next}
 		mockPN := coremock.NewPromptNodeInterfaceMock(t)
 		mockPN.EXPECT().SetNextNode(tc.next)
 		err := s.builder.configureDisplayOnlyProperties(nodeDef, mockPN, edges, &boundaries)
@@ -1428,7 +1568,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_RecordsMultip
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_NilBoundariesDoesNotPanic() {
 	t := s.T()
-	nodeDef := &NodeDefinition{ID: "prompt-1", Type: "PROMPT", Next: "task-1"}
+	nodeDef := &common.NodeDefinition{ID: "prompt-1", Type: "PROMPT", Next: "task-1"}
 	mockPromptNode := coremock.NewPromptNodeInterfaceMock(t)
 	mockPromptNode.EXPECT().SetNextNode("task-1")
 
@@ -1494,20 +1634,20 @@ func (s *GraphBuilderTestSuite) TestComputeSegments_GetStartNodeFails() {
 // Prompt inputs' regex rules must be compiled at graph-build time so the
 // request-path validator never recompiles.
 func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_ValidationRulesCompiled() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{
 						Identifier: "password",
-						Validation: []ValidationRuleDefinition{
+						Validation: []common.ValidationRuleDefinition{
 							{Type: "regex", Value: "[A-Z]+", Message: "needs.upper"},
 						},
 					},
 				},
-				Action: &ActionDefinition{Ref: "submit", NextNode: "next"},
+				Action: &common.ActionDefinition{Ref: "submit", NextNode: "next"},
 			},
 		},
 	}
@@ -1527,20 +1667,20 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_ValidationRulesCompiled
 
 // Invalid regex on a prompt input must fail the build with a useful error message.
 func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_InvalidRegexFailsBuild() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{
 						Identifier: "password",
-						Validation: []ValidationRuleDefinition{
+						Validation: []common.ValidationRuleDefinition{
 							{Type: "regex", Value: "[unterminated", Message: "bad"},
 						},
 					},
 				},
-				Action: &ActionDefinition{Ref: "submit", NextNode: "next"},
+				Action: &common.ActionDefinition{Ref: "submit", NextNode: "next"},
 			},
 		},
 	}

@@ -37,11 +37,11 @@ const testAuthenticationHandleCacheKey = "test-handle:AUTHENTICATION"
 type CacheBackedFlowStoreTestSuite struct {
 	suite.Suite
 	mockStore         *flowStoreInterfaceMock
-	flowByIDCache     *cachemock.CacheInterfaceMock[*CompleteFlowDefinition]
-	flowByHandleCache *cachemock.CacheInterfaceMock[*CompleteFlowDefinition]
+	flowByIDCache     *cachemock.CacheInterfaceMock[*common.CompleteFlowDefinition]
+	flowByHandleCache *cachemock.CacheInterfaceMock[*common.CompleteFlowDefinition]
 	cachedStore       *cacheBackedFlowStore
-	cacheData         map[string]*CompleteFlowDefinition
-	handleCacheData   map[string]*CompleteFlowDefinition
+	cacheData         map[string]*common.CompleteFlowDefinition
+	handleCacheData   map[string]*common.CompleteFlowDefinition
 }
 
 func TestCacheBackedFlowStoreTestSuite(t *testing.T) {
@@ -50,11 +50,11 @@ func TestCacheBackedFlowStoreTestSuite(t *testing.T) {
 
 func (s *CacheBackedFlowStoreTestSuite) SetupTest() {
 	s.mockStore = newFlowStoreInterfaceMock(s.T())
-	s.cacheData = make(map[string]*CompleteFlowDefinition)
-	s.handleCacheData = make(map[string]*CompleteFlowDefinition)
+	s.cacheData = make(map[string]*common.CompleteFlowDefinition)
+	s.handleCacheData = make(map[string]*common.CompleteFlowDefinition)
 
-	s.flowByIDCache = cachemock.NewCacheInterfaceMock[*CompleteFlowDefinition](s.T())
-	s.flowByHandleCache = cachemock.NewCacheInterfaceMock[*CompleteFlowDefinition](s.T())
+	s.flowByIDCache = cachemock.NewCacheInterfaceMock[*common.CompleteFlowDefinition](s.T())
+	s.flowByHandleCache = cachemock.NewCacheInterfaceMock[*common.CompleteFlowDefinition](s.T())
 
 	s.setupCacheMock()
 
@@ -68,13 +68,13 @@ func (s *CacheBackedFlowStoreTestSuite) SetupTest() {
 
 func (s *CacheBackedFlowStoreTestSuite) setupCacheMock() {
 	s.flowByIDCache.EXPECT().Set(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, key cache.CacheKey, value *CompleteFlowDefinition) error {
+		RunAndReturn(func(ctx context.Context, key cache.CacheKey, value *common.CompleteFlowDefinition) error {
 			s.cacheData[key.Key] = value
 			return nil
 		}).Maybe()
 
 	s.flowByIDCache.EXPECT().Get(mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, key cache.CacheKey) (*CompleteFlowDefinition, bool) {
+		RunAndReturn(func(ctx context.Context, key cache.CacheKey) (*common.CompleteFlowDefinition, bool) {
 			if val, ok := s.cacheData[key.Key]; ok {
 				return val, true
 			}
@@ -101,13 +101,13 @@ func (s *CacheBackedFlowStoreTestSuite) setupCacheMock() {
 
 	// Setup mock for flowByHandleCache
 	s.flowByHandleCache.EXPECT().Set(mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, key cache.CacheKey, value *CompleteFlowDefinition) error {
+		RunAndReturn(func(ctx context.Context, key cache.CacheKey, value *common.CompleteFlowDefinition) error {
 			s.handleCacheData[key.Key] = value
 			return nil
 		}).Maybe()
 
 	s.flowByHandleCache.EXPECT().Get(mock.Anything, mock.Anything).
-		RunAndReturn(func(ctx context.Context, key cache.CacheKey) (*CompleteFlowDefinition, bool) {
+		RunAndReturn(func(ctx context.Context, key cache.CacheKey) (*common.CompleteFlowDefinition, bool) {
 			if val, ok := s.handleCacheData[key.Key]; ok {
 				return val, true
 			}
@@ -125,14 +125,14 @@ func (s *CacheBackedFlowStoreTestSuite) setupCacheMock() {
 	s.flowByHandleCache.EXPECT().IsEnabled().Return(true).Maybe()
 }
 
-func (s *CacheBackedFlowStoreTestSuite) createTestFlow() *CompleteFlowDefinition {
-	return &CompleteFlowDefinition{
+func (s *CacheBackedFlowStoreTestSuite) createTestFlow() *common.CompleteFlowDefinition {
+	return &common.CompleteFlowDefinition{
 		ID:            "flow-1",
 		Handle:        "test-handle",
 		Name:          "Test Flow",
 		FlowType:      common.FlowTypeAuthentication,
 		ActiveVersion: 1,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:   "node-1",
 				Type: "basic-auth",
@@ -186,7 +186,7 @@ func (s *CacheBackedFlowStoreTestSuite) TestCreateFlowSuccess() {
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "node-1", Type: "basic-auth"},
 		},
 	}
@@ -210,7 +210,7 @@ func (s *CacheBackedFlowStoreTestSuite) TestCreateFlowError() {
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes:    []NodeDefinition{{ID: "node-1", Type: "basic-auth"}},
+		Nodes:    []common.NodeDefinition{{ID: "node-1", Type: "basic-auth"}},
 	}
 
 	s.mockStore.EXPECT().CreateFlow(mock.Anything, "flow-1", flowDef).Return(nil, errors.New("create error"))
@@ -337,7 +337,7 @@ func (s *CacheBackedFlowStoreTestSuite) TestUpdateFlowSuccess() {
 		Handle:   "test-handle",
 		Name:     "Updated Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes:    []NodeDefinition{{ID: "node-1", Type: "basic-auth"}},
+		Nodes:    []common.NodeDefinition{{ID: "node-1", Type: "basic-auth"}},
 	}
 
 	updated := s.createTestFlow()
@@ -363,7 +363,7 @@ func (s *CacheBackedFlowStoreTestSuite) TestUpdateFlowError() {
 		Handle:   "test-handle",
 		Name:     "Updated Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes:    []NodeDefinition{{ID: "node-1", Type: "basic-auth"}},
+		Nodes:    []common.NodeDefinition{{ID: "node-1", Type: "basic-auth"}},
 	}
 
 	s.mockStore.EXPECT().UpdateFlow(mock.Anything, "flow-1", flowDef).Return(nil, errors.New("update error"))
@@ -443,7 +443,7 @@ func (s *CacheBackedFlowStoreTestSuite) TestDeleteFlowNilFromStore() {
 
 func (s *CacheBackedFlowStoreTestSuite) TestIsFlowExistsByHandleFromCache() {
 	// Add flow object to cache
-	s.handleCacheData[testAuthenticationHandleCacheKey] = &CompleteFlowDefinition{
+	s.handleCacheData[testAuthenticationHandleCacheKey] = &common.CompleteFlowDefinition{
 		ID:       "flow-id-1",
 		Handle:   "test-handle",
 		FlowType: common.FlowTypeAuthentication,
@@ -495,7 +495,7 @@ func (s *CacheBackedFlowStoreTestSuite) TestIsFlowExistsByHandleStoreError() {
 
 func (s *CacheBackedFlowStoreTestSuite) TestIsFlowExistsByHandleCompositeKey() {
 	// Test that different flow types with same handle are cached separately
-	authFlow := &CompleteFlowDefinition{
+	authFlow := &common.CompleteFlowDefinition{
 		ID:       "flow-id-auth",
 		Handle:   "common-handle",
 		FlowType: common.FlowTypeAuthentication,
@@ -561,7 +561,7 @@ func (s *CacheBackedFlowStoreTestSuite) TestGetFlowVersion() {
 		FlowType:  string(common.FlowTypeAuthentication),
 		Version:   2,
 		IsActive:  false,
-		Nodes:     []NodeDefinition{{ID: "node-1", Type: "basic-auth"}},
+		Nodes:     []common.NodeDefinition{{ID: "node-1", Type: "basic-auth"}},
 		CreatedAt: "2025-01-02T00:00:00Z",
 	}
 
@@ -630,7 +630,7 @@ func (s *CacheBackedFlowStoreTestSuite) TestCacheFlowEmptyID() {
 
 func (s *CacheBackedFlowStoreTestSuite) TestCacheFlowCacheError() {
 	// Create a new cache mock just for this test to override the setupCacheMock expectations
-	errorCache := cachemock.NewCacheInterfaceMock[*CompleteFlowDefinition](s.T())
+	errorCache := cachemock.NewCacheInterfaceMock[*common.CompleteFlowDefinition](s.T())
 	errorCache.EXPECT().Set(mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("cache error")).Once()
 	errorCache.EXPECT().GetName().Return("FlowByIDCache").Maybe()
@@ -661,7 +661,7 @@ func (s *CacheBackedFlowStoreTestSuite) TestInvalidateFlowCacheError() {
 	s.cacheData["flow-1"] = flow
 
 	// Create a new cache mock just for this test to override the setupCacheMock expectations
-	errorCache := cachemock.NewCacheInterfaceMock[*CompleteFlowDefinition](s.T())
+	errorCache := cachemock.NewCacheInterfaceMock[*common.CompleteFlowDefinition](s.T())
 	errorCache.EXPECT().Delete(mock.Anything, mock.Anything).
 		Return(errors.New("cache error")).Once()
 	errorCache.EXPECT().GetName().Return("FlowByIDCache").Maybe()

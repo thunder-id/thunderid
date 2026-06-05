@@ -216,8 +216,8 @@ func (f *fakeIDPService) UpdateIdentityProvider(
 type fakeFlowService struct {
 	created []*flowmgt.FlowDefinition
 	updated []*flowmgt.FlowDefinition
-	byID    map[string]*flowmgt.CompleteFlowDefinition
-	byKey   map[string]*flowmgt.CompleteFlowDefinition
+	byID    map[string]*common.CompleteFlowDefinition
+	byKey   map[string]*common.CompleteFlowDefinition
 }
 
 type fakeThemeService struct {
@@ -608,7 +608,7 @@ func (f *fakeUserService) UpdateUserCredentials(
 
 func (f *fakeFlowService) CreateFlow(
 	_ context.Context, flowDef *flowmgt.FlowDefinition,
-) (*flowmgt.CompleteFlowDefinition, *serviceerror.ServiceError) {
+) (*common.CompleteFlowDefinition, *serviceerror.ServiceError) {
 	if _, ok := f.byKey[string(flowDef.FlowType)+":"+flowDef.Handle]; ok {
 		return nil, &serviceerror.ServiceError{
 			Type:  serviceerror.ClientErrorType,
@@ -621,7 +621,7 @@ func (f *fakeFlowService) CreateFlow(
 	if id == "" {
 		id = "generated-flow-id"
 	}
-	created := &flowmgt.CompleteFlowDefinition{
+	created := &common.CompleteFlowDefinition{
 		ID:       id,
 		Handle:   flowDef.Handle,
 		Name:     flowDef.Name,
@@ -636,7 +636,7 @@ func (f *fakeFlowService) CreateFlow(
 
 func (f *fakeFlowService) GetFlow(
 	_ context.Context, flowID string,
-) (*flowmgt.CompleteFlowDefinition, *serviceerror.ServiceError) {
+) (*common.CompleteFlowDefinition, *serviceerror.ServiceError) {
 	if v, ok := f.byID[flowID]; ok {
 		return v, nil
 	}
@@ -649,7 +649,7 @@ func (f *fakeFlowService) GetFlow(
 
 func (f *fakeFlowService) GetFlowByHandle(
 	_ context.Context, handle string, flowType common.FlowType,
-) (*flowmgt.CompleteFlowDefinition, *serviceerror.ServiceError) {
+) (*common.CompleteFlowDefinition, *serviceerror.ServiceError) {
 	if v, ok := f.byKey[string(flowType)+":"+handle]; ok {
 		return v, nil
 	}
@@ -662,7 +662,7 @@ func (f *fakeFlowService) GetFlowByHandle(
 
 func (f *fakeFlowService) UpdateFlow(
 	_ context.Context, flowID string, flowDef *flowmgt.FlowDefinition,
-) (*flowmgt.CompleteFlowDefinition, *serviceerror.ServiceError) {
+) (*common.CompleteFlowDefinition, *serviceerror.ServiceError) {
 	if _, ok := f.byID[flowID]; !ok {
 		return nil, &serviceerror.ServiceError{
 			Type:  serviceerror.ClientErrorType,
@@ -670,7 +670,7 @@ func (f *fakeFlowService) UpdateFlow(
 			Error: core.I18nMessage{DefaultValue: "not found"},
 		}
 	}
-	updated := &flowmgt.CompleteFlowDefinition{
+	updated := &common.CompleteFlowDefinition{
 		ID:       flowID,
 		Handle:   flowDef.Handle,
 		Name:     flowDef.Name,
@@ -692,8 +692,8 @@ func newTestImportService(appSvc *fakeApplicationService) ImportServiceInterface
 		appSvc,
 		&fakeIDPService{byID: map[string]*idp.IDPDTO{}, byName: map[string]*idp.IDPDTO{}},
 		&fakeFlowService{
-			byID:  map[string]*flowmgt.CompleteFlowDefinition{},
-			byKey: map[string]*flowmgt.CompleteFlowDefinition{},
+			byID:  map[string]*common.CompleteFlowDefinition{},
+			byKey: map[string]*common.CompleteFlowDefinition{},
 		},
 		nil,
 		nil,
@@ -1156,8 +1156,8 @@ func TestImportResources_OrganizationUnitUpsertCreatePreservesID(t *testing.T) {
 
 func TestImportResources_FlowUpsertCreatePreservesID(t *testing.T) {
 	flowSvc := &fakeFlowService{
-		byID:  map[string]*flowmgt.CompleteFlowDefinition{},
-		byKey: map[string]*flowmgt.CompleteFlowDefinition{},
+		byID:  map[string]*common.CompleteFlowDefinition{},
+		byKey: map[string]*common.CompleteFlowDefinition{},
 	}
 
 	svc := newImportService(nil, nil, flowSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
@@ -1186,7 +1186,7 @@ func TestImportResources_FlowUpsertCreatePreservesID(t *testing.T) {
 
 func TestImportResources_FlowUpsertDuplicateHandleFallsBackToHandleUpdate(t *testing.T) {
 	flowSvc := &fakeFlowService{
-		byID: map[string]*flowmgt.CompleteFlowDefinition{
+		byID: map[string]*common.CompleteFlowDefinition{
 			"existing-flow-id": {
 				ID:       "existing-flow-id",
 				Handle:   "registration-flow",
@@ -1194,7 +1194,7 @@ func TestImportResources_FlowUpsertDuplicateHandleFallsBackToHandleUpdate(t *tes
 				FlowType: common.FlowTypeRegistration,
 			},
 		},
-		byKey: map[string]*flowmgt.CompleteFlowDefinition{},
+		byKey: map[string]*common.CompleteFlowDefinition{},
 	}
 	flowSvc.byKey[string(common.FlowTypeRegistration)+":registration-flow"] = flowSvc.byID["existing-flow-id"]
 
@@ -1224,7 +1224,7 @@ func TestImportResources_FlowUpsertDuplicateHandleFallsBackToHandleUpdate(t *tes
 
 func TestImportResources_ApplicationFlowReferencesAreRemappedFromFlowAlias(t *testing.T) {
 	flowSvc := &fakeFlowService{
-		byID: map[string]*flowmgt.CompleteFlowDefinition{
+		byID: map[string]*common.CompleteFlowDefinition{
 			"existing-registration-flow-id": {
 				ID:       "existing-registration-flow-id",
 				Handle:   "registration-flow",
@@ -1232,7 +1232,7 @@ func TestImportResources_ApplicationFlowReferencesAreRemappedFromFlowAlias(t *te
 				FlowType: common.FlowTypeRegistration,
 			},
 		},
-		byKey: map[string]*flowmgt.CompleteFlowDefinition{},
+		byKey: map[string]*common.CompleteFlowDefinition{},
 	}
 	flowSvc.byKey[string(common.FlowTypeRegistration)+":registration-flow"] =
 		flowSvc.byID["existing-registration-flow-id"]
@@ -1335,8 +1335,8 @@ func TestImportResources_UpsertCreatePreservesIDsAcrossResourceTypes(t *testing.
 		byName: map[string]*entitytype.EntityType{},
 	}
 	flowSvc := &fakeFlowService{
-		byID:  map[string]*flowmgt.CompleteFlowDefinition{},
-		byKey: map[string]*flowmgt.CompleteFlowDefinition{},
+		byID:  map[string]*common.CompleteFlowDefinition{},
+		byKey: map[string]*common.CompleteFlowDefinition{},
 	}
 
 	svc := newImportService(nil, nil, flowSvc, ouSvc, entityTypeSvc, nil, nil, nil, nil, themeSvc, nil, nil, nil, nil)
@@ -1990,8 +1990,8 @@ func TestImportAgent_FlowAliasRemapsFlowIDs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			flowSvc := &fakeFlowService{
-				byID:  map[string]*flowmgt.CompleteFlowDefinition{},
-				byKey: map[string]*flowmgt.CompleteFlowDefinition{},
+				byID:  map[string]*common.CompleteFlowDefinition{},
+				byKey: map[string]*common.CompleteFlowDefinition{},
 			}
 			agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{}}
 			svc := newImportService(nil, nil, flowSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc)

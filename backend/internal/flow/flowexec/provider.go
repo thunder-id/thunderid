@@ -16,18 +16,18 @@
  * under the License.
  */
 
-// Package core provides the core structs for flow management and execution.
-package core
+package flowexec
 
-import "github.com/thunder-id/thunderid/internal/system/cache"
+import (
+	"context"
 
-// Initialize initializes the core flow package.
-func Initialize() FlowFactoryInterface {
-	return newFlowFactory()
-}
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+)
 
-// NewGraphCache creates an in-memory graph cache backed by the cache manager.
-func NewGraphCache(cacheManager cache.CacheManagerInterface) GraphCacheInterface {
-	graphCacheInst := cache.GetInMemoryCache[*graph](cacheManager, "FlowGraphCache")
-	return newGraphCache(graphCacheInst)
+// FlowProvider provides flow definitions for execution.
+type FlowProvider interface {
+	GetFlow(ctx context.Context, flowID string) (*common.CompleteFlowDefinition, *serviceerror.ServiceError)
+	GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (
+		*common.CompleteFlowDefinition, *serviceerror.ServiceError)
 }

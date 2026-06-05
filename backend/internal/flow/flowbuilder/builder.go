@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package flowmgt
+package flowbuilder
 
 import (
 	"context"
@@ -31,13 +31,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
-// graphBuilderInterface defines the interface for building flow graphs.
-type graphBuilderInterface interface {
-	GetGraph(ctx context.Context, flow *CompleteFlowDefinition) (core.GraphInterface, *serviceerror.ServiceError)
+// GraphBuilderInterface defines the interface for building flow graphs.
+type GraphBuilderInterface interface {
+	// GetGraph returns a cached graph or builds one from the flow definition.
+	GetGraph(ctx context.Context, flow *common.CompleteFlowDefinition) (core.GraphInterface, *serviceerror.ServiceError)
+	// InvalidateCache removes the cached graph for the specified flow ID.
 	InvalidateCache(ctx context.Context, flowID string)
 }
 
-// graphBuilder is the implementation of graphBuilderInterface.
+// graphBuilder is the implementation of GraphBuilderInterface.
 type graphBuilder struct {
 	flowFactory      core.FlowFactoryInterface
 	executorRegistry executor.ExecutorRegistryInterface
@@ -50,7 +52,7 @@ func newGraphBuilder(
 	flowFactory core.FlowFactoryInterface,
 	executorRegistry executor.ExecutorRegistryInterface,
 	graphCache core.GraphCacheInterface,
-) graphBuilderInterface {
+) GraphBuilderInterface {
 	return &graphBuilder{
 		flowFactory:      flowFactory,
 		executorRegistry: executorRegistry,
@@ -60,11 +62,11 @@ func newGraphBuilder(
 }
 
 // GetGraph retrieves a cached graph or builds a new one from the flow definition.
-func (b *graphBuilder) GetGraph(ctx context.Context, flow *CompleteFlowDefinition) (
+func (b *graphBuilder) GetGraph(ctx context.Context, flow *common.CompleteFlowDefinition) (
 	core.GraphInterface, *serviceerror.ServiceError) {
 	if flow == nil || len(flow.Nodes) == 0 {
 		return nil, serviceerror.CustomServiceError(ErrorInvalidFlowData, i18ncore.I18nMessage{
-			Key:          "error.flowmgtservice.flow_definition_nil_or_empty_description",
+			Key:          "error.flowgraph.flow_definition_nil_or_empty_description",
 			DefaultValue: "Flow definition is nil or has no nodes",
 		})
 	}
@@ -80,7 +82,7 @@ func (b *graphBuilder) GetGraph(ctx context.Context, flow *CompleteFlowDefinitio
 	if err != nil {
 		logger.Error("Failed to build graph", log.Error(err))
 		return nil, serviceerror.CustomServiceError(ErrorGraphBuildFailure, i18ncore.I18nMessage{
-			Key:          "error.flowmgtservice.graph_build_failure_description",
+			Key:          "error.flowgraph.graph_build_failure_description",
 			DefaultValue: err.Error(),
 		})
 	}
@@ -107,7 +109,7 @@ func (b *graphBuilder) InvalidateCache(ctx context.Context, flowID string) {
 }
 
 // buildGraph converts a CompleteFlowDefinition to a core.GraphInterface for execution.
-func (b *graphBuilder) buildGraph(flow *CompleteFlowDefinition) (core.GraphInterface, error) {
+func (b *graphBuilder) buildGraph(flow *common.CompleteFlowDefinition) (core.GraphInterface, error) {
 	if flow == nil || len(flow.Nodes) == 0 {
 		return nil, fmt.Errorf("flow definition is nil or has no nodes")
 	}
@@ -138,10 +140,11 @@ func (b *graphBuilder) buildGraph(flow *CompleteFlowDefinition) (core.GraphInter
 }
 
 // processNode processes a single node definition and adds it to the graph.
-func (b *graphBuilder) processNode(nodeDef *NodeDefinition, allNodes []NodeDefinition,
+func (b *graphBuilder) processNode(nodeDef *common.NodeDefinition, allNodes []common.NodeDefinition,
 	graph core.GraphInterface, edges map[string][]string, boundaries *[]segmentBoundary) error {
 	isFinalNode := nodeDef.OnSuccess == "" &&
 		nodeDef.OnFailure == "" &&
+		nodeDef.OnIncomplete == "" &&
 		len(nodeDef.Prompts) == 0 &&
 		nodeDef.Next == ""
 
@@ -180,7 +183,7 @@ func (b *graphBuilder) processNode(nodeDef *NodeDefinition, allNodes []NodeDefin
 }
 
 // configureNodeNavigation configures the onSuccess and onFailure properties for a node.
-func (b *graphBuilder) configureNodeNavigation(nodeDef *NodeDefinition, allNodes []NodeDefinition,
+func (b *graphBuilder) configureNodeNavigation(nodeDef *common.NodeDefinition, allNodes []common.NodeDefinition,
 	node core.NodeInterface, edges map[string][]string) error {
 	// Set onSuccess if defined
 	if nodeDef.OnSuccess != "" {
@@ -231,7 +234,7 @@ func (b *graphBuilder) configureNodeNavigation(nodeDef *NodeDefinition, allNodes
 }
 
 // validateOnFailureTarget validates that the onFailure target node is a PROMPT node.
-func (b *graphBuilder) validateOnFailureTarget(nodes []NodeDefinition, targetNodeID string) error {
+func (b *graphBuilder) validateOnFailureTarget(nodes []common.NodeDefinition, targetNodeID string) error {
 	for _, node := range nodes {
 		if node.ID == targetNodeID {
 			if node.Type != "PROMPT" {
@@ -244,7 +247,7 @@ func (b *graphBuilder) validateOnFailureTarget(nodes []NodeDefinition, targetNod
 }
 
 // validateOnIncompleteTarget validates that the onIncomplete target node is a PROMPT node.
-func (b *graphBuilder) validateOnIncompleteTarget(nodes []NodeDefinition, targetNodeID string) error {
+func (b *graphBuilder) validateOnIncompleteTarget(nodes []common.NodeDefinition, targetNodeID string) error {
 	for _, node := range nodes {
 		if node.ID == targetNodeID {
 			if node.Type != "PROMPT" {
@@ -260,7 +263,7 @@ func (b *graphBuilder) validateOnIncompleteTarget(nodes []NodeDefinition, target
 // Validation rules on executor inputs are intentionally not propagated:
 // executor inputs are read from runtime context (already validated at the
 // preceding PROMPT node), so per-rule re-validation here would be redundant.
-func (b *graphBuilder) configureNodeInputs(nodeDef *NodeDefinition, node core.NodeInterface) {
+func (b *graphBuilder) configureNodeInputs(nodeDef *common.NodeDefinition, node core.NodeInterface) {
 	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
 
 	executorNode, ok := node.(core.ExecutorBackedNodeInterface)
@@ -289,7 +292,7 @@ func (b *graphBuilder) configureNodeInputs(nodeDef *NodeDefinition, node core.No
 
 // toValidationRules converts mgt rule definitions to runtime ValidationRule
 // values and pre-compiles their regex patterns. Returns nil for an empty input.
-func toValidationRules(defs []ValidationRuleDefinition) ([]common.ValidationRule, error) {
+func toValidationRules(defs []common.ValidationRuleDefinition) ([]common.ValidationRule, error) {
 	if len(defs) == 0 {
 		return nil, nil
 	}
@@ -308,7 +311,7 @@ func toValidationRules(defs []ValidationRuleDefinition) ([]common.ValidationRule
 }
 
 // configureNodeVariant sets the prompt node's variant from the node definition.
-func (b *graphBuilder) configureNodeVariant(nodeDef *NodeDefinition, node core.NodeInterface) {
+func (b *graphBuilder) configureNodeVariant(nodeDef *common.NodeDefinition, node core.NodeInterface) {
 	if nodeDef.Variant == "" {
 		return
 	}
@@ -318,7 +321,7 @@ func (b *graphBuilder) configureNodeVariant(nodeDef *NodeDefinition, node core.N
 }
 
 // configureNodeMeta configures the meta object for a prompt node.
-func (b *graphBuilder) configureNodeMeta(nodeDef *NodeDefinition, node core.NodeInterface) {
+func (b *graphBuilder) configureNodeMeta(nodeDef *common.NodeDefinition, node core.NodeInterface) {
 	if nodeDef.Meta == nil {
 		return
 	}
@@ -330,7 +333,7 @@ func (b *graphBuilder) configureNodeMeta(nodeDef *NodeDefinition, node core.Node
 }
 
 // configureNodeCondition configures the condition for a node.
-func (b *graphBuilder) configureNodeCondition(nodeDef *NodeDefinition, node core.NodeInterface) {
+func (b *graphBuilder) configureNodeCondition(nodeDef *common.NodeDefinition, node core.NodeInterface) {
 	if nodeDef.Condition != nil && (nodeDef.Condition.Key != "" || nodeDef.Condition.Value != "") {
 		node.SetCondition(&core.NodeCondition{
 			Key:    nodeDef.Condition.Key,
@@ -341,7 +344,7 @@ func (b *graphBuilder) configureNodeCondition(nodeDef *NodeDefinition, node core
 }
 
 // configureNodePrompts configures the prompts for a prompt node.
-func (b *graphBuilder) configureNodePrompts(nodeDef *NodeDefinition, node core.NodeInterface,
+func (b *graphBuilder) configureNodePrompts(nodeDef *common.NodeDefinition, node core.NodeInterface,
 	edges map[string][]string) error {
 	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
 
@@ -399,7 +402,7 @@ func (b *graphBuilder) configureNodePrompts(nodeDef *NodeDefinition, node core.N
 
 // configureDisplayOnlyProperties configures the 'next' and 'message' fields for display-only prompt nodes.
 // It also records segment boundaries for later segment computation.
-func (b *graphBuilder) configureDisplayOnlyProperties(nodeDef *NodeDefinition, node core.NodeInterface,
+func (b *graphBuilder) configureDisplayOnlyProperties(nodeDef *common.NodeDefinition, node core.NodeInterface,
 	edges map[string][]string, boundaries *[]segmentBoundary) error {
 	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
 
@@ -468,7 +471,7 @@ func (b *graphBuilder) computeSegments(g core.GraphInterface, boundaries []segme
 }
 
 // configureNodeExecutor configures the executor for a node.
-func (b *graphBuilder) configureNodeExecutor(nodeDef *NodeDefinition, node core.NodeInterface) error {
+func (b *graphBuilder) configureNodeExecutor(nodeDef *common.NodeDefinition, node core.NodeInterface) error {
 	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
 
 	if nodeDef.Executor == nil {

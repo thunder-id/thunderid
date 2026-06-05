@@ -71,13 +71,13 @@ type idpAdapter interface {
 
 type flowAdapter interface {
 	CreateFlow(ctx context.Context, flowDef *flowmgt.FlowDefinition) (
-		*flowmgt.CompleteFlowDefinition,
+		*common.CompleteFlowDefinition,
 		*serviceerror.ServiceError,
 	)
-	GetFlow(ctx context.Context, flowID string) (*flowmgt.CompleteFlowDefinition, *serviceerror.ServiceError)
-	GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (*flowmgt.CompleteFlowDefinition,
+	GetFlow(ctx context.Context, flowID string) (*common.CompleteFlowDefinition, *serviceerror.ServiceError)
+	GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (*common.CompleteFlowDefinition,
 		*serviceerror.ServiceError)
-	UpdateFlow(ctx context.Context, flowID string, flowDef *flowmgt.FlowDefinition) (*flowmgt.CompleteFlowDefinition,
+	UpdateFlow(ctx context.Context, flowID string, flowDef *flowmgt.FlowDefinition) (*common.CompleteFlowDefinition,
 		*serviceerror.ServiceError)
 }
 
@@ -302,7 +302,7 @@ func (s *importService) ImportResources(
 	for _, doc := range orderedDocs {
 		originalFlowID := ""
 		if doc.ResourceType == resourceTypeFlow {
-			var flowReq flowmgt.CompleteFlowDefinition
+			var flowReq common.CompleteFlowDefinition
 			if err := doc.Node.Decode(&flowReq); err == nil {
 				originalFlowID = flowReq.ID
 			}
@@ -500,7 +500,7 @@ func (s *importService) importFlow(
 		}
 	}
 
-	var req flowmgt.CompleteFlowDefinition
+	var req common.CompleteFlowDefinition
 	if err := doc.Node.Decode(&req); err != nil {
 		return ImportItemOutcome{
 			ResourceType: resourceTypeFlow,

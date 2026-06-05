@@ -33,7 +33,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	entitytypepkg "github.com/thunder-id/thunderid/internal/entitytype"
 	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
-	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
@@ -1470,7 +1469,7 @@ func (suite *InboundClientServiceTestSuite) TestResolveInboundAuthProfileHandles
 func (suite *InboundClientServiceTestSuite) TestResolveInboundAuthProfileHandles_ResolvesAuthFlowHandle() {
 	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
 	flowMgt.EXPECT().GetFlowByHandle(mock.Anything, "auth-handle", flowcommon.FlowTypeAuthentication).
-		Return(&flowmgt.CompleteFlowDefinition{ID: "auth-id"}, nil).Once()
+		Return(&flowcommon.CompleteFlowDefinition{ID: "auth-id"}, nil).Once()
 	svc := &inboundClientService{flowMgt: flowMgt}
 	profile := &inboundmodel.InboundAuthProfile{AuthFlowHandle: "auth-handle"}
 	assert.NoError(suite.T(), svc.ResolveInboundAuthProfileHandles(context.Background(), profile))
@@ -1489,7 +1488,7 @@ func (suite *InboundClientServiceTestSuite) TestResolveInboundAuthProfileHandles
 func (suite *InboundClientServiceTestSuite) TestResolveInboundAuthProfileHandles_ResolvesRegistrationFlowHandle() {
 	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
 	flowMgt.EXPECT().GetFlowByHandle(mock.Anything, "reg-handle", flowcommon.FlowTypeRegistration).
-		Return(&flowmgt.CompleteFlowDefinition{ID: "reg-id"}, nil).Once()
+		Return(&flowcommon.CompleteFlowDefinition{ID: "reg-id"}, nil).Once()
 	svc := &inboundClientService{flowMgt: flowMgt}
 	profile := &inboundmodel.InboundAuthProfile{RegistrationFlowHandle: "reg-handle"}
 	assert.NoError(suite.T(), svc.ResolveInboundAuthProfileHandles(context.Background(), profile))
@@ -1509,7 +1508,7 @@ func (suite *InboundClientServiceTestSuite) TestResolveInboundAuthProfileHandles
 func (suite *InboundClientServiceTestSuite) TestResolveInboundAuthProfileHandles_ResolvesRecoveryFlowHandle() {
 	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
 	flowMgt.EXPECT().GetFlowByHandle(mock.Anything, "rec-handle", flowcommon.FlowTypeRecovery).
-		Return(&flowmgt.CompleteFlowDefinition{ID: "rec-id"}, nil).Once()
+		Return(&flowcommon.CompleteFlowDefinition{ID: "rec-id"}, nil).Once()
 	svc := &inboundClientService{flowMgt: flowMgt}
 	profile := &inboundmodel.InboundAuthProfile{RecoveryFlowHandle: "rec-handle"}
 	assert.NoError(suite.T(), svc.ResolveInboundAuthProfileHandles(context.Background(), profile))

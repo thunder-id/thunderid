@@ -19,8 +19,6 @@
 package flowmgt
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
-
 	"context"
 	"testing"
 
@@ -29,8 +27,9 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	flowCommon "github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
 
@@ -59,17 +58,17 @@ func (suite *FlowToolsTestSuite) TestListFlows_Success() {
 			ID:       "flow1",
 			Handle:   "basic-login",
 			Name:     "Basic Login",
-			FlowType: flowCommon.FlowTypeAuthentication,
+			FlowType: common.FlowTypeAuthentication,
 		},
 		{
 			ID:       "flow2",
 			Handle:   "registration",
 			Name:     "User Registration",
-			FlowType: flowCommon.FlowTypeRegistration,
+			FlowType: common.FlowTypeRegistration,
 		},
 	}
 
-	mockService.On("ListFlows", mock.Anything, 30, 0, flowCommon.FlowType("")).Return(&FlowListResponse{
+	mockService.On("ListFlows", mock.Anything, 30, 0, common.FlowType("")).Return(&FlowListResponse{
 		TotalResults: 2,
 		Flows:        expectedFlows,
 	}, nil)
@@ -101,7 +100,7 @@ func (suite *FlowToolsTestSuite) TestListFlows_WithFilter() {
 			ID:       "flow1",
 			Handle:   "basic-login",
 			Name:     "Basic Login",
-			FlowType: flowCommon.FlowTypeAuthentication,
+			FlowType: common.FlowTypeAuthentication,
 		},
 	}
 
@@ -110,7 +109,7 @@ func (suite *FlowToolsTestSuite) TestListFlows_WithFilter() {
 		mock.Anything,
 		30,
 		0,
-		flowCommon.FlowTypeAuthentication,
+		common.FlowTypeAuthentication,
 	).Return(&FlowListResponse{
 		TotalResults: 1,
 		Flows:        expectedFlows,
@@ -120,7 +119,7 @@ func (suite *FlowToolsTestSuite) TestListFlows_WithFilter() {
 	req := &mcp.CallToolRequest{}
 	input := listFlowsInput{
 		PaginationInput: tool.PaginationInput{Limit: 0, Offset: 0},
-		FlowType:        string(flowCommon.FlowTypeAuthentication),
+		FlowType:        string(common.FlowTypeAuthentication),
 	}
 
 	result, output, err := tools.listFlows(ctx, req, input)
@@ -137,7 +136,7 @@ func (suite *FlowToolsTestSuite) TestListFlows_Error() {
 	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
 	tools := &flowTools{flowService: mockService}
 
-	mockService.On("ListFlows", mock.Anything, 30, 0, flowCommon.FlowType("")).
+	mockService.On("ListFlows", mock.Anything, 30, 0, common.FlowType("")).
 		Return(nil, &serviceerror.ServiceError{
 			ErrorDescription: core.I18nMessage{Key: "error.test.database_error", DefaultValue: "database error"},
 		})
@@ -163,12 +162,12 @@ func (suite *FlowToolsTestSuite) TestGetFlowByHandle_Success() {
 	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
 	tools := &flowTools{flowService: mockService}
 
-	expectedFlow := &CompleteFlowDefinition{
+	expectedFlow := &common.CompleteFlowDefinition{
 		ID:       "flow123",
 		Handle:   "basic-login",
 		Name:     "Basic Login Flow",
-		FlowType: flowCommon.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: common.FlowTypeAuthentication,
+		Nodes: []common.NodeDefinition{
 			{
 				ID:   "start",
 				Type: "START",
@@ -184,14 +183,14 @@ func (suite *FlowToolsTestSuite) TestGetFlowByHandle_Success() {
 		"GetFlowByHandle",
 		mock.Anything,
 		"basic-login",
-		flowCommon.FlowTypeAuthentication,
+		common.FlowTypeAuthentication,
 	).Return(expectedFlow, nil)
 
 	ctx := context.Background()
 	req := &mcp.CallToolRequest{}
 	input := getFlowByHandleInput{
 		Handle:   "basic-login",
-		FlowType: string(flowCommon.FlowTypeAuthentication),
+		FlowType: string(common.FlowTypeAuthentication),
 	}
 
 	result, output, err := tools.getFlowByHandle(ctx, req, input)
@@ -211,7 +210,7 @@ func (suite *FlowToolsTestSuite) TestGetFlowByHandle_Error() {
 		"GetFlowByHandle",
 		mock.Anything,
 		"nonexistent",
-		flowCommon.FlowTypeAuthentication,
+		common.FlowTypeAuthentication,
 	).Return(nil, &serviceerror.ServiceError{
 		ErrorDescription: core.I18nMessage{Key: "error.test.flow_not_found", DefaultValue: "flow not found"},
 	})
@@ -220,7 +219,7 @@ func (suite *FlowToolsTestSuite) TestGetFlowByHandle_Error() {
 	req := &mcp.CallToolRequest{}
 	input := getFlowByHandleInput{
 		Handle:   "nonexistent",
-		FlowType: string(flowCommon.FlowTypeAuthentication),
+		FlowType: string(common.FlowTypeAuthentication),
 	}
 
 	result, output, err := tools.getFlowByHandle(ctx, req, input)
@@ -237,11 +236,11 @@ func (suite *FlowToolsTestSuite) TestGetFlowByID_Success() {
 	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
 	tools := &flowTools{flowService: mockService}
 
-	expectedFlow := &CompleteFlowDefinition{
+	expectedFlow := &common.CompleteFlowDefinition{
 		ID:       "flow123",
 		Handle:   "basic-login",
 		Name:     "Basic Login Flow",
-		FlowType: flowCommon.FlowTypeAuthentication,
+		FlowType: common.FlowTypeAuthentication,
 	}
 
 	mockService.On("GetFlow", mock.Anything, "flow123").Return(expectedFlow, nil)
@@ -288,8 +287,8 @@ func (suite *FlowToolsTestSuite) TestCreateFlow_Success() {
 	inputFlow := FlowDefinition{
 		Handle:   "new-flow",
 		Name:     "New Flow",
-		FlowType: flowCommon.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: common.FlowTypeAuthentication,
+		Nodes: []common.NodeDefinition{
 			{
 				ID:   "start",
 				Type: "START",
@@ -301,11 +300,11 @@ func (suite *FlowToolsTestSuite) TestCreateFlow_Success() {
 		},
 	}
 
-	createdFlow := &CompleteFlowDefinition{
+	createdFlow := &common.CompleteFlowDefinition{
 		ID:       "new-flow-id",
 		Handle:   "new-flow",
 		Name:     "New Flow",
-		FlowType: flowCommon.FlowTypeAuthentication,
+		FlowType: common.FlowTypeAuthentication,
 		Nodes:    inputFlow.Nodes,
 	}
 
@@ -330,7 +329,7 @@ func (suite *FlowToolsTestSuite) TestCreateFlow_Error() {
 	inputFlow := FlowDefinition{
 		Handle:   "invalid-flow",
 		Name:     "Invalid Flow",
-		FlowType: flowCommon.FlowTypeAuthentication,
+		FlowType: common.FlowTypeAuthentication,
 	}
 
 	mockService.On("CreateFlow", mock.Anything, &inputFlow).Return(nil, &serviceerror.ServiceError{
@@ -354,12 +353,12 @@ func (suite *FlowToolsTestSuite) TestUpdateFlow_Success() {
 	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
 	tools := &flowTools{flowService: mockService}
 
-	currentFlow := &CompleteFlowDefinition{
+	currentFlow := &common.CompleteFlowDefinition{
 		ID:       "flow123",
 		Handle:   "existing-flow",
 		Name:     "Old Name",
-		FlowType: flowCommon.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		FlowType: common.FlowTypeAuthentication,
+		Nodes: []common.NodeDefinition{
 			{
 				ID:   "start",
 				Type: "START",
@@ -370,7 +369,7 @@ func (suite *FlowToolsTestSuite) TestUpdateFlow_Success() {
 	inputUpdate := updateFlowInput{
 		ID:   "flow123",
 		Name: "Updated Name",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:   "start",
 				Type: "START",
@@ -382,18 +381,18 @@ func (suite *FlowToolsTestSuite) TestUpdateFlow_Success() {
 		},
 	}
 
-	updatedFlow := &CompleteFlowDefinition{
+	updatedFlow := &common.CompleteFlowDefinition{
 		ID:       "flow123",
 		Handle:   "existing-flow",
 		Name:     "Updated Name",
-		FlowType: flowCommon.FlowTypeAuthentication,
+		FlowType: common.FlowTypeAuthentication,
 		Nodes:    inputUpdate.Nodes,
 	}
 
 	mockService.On("GetFlow", mock.Anything, "flow123").Return(currentFlow, nil)
 	mockService.On("UpdateFlow", mock.Anything, "flow123", &FlowDefinition{
 		Handle:   "existing-flow",
-		FlowType: flowCommon.FlowTypeAuthentication,
+		FlowType: common.FlowTypeAuthentication,
 		Name:     "Updated Name",
 		Nodes:    inputUpdate.Nodes,
 	}).Return(updatedFlow, nil)
@@ -417,7 +416,7 @@ func (suite *FlowToolsTestSuite) TestUpdateFlow_GetFlowError() {
 	inputUpdate := updateFlowInput{
 		ID:   "flow123",
 		Name: "Updated Name",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:   "start",
 				Type: "START",
@@ -446,17 +445,17 @@ func (suite *FlowToolsTestSuite) TestUpdateFlow_UpdateError() {
 	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
 	tools := &flowTools{flowService: mockService}
 
-	currentFlow := &CompleteFlowDefinition{
+	currentFlow := &common.CompleteFlowDefinition{
 		ID:       "flow123",
 		Handle:   "existing-flow",
 		Name:     "Old Name",
-		FlowType: flowCommon.FlowTypeAuthentication,
+		FlowType: common.FlowTypeAuthentication,
 	}
 
 	inputUpdate := updateFlowInput{
 		ID:   "flow123",
 		Name: "Updated Name",
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:   "start",
 				Type: "START",
@@ -467,7 +466,7 @@ func (suite *FlowToolsTestSuite) TestUpdateFlow_UpdateError() {
 	mockService.On("GetFlow", mock.Anything, "flow123").Return(currentFlow, nil)
 	mockService.On("UpdateFlow", mock.Anything, "flow123", &FlowDefinition{
 		Handle:   "existing-flow",
-		FlowType: flowCommon.FlowTypeAuthentication,
+		FlowType: common.FlowTypeAuthentication,
 		Name:     "Updated Name",
 		Nodes:    inputUpdate.Nodes,
 	}).Return(nil, &serviceerror.ServiceError{

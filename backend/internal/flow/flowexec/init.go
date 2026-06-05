@@ -23,7 +23,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
-	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	"github.com/thunder-id/thunderid/internal/flow/flowbuilder"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
@@ -37,7 +37,8 @@ import (
 // The observabilitySvc parameter is optional (can be nil) - if nil, observability events won't be published.
 func Initialize(
 	mux *http.ServeMux,
-	flowMgtService flowmgt.FlowMgtServiceInterface,
+	flowProvider FlowProvider,
+	graphBuilder flowbuilder.GraphBuilderInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	executorRegistry executor.ExecutorRegistryInterface,
@@ -60,7 +61,7 @@ func Initialize(
 		flowStore = newFlowStore(dbProvider)
 	}
 	flowEngine := newFlowEngine(executorRegistry, observabilitySvc)
-	flowExecService := newFlowExecService(flowMgtService, flowStore, flowEngine,
+	flowExecService := newFlowExecService(flowProvider, graphBuilder, flowStore, flowEngine,
 		inboundClientService, entityProvider, observabilitySvc, transactioner, cryptoSvc)
 
 	handler := newFlowExecutionHandler(flowExecService)

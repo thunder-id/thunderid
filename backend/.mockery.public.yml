@@ -345,6 +345,14 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: flowexecmock
       filename: "{{.InterfaceName}}_mock.go"
+
+  github.com/thunder-id/thunderid/internal/flow/flowbuilder:
+    config:
+      all: true
+      dir: tests/mocks/flow/flowbuildermock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: flowbuildermock
+      filename: "{{.InterfaceName}}_mock.go"
   
   github.com/thunder-id/thunderid/internal/flow/mgt:
     config:
