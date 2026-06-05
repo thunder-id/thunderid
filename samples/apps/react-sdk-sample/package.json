@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@thunderid/react": "0.0.5",
+    "@thunderid/react": "0.0.6",
     "@wso2/oxygen-ui": "0.0.1-alpha.10",
     "jwt-decode": "4.0.0",
     "react": "19.2.3",
