@@ -229,8 +229,8 @@ func TestParseDocuments_AgentWithOAuthNotClassifiedAsApplication(t *testing.T) {
 	assert.Equal(t, resourceTypeAgent, docs[0].ResourceType)
 }
 
-func TestParseDocuments_UsesResourceTypeComment(t *testing.T) {
-	content := "# resource_type: application\nname: idp-one\ntype: GOOGLE\nproperties: []\n"
+func TestParseDocuments_UsesResourceTypeField(t *testing.T) {
+	content := "resource_type: application\nname: idp-one\ntype: GOOGLE\nproperties: []\n"
 
 	docs, err := parseDocuments(content)
 	require.NoError(t, err)
@@ -238,8 +238,8 @@ func TestParseDocuments_UsesResourceTypeComment(t *testing.T) {
 	assert.Equal(t, resourceTypeApplication, docs[0].ResourceType)
 }
 
-func TestParseDocuments_UsesResourceTypeCommentWithFileHeader(t *testing.T) {
-	content := "# File: app-one.yaml\n# resource_type: application\nname: app-one\nauth_flow_id: flow-1\n"
+func TestParseDocuments_ResourceTypeFieldTakesPrecedenceOverHeuristics(t *testing.T) {
+	content := "resource_type: application\nname: app-one\nauth_flow_id: flow-1\n"
 
 	docs, err := parseDocuments(content)
 	require.NoError(t, err)
@@ -288,7 +288,7 @@ func TestParseDocuments_FailsForAmbiguousResourceType(t *testing.T) {
 
 func TestParseDocuments_ExplicitResourceTypeOverridesAmbiguousHeuristics(t *testing.T) {
 	content := strings.Join([]string{
-		"# resource_type: identity_provider",
+		"resource_type: identity_provider",
 		"name: google",
 		"type: GOOGLE",
 		"permissions: []",

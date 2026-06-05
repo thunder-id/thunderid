@@ -28,13 +28,19 @@ import (
 	"strings"
 	"sync"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
+type resourceTypeHeader struct {
+	ResourceType string `yaml:"resource_type"`
+}
+
 // GetConfigsFromFile reads documents for the given resourceType from a single multi-document YAML file.
-// Documents are matched by a "# resource_type: <type>" comment header.
+// Documents are matched by a "resource_type: <type>" field.
 // Environment variable substitution is applied per-document so that non-variable content (e.g.
 // UI template expressions like {{ t(...) }}) in other documents does not interfere.
 func GetConfigsFromFile(filePath, resourceType string) ([][]byte, error) {
@@ -94,27 +100,13 @@ func splitYAMLDocuments(content []byte) [][]byte {
 }
 
 // documentMatchesResourceType checks whether a YAML document chunk declares the given resource type
-// via a "# resource_type: <type>" comment.
+// via a "resource_type: <type>" field.
 func documentMatchesResourceType(doc []byte, resourceType string) bool {
-	for _, line := range bytes.Split(doc, []byte("\n")) {
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
-		}
-		if line[0] != '#' {
-			break
-		}
-		normalized := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(string(line), "#")))
-		for _, prefix := range []string{"resource_type:", "resource type:", "resourcetype:"} {
-			if strings.HasPrefix(normalized, prefix) {
-				t := strings.TrimSpace(strings.TrimPrefix(normalized, prefix))
-				t = strings.Trim(t, "\"'")
-				if t == resourceType {
-					return true
-				}
-			}
-		}
+	var header resourceTypeHeader
+	if err := yaml.Unmarshal(doc, &header); err != nil {
+		return false
 	}
-	return false
+	return header.ResourceType == resourceType
 }
 
 // GetConfigsFromRootDir scans the repository/resources/ directory for YAML files (*.yaml, *.yml)

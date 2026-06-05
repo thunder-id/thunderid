@@ -1,4 +1,4 @@
-# resource_type: user_type
+resource_type: user_type
 id: wayfinder-customer-type
 category: user
 name: Customer
@@ -44,7 +44,7 @@ schema: {
   }
 
 ---
-# resource_type: user_type
+resource_type: user_type
 id: wayfinder-staff-type
 category: user
 name: Staff
@@ -80,7 +80,7 @@ schema: {
   }
 
 ---
-# resource_type: resource_server
+resource_type: resource_server
 id: wayfinder-agent-rs
 name: Wayfinder Agent
 description: Controls access to the Wayfinder Concierge agent
@@ -96,7 +96,7 @@ resources:
         description: Grants access to the Wayfinder Concierge agent
 
 ---
-# resource_type: resource_server
+resource_type: resource_server
 id: wayfinder-booking-rs
 name: Wayfinder Booking
 description: Protects the Wayfinder booking domain — same scopes guard the REST API on /api/* and the MCP tools on /mcp.
@@ -122,7 +122,7 @@ resources:
         description: Grants access to surface flight recommendations
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000001
 name: Wayfinder Registration Flow
 handle: wayfinder-registration-flow
@@ -267,7 +267,7 @@ nodes:
     type: END
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000002
 name: Wayfinder Password Recovery Flow
 handle: wayfinder-recovery-flow
@@ -433,7 +433,7 @@ nodes:
     type: END
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000005
 name: Wayfinder Staff Onboarding Flow
 handle: wayfinder-onboarding-flow
@@ -793,7 +793,7 @@ nodes:
     type: END
 
 ---
-# resource_type: application
+resource_type: application
 id: wayfinder-app
 name: Wayfinder
 description: Wayfinder Travel sample application
@@ -855,7 +855,7 @@ inbound_auth_config:
           - groups
 
 ---
-# resource_type: flow
+resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000004
 name: Wayfinder Agent Authentication Flow
 handle: wayfinder-agent-auth-flow
@@ -991,7 +991,7 @@ nodes:
     type: END
 
 ---
-# resource_type: agent
+resource_type: agent
 id: wayfinder-concierge
 name: WAYFINDER-CONCIERGE
 description: Wayfinder Concierge AI agent for the Wayfinder Travel sample
@@ -1018,7 +1018,7 @@ inbound_auth_config:
           validity_period: 3600
 
 ---
-# resource_type: application
+resource_type: application
 # Public OAuth client used by external MCP clients (e.g. MCP Inspector)
 # to call the Wayfinder MCP server on /mcp.
 # Used by the MCP Authorization tryout to demonstrate Thunder-secured MCP
@@ -1055,7 +1055,7 @@ inbound_auth_config:
           validity_period: 3600
 
 ---
-# resource_type: role
+resource_type: role
 id: wayfinder-traveler-role
 name: Traveler
 description: Consumer role with full booking permissions
@@ -1073,21 +1073,21 @@ assignments:
     type: user
 
 ---
-# resource_type: role
+resource_type: role
 id: wayfinder-support-role
 name: Support
 description: Staff role for consumer support workflows
 ou_handle: default
 
 ---
-# resource_type: role
+resource_type: role
 id: wayfinder-destinations-admin-role
 name: DestinationsAdmin
 description: Staff role for curating featured destinations
 ou_handle: default
 
 ---
-# resource_type: role
+resource_type: role
 id: wayfinder-ops-admin-role
 name: OpsAdmin
 description: Staff role for inviting and managing other staff
@@ -1097,7 +1097,7 @@ assignments:
     type: user
 
 ---
-# resource_type: role
+resource_type: role
 id: chat-user-role
 name: Chat User
 description: Grants access to use the Wayfinder Concierge agent
@@ -1111,7 +1111,7 @@ assignments:
     type: user
 
 ---
-# resource_type: role
+resource_type: role
 id: booking-user-role
 name: Booking User
 description: Grants booking permissions for the Wayfinder sample
@@ -1129,7 +1129,7 @@ assignments:
     type: user
 
 ---
-# resource_type: role
+resource_type: role
 id: recommender-role
 name: Recommender
 description: Grants access to the booking:recommend permission, assigned to the Wayfinder Concierge agent
@@ -1143,7 +1143,7 @@ assignments:
     type: agent
 
 ---
-# resource_type: user
+resource_type: user
 id: wayfinder-john-doe
 type: Customer
 ou_handle: default
@@ -1156,7 +1156,7 @@ credentials:
   password: "{{.JOHN_DOE_PASSWORD}}"
 
 ---
-# resource_type: user
+resource_type: user
 id: wayfinder-jane-smith
 type: Customer
 ou_handle: default
@@ -1169,7 +1169,7 @@ credentials:
   password: "{{.JANE_SMITH_PASSWORD}}"
 
 ---
-# resource_type: user
+resource_type: user
 id: wayfinder-alex-carter
 type: Staff
 ou_handle: default
