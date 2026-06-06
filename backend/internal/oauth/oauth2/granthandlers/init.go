@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -48,6 +49,7 @@ func Initialize(
 	entityProv entityprovider.EntityProviderInterface,
 	resourceService resource.ResourceServiceInterface,
 	parService par.PARServiceInterface,
+	cibaStore ciba.CIBARequestStoreInterface,
 ) (GrantHandlerProviderInterface, error) {
 	oauthAuthzService, err := oauth2authz.Initialize(
 		mux, inboundClient, resourceService, jwtService, flowExecService, parService,
@@ -65,6 +67,7 @@ func Initialize(
 		authzService,
 		entityProv,
 		resourceService,
+		cibaStore,
 	)
 	return grantHandlerProvider, nil
 }

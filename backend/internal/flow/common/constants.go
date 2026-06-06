@@ -245,6 +245,8 @@ const (
 	RuntimeKeySelectedAuthClass = "selected_auth_class"
 	// RuntimeKeyAllowedLoginOptions holds the space-separated action refs allowed on a LOGIN_OPTIONS node.
 	RuntimeKeyAllowedLoginOptions = "allowed_login_options"
+	// RuntimeKeyCIBAAuthReqID holds the CIBA auth_req_id bound to the current flow execution, if applicable.
+	RuntimeKeyCIBAAuthReqID = "cibaAuthReqId"
 )
 
 // TODO: Define a go type for InputType when formalizing input types

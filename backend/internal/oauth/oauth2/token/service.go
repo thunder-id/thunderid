@@ -195,7 +195,7 @@ func (ts *tokenService) ProcessTokenRequest(
 	}
 
 	// Issue refresh token if applicable.
-	if grantType == constants.GrantTypeAuthorizationCode &&
+	if (grantType == constants.GrantTypeAuthorizationCode || grantType == constants.GrantTypeCIBA) &&
 		oauthApp.IsAllowedGrantType(constants.GrantTypeRefreshToken) {
 		logger.DebugWithContext(ctx, "Issuing refresh token for the token request",
 			log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
