@@ -43,6 +43,7 @@ source "${SCRIPT_DIR}/common.sh"
 log_info "Creating default ${PRODUCT_NAME} resources..."
 echo ""
 
+SYSTEM_RS_IDENTIFIER="https://localhost:8090/mcp"
 
 # ============================================================================
 # Create Default Organization Unit
@@ -344,7 +345,7 @@ fi
 RESPONSE=$(api_call POST "/resource-servers" "{
   \"name\": \"System\",
   \"description\": \"System resource server\",
-  \"identifier\": \"system\",
+  \"identifier\": \"${SYSTEM_RS_IDENTIFIER}\",
   \"ouId\": \"${DEFAULT_OU_ID}\"
 }")
 
@@ -404,7 +405,7 @@ echo ""
 # ============================================================================
 #
 # Permission auto-derivation:
-#   Resource Server identifier "system"
+#   Resource Server identifier (SYSTEM_RS_IDENTIFIER)
 #   └── Resource handle "system"           → permission "system"
 #       └── Resource handle "ou"           → permission "system:ou"
 #           └── Action handle "view"       → permission "system:ou:view"

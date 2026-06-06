@@ -52,6 +52,7 @@ $ErrorActionPreference = 'Stop'
 Log-Info "Creating default $PRODUCT_NAME resources..."
 Write-Host ""
 
+$SystemRsIdentifier = "https://localhost:8090/mcp"
 
 # ============================================================================
 # Create Default Organization Unit
@@ -340,7 +341,7 @@ if (-not $DEFAULT_OU_ID) {
 $resourceServerData = @{
     name = "System"
     description = "System resource server"
-    identifier = "system"
+    identifier = $SystemRsIdentifier
     ouId = $DEFAULT_OU_ID
 } | ConvertTo-Json -Depth 10
 
@@ -400,7 +401,7 @@ Write-Host ""
 # ============================================================================
 #
 # Permission auto-derivation:
-#   Resource Server identifier "system"
+#   Resource Server identifier ($SystemRsIdentifier)
 #   └── Resource handle "system"           → permission "system"
 #       └── Resource handle "ou"           → permission "system:ou"
 #           └── Action handle "view"       → permission "system:ou:view"
