@@ -142,6 +142,14 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrors() {
 			expectedCode:  http.StatusBadRequest,
 			expectedError: "unauthorized_client",
 		},
+		{
+			name:          "InvalidClient",
+			grantType:     "client_credentials",
+			errCode:       constants.ErrorInvalidClient,
+			errDesc:       "Client authentication failed",
+			expectedCode:  http.StatusUnauthorized,
+			expectedError: "invalid_client",
+		},
 	}
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
@@ -169,6 +177,30 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrors() {
 			assert.Equal(suite.T(), tc.expectedError, response["error"])
 		})
 	}
+}
+
+func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrorWithoutCode() {
+	handler := suite.newHandler()
+	mockApp := &inboundmodel.OAuthClient{ClientID: "test-client-id"}
+	formData := url.Values{}
+	formData.Set("grant_type", "authorization_code")
+	req := suite.withClientContext(suite.buildRequest(formData), mockApp)
+
+	suite.mockTokenService.EXPECT().
+		ProcessTokenRequest(mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, &model.ErrorResponse{
+			Error:            "",
+			ErrorDescription: "",
+		})
+
+	rr := httptest.NewRecorder()
+	handler.HandleTokenRequest(rr, req)
+
+	assert.Equal(suite.T(), http.StatusInternalServerError, rr.Code)
+	var response map[string]interface{}
+	err := json.Unmarshal(rr.Body.Bytes(), &response)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "server_error", response["error"])
 }
 
 func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrorServerError() {
