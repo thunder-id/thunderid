@@ -195,7 +195,6 @@ func (m *authnProviderManager) GetEntityReference(ctx context.Context, authUser 
 			})
 		}
 	}
-
 	authUser.entityReference = entityRef
 	authUser.entityReferenceToken = nil
 
