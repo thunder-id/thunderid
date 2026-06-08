@@ -24,6 +24,7 @@ import (
 	"mime"
 	"net"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -61,6 +62,22 @@ func newSMTPClient(config smtpConfig) (EmailClientInterface, error) {
 	return &smtpClient{
 		config: config,
 	}, nil
+}
+
+// checkSMTPConnectivity verifies that the configured SMTP origin is reachable over
+// TCP. It is run on startup so an unreachable mail server fails fast instead of only
+// failing when the first email is sent.
+func checkSMTPConnectivity(host string, port int) error {
+	address := net.JoinHostPort(host, strconv.Itoa(port))
+
+	conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+	if err != nil {
+		log.GetLogger().Warn(ErrorUnreachableOrigin.Error(), log.Error(err))
+		return fmt.Errorf("%w: %w", ErrorUnreachableOrigin, err)
+	}
+	_ = conn.Close()
+
+	return nil
 }
 
 // NewSMTPClientFromConfig creates a new smtpClient using the global server configuration.

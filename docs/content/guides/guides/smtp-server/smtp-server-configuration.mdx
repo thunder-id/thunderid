@@ -147,6 +147,10 @@ SendGrid displays API keys only once during creation. Store the key securely bef
 </TabItem>
 </Tabs>
 
+## Startup Connectivity Check
+
+On startup, <ProductName /> performs a TCP connectivity check against the configured `email.smtp.host` and `email.smtp.port`. If the check fails, a warning is logged and the email client is set to `nil`, so email-dependent flows are skipped while the rest of the server starts normally. Verify that the configured `host` and `port` are correct.
+
 ## Connection Security
 
 <ProductName /> secures SMTP connections using explicit STARTTLS. When `enable_start_tls` is `true`, <ProductName /> first connects to the SMTP server over plain TCP on the specified port, then upgrades the connection to TLS using the STARTTLS command. The TLS handshake requires TLS 1.2 or later.
