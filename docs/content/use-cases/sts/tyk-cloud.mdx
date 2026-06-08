@@ -1,0 +1,137 @@
+---
+title: Protect APIs on Tyk Cloud with <ProductName />
+description: Configure Tyk Cloud to validate JWTs issued by <ProductName /> and enforce access control on your upstream APIs.
+sidebar_position: 1
+---
+
+import ThemedImage from '@theme/ThemedImage';
+import tykApiCreation from '../assets/sts/tyk/tyk_api_creation.png';
+import tykJwtConfiguration from '../assets/sts/tyk/tyk_jwt_configuration.png';
+import tykApiPolicyCreation from '../assets/sts/tyk/tyk_api_policy_creation.png';
+import tykApiPolicyIntegrationWithApi from '../assets/sts/tyk/tyk_api_policy_integration_with_api.png';
+
+# Protect APIs on Tyk Cloud with <ProductName />
+
+This guide walks you through the complete configuration required to protect APIs hosted on [Tyk](https://tyk.io/) using JSON Web Tokens (JWTs) issued by <ProductName />. After completing these steps, client applications authenticate with <ProductName /> to obtain a JWT, then present that token to Tyk Cloud, which validates and enforces it before allowing access to the upstream API.
+
+## Prerequisites
+
+Before you begin, ensure you have the following:
+
+- A running <ProductName /> installation which should be publicly accessible. Follow [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid) for download, setup, and start commands. 
+  
+  :::tip
+  For local testing, you can use [ngrok](https://ngrok.com/) to expose a local instance over a publicly reachable URL if needed.
+  :::
+
+- A [Tyk Self-Managed or Tyk Cloud](https://tyk.io/) with access to the [Tyk Dashboard](https://dashboard.cloud-ara.tyk.io/login).
+
+## Configure <ProductName />
+
+### Create an Application
+
+1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:<THUNDER_PORT>/console`.
+2. Navigate to **Applications** → **New Application**.
+3. Enter an **Application Name**.
+4. Select **Backend Service** as the application type.
+5. Click **Create Application**.
+6. Note the **Client ID** and **Client Secret** from the application details page.
+
+## Configure Tyk Cloud
+
+### Create an API
+1. Sign in to the [Tyk Dashboard](https://dashboard.cloud-ara.tyk.io/login).
+2. Navigate to **API Management** → **APIs**.
+3. Click **Add New API** and create a new HTTP API.
+
+<ThemedImage
+  alt="Tyk API Creation"
+  sources={{
+    light: tykApiCreation,
+    dark: tykApiCreation,
+  }}
+/>
+
+### Configure Authentication
+1. Scroll to the **Authentication** section under **Server**.
+2. Select **Json Web Token (JWT)** from the authentication mode list.
+3. Set **JWT Signing Method** to **RSA Public Key**.
+4. In the **Public Key** field, enter the JSON Web Key Sets (JWKS) URL for your <ProductName /> instance:
+   ```
+   https://<THUNDER_HOST>:<PORT>/oauth2/jwks
+   ```
+5. Set **Identity Source** to `sub`. Tyk uses this field to uniquely identify the token holder.
+6. Optionally, set **Policy Field Name** to `pol` if you want to embed a Tyk Policy ID directly in <ProductName /> tokens. This enables per-client or per-tier rate limits without modifying Tyk configuration at runtime.
+7. Click **Update** to save the API.
+
+<ThemedImage
+  alt="Tyk JWT Configuration"
+  sources={{
+    light: tykJwtConfiguration,
+    dark: tykJwtConfiguration,
+  }}
+/>
+
+### Create an Access Policy
+1. Navigate to **API Security** → **Policies**.
+2. Click **Add Policy**.
+3. Select your API from the **Add API Access Rights** list.
+4. Click the **Configurations** tab and enter a **Policy Name** and **TTL**.
+5. Click **Update**.
+
+<ThemedImage
+  alt="Tyk API Policy Creation"
+  sources={{
+    light: tykApiPolicyCreation,
+    dark: tykApiPolicyCreation,
+  }}
+/>
+
+### Set the Default Policy for Your API
+1. Navigate to **API Management** → **APIs**.
+2. Click your API, then click **Edit**.
+3. Under **Server** → **Authentication**, select the policy you created as the **Default Policy**.
+4. Click **Save API**.
+
+<ThemedImage
+  alt="Tyk API Policy Integration with API"
+  sources={{
+    light: tykApiPolicyIntegrationWithApi,
+    dark: tykApiPolicyIntegrationWithApi,
+  }}
+/>
+
+## Try It Out
+By default, Tyk accepts any valid <ProductName /> issued JWT. If Tyk validates the token successfully, the request reaches the upstream service and returns a response.
+
+### Obtain an Access Token
+Use the client credentials grant to request an access token from <ProductName />:
+
+```bash
+curl -k -X POST "https://<THUNDER_HOST>:<PORT>/oauth2/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials&client_id=<CLIENT_ID>&client_secret=<CLIENT_SECRET>&scope=booking"
+```
+
+The response includes an `access_token`:
+
+```json
+{
+  "access_token": "<ACCESS_TOKEN>",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "booking"
+}
+```
+
+### Call the Protected API
+Use the access token as a Bearer token in your API request:
+
+```bash
+curl -X GET "https://<TYK_GATEWAY_HOST>/<API_PATH>" \
+  -H "Authorization: Bearer <ACCESS_TOKEN>"
+```
+
+Replace `<TYK_GATEWAY_HOST>` and `<API_PATH>` with your Tyk gateway URL and the path to your API endpoint.
+
+A successful request returns an HTTP `200` response. If the token is missing or invalid or expired, Tyk returns `401 Unauthorized` with the error message.
