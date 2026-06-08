@@ -4,8 +4,6 @@ description: Run the AI agent use cases against the Wayfinder sample, a fictiona
 sidebar_position: 5
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
 import Stepper from '../../../src/components/Stepper';
 import {NextSteps, NextStepsCard} from '../../../src/components/NextSteps';
 import SampleDownload from '../../../src/components/SampleDownload';
@@ -82,24 +80,17 @@ Apply the bundle through the <ProductName /> Console. It creates everything the 
 
 ### Run the Sample
 
-Start all Wayfinder services from the extracted sample directory:
-
-<Tabs groupId="os">
-<TabItem value="unix" label="Linux / macOS">
+From the extracted sample directory, install dependencies:
 
 ```bash
-./start.sh
+npm install
 ```
 
-</TabItem>
-<TabItem value="windows" label="Windows">
+Then start all services:
 
-```powershell
-.\start.ps1
+```bash
+npm run dev
 ```
-
-</TabItem>
-</Tabs>
 
 The sample opens at <WayFinderSampleUrl />.
 
