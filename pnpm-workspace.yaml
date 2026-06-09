@@ -10,7 +10,7 @@ packages:
 
 strictPeerDependencies: false
 autoInstallPeers: true
-enablePrePostScripts: true
+enablePrePostScripts: false
 
 allowBuilds:
   '@parcel/watcher': false
