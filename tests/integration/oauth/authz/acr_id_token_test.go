@@ -105,7 +105,7 @@ var acrE2EFlow = testutils.Flow{
 			"id":   "basic_auth_pwd",
 			"type": "TASK_EXECUTION",
 			"executor": map[string]interface{}{
-				"name": "BasicAuthExecutor",
+				"name": "CredentialsAuthExecutor",
 				"inputs": []map[string]interface{}{
 					{"ref": "input_u1", "identifier": "username", "type": "TEXT_INPUT", "required": true},
 					{"ref": "input_p1", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
@@ -118,7 +118,7 @@ var acrE2EFlow = testutils.Flow{
 			"id":   "basic_auth_code",
 			"type": "TASK_EXECUTION",
 			"executor": map[string]interface{}{
-				"name": "BasicAuthExecutor",
+				"name": "CredentialsAuthExecutor",
 				"inputs": []map[string]interface{}{
 					{"ref": "input_u2", "identifier": "username", "type": "TEXT_INPUT", "required": true},
 					{"ref": "input_p2", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},

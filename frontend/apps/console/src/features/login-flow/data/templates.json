@@ -134,10 +134,10 @@
     "config": {
       "data": {
         "__generationMeta__": {
-          "defaultPropertySelectorId": "{{BASIC_AUTH_EXECUTION_STEP_ID}}",
+          "defaultPropertySelectorId": "{{CREDENTIALS_AUTH_EXECUTION_STEP_ID}}",
           "replacers": [
             {
-              "key": "BASIC_AUTH_EXECUTION_STEP_ID",
+              "key": "CREDENTIALS_AUTH_EXECUTION_STEP_ID",
               "type": "ID"
             },
             {
@@ -215,7 +215,7 @@
                       "label": "Sign In",
                       "action": {
                         "type": "NEXT",
-                        "onSuccess": "{{BASIC_AUTH_EXECUTION_STEP_ID}}"
+                        "onSuccess": "{{CREDENTIALS_AUTH_EXECUTION_STEP_ID}}"
                       }
                     },
                     {
@@ -230,7 +230,7 @@
             }
           },
           {
-            "id": "{{BASIC_AUTH_EXECUTION_STEP_ID}}",
+            "id": "{{CREDENTIALS_AUTH_EXECUTION_STEP_ID}}",
             "type": "TASK_EXECUTION",
             "size": {
               "width": 217,
@@ -244,7 +244,7 @@
               "action": {
                 "type": "EXECUTOR",
                 "executor": {
-                  "name": "BasicAuthExecutor"
+                  "name": "CredentialsAuthExecutor"
                 },
                 "onSuccess": "{{AUTH_ASSERT_EXECUTOR_ID}}",
                 "onFailure": "",
@@ -319,7 +319,7 @@
               "type": "ID"
             },
             {
-              "key": "BASIC_AUTH_EXECUTION_STEP_ID",
+              "key": "CREDENTIALS_AUTH_EXECUTION_STEP_ID",
               "type": "ID"
             },
             {
@@ -397,7 +397,7 @@
                       "label": "Continue",
                       "action": {
                         "type": "NEXT",
-                        "onSuccess": "{{BASIC_AUTH_EXECUTION_STEP_ID}}"
+                        "onSuccess": "{{CREDENTIALS_AUTH_EXECUTION_STEP_ID}}"
                       }
                     }
                   ]
@@ -433,7 +433,7 @@
             }
           },
           {
-            "id": "{{BASIC_AUTH_EXECUTION_STEP_ID}}",
+            "id": "{{CREDENTIALS_AUTH_EXECUTION_STEP_ID}}",
             "type": "TASK_EXECUTION",
             "size": {
               "width": 217,
@@ -447,7 +447,7 @@
               "action": {
                 "type": "EXECUTOR",
                 "executor": {
-                  "name": "BasicAuthExecutor"
+                  "name": "CredentialsAuthExecutor"
                 },
                 "onSuccess": "{{AUTH_ASSERT_EXECUTOR_ID}}",
                 "onIncomplete": ""
@@ -542,7 +542,7 @@
           "defaultPropertySelectorId": "{{SMS_SEND_EXECUTOR_ID}}",
           "replacers": [
             {
-              "key": "BASIC_AUTH_EXECUTION_STEP_ID",
+              "key": "CREDENTIALS_AUTH_EXECUTION_STEP_ID",
               "type": "ID"
             },
             {
@@ -632,7 +632,7 @@
                       "label": "Sign In",
                       "action": {
                         "type": "NEXT",
-                        "onSuccess": "{{BASIC_AUTH_EXECUTION_STEP_ID}}"
+                        "onSuccess": "{{CREDENTIALS_AUTH_EXECUTION_STEP_ID}}"
                       }
                     }
                   ]
@@ -641,7 +641,7 @@
             }
           },
           {
-            "id": "{{BASIC_AUTH_EXECUTION_STEP_ID}}",
+            "id": "{{CREDENTIALS_AUTH_EXECUTION_STEP_ID}}",
             "type": "TASK_EXECUTION",
             "size": {
               "width": 217,
@@ -655,7 +655,7 @@
               "action": {
                 "type": "EXECUTOR",
                 "executor": {
-                  "name": "BasicAuthExecutor"
+                  "name": "CredentialsAuthExecutor"
                 },
                 "onSuccess": "{{SMS_SEND_EXECUTOR_ID}}",
                 "onFailure": "",
@@ -1122,7 +1122,7 @@
               "type": "ID"
             },
             {
-              "key": "BASIC_AUTH_FOR_REG_EXECUTOR_ID",
+              "key": "CREDENTIALS_AUTH_FOR_REG_EXECUTOR_ID",
               "type": "ID"
             },
             {
@@ -1340,7 +1340,7 @@
                       "label": "Verify & Register Passkey",
                       "action": {
                         "type": "NEXT",
-                        "onSuccess": "{{BASIC_AUTH_FOR_REG_EXECUTOR_ID}}"
+                        "onSuccess": "{{CREDENTIALS_AUTH_FOR_REG_EXECUTOR_ID}}"
                       }
                     }
                   ]
@@ -1349,7 +1349,7 @@
             }
           },
           {
-            "id": "{{BASIC_AUTH_FOR_REG_EXECUTOR_ID}}",
+            "id": "{{CREDENTIALS_AUTH_FOR_REG_EXECUTOR_ID}}",
             "type": "TASK_EXECUTION",
             "size": {
               "width": 217,
@@ -1363,7 +1363,7 @@
               "action": {
                 "type": "EXECUTOR",
                 "executor": {
-                  "name": "BasicAuthExecutor"
+                  "name": "CredentialsAuthExecutor"
                 },
                 "onSuccess": "{{PASSKEY_REGISTER_START_EXECUTOR_ID}}",
                 "onFailure": "{{PASSWORD_FOR_REG_VIEW_ID}}",

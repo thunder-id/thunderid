@@ -606,7 +606,7 @@ describe('ConfigureDetails', () => {
     ).toBeInTheDocument();
   });
 
-  it('does not render passkey configuration when BASIC_AUTH is the only authenticator', () => {
+  it('does not render passkey configuration when CREDENTIALS_AUTH is the only authenticator', () => {
     const template = createTemplate('Browser App', []);
 
     renderWithContext(
@@ -619,7 +619,7 @@ describe('ConfigureDetails', () => {
       },
       {
         selectedTemplateConfig: template,
-        integrations: {[AuthenticatorTypes.BASIC_AUTH]: true},
+        integrations: {[AuthenticatorTypes.CREDENTIALS_AUTH]: true},
       },
     );
 

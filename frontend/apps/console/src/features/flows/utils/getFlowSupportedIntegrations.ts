@@ -30,15 +30,15 @@ import {AuthenticatorTypes} from '../../integrations/models/authenticators';
  * import getFlowSupportedIntegrations from './getFlowSupportedIntegrations';
  *
  * const integrations = getFlowSupportedIntegrations('basic-google-github-flow');
- * // Returns: ['basic_auth', 'google', 'github']
+ * // Returns: ['credentials_auth', 'google', 'github']
  * ```
  */
 function getFlowSupportedIntegrations(flowHandle: string): string[] {
   const integrations: string[] = [];
 
-  // Check for basic auth
+  // Check for credentials auth (flow handles use 'basic' as the handle segment)
   if (flowHandle.includes('basic')) {
-    integrations.push(AuthenticatorTypes.BASIC_AUTH);
+    integrations.push(AuthenticatorTypes.CREDENTIALS_AUTH);
   }
 
   // Check for Google

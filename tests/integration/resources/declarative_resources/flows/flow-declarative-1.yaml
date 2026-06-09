@@ -21,11 +21,11 @@ nodes:
             required: true
         action:
           ref: action_001
-          nextNode: basic_auth
-  - id: basic_auth
+          nextNode: credentials_auth
+  - id: credentials_auth
     type: TASK_EXECUTION
     executor:
-      name: BasicAuthExecutor
+      name: CredentialsAuthExecutor
       inputs:
         - ref: input_001
           identifier: username

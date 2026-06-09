@@ -164,7 +164,7 @@ describe('FlowCreatePage', () => {
     navigateToTemplateStep();
     act(() => {
       (capturedTemplateProps.onTemplateChange as (t: unknown) => void)({
-        type: 'BASIC_AUTH',
+        type: 'CREDENTIALS_AUTH',
         flowType: 'AUTHENTICATION',
         config: {nodes: [{id: 'start'}]},
       });

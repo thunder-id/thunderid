@@ -153,8 +153,8 @@ export default function ConfigureSignInOptions({
         .filter(([, enabled]) => enabled)
         .map(([integrationId]) => {
           // Handle basic auth
-          if (integrationId === AuthenticatorTypes.BASIC_AUTH) {
-            return AuthenticatorTypes.BASIC_AUTH;
+          if (integrationId === AuthenticatorTypes.CREDENTIALS_AUTH) {
+            return AuthenticatorTypes.CREDENTIALS_AUTH;
           }
 
           // Find the provider to get its type

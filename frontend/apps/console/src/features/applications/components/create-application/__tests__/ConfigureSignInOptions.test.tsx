@@ -103,7 +103,7 @@ describe('ConfigureSignInOptions', () => {
 
   const defaultProps: ConfigureSignInOptionsProps = {
     integrations: {
-      [AuthenticatorTypes.BASIC_AUTH]: true,
+      [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
     },
     onIntegrationToggle: mockOnIntegrationToggle,
   };
@@ -227,7 +227,7 @@ describe('ConfigureSignInOptions', () => {
 
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
       },
     });
 
@@ -282,7 +282,7 @@ describe('ConfigureSignInOptions', () => {
       await user.click(usernamePasswordButton);
     }
 
-    expect(mockOnIntegrationToggle).toHaveBeenCalledWith(AuthenticatorTypes.BASIC_AUTH);
+    expect(mockOnIntegrationToggle).toHaveBeenCalledWith(AuthenticatorTypes.CREDENTIALS_AUTH);
   });
 
   it('should call onIntegrationToggle when clicking provider list item', async () => {
@@ -330,7 +330,7 @@ describe('ConfigureSignInOptions', () => {
 
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
         'github-idp': false,
       },
@@ -483,7 +483,7 @@ describe('ConfigureSignInOptions', () => {
 
     const {rerender} = renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
       },
     });
@@ -493,7 +493,7 @@ describe('ConfigureSignInOptions', () => {
 
     rerender({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
       },
     });
@@ -658,7 +658,7 @@ describe('ConfigureSignInOptions', () => {
 
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         },
       });
 
@@ -677,7 +677,7 @@ describe('ConfigureSignInOptions', () => {
 
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           'google-idp': false,
           'github-idp': false,
         },
@@ -705,7 +705,7 @@ describe('ConfigureSignInOptions', () => {
       // Select username/password
       rerender({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         },
       });
 
@@ -728,7 +728,7 @@ describe('ConfigureSignInOptions', () => {
 
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         },
         onReadyChange,
       });

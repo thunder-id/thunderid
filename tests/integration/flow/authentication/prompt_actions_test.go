@@ -49,8 +49,8 @@ var (
 				"prompts": []map[string]interface{}{
 					{
 						"action": map[string]interface{}{
-							"ref":      "basic_auth",
-							"nextNode": "basic_auth",
+							"ref":      "credentials_auth",
+							"nextNode": "credentials_auth",
 						},
 					},
 					{
@@ -62,10 +62,10 @@ var (
 				},
 			},
 			{
-				"id":   "basic_auth",
+				"id":   "credentials_auth",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
-					"name": "BasicAuthExecutor",
+					"name": "CredentialsAuthExecutor",
 					"inputs": []map[string]interface{}{
 						{
 							"ref":        "input_001",
@@ -404,7 +404,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TearDownSuite() {
 	}
 }
 
-func (ts *PromptActionsAndMFAFlowTestSuite) TestBasicAuthWithMobileUserSMSOTP() {
+func (ts *PromptActionsAndMFAFlowTestSuite) TestCredentialsAuthWithMobileUserSMSOTP() {
 	// Step 1: Initialize the flow - should present prompt with action choices
 	flowStep, err := common.InitiateAuthenticationFlow(promptActionsTestAppID, false, nil, "")
 	if err != nil {
@@ -420,12 +420,12 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestBasicAuthWithMobileUserSMSOTP() 
 	ts.Require().NotEmpty(flowStep.Data.Actions, "Flow should require actions")
 
 	// Check if expected actions are present
-	expectedActions := []string{"basic_auth", "prompt_mobile"}
+	expectedActions := []string{"credentials_auth", "prompt_mobile"}
 	ts.Require().True(common.ValidateRequiredActions(flowStep.Data.Actions, expectedActions),
-		"Expected actions basic_auth and prompt_mobile should be present")
+		"Expected actions credentials_auth and prompt_mobile should be present")
 
 	// Step 2: Choose basic auth
-	basicAuthStep, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{}, "basic_auth",
+	basicAuthStep, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{}, "credentials_auth",
 		flowStep.ChallengeToken)
 	if err != nil {
 		ts.T().Fatalf("Failed to complete authentication flow with decision: %v", err)
@@ -509,9 +509,9 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestBasicAuthWithMobileUserSMSOTP() 
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 }
 
-func (ts *PromptActionsAndMFAFlowTestSuite) TestBasicAuthWithoutMobileUserSMSOTP() {
+func (ts *PromptActionsAndMFAFlowTestSuite) TestCredentialsAuthWithoutMobileUserSMSOTP() {
 	// Test case 1: Authentication with basic auth with user not having mobile, provide mobile, then SMS OTP
-	ts.Run("TestBasicAuthWithoutMobileUserSMSOTP_ProvideMobile", func() {
+	ts.Run("TestCredentialsAuthWithoutMobileUserSMSOTP_ProvideMobile", func() {
 		// Step 1: Initialize the flow - should present prompt with action choices
 		flowStep, err := common.InitiateAuthenticationFlow(promptActionsTestAppID, false, nil, "")
 		if err != nil {
@@ -525,13 +525,13 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestBasicAuthWithoutMobileUserSMSOTP
 
 		// Check if expected actions are present
 		for _, action := range flowStep.Data.Actions {
-			if action.Ref != "basic_auth" && action.Ref != "prompt_mobile" {
-				ts.T().Fatalf("Expected action ref to be 'basic_auth' or 'prompt_mobile', but got %s", action.Ref)
+			if action.Ref != "credentials_auth" && action.Ref != "prompt_mobile" {
+				ts.T().Fatalf("Expected action ref to be 'credentials_auth' or 'prompt_mobile', but got %s", action.Ref)
 			}
 		}
 
 		// Step 2: Choose basic auth
-		basicAuthStep, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{}, "basic_auth",
+		basicAuthStep, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{}, "credentials_auth",
 			flowStep.ChallengeToken)
 		if err != nil {
 			ts.T().Fatalf("Failed to complete authentication flow with decision: %v", err)
@@ -633,7 +633,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestBasicAuthWithoutMobileUserSMSOTP
 	})
 
 	// Test case 2: Retry auth flow for same user - should not prompt for mobile again
-	ts.Run("TestBasicAuthWithoutMobileUserSMSOTP_RetryAuth", func() {
+	ts.Run("TestCredentialsAuthWithoutMobileUserSMSOTP_RetryAuth", func() {
 		// Step 1: Initialize the flow - should present prompt with action choices
 		flowStep, err := common.InitiateAuthenticationFlow(promptActionsTestAppID, false, nil, "")
 		if err != nil {
@@ -646,13 +646,13 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestBasicAuthWithoutMobileUserSMSOTP
 
 		// Check if expected actions are present
 		for _, action := range flowStep.Data.Actions {
-			if action.Ref != "basic_auth" && action.Ref != "prompt_mobile" {
-				ts.T().Fatalf("Expected action ref to be 'basic_auth' or 'prompt_mobile', but got %s", action.Ref)
+			if action.Ref != "credentials_auth" && action.Ref != "prompt_mobile" {
+				ts.T().Fatalf("Expected action ref to be 'credentials_auth' or 'prompt_mobile', but got %s", action.Ref)
 			}
 		}
 
 		// Step 2: Choose basic auth
-		basicAuthStep, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{}, "basic_auth",
+		basicAuthStep, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{}, "credentials_auth",
 			flowStep.ChallengeToken)
 		if err != nil {
 			ts.T().Fatalf("Failed to complete authentication flow with decision: %v", err)
@@ -756,8 +756,8 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestSMSOTPAuthWithValidMobile() {
 
 	// Check if expected actions are present
 	for _, action := range flowStep.Data.Actions {
-		if action.Ref != "basic_auth" && action.Ref != "prompt_mobile" {
-			ts.T().Fatalf("Expected action ref to be 'basic_auth' or 'prompt_mobile', but got %s", action.Ref)
+		if action.Ref != "credentials_auth" && action.Ref != "prompt_mobile" {
+			ts.T().Fatalf("Expected action ref to be 'credentials_auth' or 'prompt_mobile', but got %s", action.Ref)
 		}
 	}
 
@@ -865,8 +865,8 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestSMSOTPAuthWithInvalidMobile() {
 
 	// Check if expected actions are present
 	for _, action := range flowStep.Data.Actions {
-		if action.Ref != "basic_auth" && action.Ref != "prompt_mobile" {
-			ts.T().Fatalf("Expected action ref to be 'basic_auth' or 'prompt_mobile', but got %s", action.Ref)
+		if action.Ref != "credentials_auth" && action.Ref != "prompt_mobile" {
+			ts.T().Fatalf("Expected action ref to be 'credentials_auth' or 'prompt_mobile', but got %s", action.Ref)
 		}
 	}
 

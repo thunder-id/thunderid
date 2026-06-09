@@ -34,8 +34,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
-// basicAuthExecutor implements the ExecutorInterface for basic authentication.
-type basicAuthExecutor struct {
+// credentialsAuthExecutor implements the ExecutorInterface for credentials-based authentication.
+type credentialsAuthExecutor struct {
 	core.ExecutorInterface
 	identifyingExecutorInterface
 	entityProvider entityprovider.EntityProviderInterface
@@ -43,15 +43,15 @@ type basicAuthExecutor struct {
 	logger         *log.Logger
 }
 
-var _ core.ExecutorInterface = (*basicAuthExecutor)(nil)
-var _ identifyingExecutorInterface = (*basicAuthExecutor)(nil)
+var _ core.ExecutorInterface = (*credentialsAuthExecutor)(nil)
+var _ identifyingExecutorInterface = (*credentialsAuthExecutor)(nil)
 
-// newBasicAuthExecutor creates a new instance of BasicAuthExecutor.
-func newBasicAuthExecutor(
+// newCredentialsAuthExecutor creates a new instance of CredentialsAuthExecutor.
+func newCredentialsAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
-) *basicAuthExecutor {
+) *credentialsAuthExecutor {
 	defaultInputs := []common.Input{
 		{
 			Identifier: userAttributeUsername,
@@ -65,15 +65,15 @@ func newBasicAuthExecutor(
 		},
 	}
 
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "BasicAuthExecutor"),
-		log.String(log.LoggerKeyExecutorName, ExecutorNameBasicAuth))
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CredentialsAuthExecutor"),
+		log.String(log.LoggerKeyExecutorName, ExecutorNameCredentialsAuth))
 
-	identifyExec := newIdentifyingExecutor(ExecutorNameBasicAuth, defaultInputs, []common.Input{},
+	identifyExec := newIdentifyingExecutor(ExecutorNameCredentialsAuth, defaultInputs, []common.Input{},
 		flowFactory, entityProvider)
-	base := flowFactory.CreateExecutor(ExecutorNameBasicAuth, common.ExecutorTypeAuthentication,
+	base := flowFactory.CreateExecutor(ExecutorNameCredentialsAuth, common.ExecutorTypeAuthentication,
 		defaultInputs, []common.Input{})
 
-	return &basicAuthExecutor{
+	return &credentialsAuthExecutor{
 		ExecutorInterface:            base,
 		identifyingExecutorInterface: identifyExec,
 		entityProvider:               entityProvider,
@@ -82,10 +82,10 @@ func newBasicAuthExecutor(
 	}
 }
 
-// Execute executes the basic authentication logic.
-func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
+// Execute executes the credentials authentication logic.
+func (b *credentialsAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := b.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Executing basic authentication executor")
+	logger.DebugWithContext(ctx.Context, "Executing credentials authentication executor")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -110,7 +110,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 			return execResp, nil
 		}
 	} else if !b.HasRequiredInputs(ctx, execResp) {
-		logger.DebugWithContext(ctx.Context, "Required inputs for basic authentication executor is not provided")
+		logger.DebugWithContext(ctx.Context, "Required inputs for credentials authentication executor is not provided")
 		execResp.Status = common.ExecUserInputRequired
 		return execResp, nil
 	}
@@ -146,7 +146,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 	execResp.AuthenticatedUser = *authenticatedUser
 	execResp.Status = common.ExecComplete
 
-	logger.DebugWithContext(ctx.Context, "Basic authentication executor execution completed",
+	logger.DebugWithContext(ctx.Context, "Credentials authentication executor execution completed",
 		log.String("status", string(execResp.Status)),
 		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
 
@@ -154,7 +154,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 }
 
 // getCredentialInputs returns the sensitive (credential) inputs from the node's required inputs.
-func (b *basicAuthExecutor) getCredentialInputs(ctx *core.NodeContext) []common.Input {
+func (b *credentialsAuthExecutor) getCredentialInputs(ctx *core.NodeContext) []common.Input {
 	var credentials []common.Input
 	for _, input := range b.GetRequiredInputs(ctx) {
 		if input.IsSensitive() {
@@ -166,7 +166,7 @@ func (b *basicAuthExecutor) getCredentialInputs(ctx *core.NodeContext) []common.
 
 // getAuthenticatedUser perform authentication based on the provided identifying and
 // credential attributes and returns the authenticated user details.
-func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
+func (b *credentialsAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 	execResp *common.ExecutorResponse) (*authncm.AuthenticatedUser, error) {
 	logger := b.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
@@ -268,7 +268,7 @@ func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 }
 
 // buildAuthnMetadata constructs the metadata for authentication.
-func (b *basicAuthExecutor) buildAuthnMetadata(ctx *core.NodeContext) *authnprovidercm.AuthnMetadata {
+func (b *credentialsAuthExecutor) buildAuthnMetadata(ctx *core.NodeContext) *authnprovidercm.AuthnMetadata {
 	metadata := &authnprovidercm.AuthnMetadata{
 		AppMetadata: make(map[string]interface{}),
 	}

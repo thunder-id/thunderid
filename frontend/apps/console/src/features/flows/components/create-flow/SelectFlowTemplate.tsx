@@ -56,7 +56,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const BRANDED_ICONS = new Set(['assets/images/icons/google.svg']);
 
 const TEMPLATE_ICONS: Record<string, string[]> = {
-  BASIC_AUTH: ['assets/images/icons/password.svg'],
+  CREDENTIALS_AUTH: ['assets/images/icons/password.svg'],
   GOOGLE: ['assets/images/icons/google.svg'],
   GITHUB: ['assets/images/icons/github.svg'],
   GOOGLE_GITHUB: ['assets/images/icons/google.svg', 'assets/images/icons/github.svg'],

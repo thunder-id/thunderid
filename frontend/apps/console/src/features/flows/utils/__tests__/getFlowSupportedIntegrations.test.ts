@@ -24,7 +24,7 @@ describe('getFlowSupportedIntegrations', () => {
   describe('Single Integration Detection', () => {
     it('should detect basic auth from handle containing "basic"', () => {
       const result = getFlowSupportedIntegrations('basic-flow');
-      expect(result).toContain(AuthenticatorTypes.BASIC_AUTH);
+      expect(result).toContain(AuthenticatorTypes.CREDENTIALS_AUTH);
     });
 
     it('should detect google from handle containing "google"', () => {
@@ -51,21 +51,21 @@ describe('getFlowSupportedIntegrations', () => {
   describe('Multiple Integration Detection', () => {
     it('should detect basic and google from combined handle', () => {
       const result = getFlowSupportedIntegrations('basic-google-flow');
-      expect(result).toContain(AuthenticatorTypes.BASIC_AUTH);
+      expect(result).toContain(AuthenticatorTypes.CREDENTIALS_AUTH);
       expect(result).toContain('google');
       expect(result).toHaveLength(2);
     });
 
     it('should detect basic and github from combined handle', () => {
       const result = getFlowSupportedIntegrations('basic-github-flow');
-      expect(result).toContain(AuthenticatorTypes.BASIC_AUTH);
+      expect(result).toContain(AuthenticatorTypes.CREDENTIALS_AUTH);
       expect(result).toContain('github');
       expect(result).toHaveLength(2);
     });
 
     it('should detect all three: basic, google, and github', () => {
       const result = getFlowSupportedIntegrations('basic-google-github-flow');
-      expect(result).toContain(AuthenticatorTypes.BASIC_AUTH);
+      expect(result).toContain(AuthenticatorTypes.CREDENTIALS_AUTH);
       expect(result).toContain('google');
       expect(result).toContain('github');
       expect(result).toHaveLength(3);
@@ -73,7 +73,7 @@ describe('getFlowSupportedIntegrations', () => {
 
     it('should detect basic, passkey, and google', () => {
       const result = getFlowSupportedIntegrations('basic-passkey-google-flow');
-      expect(result).toContain(AuthenticatorTypes.BASIC_AUTH);
+      expect(result).toContain(AuthenticatorTypes.CREDENTIALS_AUTH);
       expect(result).toContain(AuthenticatorTypes.PASSKEY);
       expect(result).toContain('google');
       expect(result).toHaveLength(3);
@@ -81,7 +81,7 @@ describe('getFlowSupportedIntegrations', () => {
 
     it('should detect basic and sms from combined handle', () => {
       const result = getFlowSupportedIntegrations('basic-sms-otp-flow');
-      expect(result).toContain(AuthenticatorTypes.BASIC_AUTH);
+      expect(result).toContain(AuthenticatorTypes.CREDENTIALS_AUTH);
       expect(result).toContain('sms-otp');
       expect(result).toHaveLength(2);
     });
@@ -102,7 +102,7 @@ describe('getFlowSupportedIntegrations', () => {
   describe('Case Sensitivity', () => {
     it('should detect basic in lowercase handle', () => {
       const result = getFlowSupportedIntegrations('basic-auth-flow');
-      expect(result).toContain(AuthenticatorTypes.BASIC_AUTH);
+      expect(result).toContain(AuthenticatorTypes.CREDENTIALS_AUTH);
     });
 
     it('should handle mixed case handles', () => {
@@ -110,7 +110,7 @@ describe('getFlowSupportedIntegrations', () => {
       // Testing actual behavior
       const result = getFlowSupportedIntegrations('Basic-flow');
       // Should not contain basic_auth since 'Basic' !== 'basic'
-      expect(result).not.toContain(AuthenticatorTypes.BASIC_AUTH);
+      expect(result).not.toContain(AuthenticatorTypes.CREDENTIALS_AUTH);
     });
   });
 
@@ -133,7 +133,7 @@ describe('getFlowSupportedIntegrations', () => {
     it('should handle partial matches', () => {
       // 'basics' should match 'basic'
       const result = getFlowSupportedIntegrations('basics-flow');
-      expect(result).toContain(AuthenticatorTypes.BASIC_AUTH);
+      expect(result).toContain(AuthenticatorTypes.CREDENTIALS_AUTH);
     });
   });
 
@@ -146,7 +146,7 @@ describe('getFlowSupportedIntegrations', () => {
     it('should not return duplicates', () => {
       // Even with multiple occurrences, should only add once
       const result = getFlowSupportedIntegrations('basic-basic-flow');
-      const basicCount = result.filter((i) => i === AuthenticatorTypes.BASIC_AUTH).length;
+      const basicCount = result.filter((i) => i === AuthenticatorTypes.CREDENTIALS_AUTH).length;
       expect(basicCount).toBe(1);
     });
   });

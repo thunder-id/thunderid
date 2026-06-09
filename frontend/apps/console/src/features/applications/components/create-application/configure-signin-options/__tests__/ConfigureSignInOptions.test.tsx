@@ -103,7 +103,7 @@ vi.mock('../IndividualMethodsToggleView', () => ({
       <button
         type="button"
         data-testid="toggle-basic-auth"
-        onClick={() => onIntegrationToggle(AuthenticatorTypes.BASIC_AUTH)}
+        onClick={() => onIntegrationToggle(AuthenticatorTypes.CREDENTIALS_AUTH)}
       >
         Toggle Basic Auth
       </button>
@@ -142,7 +142,7 @@ describe('ConfigureSignInOptions', () => {
 
   const defaultProps: ConfigureSignInOptionsProps = {
     integrations: {
-      [AuthenticatorTypes.BASIC_AUTH]: false,
+      [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
     },
     onIntegrationToggle: mockOnIntegrationToggle,
     onReadyChange: mockOnReadyChange,
@@ -249,7 +249,7 @@ describe('ConfigureSignInOptions', () => {
     it('should show warning when no options are selected', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
         },
       });
 
@@ -259,7 +259,7 @@ describe('ConfigureSignInOptions', () => {
     it('should not show warning when at least one option is selected', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         },
       });
 
@@ -274,7 +274,7 @@ describe('ConfigureSignInOptions', () => {
 
       await user.click(screen.getByTestId('toggle-basic-auth'));
 
-      expect(mockOnIntegrationToggle).toHaveBeenCalledWith(AuthenticatorTypes.BASIC_AUTH);
+      expect(mockOnIntegrationToggle).toHaveBeenCalledWith(AuthenticatorTypes.CREDENTIALS_AUTH);
     });
 
     it('should select matching flow when integration toggle matches a flow', async () => {
@@ -314,7 +314,7 @@ describe('ConfigureSignInOptions', () => {
     it('should call onReadyChange with false when no options are selected', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
         },
       });
 
@@ -324,7 +324,7 @@ describe('ConfigureSignInOptions', () => {
     it('should call onReadyChange with true when at least one option is selected', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         },
       });
 
@@ -335,7 +335,7 @@ describe('ConfigureSignInOptions', () => {
       expect(() => {
         render(
           <ConfigureSignInOptions
-            integrations={{[AuthenticatorTypes.BASIC_AUTH]: false}}
+            integrations={{[AuthenticatorTypes.CREDENTIALS_AUTH]: false}}
             onIntegrationToggle={mockOnIntegrationToggle}
           />,
         );

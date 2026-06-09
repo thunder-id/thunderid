@@ -49,7 +49,7 @@ var (
 				"executor": map[string]interface{}{
 					"name": "UserTypeResolver",
 				},
-				"onSuccess":    "basic_auth",
+				"onSuccess":    "credentials_auth",
 				"onIncomplete": "prompt_usertype",
 			},
 			{
@@ -105,10 +105,10 @@ var (
 				},
 			},
 			{
-				"id":   "basic_auth",
+				"id":   "credentials_auth",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
-					"name": "BasicAuthExecutor",
+					"name": "CredentialsAuthExecutor",
 				},
 				"onSuccess": "ou_creation",
 			},

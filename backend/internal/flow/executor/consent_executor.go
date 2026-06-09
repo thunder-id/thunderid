@@ -309,7 +309,7 @@ func (e *consentExecutor) getRequiredAttributes(ctx *core.NodeContext) (
 // by authentication providers.
 //
 // It uses AuthenticatedUser.AvailableAttributes (legacy) as the base and merges in any
-// attributes from AuthUser via the AuthnProviderManager (new pattern used by BasicAuth).
+// attributes from AuthUser via the AuthnProviderManager (new pattern used by CredentialsAuthExecutor).
 // This temporary dual-source merge will be simplified once AuthenticatedUser is removed.
 // When both sources are empty, nil is returned so that the downstream consent enforcer
 // skips profile-presence filtering entirely.

@@ -48,7 +48,7 @@ paths:
                 value:
                   executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
                   challengeToken: "a3f2e1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2"
-                  action: "basic_auth"
+                  action: "credentials_auth"
                   inputs: {
                     "username": "thor",
                     "password": "thor@123"
@@ -236,7 +236,7 @@ components:
         action:
           type: string
           description: Reference of the action to execute in the flow
-          example: "basic_auth"
+          example: "credentials_auth"
         inputs:
           type: object
           description: Input data provided for the flow step execution

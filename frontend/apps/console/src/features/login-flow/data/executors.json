@@ -4,7 +4,7 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Basic Auth Executor",
+      "header": "Credentials Auth Executor",
       "label": "Identifier + Password",
       "image": "assets/images/icons/password.svg",
       "showOnResourcePanel": true
@@ -13,7 +13,7 @@
       "action": {
         "type": "EXECUTOR",
         "executor": {
-          "name": "BasicAuthExecutor"
+          "name": "CredentialsAuthExecutor"
         },
         "onSuccess": "",
         "onFailure": "",

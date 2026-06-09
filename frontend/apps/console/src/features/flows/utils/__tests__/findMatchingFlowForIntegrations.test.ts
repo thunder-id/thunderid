@@ -50,7 +50,7 @@ describe('findMatchingFlowForIntegrations', () => {
 
   describe('Single Integration Matching', () => {
     it('should match basic auth flow for basic_auth integration', () => {
-      const result = findMatchingFlowForIntegrations(['basic_auth'], availableFlows);
+      const result = findMatchingFlowForIntegrations(['credentials_auth'], availableFlows);
       expect(result).not.toBeNull();
       expect(result?.handle).toBe('basic-flow');
     });
@@ -70,25 +70,25 @@ describe('findMatchingFlowForIntegrations', () => {
 
   describe('Multiple Integration Matching', () => {
     it('should match basic+google flow when both are enabled', () => {
-      const result = findMatchingFlowForIntegrations(['basic_auth', 'google'], availableFlows);
+      const result = findMatchingFlowForIntegrations(['credentials_auth', 'google'], availableFlows);
       expect(result).not.toBeNull();
       expect(result?.handle).toBe('basic-google-flow');
     });
 
     it('should match basic+github flow when both are enabled', () => {
-      const result = findMatchingFlowForIntegrations(['basic_auth', 'github'], availableFlows);
+      const result = findMatchingFlowForIntegrations(['credentials_auth', 'github'], availableFlows);
       expect(result).not.toBeNull();
       expect(result?.handle).toBe('basic-github-flow');
     });
 
     it('should match basic+google+github flow when all three are enabled', () => {
-      const result = findMatchingFlowForIntegrations(['basic_auth', 'google', 'github'], availableFlows);
+      const result = findMatchingFlowForIntegrations(['credentials_auth', 'google', 'github'], availableFlows);
       expect(result).not.toBeNull();
       expect(result?.handle).toBe('basic-google-github-flow');
     });
 
     it('should match basic+sms flow when both are enabled', () => {
-      const result = findMatchingFlowForIntegrations(['basic_auth', 'sms-otp'], availableFlows);
+      const result = findMatchingFlowForIntegrations(['credentials_auth', 'sms-otp'], availableFlows);
       expect(result).not.toBeNull();
       expect(result?.handle).toBe('basic-sms-flow');
     });
@@ -102,7 +102,7 @@ describe('findMatchingFlowForIntegrations', () => {
     });
 
     it('should normalize github-related integrations', () => {
-      const result = findMatchingFlowForIntegrations(['basic_auth', 'github-oauth'], availableFlows);
+      const result = findMatchingFlowForIntegrations(['credentials_auth', 'github-oauth'], availableFlows);
       expect(result).not.toBeNull();
       expect(result?.handle).toContain('github');
     });
@@ -116,7 +116,7 @@ describe('findMatchingFlowForIntegrations', () => {
 
   describe('Exact Match Priority', () => {
     it('should prefer exact match over superset match', () => {
-      const result = findMatchingFlowForIntegrations(['basic_auth', 'google'], availableFlows);
+      const result = findMatchingFlowForIntegrations(['credentials_auth', 'google'], availableFlows);
       // Should match basic-google-flow (2 integrations) not basic-google-github-flow (3 integrations)
       expect(result?.handle).toBe('basic-google-flow');
     });
@@ -126,12 +126,15 @@ describe('findMatchingFlowForIntegrations', () => {
     it('should return null when no exact match exists (strict matching)', () => {
       const limitedFlows: BasicFlowDefinition[] = [createFlow('1', 'basic-google-github-flow', 'Full Flow')];
 
-      const result = findMatchingFlowForIntegrations(['basic_auth', 'google'], limitedFlows);
+      const result = findMatchingFlowForIntegrations(['credentials_auth', 'google'], limitedFlows);
       expect(result).toBeNull();
     });
 
     it('should return null when no flow supports all integrations', () => {
-      const result = findMatchingFlowForIntegrations(['basic_auth', 'google', 'github', 'unknown'], availableFlows);
+      const result = findMatchingFlowForIntegrations(
+        ['credentials_auth', 'google', 'github', 'unknown'],
+        availableFlows,
+      );
       expect(result).toBeNull();
     });
   });
@@ -150,17 +153,17 @@ describe('findMatchingFlowForIntegrations', () => {
         },
       ];
 
-      const result = findMatchingFlowForIntegrations(['basic_auth'], flowsWithNoHandle);
+      const result = findMatchingFlowForIntegrations(['credentials_auth'], flowsWithNoHandle);
       expect(result).toBeNull();
     });
 
     it('should handle empty flows array', () => {
-      const result = findMatchingFlowForIntegrations(['basic_auth'], []);
+      const result = findMatchingFlowForIntegrations(['credentials_auth'], []);
       expect(result).toBeNull();
     });
 
     it('should preserve flow metadata in result', () => {
-      const result = findMatchingFlowForIntegrations(['basic_auth'], availableFlows);
+      const result = findMatchingFlowForIntegrations(['credentials_auth'], availableFlows);
       expect(result).toMatchObject({
         id: '1',
         handle: 'basic-flow',

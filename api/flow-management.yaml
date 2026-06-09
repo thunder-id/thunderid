@@ -891,7 +891,7 @@ components:
                 x: 450
                 y: 100
             executor:
-              name: BasicAuthExecutor
+              name: CredentialsAuthExecutor
               inputs:
                 - ref: input_001
                   identifier: username
@@ -1284,7 +1284,7 @@ components:
         name:
           type: string
           description: Name of the registered executor
-          example: BasicAuthExecutor
+          example: CredentialsAuthExecutor
         mode:
           type: string
           description: Optional execution mode or configuration hint for the executor

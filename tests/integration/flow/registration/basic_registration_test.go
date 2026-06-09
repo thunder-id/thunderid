@@ -683,14 +683,14 @@ func (ts *BasicRegistrationFlowTestSuite) TestSchemaDriverInputs_OptionalAttrPro
 					{"inputs": []map[string]interface{}{
 						{"ref": "input_username", "identifier": "username", "type": "TEXT_INPUT", "required": true},
 						{"ref": "input_password", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
-					}, "action": map[string]interface{}{"ref": "action_credentials", "nextNode": "basic_auth"}},
+					}, "action": map[string]interface{}{"ref": "action_credentials", "nextNode": "credentials_auth"}},
 				},
 			},
 			{
-				"id":   "basic_auth",
+				"id":   "credentials_auth",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
-					"name": "BasicAuthExecutor",
+					"name": "CredentialsAuthExecutor",
 				},
 				"onSuccess": "provisioning",
 			},

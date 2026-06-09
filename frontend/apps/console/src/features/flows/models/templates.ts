@@ -84,7 +84,7 @@ export const TemplateTypes = {
   GeneratedWithAI: 'GENERATE_WITH_AI',
   PasskeyLogin: 'PASSKEY_LOGIN',
   Default: 'DEFAULT',
-  BasicAuth: 'BASIC_AUTH',
+  CredentialsAuth: 'CREDENTIALS_AUTH',
   Google: 'GOOGLE',
   Github: 'GITHUB',
   GoogleGithub: 'GOOGLE_GITHUB',

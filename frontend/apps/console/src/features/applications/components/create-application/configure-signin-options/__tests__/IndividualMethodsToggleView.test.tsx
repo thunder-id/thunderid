@@ -76,7 +76,7 @@ describe('IndividualMethodsToggleView', () => {
 
   const defaultProps: IndividualMethodsToggleViewProps = {
     integrations: {
-      [AuthenticatorTypes.BASIC_AUTH]: false,
+      [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
     },
     availableIntegrations: mockIdentityProviders,
     onIntegrationToggle: mockOnIntegrationToggle,
@@ -127,7 +127,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should show Username & Password as enabled when basic_auth is true', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         },
       });
 
@@ -139,7 +139,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should show Username & Password as disabled when basic_auth is false', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
         },
       });
 
@@ -150,7 +150,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should show Passkey as enabled when passkey is true', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           [AuthenticatorTypes.PASSKEY]: true,
         },
       });
@@ -163,7 +163,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should show Passkey as disabled when passkey is false', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           [AuthenticatorTypes.PASSKEY]: false,
         },
       });
@@ -176,7 +176,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should show Passkey as disabled when passkey is undefined', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           [AuthenticatorTypes.PASSKEY]: undefined as unknown as boolean,
         },
       });
@@ -188,7 +188,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should show Google as enabled when its ID is in integrations', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           'google-idp': true,
         },
       });
@@ -201,7 +201,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should show GitHub as enabled when its ID is in integrations', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           'github-idp': true,
         },
       });
@@ -220,7 +220,7 @@ describe('IndividualMethodsToggleView', () => {
       const switches = screen.getAllByRole('switch');
       await user.click(switches[0]);
 
-      expect(mockOnIntegrationToggle).toHaveBeenCalledWith(AuthenticatorTypes.BASIC_AUTH);
+      expect(mockOnIntegrationToggle).toHaveBeenCalledWith(AuthenticatorTypes.CREDENTIALS_AUTH);
     });
 
     it('should call onIntegrationToggle with passkey when Passkey is toggled', async () => {
@@ -260,7 +260,7 @@ describe('IndividualMethodsToggleView', () => {
       const buttons = screen.getAllByRole('button');
       await user.click(buttons[0]); // Username & Password button
 
-      expect(mockOnIntegrationToggle).toHaveBeenCalledWith(AuthenticatorTypes.BASIC_AUTH);
+      expect(mockOnIntegrationToggle).toHaveBeenCalledWith(AuthenticatorTypes.CREDENTIALS_AUTH);
     });
   });
 
@@ -288,7 +288,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should show other provider as enabled when its ID is in integrations', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           'oauth-idp-1': true,
         },
       });
@@ -400,7 +400,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should handle undefined integration value for Google provider', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           'google-idp': undefined as unknown as boolean,
         },
       });
@@ -413,7 +413,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should handle undefined integration value for GitHub provider', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           'github-idp': undefined as unknown as boolean,
         },
       });
@@ -426,7 +426,7 @@ describe('IndividualMethodsToggleView', () => {
     it('should handle undefined integration value for other providers', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           'oauth-idp-1': undefined as unknown as boolean,
         },
       });

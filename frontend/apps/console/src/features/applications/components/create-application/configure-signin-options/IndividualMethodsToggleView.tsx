@@ -61,7 +61,7 @@ export default function IndividualMethodsToggleView({
   const githubProvider = availableIntegrations.find(
     (idp: IdentityProvider) => idp.type === IdentityProviderTypes.GITHUB,
   );
-  const hasUsernamePassword = integrations[AuthenticatorTypes.BASIC_AUTH] ?? false;
+  const hasUsernamePassword = integrations[AuthenticatorTypes.CREDENTIALS_AUTH] ?? false;
 
   const otherProviders = availableIntegrations.filter(
     (provider: IdentityProvider) =>
@@ -74,7 +74,7 @@ export default function IndividualMethodsToggleView({
       <List sx={{bgcolor: 'background.paper', borderRadius: 1, border: 1, borderColor: 'divider'}}>
         {/* Username & Password */}
         <AuthenticationMethodItem
-          id={AuthenticatorTypes.BASIC_AUTH}
+          id={AuthenticatorTypes.CREDENTIALS_AUTH}
           name={t('applications:onboarding.configure.SignInOptions.usernamePassword')}
           icon={<UserRound size={24} />}
           isEnabled={hasUsernamePassword}

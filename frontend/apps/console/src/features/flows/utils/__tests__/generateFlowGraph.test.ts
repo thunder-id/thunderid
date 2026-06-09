@@ -36,7 +36,7 @@ function getPromptComponents(result: ReturnType<typeof generateFlowGraph>): Comp
 describe('generateFlowGraph', () => {
   it('should generate a Basic Auth flow', () => {
     const request = generateFlowGraph({
-      hasBasicAuth: true,
+      hasCredentialsAuth: true,
       hasPasskey: false,
       hasSmsOtp: false,
     });
@@ -51,7 +51,7 @@ describe('generateFlowGraph', () => {
 
   it('should generate a Passkey flow', () => {
     const request = generateFlowGraph({
-      hasBasicAuth: false,
+      hasCredentialsAuth: false,
       hasPasskey: true,
       hasSmsOtp: false,
     });
@@ -71,7 +71,7 @@ describe('generateFlowGraph', () => {
 
   it('should generate a Combined flow (Basic + Passkey + Google)', () => {
     const request = generateFlowGraph({
-      hasBasicAuth: true,
+      hasCredentialsAuth: true,
       hasPasskey: true,
       googleIdpId: 'google-p-id',
       hasSmsOtp: false,
@@ -87,7 +87,7 @@ describe('generateFlowGraph', () => {
 
     // Executors
     const executors = request.nodes.filter((n) => n.type === FlowNodeType.TASK_EXECUTION);
-    expect(executors.find((n) => n.executor?.name === 'BasicAuthExecutor')).toBeDefined();
+    expect(executors.find((n) => n.executor?.name === 'CredentialsAuthExecutor')).toBeDefined();
     expect(executors.find((n) => n.executor?.name === 'PasskeyAuthExecutor')).toBeDefined();
     expect(executors.find((n) => n.executor?.name === 'GoogleOIDCAuthExecutor')).toBeDefined();
     expect(executors.find((n) => n.executor?.name === 'ProvisioningExecutor')).toBeDefined();
@@ -95,7 +95,7 @@ describe('generateFlowGraph', () => {
 
   it('should generate a Combined flow (Basic + Github)', () => {
     const request = generateFlowGraph({
-      hasBasicAuth: true,
+      hasCredentialsAuth: true,
       hasPasskey: false,
       githubIdpId: 'github-id',
       hasSmsOtp: false,
@@ -108,14 +108,14 @@ describe('generateFlowGraph', () => {
 
     // Executors
     const executors = request.nodes.filter((n) => n.type === FlowNodeType.TASK_EXECUTION);
-    expect(executors.find((n) => n.executor?.name === 'BasicAuthExecutor')).toBeDefined();
+    expect(executors.find((n) => n.executor?.name === 'CredentialsAuthExecutor')).toBeDefined();
     expect(executors.find((n) => n.executor?.name === 'GithubOAuthExecutor')).toBeDefined();
     expect(executors.find((n) => n.executor?.name === 'ProvisioningExecutor')).toBeDefined();
   });
 
   it('should use provided relying party options for Passkey flow', () => {
     const request = generateFlowGraph({
-      hasBasicAuth: false,
+      hasCredentialsAuth: false,
       hasPasskey: true,
       hasSmsOtp: false,
       relyingPartyId: 'my-app.com',
@@ -133,10 +133,10 @@ describe('generateFlowGraph', () => {
 
   it('should include a Self Sign Up Link as a top-level meta component for basic and passkey flows', () => {
     const cases: Parameters<typeof generateFlowGraph>[0][] = [
-      {hasBasicAuth: true, hasPasskey: false, hasSmsOtp: false},
-      {hasBasicAuth: false, hasPasskey: true, hasSmsOtp: false},
-      {hasBasicAuth: true, hasPasskey: false, googleIdpId: 'google-id', hasSmsOtp: false},
-      {hasBasicAuth: true, hasPasskey: false, githubIdpId: 'github-id', hasSmsOtp: false},
+      {hasCredentialsAuth: true, hasPasskey: false, hasSmsOtp: false},
+      {hasCredentialsAuth: false, hasPasskey: true, hasSmsOtp: false},
+      {hasCredentialsAuth: true, hasPasskey: false, googleIdpId: 'google-id', hasSmsOtp: false},
+      {hasCredentialsAuth: true, hasPasskey: false, githubIdpId: 'github-id', hasSmsOtp: false},
     ];
 
     for (const options of cases) {
@@ -152,7 +152,7 @@ describe('generateFlowGraph', () => {
 
   it('should not include a Self Sign Up Link for social-only flows', () => {
     const request = generateFlowGraph({
-      hasBasicAuth: false,
+      hasCredentialsAuth: false,
       hasPasskey: false,
       googleIdpId: 'google-id',
       hasSmsOtp: false,
@@ -163,7 +163,7 @@ describe('generateFlowGraph', () => {
   });
 
   it('should place the Self Sign Up Link as the last top-level meta component', () => {
-    const request = generateFlowGraph({hasBasicAuth: true, hasPasskey: false, hasSmsOtp: false});
+    const request = generateFlowGraph({hasCredentialsAuth: true, hasPasskey: false, hasSmsOtp: false});
     const components = getPromptComponents(request);
 
     expect(components.length).toBeGreaterThan(0);
@@ -172,7 +172,7 @@ describe('generateFlowGraph', () => {
 
   it('should place the Self Sign Up Link after all auth blocks (basic + passkey + social)', () => {
     const request = generateFlowGraph({
-      hasBasicAuth: true,
+      hasCredentialsAuth: true,
       hasPasskey: true,
       googleIdpId: 'google-id',
       hasSmsOtp: false,
@@ -190,7 +190,7 @@ describe('generateFlowGraph', () => {
   });
 
   it('should include the application logo as the first meta component', () => {
-    const request = generateFlowGraph({hasBasicAuth: true, hasPasskey: false, hasSmsOtp: false});
+    const request = generateFlowGraph({hasCredentialsAuth: true, hasPasskey: false, hasSmsOtp: false});
     const components = getPromptComponents(request);
 
     expect(components[0].id).toBe('image');

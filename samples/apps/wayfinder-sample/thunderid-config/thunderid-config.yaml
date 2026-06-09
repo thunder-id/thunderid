@@ -231,11 +231,11 @@ nodes:
             required: true
         action:
           ref: action_credentials
-          nextNode: basic_auth
-  - id: basic_auth
+          nextNode: credentials_auth
+  - id: credentials_auth
     type: TASK_EXECUTION
     executor:
-      name: BasicAuthExecutor
+      name: CredentialsAuthExecutor
     onSuccess: provisioning
   - id: provisioning
     type: TASK_EXECUTION
@@ -980,11 +980,11 @@ nodes:
             required: true
         action:
           ref: action_approve
-          nextNode: basic_auth
-  - id: basic_auth
+          nextNode: credentials_auth
+  - id: credentials_auth
     type: TASK_EXECUTION
     executor:
-      name: BasicAuthExecutor
+      name: CredentialsAuthExecutor
     onSuccess: authorization_check
     onIncomplete: prompt_credentials
   - id: authorization_check
@@ -1185,11 +1185,11 @@ nodes:
             required: true
         action:
           ref: action_approve
-          nextNode: basic_auth
-  - id: basic_auth
+          nextNode: credentials_auth
+  - id: credentials_auth
     type: TASK_EXECUTION
     executor:
-      name: BasicAuthExecutor
+      name: CredentialsAuthExecutor
     onSuccess: authorization_check
     onIncomplete: prompt_credentials
   - id: authorization_check
@@ -1341,11 +1341,11 @@ nodes:
             required: true
         action:
           ref: action_001
-          nextNode: basic_auth
-  - id: basic_auth
+          nextNode: credentials_auth
+  - id: credentials_auth
     type: TASK_EXECUTION
     executor:
-      name: BasicAuthExecutor
+      name: CredentialsAuthExecutor
     onSuccess: authorization_check
     onIncomplete: prompt_credentials
   - id: authorization_check

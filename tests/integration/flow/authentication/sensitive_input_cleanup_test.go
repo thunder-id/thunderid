@@ -59,16 +59,16 @@ var sensitiveInputCleanupFlow = testutils.Flow{
 					},
 					"action": map[string]interface{}{
 						"ref":      "action_001",
-						"nextNode": "basic_auth",
+						"nextNode": "credentials_auth",
 					},
 				},
 			},
 		},
 		{
-			"id":   "basic_auth",
+			"id":   "credentials_auth",
 			"type": "TASK_EXECUTION",
 			"executor": map[string]interface{}{
-				"name": "BasicAuthExecutor",
+				"name": "CredentialsAuthExecutor",
 			},
 			"onSuccess": "prompt_password_again",
 		},
@@ -260,7 +260,7 @@ func (ts *SensitiveInputCleanupTestSuite) TestPasswordClearedAfterAuthExecution(
 	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "password"),
 		"Password input should be present in first prompt")
 
-	// Step 2: Submit username + password - basic_auth should validate, then password is cleared
+	// Step 2: Submit username + password - credentials_auth should validate, then password is cleared
 	var userAttrs map[string]interface{}
 	err = json.Unmarshal(sensitiveCleanupTestUser.Attributes, &userAttrs)
 	ts.Require().NoError(err, "Failed to unmarshal user attributes")
@@ -270,7 +270,7 @@ func (ts *SensitiveInputCleanupTestSuite) TestPasswordClearedAfterAuthExecution(
 		"password": userAttrs["password"].(string),
 	}
 
-	// After basic_auth completes, password should be cleared from context.
+	// After credentials_auth completes, password should be cleared from context.
 	// The second prompt node (prompt_password_again) should detect the missing password
 	// and return INCOMPLETE, asking for it again.
 	step2, err := common.CompleteFlow(flowStep.ExecutionID, inputs, "action_001", flowStep.ChallengeToken)

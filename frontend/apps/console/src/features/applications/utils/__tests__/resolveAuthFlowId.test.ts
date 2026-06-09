@@ -24,8 +24,8 @@ import {IdentityProviderTypes, type IdentityProvider} from '@/features/integrati
 
 describe('resolveAuthFlowId', () => {
   describe('Constants', () => {
-    it('should export AuthenticatorTypes.BASIC_AUTH', () => {
-      expect(AuthenticatorTypes.BASIC_AUTH).toBe('basic_auth');
+    it('should export AuthenticatorTypes.CREDENTIALS_AUTH', () => {
+      expect(AuthenticatorTypes.CREDENTIALS_AUTH).toBe('credentials_auth');
     });
   });
 

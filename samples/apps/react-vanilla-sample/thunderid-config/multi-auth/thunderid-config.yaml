@@ -228,7 +228,7 @@ nodes:
       required: true
     action:
       ref: action_001
-      nextNode: basic_auth
+      nextNode: credentials_auth
   - action:
       ref: google_auth
       nextNode: google_auth
@@ -241,10 +241,10 @@ nodes:
   - action:
       ref: action_passkey
       nextNode: prompt_passkey_identifier
-- id: basic_auth
+- id: credentials_auth
   type: TASK_EXECUTION
   executor:
-    name: BasicAuthExecutor
+    name: CredentialsAuthExecutor
     inputs:
     - ref: input_001
       type: TEXT_INPUT
@@ -523,7 +523,7 @@ nodes:
         type: PASSWORD_INPUT
       - category: ACTION
         eventType: SUBMIT
-        id: basic_auth
+        id: credentials_auth
         label: "{{ t(signin:forms.credentials.actions.submit.label) }}"
         resourceType: ELEMENT
         type: ACTION
@@ -576,18 +576,18 @@ nodes:
       identifier: password
       required: true
     action:
-      ref: basic_auth
-      nextNode: basic_auth
+      ref: credentials_auth
+      nextNode: credentials_auth
   - action:
       ref: google_auth
       nextNode: google_auth
   - action:
       ref: github_auth
       nextNode: github_auth
-- id: basic_auth
+- id: credentials_auth
   type: TASK_EXECUTION
   executor:
-    name: BasicAuthExecutor
+    name: CredentialsAuthExecutor
     inputs:
     - ref: input_001
       type: TEXT_INPUT
@@ -834,7 +834,7 @@ nodes:
       required: true
     action:
       ref: action_001
-      nextNode: basic_auth
+      nextNode: credentials_auth
   - action:
       ref: google_auth
       nextNode: google_auth
@@ -847,10 +847,10 @@ nodes:
   - action:
       ref: action_passkey
       nextNode: collect_passkey_user_info
-- id: basic_auth
+- id: credentials_auth
   type: TASK_EXECUTION
   executor:
-    name: BasicAuthExecutor
+    name: CredentialsAuthExecutor
   onSuccess: provisioning
 - id: google_auth
   type: TASK_EXECUTION
@@ -1214,7 +1214,7 @@ nodes:
         placeholder: "{{ t(signup:forms.credentials.fields.password.placeholder) }}"
         required: true
       - type: ACTION
-        id: basic_auth
+        id: credentials_auth
         label: "{{ t(signup:forms.credentials.actions.submit.label) }}"
         variant: PRIMARY
         eventType: SUBMIT
@@ -1251,18 +1251,18 @@ nodes:
       type: PASSWORD_INPUT
       required: true
     action:
-      ref: basic_auth
-      nextNode: basic_auth
+      ref: credentials_auth
+      nextNode: credentials_auth
   - action:
       ref: google_auth
       nextNode: google_auth
   - action:
       ref: github_auth
       nextNode: github_auth
-- id: basic_auth
+- id: credentials_auth
   type: TASK_EXECUTION
   executor:
-    name: BasicAuthExecutor
+    name: CredentialsAuthExecutor
   onSuccess: send_sms
 - id: google_auth
   type: TASK_EXECUTION

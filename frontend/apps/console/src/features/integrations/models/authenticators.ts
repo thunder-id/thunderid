@@ -25,7 +25,7 @@
  * @public
  */
 export const AuthenticatorTypes = {
-  BASIC_AUTH: 'basic_auth',
+  CREDENTIALS_AUTH: 'credentials_auth',
   PASSKEY: 'passkey',
 } as const;
 
@@ -38,7 +38,7 @@ export const AuthenticatorTypes = {
  * @public
  * @example
  * ```ts
- * const authenticator: AuthenticatorType = AuthenticatorTypes.BASIC_AUTH;
+ * const authenticator: AuthenticatorType = AuthenticatorTypes.CREDENTIALS_AUTH;
  * ```
  */
 export type AuthenticatorType = (typeof AuthenticatorTypes)[keyof typeof AuthenticatorTypes];

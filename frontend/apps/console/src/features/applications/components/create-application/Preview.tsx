@@ -137,7 +137,7 @@ export default function Preview({appLogo, selectedTheme, integrations}: PreviewP
       }
     : undefined;
 
-  const hasUsernamePassword: boolean = integrations[AuthenticatorTypes.BASIC_AUTH] ?? false;
+  const hasUsernamePassword: boolean = integrations[AuthenticatorTypes.CREDENTIALS_AUTH] ?? false;
   const hasPasskey: boolean = integrations[AuthenticatorTypes.PASSKEY] ?? false;
   const selectedProviders: IdentityProvider[] =
     identityProviders?.filter((idp: IdentityProvider): boolean => integrations[idp.id]) ?? [];

@@ -46,7 +46,7 @@ func (s *UtilsTestSuite) TestGetAuthnServiceName() {
 		executorName string
 		expectedName string
 	}{
-		{"BasicAuth executor", ExecutorNameBasicAuth, authncm.AuthenticatorCredentials},
+		{"CredentialsAuth executor", ExecutorNameCredentialsAuth, authncm.AuthenticatorCredentials},
 		{"SMS Auth executor", ExecutorNameSMSAuth, authncm.AuthenticatorSMSOTP},
 		{"OAuth executor", ExecutorNameOAuth, authncm.AuthenticatorOAuth},
 		{"OIDC Auth executor", ExecutorNameOIDCAuth, authncm.AuthenticatorOIDC},

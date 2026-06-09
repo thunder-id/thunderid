@@ -17,7 +17,6 @@
  */
 
 import getFlowSupportedIntegrations from './getFlowSupportedIntegrations';
-import {AuthenticatorTypes} from '../../integrations/models/authenticators';
 import type {BasicFlowDefinition} from '../models/responses';
 
 /**
@@ -34,9 +33,9 @@ import type {BasicFlowDefinition} from '../models/responses';
  *
  * const flows = [
  *   { id: '1', handle: 'basic-google-flow', name: 'Basic + Google' },
- *   { id: '2', handle: 'default-basic-flow', name: 'Basic Auth' }
+ *   { id: '2', handle: 'default-basic-flow', name: 'Credentials Auth' }
  * ];
- * const match = findMatchingFlowForIntegrations(['basic_auth', 'google'], flows);
+ * const match = findMatchingFlowForIntegrations(['credentials_auth', 'google'], flows);
  * // Returns the basic-google-flow
  * ```
  */
@@ -50,7 +49,6 @@ function findMatchingFlowForIntegrations(
 
   // Normalize integration IDs for comparison
   const normalizedIntegrations = enabledIntegrations.map((id) => {
-    if (id === AuthenticatorTypes.BASIC_AUTH) return 'basic_auth';
     if (id.includes('google')) return 'google';
     if (id.includes('github')) return 'github';
     if (id.includes('sms') || id === 'sms-otp') return 'sms-otp';
@@ -61,11 +59,7 @@ function findMatchingFlowForIntegrations(
   const matchingFlow = availableFlows.find((flow) => {
     if (!flow.handle) return false;
 
-    const flowSupportedIntegrations = getFlowSupportedIntegrations(flow.handle);
-    const normalizedFlowIntegrations = flowSupportedIntegrations.map((type) => {
-      if (type === AuthenticatorTypes.BASIC_AUTH) return 'basic_auth';
-      return type;
-    });
+    const normalizedFlowIntegrations = getFlowSupportedIntegrations(flow.handle);
 
     // Check if all enabled integrations are supported by this flow
     const allIntegrationsSupported = normalizedIntegrations.every((integration) =>

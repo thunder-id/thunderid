@@ -161,16 +161,16 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_001",
-							"nextNode": "basic_auth",
+							"nextNode": "credentials_auth",
 						},
 					},
 				},
 			},
 			{
-				"id":   "basic_auth",
+				"id":   "credentials_auth",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
-					"name": "BasicAuthExecutor",
+					"name": "CredentialsAuthExecutor",
 				},
 				"onSuccess": "sms_otp_send",
 			},
@@ -234,10 +234,10 @@ var (
 	}
 
 	// Flow for Basic Auth only (AAL1)
-	assuranceBasicAuthFlow = testutils.Flow{
+	assuranceCredentialsAuthFlow = testutils.Flow{
 		Name:     "Basic Auth Only Flow for Assurance Test",
 		FlowType: "AUTHENTICATION",
-		Handle:   "assurance_test_basic_auth_flow",
+		Handle:   "assurance_test_credentials_auth_flow",
 		Nodes: []map[string]interface{}{
 			{
 				"id":        "start",
@@ -265,16 +265,16 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_001",
-							"nextNode": "basic_auth",
+							"nextNode": "credentials_auth",
 						},
 					},
 				},
 			},
 			{
-				"id":   "basic_auth",
+				"id":   "credentials_auth",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
-					"name": "BasicAuthExecutor",
+					"name": "CredentialsAuthExecutor",
 				},
 				"onSuccess": "auth_assert",
 			},
@@ -344,7 +344,7 @@ var (
 	assuranceTestSenderID    string
 	assuranceSMSOnlyFlowID   string
 	assuranceMFAFlowID       string
-	assuranceBasicAuthFlowID string
+	assuranceCredentialsAuthFlowID string
 	assuranceTestOU          = testutils.OrganizationUnit{
 		Handle:      "assurance-test-ou",
 		Name:        "Assurance Test OU",
@@ -435,10 +435,10 @@ func (ts *AssuranceTestSuite) SetupSuite() {
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, mfaFlowID)
 	assuranceMFAFlowID = mfaFlowID
 
-	basicAuthFlowID, err := testutils.CreateFlow(assuranceBasicAuthFlow)
+	credentialsAuthFlowID, err := testutils.CreateFlow(assuranceCredentialsAuthFlow)
 	ts.Require().NoError(err, "Failed to create basic auth flow")
-	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, basicAuthFlowID)
-	assuranceBasicAuthFlowID = basicAuthFlowID
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, credentialsAuthFlowID)
+	assuranceCredentialsAuthFlowID = credentialsAuthFlowID
 
 	// Create test application
 	assuranceTestApp.AuthFlowID = smsOnlyFlowID
@@ -591,9 +591,9 @@ func (ts *AssuranceTestSuite) TestAssurance_CredentialsPlusSMSOTP() {
 	ts.Require().NoError(err, "Assurance validation failed")
 }
 
-func (ts *AssuranceTestSuite) TestAssurance_BasicAuthOnly() {
+func (ts *AssuranceTestSuite) TestAssurance_CredentialsAuthOnly() {
 	// Update app to use basic auth flow
-	err := common.UpdateAppConfig(assuranceTestAppID, assuranceBasicAuthFlowID, "")
+	err := common.UpdateAppConfig(assuranceTestAppID, assuranceCredentialsAuthFlowID, "")
 	ts.Require().NoError(err)
 
 	// Step 1: Initiate flow

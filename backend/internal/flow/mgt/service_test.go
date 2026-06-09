@@ -1289,7 +1289,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsPasskeyRegis
 			{
 				ID:        "basic_auth",
 				Type:      "TASK_EXECUTION",
-				Executor:  &ExecutorDefinition{Name: "BasicAuthExecutor"},
+				Executor:  &ExecutorDefinition{Name: "CredentialsAuthExecutor"},
 				OnSuccess: "passkey_register_start",
 			},
 			{

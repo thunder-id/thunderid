@@ -72,34 +72,34 @@ describe('buildPreviewMock', () => {
 
   describe('Basic auth block', () => {
     it('should include basic auth block when basic_auth integration is enabled', () => {
-      const integrations = {[AuthenticatorTypes.BASIC_AUTH]: true};
+      const integrations = {[AuthenticatorTypes.CREDENTIALS_AUTH]: true};
       const result = buildPreviewMock(integrations, []) as unknown as MockComponent[];
 
-      const block = getComponentById(result, 'block_basic_auth');
+      const block = getComponentById(result, 'block_credentials_auth');
       expect(block).toBeDefined();
       expect(block!.type).toBe('BLOCK');
     });
 
     it('should not include basic auth block when basic_auth integration is disabled', () => {
-      const integrations = {[AuthenticatorTypes.BASIC_AUTH]: false};
+      const integrations = {[AuthenticatorTypes.CREDENTIALS_AUTH]: false};
       const result = buildPreviewMock(integrations, []) as unknown as MockComponent[];
 
-      const block = getComponentById(result, 'block_basic_auth');
+      const block = getComponentById(result, 'block_credentials_auth');
       expect(block).toBeUndefined();
     });
 
     it('should not include basic auth block when no integrations are provided', () => {
       const result = buildPreviewMock({}, []) as unknown as MockComponent[];
 
-      const block = getComponentById(result, 'block_basic_auth');
+      const block = getComponentById(result, 'block_credentials_auth');
       expect(block).toBeUndefined();
     });
 
     it('basic auth block should contain username and password field components', () => {
-      const integrations = {[AuthenticatorTypes.BASIC_AUTH]: true};
+      const integrations = {[AuthenticatorTypes.CREDENTIALS_AUTH]: true};
       const result = buildPreviewMock(integrations, []) as unknown as MockComponent[];
 
-      const block = getComponentById(result, 'block_basic_auth')!;
+      const block = getComponentById(result, 'block_credentials_auth')!;
       const subComponents = block.components as MockComponent[];
 
       const usernameField = subComponents.find((c) => c.id === 'text_input_username');
@@ -179,7 +179,7 @@ describe('buildPreviewMock', () => {
   describe('Divider visibility', () => {
     it('should show divider when basic auth and passkey are both enabled', () => {
       const integrations = {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         [AuthenticatorTypes.PASSKEY]: true,
       };
       const result = buildPreviewMock(integrations, []) as unknown as MockComponent[];
@@ -188,7 +188,7 @@ describe('buildPreviewMock', () => {
     });
 
     it('should show divider when basic auth and social providers are present', () => {
-      const integrations = {[AuthenticatorTypes.BASIC_AUTH]: true, google: true};
+      const integrations = {[AuthenticatorTypes.CREDENTIALS_AUTH]: true, google: true};
       const providers = [{id: 'google', name: 'Google', type: IdentityProviderTypes.GOOGLE}];
       const result = buildPreviewMock(integrations, providers) as unknown as MockComponent[];
 
@@ -204,7 +204,7 @@ describe('buildPreviewMock', () => {
     });
 
     it('should not show divider when only basic auth is enabled with no social', () => {
-      const integrations = {[AuthenticatorTypes.BASIC_AUTH]: true};
+      const integrations = {[AuthenticatorTypes.CREDENTIALS_AUTH]: true};
       const result = buildPreviewMock(integrations, []) as unknown as MockComponent[];
 
       expect(getComponentById(result, 'divider_or')).toBeUndefined();
@@ -235,7 +235,7 @@ describe('buildPreviewMock', () => {
     it('should include basic auth, passkey, and social blocks in the default output', () => {
       const result = buildPreviewMock() as unknown as MockComponent[];
 
-      expect(getComponentById(result, 'block_basic_auth')).toBeDefined();
+      expect(getComponentById(result, 'block_credentials_auth')).toBeDefined();
       expect(getComponentById(result, 'action_passkey')).toBeDefined();
       expect(getComponentById(result, 'block_google')).toBeDefined();
       expect(getComponentById(result, 'block_github')).toBeDefined();

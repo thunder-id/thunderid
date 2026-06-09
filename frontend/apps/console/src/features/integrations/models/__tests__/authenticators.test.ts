@@ -21,8 +21,8 @@ import {AuthenticatorTypes} from '../authenticators';
 import type {AuthenticatorType} from '../authenticators';
 
 describe('AuthenticatorTypes', () => {
-  it('should have BASIC_AUTH defined with correct value', () => {
-    expect(AuthenticatorTypes.BASIC_AUTH).toBe('basic_auth');
+  it('should have CREDENTIALS_AUTH defined with correct value', () => {
+    expect(AuthenticatorTypes.CREDENTIALS_AUTH).toBe('credentials_auth');
   });
 
   it('should have PASSKEY defined with correct value', () => {
@@ -30,12 +30,12 @@ describe('AuthenticatorTypes', () => {
   });
 
   it('should be a const object with expected keys', () => {
-    expect(Object.keys(AuthenticatorTypes)).toEqual(['BASIC_AUTH', 'PASSKEY']);
+    expect(Object.keys(AuthenticatorTypes)).toEqual(['CREDENTIALS_AUTH', 'PASSKEY']);
   });
 
   it('should allow type-safe assignment', () => {
-    const authenticator: AuthenticatorType = AuthenticatorTypes.BASIC_AUTH;
-    expect(authenticator).toBe('basic_auth');
+    const authenticator: AuthenticatorType = AuthenticatorTypes.CREDENTIALS_AUTH;
+    expect(authenticator).toBe('credentials_auth');
   });
 
   it('should allow type-safe assignment for PASSKEY', () => {

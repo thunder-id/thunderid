@@ -136,7 +136,7 @@ describe('Preview', () => {
     appLogo: 'https://example.com/logo.png',
     selectedTheme: mockTheme,
     integrations: {
-      [AuthenticatorTypes.BASIC_AUTH]: true,
+      [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
     },
   };
 
@@ -190,7 +190,7 @@ describe('Preview', () => {
   it('should not render username/password fields when disabled', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: false,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
         'google-idp': true,
       },
     });
@@ -203,7 +203,7 @@ describe('Preview', () => {
   it('should render social login buttons for enabled providers', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
         'github-idp': true,
       },
@@ -216,7 +216,7 @@ describe('Preview', () => {
   it('should not render social login buttons when no providers are enabled', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
       },
     });
 
@@ -226,7 +226,7 @@ describe('Preview', () => {
   it('should render divider when both username/password and social logins are enabled', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
       },
     });
@@ -237,7 +237,7 @@ describe('Preview', () => {
   it('should not render divider when only username/password is enabled', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
       },
     });
 
@@ -247,7 +247,7 @@ describe('Preview', () => {
   it('should not render divider when only social logins are enabled', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: false,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
         'google-idp': true,
       },
     });
@@ -258,7 +258,7 @@ describe('Preview', () => {
   it('should render only selected social providers', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
         // github-idp not included
       },
@@ -316,7 +316,7 @@ describe('Preview', () => {
   it('should render social login buttons as disabled', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
       },
     });
@@ -334,7 +334,7 @@ describe('Preview', () => {
 
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
       },
     });
@@ -352,7 +352,7 @@ describe('Preview', () => {
 
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
         // 'github-idp' is not in API, so even if selected, it won't show
       },
@@ -372,7 +372,7 @@ describe('Preview', () => {
 
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
         'github-idp': false, // Not selected
       },
@@ -386,7 +386,7 @@ describe('Preview', () => {
   it('should render multiple social providers in order', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         'google-idp': true,
         'github-idp': true,
       },
@@ -401,7 +401,7 @@ describe('Preview', () => {
   it('should render sign in form when only username/password is enabled', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: true,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
       },
     });
 
@@ -414,7 +414,7 @@ describe('Preview', () => {
   it('should render only social logins when username/password is disabled', () => {
     renderComponent({
       integrations: {
-        [AuthenticatorTypes.BASIC_AUTH]: false,
+        [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
         'google-idp': true,
         'github-idp': true,
       },
@@ -443,7 +443,7 @@ describe('Preview', () => {
     it('should not render mobile number field when SMS OTP is disabled', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
           'sms-otp': false,
         },
       });
@@ -467,7 +467,7 @@ describe('Preview', () => {
     it('should render divider when username/password and SMS OTP are enabled', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
           'sms-otp': true,
         },
       });
@@ -488,7 +488,7 @@ describe('Preview', () => {
     it('should render divider when all authentication methods are enabled', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
           'sms-otp': true,
           'google-idp': true,
         },
@@ -523,7 +523,7 @@ describe('Preview', () => {
     it('should render SMS OTP with username/password combination', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
           'sms-otp': true,
         },
       });
@@ -590,7 +590,7 @@ describe('Preview', () => {
     it('should render passkey button with outlined variant when username/password is enabled', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
           [AuthenticatorTypes.PASSKEY]: true,
         },
         selectedTheme: mockTheme,
@@ -604,7 +604,7 @@ describe('Preview', () => {
     it('should apply theme primary color to passkey button background when username/password is disabled', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           [AuthenticatorTypes.PASSKEY]: true,
         },
         selectedTheme: mockTheme,
@@ -620,7 +620,7 @@ describe('Preview', () => {
     it('should apply contrastText color to passkey button label when username/password is disabled', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: false,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: false,
           [AuthenticatorTypes.PASSKEY]: true,
         },
         selectedTheme: mockTheme,
@@ -694,7 +694,7 @@ describe('Preview', () => {
 
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         },
       });
 
@@ -730,7 +730,7 @@ describe('Preview', () => {
     it('should handle undefined integration values gracefully', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: undefined as unknown as boolean,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: undefined as unknown as boolean,
         },
       });
 
@@ -752,7 +752,7 @@ describe('Preview', () => {
     it('should render only username/password form with no margin when no social logins', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
         },
       });
 
@@ -780,7 +780,7 @@ describe('Preview', () => {
     it('should render username/password with margin when social logins exist', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
           'google-idp': true,
         },
       });
@@ -810,7 +810,7 @@ describe('Preview', () => {
     it('should render all three auth methods with divider', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
           'sms-otp': true,
           'google-idp': true,
         },
@@ -827,7 +827,7 @@ describe('Preview', () => {
     it('should render username/password and SMS OTP without social logins', () => {
       renderComponent({
         integrations: {
-          [AuthenticatorTypes.BASIC_AUTH]: true,
+          [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
           'sms-otp': true,
         },
       });
@@ -910,7 +910,7 @@ describe('Preview', () => {
 
     it('should render sign in button with high-contrast primary background', () => {
       renderComponent({
-        integrations: {[AuthenticatorTypes.BASIC_AUTH]: true},
+        integrations: {[AuthenticatorTypes.CREDENTIALS_AUTH]: true},
         selectedTheme: highContrastTheme,
       });
 
@@ -920,7 +920,7 @@ describe('Preview', () => {
 
     it('should render sign in button with white contrastText on high-contrast blue', () => {
       renderComponent({
-        integrations: {[AuthenticatorTypes.BASIC_AUTH]: true},
+        integrations: {[AuthenticatorTypes.CREDENTIALS_AUTH]: true},
         selectedTheme: highContrastTheme,
       });
 

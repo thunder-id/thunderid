@@ -108,7 +108,7 @@ var acrOptionsFlow = testutils.Flow{
 			},
 		},
 		// Credentials prompt for the generated-code (OTP-style password) ACR path.
-		// For simplicity in tests both paths use the BasicAuthExecutor.
+		// For simplicity in tests both paths use the CredentialsAuthExecutor.
 		{
 			"id":   "prompt_code",
 			"type": "PROMPT",
@@ -136,7 +136,7 @@ var acrOptionsFlow = testutils.Flow{
 			},
 		},
 		// Credentials prompt for the biometrics ACR path.
-		// For simplicity in tests this path also uses the BasicAuthExecutor.
+		// For simplicity in tests this path also uses the CredentialsAuthExecutor.
 		{
 			"id":   "prompt_bio",
 			"type": "PROMPT",
@@ -167,7 +167,7 @@ var acrOptionsFlow = testutils.Flow{
 			"id":   "basic_auth_pwd",
 			"type": "TASK_EXECUTION",
 			"executor": map[string]interface{}{
-				"name": "BasicAuthExecutor",
+				"name": "CredentialsAuthExecutor",
 				"inputs": []map[string]interface{}{
 					{"ref": "input_u1", "identifier": "username", "type": "TEXT_INPUT", "required": true},
 					{"ref": "input_p1", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
@@ -180,7 +180,7 @@ var acrOptionsFlow = testutils.Flow{
 			"id":   "basic_auth_code",
 			"type": "TASK_EXECUTION",
 			"executor": map[string]interface{}{
-				"name": "BasicAuthExecutor",
+				"name": "CredentialsAuthExecutor",
 				"inputs": []map[string]interface{}{
 					{"ref": "input_u2", "identifier": "username", "type": "TEXT_INPUT", "required": true},
 					{"ref": "input_p2", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
@@ -193,7 +193,7 @@ var acrOptionsFlow = testutils.Flow{
 			"id":   "basic_auth_bio",
 			"type": "TASK_EXECUTION",
 			"executor": map[string]interface{}{
-				"name": "BasicAuthExecutor",
+				"name": "CredentialsAuthExecutor",
 				"inputs": []map[string]interface{}{
 					{"ref": "input_u3", "identifier": "username", "type": "TEXT_INPUT", "required": true},
 					{"ref": "input_p3", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},

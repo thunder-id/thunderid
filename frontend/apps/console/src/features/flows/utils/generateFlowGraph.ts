@@ -23,7 +23,7 @@ import {type CreateFlowRequest, type FlowNode, type FlowPrompt} from '../models/
  * Options for generating a flow graph
  */
 export interface FlowGeneratorOptions {
-  hasBasicAuth: boolean;
+  hasCredentialsAuth: boolean;
   hasPasskey: boolean;
   googleIdpId?: string;
   githubIdpId?: string;
@@ -40,11 +40,12 @@ export interface FlowGeneratorOptions {
  * @returns Complete flow creation request payload
  */
 export default function generateFlowGraph(options: FlowGeneratorOptions): CreateFlowRequest {
-  const {hasBasicAuth, hasPasskey, googleIdpId, githubIdpId, hasSmsOtp, relyingPartyId, relyingPartyName} = options;
+  const {hasCredentialsAuth, hasPasskey, googleIdpId, githubIdpId, hasSmsOtp, relyingPartyId, relyingPartyName} =
+    options;
 
   // 1. Generate Flow Handle and Name
   const parts: string[] = [];
-  if (hasBasicAuth) parts.push('basic');
+  if (hasCredentialsAuth) parts.push('basic');
   if (hasPasskey) parts.push('passkey');
   if (googleIdpId) parts.push('google');
   if (githubIdpId) parts.push('github');
@@ -53,7 +54,7 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
   // Sort parts to ensure deterministic handle generation
   // But keep "basic" first for readability if present
   const sortedParts = parts.filter((p) => p !== 'basic').sort();
-  if (hasBasicAuth) sortedParts.unshift('basic');
+  if (hasCredentialsAuth) sortedParts.unshift('basic');
 
   const handle = `generated-${sortedParts.join('-')}-flow`;
   const name = `Generated ${sortedParts.map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' + ')} Flow`;
@@ -106,7 +107,7 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
   });
 
   // Passkey Description (only if passkey is the only method)
-  if (hasPasskey && !hasBasicAuth && !googleIdpId && !githubIdpId && !hasSmsOtp) {
+  if (hasPasskey && !hasCredentialsAuth && !googleIdpId && !githubIdpId && !hasSmsOtp) {
     metaComponents.push({
       type: 'TEXT',
       id: 'text_passkey_desc',
@@ -115,8 +116,8 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
     });
   }
 
-  // Basic Auth Block
-  if (hasBasicAuth) {
+  // Credentials Auth Block
+  if (hasCredentialsAuth) {
     metaComponents.push({
       type: 'BLOCK',
       id: 'block_basic',
@@ -164,7 +165,7 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
       ],
       action: {
         ref: 'action_basic',
-        nextNode: 'basic_auth',
+        nextNode: 'credentials_auth',
       },
     });
   }
@@ -181,7 +182,7 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
           type: 'ACTION',
           id: 'action_passkey',
           label: passkeyButtonLabel,
-          variant: hasBasicAuth ? 'SECONDARY' : 'PRIMARY',
+          variant: hasCredentialsAuth ? 'SECONDARY' : 'PRIMARY',
           eventType: 'SUBMIT',
         },
       ],
@@ -244,7 +245,7 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
   }
 
   // Self Sign Up Link — always at the bottom, after all auth options
-  if (hasBasicAuth || hasPasskey) {
+  if (hasCredentialsAuth || hasPasskey) {
     metaComponents.push(selfSignUpLink);
   }
 
@@ -260,13 +261,13 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
 
   // 3. Executor Nodes
 
-  // Basic Auth Executor
-  if (hasBasicAuth) {
+  // Credentials Auth Executor
+  if (hasCredentialsAuth) {
     nodes.push({
-      id: 'basic_auth',
+      id: 'credentials_auth',
       type: FlowNodeType.TASK_EXECUTION,
       executor: {
-        name: 'BasicAuthExecutor',
+        name: 'CredentialsAuthExecutor',
       },
       onSuccess: 'auth_assert',
     });

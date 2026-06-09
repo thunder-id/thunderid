@@ -275,7 +275,7 @@ export default function ApplicationCreatePage(): JSX.Element {
       const githubProvider = availableIntegrations.find((idp) => idp.type === IdentityProviderTypes.GITHUB);
 
       const generatedFlowRequest = generateFlowGraph({
-        hasBasicAuth: integrations[AuthenticatorTypes.BASIC_AUTH] ?? false,
+        hasCredentialsAuth: integrations[AuthenticatorTypes.CREDENTIALS_AUTH] ?? false,
         hasPasskey: integrations[AuthenticatorTypes.PASSKEY] ?? false,
         googleIdpId: integrations[googleProvider?.id ?? ''] ? googleProvider?.id : undefined,
         githubIdpId: integrations[githubProvider?.id ?? ''] ? githubProvider?.id : undefined,

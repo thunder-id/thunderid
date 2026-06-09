@@ -29,16 +29,16 @@ import (
 
 var (
 	testOU = testutils.OrganizationUnit{
-		Handle:      "basicauth_flow_test_ou",
-		Name:        "Test Organization Unit for BasicAuth Flow",
-		Description: "Organization unit created for BasicAuth flow testing",
+		Handle:      "credentialsauth_flow_test_ou",
+		Name:        "Test Organization Unit for CredentialsAuth Flow",
+		Description: "Organization unit created for CredentialsAuth flow testing",
 		Parent:      nil,
 	}
 
-	basicAuthTestFlow = testutils.Flow{
-		Name:     "Basic Auth Test Auth Flow",
+	credentialsAuthTestFlow = testutils.Flow{
+		Name:     "Credentials Auth Test Auth Flow",
 		FlowType: "AUTHENTICATION",
-		Handle:   "auth_flow_basic_auth_test",
+		Handle:   "auth_flow_credentials_auth_test",
 		Nodes: []map[string]interface{}{
 			{
 				"id":        "start",
@@ -66,16 +66,16 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_001",
-							"nextNode": "basic_auth",
+							"nextNode": "credentials_auth",
 						},
 					},
 				},
 			},
 			{
-				"id":   "basic_auth",
+				"id":   "credentials_auth",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
-					"name": "BasicAuthExecutor",
+					"name": "CredentialsAuthExecutor",
 					"inputs": []map[string]interface{}{
 						{
 							"ref":        "input_001",
@@ -109,21 +109,21 @@ var (
 		},
 	}
 
-	basicAuthWithoutPromptFlow = testutils.Flow{
+	credentialsAuthWithoutPromptFlow = testutils.Flow{
 		Name:     "Basic Auth Without Prompt Flow",
 		FlowType: "AUTHENTICATION",
-		Handle:   "auth_flow_basic_auth_without_prompt",
+		Handle:   "auth_flow_credentials_auth_without_prompt",
 		Nodes: []map[string]interface{}{
 			{
 				"id":        "start",
 				"type":      "START",
-				"onSuccess": "basic_auth",
+				"onSuccess": "credentials_auth",
 			},
 			{
-				"id":   "basic_auth",
+				"id":   "credentials_auth",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
-					"name": "BasicAuthExecutor",
+					"name": "CredentialsAuthExecutor",
 					"inputs": []map[string]interface{}{
 						{
 							"ref":        "input_001",
@@ -163,14 +163,14 @@ var (
 		ClientID:                  "flow_test_client",
 		ClientSecret:              "flow_test_secret",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{"basic_auth_user"},
+		AllowedUserTypes:          []string{"credentials_auth_user"},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{"userType", "ouId", "ouName", "ouHandle"},
 		},
 	}
 
 	testUserType = testutils.UserType{
-		Name: "basic_auth_user",
+		Name: "credentials_auth_user",
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{
 				"type": "string",
@@ -208,17 +208,17 @@ var (
 	entityTypeID string
 )
 
-type BasicAuthFlowTestSuite struct {
+type CredentialsAuthFlowTestSuite struct {
 	suite.Suite
 	config *common.TestSuiteConfig
 	ouID   string
 }
 
-func TestBasicAuthFlowTestSuite(t *testing.T) {
-	suite.Run(t, new(BasicAuthFlowTestSuite))
+func TestCredentialsAuthFlowTestSuite(t *testing.T) {
+	suite.Run(t, new(CredentialsAuthFlowTestSuite))
 }
 
-func (ts *BasicAuthFlowTestSuite) SetupSuite() {
+func (ts *CredentialsAuthFlowTestSuite) SetupSuite() {
 	// Initialize config
 	ts.config = &common.TestSuiteConfig{}
 
@@ -236,12 +236,12 @@ func (ts *BasicAuthFlowTestSuite) SetupSuite() {
 	entityTypeID = schemaID
 
 	// Create flows
-	flowID, err := testutils.CreateFlow(basicAuthTestFlow)
+	flowID, err := testutils.CreateFlow(credentialsAuthTestFlow)
 	ts.Require().NoError(err, "Failed to create basic auth test flow")
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
 	testApp.AuthFlowID = flowID
 
-	withoutPromptFlow, err := testutils.CreateFlow(basicAuthWithoutPromptFlow)
+	withoutPromptFlow, err := testutils.CreateFlow(credentialsAuthWithoutPromptFlow)
 	ts.Require().NoError(err, "Failed to create basic auth without prompt flow")
 	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, withoutPromptFlow)
 
@@ -263,7 +263,7 @@ func (ts *BasicAuthFlowTestSuite) SetupSuite() {
 	ts.config.CreatedUserIDs = userIDs
 }
 
-func (ts *BasicAuthFlowTestSuite) TearDownSuite() {
+func (ts *CredentialsAuthFlowTestSuite) TearDownSuite() {
 	// Delete all created users
 	if err := testutils.CleanupUsers(ts.config.CreatedUserIDs); err != nil {
 		ts.T().Logf("Failed to cleanup users during teardown: %v", err)
@@ -299,7 +299,7 @@ func (ts *BasicAuthFlowTestSuite) TearDownSuite() {
 
 }
 
-func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowSuccess() {
+func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowSuccess() {
 	// Update application
 	err := common.UpdateAppConfig(testAppID, ts.config.CreatedFlowIDs[0], "")
 	ts.NoError(err, "App config update should succeed")
@@ -359,7 +359,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowSuccess() {
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 }
 
-func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowSuccessWithSingleRequest() {
+func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowSuccessWithSingleRequest() {
 	// Update application
 	err := common.UpdateAppConfig(testAppID, ts.config.CreatedFlowIDs[1], "")
 	ts.NoError(err, "App config update should succeed")
@@ -399,7 +399,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowSuccessWithSingleRequest() {
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 }
 
-func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowWithTwoStepInput() {
+func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowWithTwoStepInput() {
 	// Update application
 	err := common.UpdateAppConfig(testAppID, ts.config.CreatedFlowIDs[0], "")
 	ts.NoError(err, "App config update should succeed")
@@ -468,7 +468,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowWithTwoStepInput() {
 	ts.Require().NotNil(jwtClaims, "JWT claims should not be nil")
 }
 
-func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowInvalidCredentials() {
+func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowInvalidCredentials() {
 	// Update application
 	err := common.UpdateAppConfig(testAppID, ts.config.CreatedFlowIDs[0], "")
 	ts.NoError(err, "App config update should succeed")
@@ -507,7 +507,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowInvalidCredentials() {
 	ts.Require().Len(completeFlowStep.Data.Inputs, 2, "Both username and password should be re-prompted")
 }
 
-func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowRetryAfterInvalidCredentials() {
+func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowRetryAfterInvalidCredentials() {
 	// Update application
 	err := common.UpdateAppConfig(testAppID, ts.config.CreatedFlowIDs[0], "")
 	ts.NoError(err, "App config update should succeed")
@@ -554,7 +554,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowRetryAfterInvalidCredentials(
 	ts.Require().Nil(successFlowStep.Error, "No error on success")
 }
 
-func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowInvalidAppID() {
+func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowInvalidAppID() {
 	// Try to initialize the flow with an invalid app ID
 	errorResp, err := common.InitiateAuthFlowWithError("invalid-app-id", nil)
 	if err != nil {
@@ -568,7 +568,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowInvalidAppID() {
 		"Expected error description for invalid app ID")
 }
 
-func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowInvalidFlowID() {
+func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlowInvalidFlowID() {
 	// Step 1: Initialize the flow by calling the flow execution API
 	flowStep, err := common.InitiateAuthenticationFlow(testAppID, false, nil, "")
 	if err != nil {
@@ -599,9 +599,9 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowInvalidFlowID() {
 		"Expected error description for invalid flow ID")
 }
 
-// TestBasicAuthFlow_WithoutTokenConfig tests that userType and OU attributes are NOT included
+// TestCredentialsAuthFlow_WithoutTokenConfig tests that userType and OU attributes are NOT included
 // in JWT assertion when TokenConfig is not specified.
-func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlow_WithoutTokenConfig() {
+func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlow_WithoutTokenConfig() {
 	// Create a new application without TokenConfig
 	appWithoutTokenConfig := testutils.Application{
 		Name:                      "Flow Test Application Without Token Config",
@@ -611,7 +611,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlow_WithoutTokenConfig() {
 		ClientID:                  "flow_test_client_no_token_config",
 		ClientSecret:              "flow_test_secret_no_token_config",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{"basic_auth_user"},
+		AllowedUserTypes:          []string{"credentials_auth_user"},
 		// TokenConfig is nil - not specified
 	}
 
@@ -659,9 +659,9 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlow_WithoutTokenConfig() {
 	ts.Require().Empty(jwtClaims.OuHandle, "ouHandle should NOT be present when TokenConfig is not specified")
 }
 
-// TestBasicAuthFlow_WithEmptyUserAttributes tests that userType and OU attributes are NOT included
+// TestCredentialsAuthFlow_WithEmptyUserAttributes tests that userType and OU attributes are NOT included
 // in JWT assertion when user_attributes is an empty array.
-func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlow_WithEmptyUserAttributes() {
+func (ts *CredentialsAuthFlowTestSuite) TestCredentialsAuthFlow_WithEmptyUserAttributes() {
 	// Create a new application with empty user_attributes
 	appWithEmptyAttrs := testutils.Application{
 		Name:                      "Flow Test Application With Empty User Attributes",
@@ -671,7 +671,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlow_WithEmptyUserAttributes() {
 		ClientID:                  "flow_test_client_empty_attrs",
 		ClientSecret:              "flow_test_secret_empty_attrs",
 		RedirectURIs:              []string{"http://localhost:3000/callback"},
-		AllowedUserTypes:          []string{"basic_auth_user"},
+		AllowedUserTypes:          []string{"credentials_auth_user"},
 		AssertionConfig: map[string]interface{}{
 			"userAttributes": []string{}, // Empty array
 		},

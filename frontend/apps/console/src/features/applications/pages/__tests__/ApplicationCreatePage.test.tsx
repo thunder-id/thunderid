@@ -219,7 +219,11 @@ vi.mock('../../components/create-application/configure-signin-options/ConfigureS
 
         return (
           <div data-testid="application-configure-sign-in">
-            <button type="button" data-testid="toggle-integration" onClick={() => onIntegrationToggle('basic_auth')}>
+            <button
+              type="button"
+              data-testid="toggle-integration"
+              onClick={() => onIntegrationToggle('credentials_auth')}
+            >
               Toggle Integration
             </button>
           </div>

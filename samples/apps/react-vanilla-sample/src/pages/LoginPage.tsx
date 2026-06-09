@@ -1052,7 +1052,7 @@ const LoginPage = () => {
 
     // Render the login form with side-by-side layout based on the available actions
     const renderSideBySideLoginForm = () => {
-        const basicAuthAction = availableActions.find(action => action.ref?.includes("basic_auth"));
+        const credentialsAuthAction = availableActions.find(action => action.ref?.includes("credentials_auth"));
         const mobileAuthActions = availableActions.filter(isMobileAction);
         
         const hasSocialAuth = availableActions.some(action => 
@@ -1065,7 +1065,7 @@ const LoginPage = () => {
         );
 
         const otherActions = availableActions.filter(action =>
-            action !== basicAuthAction &&
+            action !== credentialsAuthAction &&
             !socialAuthActions.includes(action) &&
             !mobileAuthActions.includes(action)
         );
@@ -1075,7 +1075,7 @@ const LoginPage = () => {
                 <Box display="flex" gap={4}>
                     {/* Left: Basic Login */}
                     <Box sx={{ flex: 1 }}>
-                        <form onSubmit={handleSubmit} data-action-id={basicAuthAction?.ref}>
+                        <form onSubmit={handleSubmit} data-action-id={credentialsAuthAction?.ref}>
                             <Box display="flex" flexDirection="column" gap={2}  sx={{ mb: 2, mt: 6.8 }}>
                             </Box>
                             <Box display="flex" flexDirection="column" gap={2} sx={{ mt: 3 }}>
@@ -1237,10 +1237,10 @@ const LoginPage = () => {
 
     // Render the regular login form with options stacked vertically
     const renderRegularLoginForm = () => {
-        const basicAuthAction = availableActions.find(action => action.ref?.includes("basic_auth"));
+        const credentialsAuthAction = availableActions.find(action => action.ref?.includes("credentials_auth"));
         const mobileAuthActions = availableActions.filter(isMobileAction);
         
-        const hasBasicAuth = !!basicAuthAction;
+        const hasCredentialsAuth = !!credentialsAuthAction;
         const hasSocialAuth = availableActions.some(action => 
             action.ref?.includes("google") || action.ref?.includes("github")
         );
@@ -1251,7 +1251,7 @@ const LoginPage = () => {
         );
 
         const otherActions = availableActions.filter(action =>
-            action !== basicAuthAction &&
+            action !== credentialsAuthAction &&
             !socialAuthActions.includes(action) &&
             !mobileAuthActions.includes(action)
         );
@@ -1278,13 +1278,13 @@ const LoginPage = () => {
                 )}
                 
                 {/* Show divider if we have multiple auth options */}
-                {((hasSocialAuth && hasBasicAuth) || (hasSocialAuth && hasMobileAuth)) && (
+                {((hasSocialAuth && hasCredentialsAuth) || (hasSocialAuth && hasMobileAuth)) && (
                     <Divider sx={{ my: 3 }}>or</Divider>
                 )}
                 
                 {/* Basic auth form */}
-                {hasBasicAuth && (
-                    <form onSubmit={handleSubmit} data-action-id={basicAuthAction?.ref}>
+                {hasCredentialsAuth && (
+                    <form onSubmit={handleSubmit} data-action-id={credentialsAuthAction?.ref}>
                         <Box display="flex" flexDirection="column" gap={2}>
                             <Box display="flex" flexDirection="column" gap={0.5}>
                                 <InputLabel htmlFor="username">Username</InputLabel>
@@ -1360,7 +1360,7 @@ const LoginPage = () => {
                 )}
 
                 {/* Show divider if we have multiple auth options */}
-                {(hasBasicAuth && hasMobileAuth) && (
+                {(hasCredentialsAuth && hasMobileAuth) && (
                     <Divider sx={{ my: 3 }}>or</Divider>
                 )}
 
@@ -1401,7 +1401,7 @@ const LoginPage = () => {
 
                 {otherActions.length > 0 && (
                     <Box>
-                        {(hasBasicAuth || hasSocialAuth || hasMobileAuth) && (
+                        {(hasCredentialsAuth || hasSocialAuth || hasMobileAuth) && (
                             <Divider sx={{ my: 3 }}>or</Divider>
                         )}
                         {otherActions.map((action, index) => (
@@ -1543,17 +1543,17 @@ const LoginPage = () => {
     // Calculate appropriate grid size based on layout complexity
     const gridMdSize = needsDecision 
         && !promptRegistration
-        && availableActions.some(action => action.ref?.includes("basic_auth"))
+        && availableActions.some(action => action.ref?.includes("credentials_auth"))
         && availableActions.some(action => action.ref?.includes("mobile") || action.ref?.includes("sms"))
         ? 10 : 6;
     const containerBoxMaxWidth = gridMdSize === 10 ? 1000 : 500;
 
-    const basicAuthAction = availableActions.find(action => action.ref?.includes("basic_auth"));
+    const credentialsAuthAction = availableActions.find(action => action.ref?.includes("credentials_auth"));
     const mobileAuthActions = availableActions.filter(action =>
         action.ref?.includes("mobile") || action.ref?.includes("sms")
     );
     
-    const hasBasicAuth = !!basicAuthAction;
+    const hasCredentialsAuth = !!credentialsAuthAction;
     const hasMobileAuth = mobileAuthActions.length > 0;
 
     return (
@@ -1758,7 +1758,7 @@ const LoginPage = () => {
                                         ) : needsDecision ? (
                                             /* If not redirect but needs decision */
                                             <>
-                                                { hasBasicAuth && hasMobileAuth ? (
+                                                { hasCredentialsAuth && hasMobileAuth ? (
                                                     renderSideBySideLoginForm()
                                                 ) : (
                                                     renderRegularLoginForm()

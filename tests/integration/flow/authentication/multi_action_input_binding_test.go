@@ -65,7 +65,7 @@ var (
 						},
 						"action": map[string]interface{}{
 							"ref":      "action_basic",
-							"nextNode": "basic_auth",
+							"nextNode": "credentials_auth",
 						},
 					},
 					{
@@ -77,10 +77,10 @@ var (
 				},
 			},
 			{
-				"id":   "basic_auth",
+				"id":   "credentials_auth",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]interface{}{
-					"name": "BasicAuthExecutor",
+					"name": "CredentialsAuthExecutor",
 				},
 				"onSuccess": "auth_assert",
 			},

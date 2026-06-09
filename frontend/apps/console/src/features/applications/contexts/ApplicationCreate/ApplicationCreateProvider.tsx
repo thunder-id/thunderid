@@ -70,7 +70,7 @@ const INITIAL_STATE: {
   appLogo: null,
   selectedColor: '#3B82F6',
   integrations: {
-    [AuthenticatorTypes.BASIC_AUTH]: true,
+    [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
   },
   selectedAuthFlow: null,
   signInApproach: ApplicationCreateFlowSignInApproach.INBUILT as ApplicationCreateFlowSignInApproach,

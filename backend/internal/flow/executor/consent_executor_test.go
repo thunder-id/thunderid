@@ -1434,10 +1434,10 @@ func (suite *ConsentExecutorTestSuite) TestBuildAugmentedAvailableAttributes_Pre
 	assert.Equal(suite.T(), ctx.AuthenticatedUser.AvailableAttributes.Verifications, result.Verifications)
 }
 
-// ----- BasicAuth + Consent integration-style test -----
+// ----- CredentialsAuth + Consent integration-style test -----
 
-func (suite *ConsentExecutorTestSuite) TestExecute_BasicAuth_NilAvailableAttributes_PromptsConsent() {
-	// Simulates a BasicAuthExecutor-authenticated user where AuthUser has been populated by the
+func (suite *ConsentExecutorTestSuite) TestExecute_CredentialsAuth_NilAvailableAttributes_PromptsConsent() {
+	// Simulates a CredentialsAuthExecutor-authenticated user where AuthUser has been populated by the
 	// auth provider (non-zero userID makes IsAuthenticated() true) and GetUserAvailableAttributes
 	// returns the provider's attribute set. ResolveConsent must receive that non-nil map so
 	// profile-presence filtering works correctly.
@@ -1495,7 +1495,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_BasicAuth_NilAvailableAttribu
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status,
-		"Executor must prompt for consent when AuthUser is authenticated (BasicAuth)")
+		"Executor must prompt for consent when AuthUser is authenticated (CredentialsAuth)")
 	assert.NotEmpty(suite.T(), resp.AdditionalData[common.DataConsentPrompt])
 	assert.NotNil(suite.T(), resp.ForwardedData[common.ForwardedDataKeyConsentPrompt])
 }

@@ -65,7 +65,7 @@ const blankTemplate: FlowTemplate = {
 const passwordTemplate: FlowTemplate = {
   resourceType: 'TEMPLATE',
   category: 'PASSWORD',
-  type: 'BASIC_AUTH',
+  type: 'CREDENTIALS_AUTH',
   flowType: 'AUTHENTICATION',
   display: {
     label: 'Username & Password',

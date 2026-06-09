@@ -48,7 +48,7 @@ const IDP_LABEL_KEYS: Record<string, string> = {
  * The generated components reflect which authenticators (basic auth, passkey, social) are currently enabled.
  */
 const DEFAULT_INTEGRATIONS: Record<string, boolean> = {
-  [AuthenticatorTypes.BASIC_AUTH]: true,
+  [AuthenticatorTypes.CREDENTIALS_AUTH]: true,
   [AuthenticatorTypes.PASSKEY]: true,
   google: true,
   github: true,
@@ -64,7 +64,7 @@ export default function buildPreviewMock(
   identityProviders: IdentityProvider[] = DEFAULT_IDENTITY_PROVIDERS,
   meta: PreviewMeta = {},
 ): EmbeddedFlowComponent[] {
-  const hasBasicAuth: boolean = integrations[AuthenticatorTypes.BASIC_AUTH] ?? false;
+  const hasCredentialsAuth: boolean = integrations[AuthenticatorTypes.CREDENTIALS_AUTH] ?? false;
   const hasPasskey: boolean = integrations[AuthenticatorTypes.PASSKEY] ?? false;
   const selectedProviders: IdentityProvider[] = identityProviders.filter(
     (idp: IdentityProvider): boolean => integrations[idp.id] ?? false,
@@ -97,7 +97,7 @@ export default function buildPreviewMock(
   });
 
   // Basic auth block
-  if (hasBasicAuth) {
+  if (hasCredentialsAuth) {
     components.push({
       category: 'BLOCK',
       components: [
@@ -136,14 +136,14 @@ export default function buildPreviewMock(
           variant: 'PRIMARY',
         },
       ],
-      id: 'block_basic_auth',
+      id: 'block_credentials_auth',
       resourceType: 'ELEMENT',
       type: 'BLOCK',
     });
   }
 
   // Divider — shown when basic/passkey coexist with social or each other
-  const showDivider: boolean = (hasBasicAuth || hasPasskey) && (hasSocial || (hasBasicAuth && hasPasskey));
+  const showDivider: boolean = (hasCredentialsAuth || hasPasskey) && (hasSocial || (hasCredentialsAuth && hasPasskey));
   if (showDivider) {
     components.push({
       category: 'DISPLAY',

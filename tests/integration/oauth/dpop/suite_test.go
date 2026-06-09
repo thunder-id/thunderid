@@ -100,15 +100,15 @@ var (
 							{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
 							{"ref": "input_002", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
 						},
-						"action": map[string]any{"ref": "action_001", "nextNode": "basic_auth"},
+						"action": map[string]any{"ref": "action_001", "nextNode": "credentials_auth"},
 					},
 				},
 			},
 			{
-				"id":   "basic_auth",
+				"id":   "credentials_auth",
 				"type": "TASK_EXECUTION",
 				"executor": map[string]any{
-					"name": "BasicAuthExecutor",
+					"name": "CredentialsAuthExecutor",
 					"inputs": []map[string]any{
 						{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
 						{"ref": "input_002", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},

@@ -135,7 +135,7 @@ describe('ApplicationCreateProvider', () => {
     expect(screen.getByTestId('selected-theme')).toHaveTextContent('null');
     expect(screen.getByTestId('app-logo')).toHaveTextContent('null');
     expect(screen.getByTestId('integrations')).toHaveTextContent(
-      JSON.stringify({[AuthenticatorTypes.BASIC_AUTH]: true}),
+      JSON.stringify({[AuthenticatorTypes.CREDENTIALS_AUTH]: true}),
     );
     expect(screen.getByTestId('sign-in-approach')).toHaveTextContent(ApplicationCreateFlowSignInApproach.INBUILT);
     expect(screen.getByTestId('selected-technology')).toHaveTextContent('null');
@@ -375,7 +375,7 @@ describe('ApplicationCreateProvider', () => {
     );
 
     const integrations = JSON.parse(screen.getByTestId('integrations').textContent ?? '{}') as Record<string, boolean>;
-    expect(integrations[AuthenticatorTypes.BASIC_AUTH]).toBe(true);
+    expect(integrations[AuthenticatorTypes.CREDENTIALS_AUTH]).toBe(true);
   });
 
   it('initializes with a default primary color', () => {

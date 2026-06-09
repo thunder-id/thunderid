@@ -48,10 +48,10 @@ var (
 				Type: "START",
 			},
 			{
-				ID:   "basic_auth",
+				ID:   "credentials_auth",
 				Type: "TASK_EXECUTION",
 				Executor: &ExecutorDefinition{
-					Name: "BasicAuthExecutor",
+					Name: "CredentialsAuthExecutor",
 				},
 				OnSuccess: "END",
 				OnFailure: "END",
@@ -73,10 +73,10 @@ var (
 				Type: "START",
 			},
 			{
-				ID:   "basic_auth",
+				ID:   "credentials_auth",
 				Type: "TASK_EXECUTION",
 				Executor: &ExecutorDefinition{
-					Name: "BasicAuthExecutor",
+					Name: "CredentialsAuthExecutor",
 				},
 				OnSuccess: "ou_node",
 				OnFailure: "END",
@@ -255,7 +255,7 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_WithLayout() {
 				},
 			},
 			{
-				ID:   "basic_auth",
+				ID:   "credentials_auth",
 				Type: "TASK_EXECUTION",
 				Layout: &NodeLayout{
 					Size: &NodeSize{
@@ -268,7 +268,7 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_WithLayout() {
 					},
 				},
 				Executor: &ExecutorDefinition{
-					Name: "BasicAuthExecutor",
+					Name: "CredentialsAuthExecutor",
 				},
 				OnSuccess: "END",
 				OnFailure: "END",
@@ -310,9 +310,9 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_WithLayout() {
 	suite.Equal(50.0, startNode.Layout.Position.X)
 	suite.Equal(50.0, startNode.Layout.Position.Y)
 
-	// Verify basic_auth node layout
+	// Verify credentials_auth node layout
 	authNode := response.Nodes[1]
-	suite.Equal("basic_auth", authNode.ID)
+	suite.Equal("credentials_auth", authNode.ID)
 	suite.NotNil(authNode.Layout)
 	suite.NotNil(authNode.Layout.Size)
 	suite.Equal(200.0, authNode.Layout.Size.Width)
@@ -626,7 +626,7 @@ func (suite *FlowMgtAPITestSuite) TestUpdateFlow_Success() {
 				ID:   "updated_executor",
 				Type: "TASK_EXECUTION",
 				Executor: &ExecutorDefinition{
-					Name: "BasicAuthExecutor",
+					Name: "CredentialsAuthExecutor",
 				},
 				OnSuccess: "END",
 				OnFailure: "END",

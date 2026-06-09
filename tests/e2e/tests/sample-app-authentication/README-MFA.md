@@ -277,12 +277,12 @@ FLOW_RESPONSE=$(curl --location 'https://localhost:8090/flows' \
             "actions": [
                 {
                     "ref": "action_001",
-                    "nextNode": "basic_auth"
+                    "nextNode": "credentials_auth"
                 }
             ]
         },
         {
-            "id": "basic_auth",
+            "id": "credentials_auth",
             "type": "TASK_EXECUTION",
             "layout": {
                 "size": {
@@ -309,7 +309,7 @@ FLOW_RESPONSE=$(curl --location 'https://localhost:8090/flows' \
                 }
             ],
             "executor": {
-                "name": "BasicAuthExecutor"
+                "name": "CredentialsAuthExecutor"
             },
             "onSuccess": "authorization_check"
         },
