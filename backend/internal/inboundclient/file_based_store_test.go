@@ -319,3 +319,65 @@ func (suite *FileBasedStoreTestSuite) TestIsDeclarative() {
 
 	suite.True(store.IsDeclarative(ctx, "c1"))
 }
+
+func (suite *FileBasedStoreTestSuite) TestGetEntityIDsByThemeID_Empty() {
+	store := newFileBasedStoreForTest()
+	ctx := context.Background()
+
+	ids, total, err := store.GetEntityIDsByThemeID(ctx, "theme-1", 10, 0)
+	suite.NoError(err)
+	suite.Equal(0, total)
+	suite.Empty(ids)
+}
+
+func (suite *FileBasedStoreTestSuite) TestGetEntityIDsByThemeID_MatchesOnThemeID() {
+	store := newFileBasedStoreForTest()
+	ctx := context.Background()
+
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{ID: "app-1", ThemeID: "theme-a"}))
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{ID: "app-2", ThemeID: "theme-b"}))
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{ID: "app-3", ThemeID: "theme-a"}))
+
+	ids, total, err := store.GetEntityIDsByThemeID(ctx, "theme-a", 10, 0)
+	suite.NoError(err)
+	suite.Equal(2, total)
+	suite.ElementsMatch([]string{"app-1", "app-3"}, ids)
+}
+
+func (suite *FileBasedStoreTestSuite) TestGetEntityIDsByThemeID_Pagination() {
+	store := newFileBasedStoreForTest()
+	ctx := context.Background()
+
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{ID: "app-1", ThemeID: "theme-a"}))
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{ID: "app-2", ThemeID: "theme-a"}))
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{ID: "app-3", ThemeID: "theme-a"}))
+
+	ids, total, err := store.GetEntityIDsByThemeID(ctx, "theme-a", 2, 1)
+	suite.NoError(err)
+	suite.Equal(3, total)
+	suite.Len(ids, 2)
+}
+
+func (suite *FileBasedStoreTestSuite) TestGetEntityIDsByThemeID_OffsetBeyondTotal() {
+	store := newFileBasedStoreForTest()
+	ctx := context.Background()
+
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{ID: "app-1", ThemeID: "theme-a"}))
+
+	ids, total, err := store.GetEntityIDsByThemeID(ctx, "theme-a", 10, 5)
+	suite.NoError(err)
+	suite.Equal(1, total)
+	suite.Empty(ids)
+}
+
+func (suite *FileBasedStoreTestSuite) TestGetEntityIDsByThemeID_ZeroLimit() {
+	store := newFileBasedStoreForTest()
+	ctx := context.Background()
+
+	suite.NoError(store.CreateInboundClient(ctx, inboundmodel.InboundClient{ID: "app-1", ThemeID: "theme-a"}))
+
+	ids, total, err := store.GetEntityIDsByThemeID(ctx, "theme-a", 0, 0)
+	suite.NoError(err)
+	suite.Equal(1, total)
+	suite.Empty(ids)
+}

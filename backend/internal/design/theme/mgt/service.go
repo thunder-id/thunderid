@@ -29,6 +29,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -42,12 +43,16 @@ type ThemeMgtServiceInterface interface {
 	UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError)
 	DeleteTheme(ctx context.Context, id string) *tidcommon.ServiceError
 	IsThemeExist(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
+	SetDependencyRegistry(r resourcedependency.Registry)
+	GetThemeUsages(ctx context.Context, id string, limit, offset int) (
+		*resourcedependency.DependenciesResponse, *tidcommon.ServiceError)
 }
 
 // themeMgtService is the default implementation of the ThemeMgtServiceInterface.
 type themeMgtService struct {
-	themeMgtStore themeMgtStoreInterface
-	logger        *log.Logger
+	themeMgtStore      themeMgtStoreInterface
+	dependencyRegistry resourcedependency.Registry
+	logger             *log.Logger
 }
 
 // newThemeMgtService creates a new instance of ThemeMgtService with injected dependencies.
@@ -289,6 +294,52 @@ func (ts *themeMgtService) IsThemeExist(ctx context.Context, id string) (bool, *
 	}
 
 	return exists, nil
+}
+
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (ts *themeMgtService) SetDependencyRegistry(r resourcedependency.Registry) {
+	ts.dependencyRegistry = r
+}
+
+// GetThemeUsages returns the resources that reference this theme.
+func (ts *themeMgtService) GetThemeUsages(
+	ctx context.Context, id string, limit, offset int,
+) (*resourcedependency.DependenciesResponse, *tidcommon.ServiceError) {
+	if id == "" {
+		return nil, &ErrorInvalidThemeID
+	}
+
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	exists, err := ts.themeMgtStore.IsThemeExist(id)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to check theme existence", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if !exists {
+		return nil, &ErrorThemeNotFound
+	}
+
+	if ts.dependencyRegistry == nil {
+		ts.logger.Warn(ctx, "Dependency registry not set; returning unknown dependencies", log.String("id", id))
+		return &resourcedependency.DependenciesResponse{
+			TotalResults: nil,
+			Count:        0,
+			Summary:      nil,
+			Usages:       []resourcedependency.ResourceDependency{},
+		}, nil
+	}
+
+	result, err := ts.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeTheme, id)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to get theme usages", log.String("id", id), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return result, nil
 }
 
 // validateThemePreferences validates the theme JSON.

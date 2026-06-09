@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 )
 
 // Test Suite
@@ -587,5 +588,124 @@ func (suite *ThemeServiceTestSuite) TestDeleteTheme_ApplicationsCountError() {
 
 	err := suite.service.DeleteTheme(context.Background(), "theme-123")
 
+	assert.NotNil(suite.T(), err)
+}
+
+// --- GetThemeUsages tests ---
+
+// stubUsageRegistry is a minimal resourcedependency.Registry for tests.
+type stubUsageRegistry struct {
+	resp *resourcedependency.DependenciesResponse
+	err  error
+}
+
+func (s *stubUsageRegistry) RegisterProvider(resourcedependency.Provider) {}
+
+func (s *stubUsageRegistry) GetDependencies(
+	_ context.Context, _, _ string) (*resourcedependency.DependenciesResponse, error) {
+	return s.resp, s.err
+}
+
+// Test GetThemeUsages - Empty ID
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_EmptyID() {
+	result, err := suite.service.GetThemeUsages(context.Background(), "", 10, 0)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), ErrorInvalidThemeID.Code, err.Code)
+}
+
+// Test GetThemeUsages - Theme not found
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_NotFound() {
+	suite.mockStore.On("IsThemeExist", "missing").Return(false, nil)
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "missing", 10, 0)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), ErrorThemeNotFound.Code, err.Code)
+}
+
+// Test GetThemeUsages - Store error on existence check
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_ExistenceCheckError() {
+	suite.mockStore.On("IsThemeExist", "theme-123").Return(false, errors.New("database error"))
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "theme-123", 10, 0)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), err)
+}
+
+// Test GetThemeUsages - usage registry not set returns unknown (nil totalResults)
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_RegistryNotSet() {
+	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "theme-123", 10, 0)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Nil(suite.T(), result.TotalResults)
+	assert.Nil(suite.T(), result.Summary)
+	assert.Empty(suite.T(), result.Usages)
+}
+
+// Test GetThemeUsages - registry returns usages
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_WithUsages() {
+	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
+	total := 2
+	suite.service.SetDependencyRegistry(&stubUsageRegistry{
+		resp: &resourcedependency.DependenciesResponse{
+			TotalResults: &total,
+			Count:        2,
+			Summary:      map[string]int{resourcedependency.ResourceTypeApplication: 2},
+			Usages: []resourcedependency.ResourceDependency{
+				{ResourceType: resourcedependency.ResourceTypeApplication, ID: "app-1",
+					DisplayName: "App One", BehaviorOnDelete: resourcedependency.BehaviorFallback},
+				{ResourceType: resourcedependency.ResourceTypeApplication, ID: "app-2",
+					DisplayName: "App Two", BehaviorOnDelete: resourcedependency.BehaviorFallback},
+			},
+		},
+	})
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "theme-123", 10, 0)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.NotNil(suite.T(), result.TotalResults)
+	assert.Equal(suite.T(), 2, *result.TotalResults)
+	assert.Equal(suite.T(), 2, result.Summary[resourcedependency.ResourceTypeApplication])
+	assert.Len(suite.T(), result.Usages, 2)
+	assert.Equal(suite.T(), resourcedependency.ResourceTypeApplication, result.Usages[0].ResourceType)
+	assert.Equal(suite.T(), resourcedependency.BehaviorFallback, result.Usages[0].BehaviorOnDelete)
+	assert.Equal(suite.T(), "App One", result.Usages[0].DisplayName)
+}
+
+// Test GetThemeUsages - registry returns no usages
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_NoUsages() {
+	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
+	total := 0
+	suite.service.SetDependencyRegistry(&stubUsageRegistry{
+		resp: &resourcedependency.DependenciesResponse{
+			TotalResults: &total, Usages: []resourcedependency.ResourceDependency{},
+		},
+	})
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "theme-123", 10, 0)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.NotNil(suite.T(), result.TotalResults)
+	assert.Equal(suite.T(), 0, *result.TotalResults)
+	assert.Empty(suite.T(), result.Usages)
+}
+
+// Test GetThemeUsages - registry returns error
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_RegistryError() {
+	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
+	suite.service.SetDependencyRegistry(&stubUsageRegistry{err: errors.New("registry error")})
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "theme-123", 10, 0)
+
+	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
 }
