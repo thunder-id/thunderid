@@ -133,4 +133,15 @@ func registerRoutes(mux *http.ServeMux, themeMgtHandler *themeMgtHandler) {
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /design/themes/{id}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}, opts2))
+
+	opts3 := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
+	mux.HandleFunc(middleware.WithCORS("GET /design/themes/{id}/usages",
+		themeMgtHandler.HandleThemeUsagesGetRequest, opts3))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /design/themes/{id}/usages",
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNoContent) }, opts3))
 }

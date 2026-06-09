@@ -20,6 +20,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -326,6 +327,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 	exporters = append(exporters, agentExporter)
 
+	// Wire application reader into theme service (two-phase init to avoid cyclic import).
+	themeMgtService.SetApplicationReader(&appThemeUsageAdapter{appSvc: applicationService})
+
 	// Initialize design resolve service for theme and layout resolution
 	designResolveService := resolve.Initialize(mux, themeMgtService, layoutMgtService, applicationService)
 
@@ -384,6 +388,26 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 // unregisterServices unregisters all services that require cleanup during shutdown.
 func unregisterServices() {
 	observabilitySvc.Shutdown()
+}
+
+// appThemeUsageAdapter bridges the application service to thememgt.ApplicationUsageReader,
+// keeping the two packages free of a cyclic import.
+type appThemeUsageAdapter struct {
+	appSvc application.ApplicationServiceInterface
+}
+
+func (a *appThemeUsageAdapter) GetApplicationsByThemeID(
+	ctx context.Context, themeID string, limit, offset int,
+) ([]thememgt.ApplicationUsage, int, error) {
+	apps, total, svcErr := a.appSvc.GetApplicationsByThemeID(ctx, themeID, limit, offset)
+	if svcErr != nil {
+		return nil, 0, fmt.Errorf("failed to get applications by theme ID: %s", svcErr.Error.DefaultValue)
+	}
+	usages := make([]thememgt.ApplicationUsage, len(apps))
+	for i, app := range apps {
+		usages[i] = thememgt.ApplicationUsage{ID: app.ID, DisplayName: app.DisplayName}
+	}
+	return usages, total, nil
 }
 
 // buildHashConfig constructs a cryptolib.HashConfig from the server configuration.

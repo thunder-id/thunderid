@@ -186,6 +186,25 @@ func (th *themeMgtHandler) HandleThemePutRequest(w http.ResponseWriter, r *http.
 	th.logger.DebugWithContext(ctx, "Successfully updated theme configuration", log.String("id", id))
 }
 
+// HandleThemeUsagesGetRequest handles the get theme usages request.
+func (th *themeMgtHandler) HandleThemeUsagesGetRequest(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
+	if svcErr != nil {
+		handleError(w, svcErr)
+		return
+	}
+
+	result, svcErr := th.themeMgtService.GetThemeUsages(r.Context(), id, limit, offset)
+	if svcErr != nil {
+		handleError(w, svcErr)
+		return
+	}
+
+	sysutils.WriteSuccessResponse(w, http.StatusOK, result)
+	th.logger.DebugWithContext(r.Context(), "Successfully retrieved theme usages", log.String("id", id))
+}
+
 // HandleThemeDeleteRequest handles the delete theme configuration request.
 func (th *themeMgtHandler) HandleThemeDeleteRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

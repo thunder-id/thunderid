@@ -73,6 +73,7 @@ export default function ThemeBuilderProvider({children}: ThemeBuilderProviderPro
 
   const handle = themeData?.handle ?? null;
   const displayName = themeData?.displayName ?? null;
+  const isReadOnly = themeData?.isReadOnly ?? false;
 
   const [prevThemeData, setPrevThemeData] = useState(themeData);
 
@@ -133,6 +134,7 @@ export default function ThemeBuilderProvider({children}: ThemeBuilderProviderPro
       handle,
       originalTheme: themeData?.theme ?? null,
       displayName,
+      isReadOnly,
       draftTheme,
       setDraftTheme,
       isDirty,
@@ -153,6 +155,7 @@ export default function ThemeBuilderProvider({children}: ThemeBuilderProviderPro
       handle,
       themeData?.theme,
       displayName,
+      isReadOnly,
       draftTheme,
       isDirty,
       activeSection,

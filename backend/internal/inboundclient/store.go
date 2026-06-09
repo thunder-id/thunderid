@@ -50,6 +50,7 @@ type inboundClientStoreInterface interface {
 	GetInboundClientByEntityID(ctx context.Context, entityID string) (*inboundmodel.InboundClient, error)
 	GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*inboundmodel.OAuthProfile, error)
 	GetInboundClientList(ctx context.Context, limit int) ([]inboundmodel.InboundClient, error)
+	GetEntityIDsByThemeID(ctx context.Context, themeID string, limit, offset int) ([]string, int, error)
 	GetTotalInboundClientCount(ctx context.Context) (int, error)
 	UpdateInboundClient(ctx context.Context, client inboundmodel.InboundClient) error
 	UpdateOAuthProfile(ctx context.Context, entityID string, oauthProfile *inboundmodel.OAuthProfile) error
@@ -234,6 +235,40 @@ func (st *store) GetInboundClientList(ctx context.Context, limit int) ([]inbound
 		clients = append(clients, *c)
 	}
 	return clients, nil
+}
+
+// GetEntityIDsByThemeID retrieves paginated entity IDs for inbound clients using a specific theme.
+func (st *store) GetEntityIDsByThemeID(ctx context.Context, themeID string, limit, offset int) ([]string, int, error) {
+	dbClient, err := st.dbProvider.GetConfigDBClient()
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	countResults, err := dbClient.QueryContext(ctx, queryGetEntityIDsByThemeIDCount, themeID, st.deploymentID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to execute count query: %w", err)
+	}
+	total := 0
+	if len(countResults) > 0 {
+		if v, ok := countResults[0]["total"].(int64); ok {
+			total = int(v)
+		}
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetEntityIDsByThemeID, themeID, st.deploymentID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to execute query: %w", err)
+	}
+
+	ids := make([]string, 0, len(results))
+	for _, row := range results {
+		id, ok := row["entity_id"].(string)
+		if !ok {
+			return nil, 0, fmt.Errorf("entity_id field missing or invalid type")
+		}
+		ids = append(ids, id)
+	}
+	return ids, total, nil
 }
 
 // GetTotalInboundClientCount retrieves the total count of inbound clients.

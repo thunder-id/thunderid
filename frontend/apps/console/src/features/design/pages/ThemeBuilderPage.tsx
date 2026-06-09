@@ -37,6 +37,7 @@ export default function ThemeBuilderPage(): JSX.Element {
   const {
     themeId,
     displayName,
+    isReadOnly,
     activeSection,
     setActiveSection,
     isDirty,
@@ -108,14 +109,16 @@ export default function ThemeBuilderPage(): JSX.Element {
           {/* Portal target — the PreviewToolbar from GatePreview renders here */}
           <Box ref={setToolbarPortal} sx={{flex: 1, display: 'flex', justifyContent: 'center'}} />
           <Box sx={{display: 'flex', gap: 2}}>
-            <Button
-              variant="text"
-              color="error"
-              startIcon={<Trash size={18} />}
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              {t('themes.builder.actions.delete.label', 'Delete')}
-            </Button>
+            {!isReadOnly && (
+              <Button
+                variant="text"
+                color="error"
+                startIcon={<Trash size={18} />}
+                onClick={() => setDeleteDialogOpen(true)}
+              >
+                {t('themes.builder.actions.delete.label', 'Delete')}
+              </Button>
+            )}
             <Button
               variant="outlined"
               disabled={!isDirty || isSaving}

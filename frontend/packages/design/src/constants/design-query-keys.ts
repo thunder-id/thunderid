@@ -34,6 +34,9 @@ const DesignQueryKeys = {
 
   /** Key for resolving design configuration by type and ID */
   DESIGN_RESOLVE: 'design-resolve',
+
+  /** Key for theme usages (resources referencing a theme) */
+  THEME_USAGES: 'theme-usages',
 } as const;
 
 export default DesignQueryKeys;

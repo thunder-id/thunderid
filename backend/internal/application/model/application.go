@@ -204,3 +204,9 @@ type ApplicationListResponse struct {
 	Count        int                        `json:"count"`
 	Applications []BasicApplicationResponse `json:"applications"`
 }
+
+// ApplicationThemeUsage is a minimal projection used by the theme usages endpoint.
+type ApplicationThemeUsage struct {
+	ID          string
+	DisplayName string
+}

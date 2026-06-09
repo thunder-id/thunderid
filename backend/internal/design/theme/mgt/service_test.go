@@ -589,3 +589,109 @@ func (suite *ThemeServiceTestSuite) TestDeleteTheme_ApplicationsCountError() {
 
 	assert.NotNil(suite.T(), err)
 }
+
+// --- GetThemeUsages tests ---
+
+// stubApplicationReader is a minimal ApplicationUsageReader for tests.
+type stubApplicationReader struct {
+	usages []ApplicationUsage
+	total  int
+	err    error
+}
+
+func (s *stubApplicationReader) GetApplicationsByThemeID(
+	_ context.Context, _ string, _, _ int) ([]ApplicationUsage, int, error) {
+	return s.usages, s.total, s.err
+}
+
+// Test GetThemeUsages - Empty ID
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_EmptyID() {
+	result, err := suite.service.GetThemeUsages(context.Background(), "", 10, 0)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), ErrorInvalidThemeID.Code, err.Code)
+}
+
+// Test GetThemeUsages - Theme not found
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_NotFound() {
+	suite.mockStore.On("IsThemeExist", "missing").Return(false, nil)
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "missing", 10, 0)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), err)
+	assert.Equal(suite.T(), ErrorThemeNotFound.Code, err.Code)
+}
+
+// Test GetThemeUsages - Store error on existence check
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_ExistenceCheckError() {
+	suite.mockStore.On("IsThemeExist", "theme-123").Return(false, errors.New("database error"))
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "theme-123", 10, 0)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), err)
+}
+
+// Test GetThemeUsages - ApplicationReader not set returns unknown (nil totalResults)
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_ReaderNotSet() {
+	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "theme-123", 10, 0)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Nil(suite.T(), result.TotalResults)
+	assert.Nil(suite.T(), result.Summary.Applications)
+	assert.Empty(suite.T(), result.Usages)
+}
+
+// Test GetThemeUsages - Reader returns applications
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_WithApplications() {
+	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
+	suite.service.SetApplicationReader(&stubApplicationReader{
+		usages: []ApplicationUsage{
+			{ID: "app-1", DisplayName: "App One"},
+			{ID: "app-2", DisplayName: "App Two"},
+		},
+		total: 2,
+	})
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "theme-123", 10, 0)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.NotNil(suite.T(), result.TotalResults)
+	assert.Equal(suite.T(), 2, *result.TotalResults)
+	assert.Equal(suite.T(), 2, *result.Summary.Applications)
+	assert.Len(suite.T(), result.Usages, 2)
+	assert.Equal(suite.T(), "application", result.Usages[0].ResourceType)
+	assert.Equal(suite.T(), "fallback", result.Usages[0].BehaviorOnDelete)
+	assert.Equal(suite.T(), "App One", result.Usages[0].DisplayName)
+}
+
+// Test GetThemeUsages - Reader returns no applications
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_NoApplications() {
+	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
+	suite.service.SetApplicationReader(&stubApplicationReader{usages: []ApplicationUsage{}, total: 0})
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "theme-123", 10, 0)
+
+	assert.Nil(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.NotNil(suite.T(), result.TotalResults)
+	assert.Equal(suite.T(), 0, *result.TotalResults)
+	assert.Empty(suite.T(), result.Usages)
+}
+
+// Test GetThemeUsages - Reader returns error
+func (suite *ThemeServiceTestSuite) TestGetThemeUsages_ReaderError() {
+	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
+	suite.service.SetApplicationReader(&stubApplicationReader{err: errors.New("reader error")})
+
+	result, err := suite.service.GetThemeUsages(context.Background(), "theme-123", 10, 0)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), err)
+}

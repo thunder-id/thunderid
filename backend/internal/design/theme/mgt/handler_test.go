@@ -44,12 +44,13 @@ func TestThemeHandlerTestSuite(t *testing.T) {
 
 // mockThemeService implements ThemeMgtServiceInterface for handler tests
 type mockThemeService struct {
-	getThemeListFunc func(limit, offset int) (*ThemeList, *serviceerror.ServiceError)
-	createThemeFunc  func(theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError)
-	getThemeFunc     func(id string) (*Theme, *serviceerror.ServiceError)
-	updateThemeFunc  func(id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError)
-	deleteThemeFunc  func(id string) *serviceerror.ServiceError
-	isThemeExistFunc func(id string) (bool, *serviceerror.ServiceError)
+	getThemeListFunc   func(limit, offset int) (*ThemeList, *serviceerror.ServiceError)
+	createThemeFunc    func(theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError)
+	getThemeFunc       func(id string) (*Theme, *serviceerror.ServiceError)
+	updateThemeFunc    func(id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError)
+	deleteThemeFunc    func(id string) *serviceerror.ServiceError
+	isThemeExistFunc   func(id string) (bool, *serviceerror.ServiceError)
+	getThemeUsagesFunc func(id string, limit, offset int) (*ThemeUsagesResponse, *serviceerror.ServiceError)
 }
 
 func (m *mockThemeService) GetThemeList(_ context.Context, limit, offset int) (*ThemeList, *serviceerror.ServiceError) {
@@ -76,6 +77,16 @@ func (m *mockThemeService) DeleteTheme(_ context.Context, id string) *serviceerr
 
 func (m *mockThemeService) IsThemeExist(_ context.Context, id string) (bool, *serviceerror.ServiceError) {
 	return m.isThemeExistFunc(id)
+}
+
+func (m *mockThemeService) SetApplicationReader(_ ApplicationUsageReader) {}
+
+func (m *mockThemeService) GetThemeUsages(
+	_ context.Context, id string, limit, offset int) (*ThemeUsagesResponse, *serviceerror.ServiceError) {
+	if m.getThemeUsagesFunc != nil {
+		return m.getThemeUsagesFunc(id, limit, offset)
+	}
+	return nil, nil
 }
 
 // Test HandleThemeListRequest - Success
@@ -449,6 +460,78 @@ func (suite *ThemeHandlerTestSuite) TestHandleThemeDeleteRequest_Conflict() {
 	mux.ServeHTTP(w, req)
 
 	assert.Equal(suite.T(), http.StatusConflict, w.Code)
+}
+
+// Test HandleThemeUsagesGetRequest - Success
+func (suite *ThemeHandlerTestSuite) TestHandleThemeUsagesGetRequest_Success() {
+	total := 2
+	appTotal := 2
+	mockSvc := &mockThemeService{
+		getThemeUsagesFunc: func(id string, limit, offset int) (*ThemeUsagesResponse, *serviceerror.ServiceError) {
+			return &ThemeUsagesResponse{
+				TotalResults: &total,
+				StartIndex:   1,
+				Count:        2,
+				Summary:      ThemeUsagesSummary{Applications: &appTotal},
+				Usages: []ThemeUsage{
+					{ResourceType: "application", ID: "app-1", DisplayName: "App One", BehaviorOnDelete: "fallback"},
+					{ResourceType: "application", ID: "app-2", DisplayName: "App Two", BehaviorOnDelete: "fallback"},
+				},
+				Links: []LinkResponse{},
+			}, nil
+		},
+	}
+
+	handler := newThemeMgtHandler(mockSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /design/themes/{id}/usages", handler.HandleThemeUsagesGetRequest)
+
+	req := httptest.NewRequest(http.MethodGet, "/design/themes/theme-123/usages?limit=10&offset=0", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+
+	var response ThemeUsagesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), response.TotalResults)
+	assert.Equal(suite.T(), 2, *response.TotalResults)
+	assert.Len(suite.T(), response.Usages, 2)
+	assert.Equal(suite.T(), "application", response.Usages[0].ResourceType)
+	assert.Equal(suite.T(), "fallback", response.Usages[0].BehaviorOnDelete)
+}
+
+// Test HandleThemeUsagesGetRequest - Invalid pagination
+func (suite *ThemeHandlerTestSuite) TestHandleThemeUsagesGetRequest_InvalidLimit() {
+	handler := newThemeMgtHandler(&mockThemeService{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /design/themes/{id}/usages", handler.HandleThemeUsagesGetRequest)
+
+	req := httptest.NewRequest(http.MethodGet, "/design/themes/theme-123/usages?limit=abc", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+}
+
+// Test HandleThemeUsagesGetRequest - Service error maps to correct status
+func (suite *ThemeHandlerTestSuite) TestHandleThemeUsagesGetRequest_NotFound() {
+	mockSvc := &mockThemeService{
+		getThemeUsagesFunc: func(id string, limit, offset int) (*ThemeUsagesResponse, *serviceerror.ServiceError) {
+			return nil, &ErrorThemeNotFound
+		},
+	}
+
+	handler := newThemeMgtHandler(mockSvc)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /design/themes/{id}/usages", handler.HandleThemeUsagesGetRequest)
+
+	req := httptest.NewRequest(http.MethodGet, "/design/themes/missing/usages", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(suite.T(), http.StatusNotFound, w.Code)
 }
 
 // Test parsePaginationParams

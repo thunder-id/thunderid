@@ -3407,3 +3407,107 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_FlowHandleResolutio
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidRequestFormat.Code, svcErr.Code)
 }
+
+// --- GetApplicationsByThemeID tests ---
+
+func (suite *ServiceTestSuite) TestGetApplicationsByThemeID_InboundClientError() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", 10, 0).
+		Return(nil, 0, errors.New("store error"))
+
+	result, total, svcErr := service.GetApplicationsByThemeID(context.Background(), "theme-1", 10, 0)
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), 0, total)
+	assert.NotNil(suite.T(), svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationsByThemeID_EmptyIDs() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", 10, 0).
+		Return([]string{}, 0, nil)
+
+	result, total, svcErr := service.GetApplicationsByThemeID(context.Background(), "theme-1", 10, 0)
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), 0, total)
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationsByThemeID_EntityProviderError() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", 10, 0).
+		Return([]string{"app-1"}, 1, nil)
+
+	ep := resetEntityProviderMethod(service, "GetEntitiesByIDs")
+	epErr := entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "error", "")
+	ep.On("GetEntitiesByIDs", []string{"app-1"}).Return([]entityprovider.Entity{}, epErr)
+
+	result, total, svcErr := service.GetApplicationsByThemeID(context.Background(), "theme-1", 10, 0)
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), 0, total)
+	assert.NotNil(suite.T(), svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationsByThemeID_Success() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", 10, 0).
+		Return([]string{"app-1", "app-2"}, 2, nil)
+
+	sysAttrs1, _ := json.Marshal(map[string]interface{}{"name": "Portal App"})
+	sysAttrs2, _ := json.Marshal(map[string]interface{}{"name": "Admin App"})
+	ep := resetEntityProviderMethod(service, "GetEntitiesByIDs")
+	ep.On("GetEntitiesByIDs", []string{"app-1", "app-2"}).Return([]entityprovider.Entity{
+		{ID: "app-1", SystemAttributes: sysAttrs1},
+		{ID: "app-2", SystemAttributes: sysAttrs2},
+	}, (*entityprovider.EntityProviderError)(nil))
+
+	result, total, svcErr := service.GetApplicationsByThemeID(context.Background(), "theme-1", 10, 0)
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), 2, total)
+	require.Len(suite.T(), result, 2)
+	assert.Equal(suite.T(), "app-1", result[0].ID)
+	assert.Equal(suite.T(), "Portal App", result[0].DisplayName)
+	assert.Equal(suite.T(), "app-2", result[1].ID)
+	assert.Equal(suite.T(), "Admin App", result[1].DisplayName)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationsByThemeID_NoSystemAttributes() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", 10, 0).
+		Return([]string{"app-1"}, 1, nil)
+
+	ep := resetEntityProviderMethod(service, "GetEntitiesByIDs")
+	ep.On("GetEntitiesByIDs", []string{"app-1"}).Return([]entityprovider.Entity{
+		{ID: "app-1"},
+	}, (*entityprovider.EntityProviderError)(nil))
+
+	result, total, svcErr := service.GetApplicationsByThemeID(context.Background(), "theme-1", 10, 0)
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), 1, total)
+	require.Len(suite.T(), result, 1)
+	assert.Equal(suite.T(), "app-1", result[0].ID)
+	assert.Equal(suite.T(), "", result[0].DisplayName)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationsByThemeID_SystemAttributesWithoutName() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", 10, 0).
+		Return([]string{"app-1"}, 1, nil)
+
+	sysAttrs, _ := json.Marshal(map[string]interface{}{"description": "some desc"})
+	ep := resetEntityProviderMethod(service, "GetEntitiesByIDs")
+	ep.On("GetEntitiesByIDs", []string{"app-1"}).Return([]entityprovider.Entity{
+		{ID: "app-1", SystemAttributes: sysAttrs},
+	}, (*entityprovider.EntityProviderError)(nil))
+
+	result, total, svcErr := service.GetApplicationsByThemeID(context.Background(), "theme-1", 10, 0)
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), 1, total)
+	require.Len(suite.T(), result, 1)
+	assert.Equal(suite.T(), "", result[0].DisplayName)
+}
