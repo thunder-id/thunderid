@@ -1,0 +1,33 @@
+name: 📦 SDKs Validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "lts/*"
+
+jobs:
+  build-test-sdks:
+    name: 🔨 Build, Lint & Test SDKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Node.js
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 📦 Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          run_install: false
+          cache_dependency_path: pnpm-lock.yaml
+
+      - name: 🔨 Build SDKs
+        run: make build_sdks

@@ -1,0 +1,276 @@
+name: ⚙️ Backend Validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GOFLAGS: "-mod=readonly"
+  PRODUCT_NAME: "ThunderID"
+  PRODUCT_NAME_LOWER: "thunderid"
+  NODE_VERSION: "lts/*"
+
+jobs:
+  verify-mocks:
+    name: 🔍 Verify Mock Files
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: 🔧 Install Mockery
+        run: make install-mockery
+
+      - name: 🏭 Generate Mocks
+        run: make mockery
+
+      - name: 🔎 Check for Outdated Mocks
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all -- backend/tests/mocks backend/internal)" ]; then
+            echo "❌ Mock files are out of sync with interface definitions!"
+            echo ""
+            echo "The following mock files need to be regenerated:"
+            git status --porcelain --untracked-files=all -- backend/tests/mocks backend/internal | awk '{print $2}'
+            echo ""
+            echo "To fix this:"
+            echo "  1. Run: make mockery"
+            echo "  2. Commit the updated mock files"
+            echo "  3. Push your changes"
+            echo ""
+            echo "This ensures mock implementations stay synchronized with their interfaces."
+            exit 1
+          fi
+          echo "✅ All mock files are up to date"
+
+  lint:
+    name: 🧹 Lint Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: 📦 Prepare golangci-lint Locally
+        run: make golangci-lint
+
+      - name: 🔍 Run Backend Linter
+        run: make lint_backend
+
+  build:
+    name: 🛠️ Build Product
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: ⚙️ Set up Node.js and pnpm
+        uses: ./.github/actions/setup-pnpm
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: 🗄️ Cache Go Modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: cache-go-modules
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-modules-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-modules-
+
+      - name: 📦 Install Backend Dependencies
+        run: |
+          cd backend
+          go mod download
+          cd ../tests/integration
+          go mod download
+
+      - name: 🗂️ Set up Nx Cache
+        uses: ./.github/actions/setup-nx-cache
+
+      - name: 📦 Install Frontend Dependencies
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: 🧹 Clean Previous Builds
+        run: |
+          set -e
+          make clean
+
+      - name: 🔨 Build Frontend
+        run: |
+          make build_frontend
+
+      - name: 🔨 Build Product with Coverage
+        run: |
+          set -e
+          export LOG_LEVEL=debug
+          make build_with_coverage_only OS=$(go env GOOS) ARCH=$(go env GOARCH)
+
+          # Find the built distribution
+          DIST_PATH=$(find target/dist -name "$PRODUCT_NAME_LOWER-*.zip" | head -1)
+          echo "Built distribution: $DIST_PATH"
+
+      - name: 📦 Upload Built Distribution
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: product-distribution
+          path: target/dist/*.zip
+          if-no-files-found: error
+
+      - name: 📊 Upload Unit Test Coverage Report to Codecov
+        uses: codecov/codecov-action@v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          use_oidc: true
+          files: backend/coverage_unit.out
+          disable_search: true
+          flags: backend-unit
+          name: Backend Unit Tests
+          fail_ci_if_error: false
+
+      - name: 📦 Archive Unit Coverage Report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unit-coverage-report
+          path: backend/coverage_unit.out
+          if-no-files-found: error
+
+  test-integration:
+    name: 🧪 Integration Tests (${{ matrix.database }})
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        database: [sqlite, postgres, redis]
+      fail-fast: false
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: dbuser
+          POSTGRES_PASSWORD: dbpassword
+          POSTGRES_DB: postgredb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: 📥 Download Unit Coverage Report
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: unit-coverage-report
+          path: backend/
+
+      - name: 🗄️ Cache Go Modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: cache-go-modules
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-modules-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-modules-
+
+      - name: 📦 Install Dependencies
+        run: |
+          cd backend
+          go mod download
+          cd ../tests/integration
+          go mod download
+
+      - name: 📝 Configure Test Database
+        run: |
+          chmod +x tests/integration/resources/scripts/setup-test-config.sh
+          ./tests/integration/resources/scripts/setup-test-config.sh
+        env:
+          DB_TYPE: ${{ matrix.database }}
+
+      - name: 🧪 Run Integration Tests (${{ matrix.database }})
+        uses: ./.github/actions/run-integration-tests
+        with:
+          database-type: ${{ matrix.database }}
+          coverage-enabled: true
+
+      - name: 📊 Upload Integration Test Coverage Report to Codecov
+        uses: codecov/codecov-action@v5
+        timeout-minutes: 5
+        continue-on-error: true
+        with:
+          use_oidc: true
+          files: target/coverage_integration.out
+          disable_search: true
+          flags: backend-integration-${{ matrix.database }}
+          name: Backend Integration Tests (${{ matrix.database }})
+          fail_ci_if_error: false
+
+  test-integration-status:
+    name: ✅ Integration Tests Status
+    needs: [test-integration]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check integration test results
+        run: |
+          if [[ "${{ needs.test-integration.result }}" == "failure" || "${{ needs.test-integration.result }}" == "cancelled" ]]; then
+            echo "❌ Integration tests failed or were cancelled"
+            exit 1
+          fi
+          echo "✅ Integration tests passed or were not required"
+
+  cleanup-nx-cache:
+    name: 🗑️ Cleanup Stale Nx Cache
+    runs-on: ubuntu-latest
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    needs:
+      - build
+      - test-integration
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: 🗑️ Delete stale Nx caches
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/actions/caches?per_page=100&key=nx-Linux-" \
+            --jq '.actions_caches | sort_by(.created_at) | reverse | .[1:] | .[].id' \
+          | xargs -r -I{} gh api --method DELETE "repos/${{ github.repository }}/actions/caches/{}"
