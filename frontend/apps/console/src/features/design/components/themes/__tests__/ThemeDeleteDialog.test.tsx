@@ -39,6 +39,10 @@ vi.mock('@thunderid/design', () => ({
     mutate: mockMutate,
     isPending: false,
   })),
+  useGetThemeUsages: vi.fn(() => ({
+    data: undefined,
+    isLoading: false,
+  })),
 }));
 
 describe('ThemeDeleteDialog', () => {

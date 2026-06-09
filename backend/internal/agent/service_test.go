@@ -35,9 +35,11 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
@@ -2125,6 +2127,73 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExplicitOUIDChanged_Validate
 	suite.Require().NotNil(svcErr)
 	assert.Equal(suite.T(), ErrorOrganizationUnitNotFound.Code, svcErr.Code)
 	assert.Nil(suite.T(), resp)
+}
+
+// --- GetResourceUsages tests ---
+
+func (suite *AgentServiceTestSuite) TestGetResourceUsages_UnknownResourceType() {
+	svc, _, _, _ := suite.setupService()
+
+	result, err := svc.GetResourceUsages(context.Background(), "unknown", "id-1")
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *AgentServiceTestSuite) TestGetResourceUsages_InboundClientError() {
+	svc, _, mockInbound, _ := suite.setupService()
+	mockInbound.On("GetEntityIDsByThemeID", mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return(nil, 0, errors.New("store error"))
+
+	result, err := svc.GetResourceUsages(context.Background(), usage.ResourceTypeTheme, "theme-1")
+	assert.Nil(suite.T(), result)
+	assert.Error(suite.T(), err)
+}
+
+func (suite *AgentServiceTestSuite) TestGetResourceUsages_EmptyIDs() {
+	svc, _, mockInbound, _ := suite.setupService()
+	mockInbound.On("GetEntityIDsByThemeID", mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{}, 0, nil)
+
+	result, err := svc.GetResourceUsages(context.Background(), usage.ResourceTypeTheme, "theme-1")
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *AgentServiceTestSuite) TestGetResourceUsages_Success() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+	mockInbound.On("GetEntityIDsByThemeID", mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{"agent-1"}, 1, nil)
+
+	sysAttrs, _ := json.Marshal(map[string]interface{}{"name": "Agent One"})
+	mockEntity.On("GetEntitiesByIDs", mock.Anything, []string{"agent-1"}).Return([]entity.Entity{
+		{ID: "agent-1", Category: entity.EntityCategoryAgent, SystemAttributes: sysAttrs},
+	}, nil)
+
+	result, err := svc.GetResourceUsages(context.Background(), usage.ResourceTypeTheme, "theme-1")
+	assert.NoError(suite.T(), err)
+	suite.Require().Len(result, 1)
+	assert.Equal(suite.T(), usage.ResourceTypeAgent, result[0].ResourceType)
+	assert.Equal(suite.T(), usage.BehaviorFallback, result[0].BehaviorOnDelete)
+	assert.Equal(suite.T(), "agent-1", result[0].ID)
+	assert.Equal(suite.T(), "Agent One", result[0].DisplayName)
+}
+
+// Applications share the inbound-client store; the agent provider must skip non-agent entities.
+func (suite *AgentServiceTestSuite) TestGetResourceUsages_FiltersOutNonAgentEntities() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+	mockInbound.On("GetEntityIDsByThemeID", mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{"agent-1", "app-1"}, 2, nil)
+
+	sysAttrs, _ := json.Marshal(map[string]interface{}{"name": "Agent One"})
+	mockEntity.On("GetEntitiesByIDs", mock.Anything, []string{"agent-1", "app-1"}).Return([]entity.Entity{
+		{ID: "agent-1", Category: entity.EntityCategoryAgent, SystemAttributes: sysAttrs},
+		{ID: "app-1", Category: entity.EntityCategoryApp},
+	}, nil)
+
+	result, err := svc.GetResourceUsages(context.Background(), usage.ResourceTypeTheme, "theme-1")
+	assert.NoError(suite.T(), err)
+	suite.Require().Len(result, 1)
+	assert.Equal(suite.T(), "agent-1", result[0].ID)
 }
 
 // --- error-branch coverage ---

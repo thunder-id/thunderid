@@ -275,6 +275,75 @@ paths:
         "500":
           $ref: '#/components/responses/InternalServerError'
 
+  /design/themes/{id}/usages:
+    get:
+      tags:
+        - Themes
+      summary: Get theme usages
+      description: |
+        Returns the resources that reference this theme, aggregated across all
+        resource types. This endpoint is informational only — it drives the
+        pre-delete confirmation dialog in the UI and does not gate deletion on the server.
+
+        Each usage entry includes a `behaviorOnDelete` field describing what happens
+        to the referencing resource if the theme is deleted:
+        - `fallback`: the reference is kept as-is and resolved to the system default theme at read time.
+        - `cascade`: the resource is permanently deleted along with the theme.
+
+        When usage data is unavailable (e.g. the server has not fully initialised),
+        `totalResults` and `summary` are `null` rather than `0`/empty.
+        Consumers must treat `null` as "unknown" and `0` as "confirmed empty".
+      parameters:
+        - $ref: '#/components/parameters/idPathParam'
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: Resources that reference this theme
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThemeUsagesResponse'
+              example:
+                totalResults: 3
+                count: 3
+                summary:
+                  application: 2
+                  agent: 1
+                usages:
+                  - resourceType: application
+                    id: "a1b2c3d4-0000-0000-0000-000000000001"
+                    displayName: "Customer Portal"
+                    behaviorOnDelete: fallback
+                  - resourceType: application
+                    id: "a1b2c3d4-0000-0000-0000-000000000002"
+                    displayName: "Admin Console"
+                    behaviorOnDelete: fallback
+                  - resourceType: agent
+                    id: "a1b2c3d4-0000-0000-0000-000000000003"
+                    displayName: "Support Agent"
+                    behaviorOnDelete: fallback
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          description: 'Not Found: The theme could not be found'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "THM-1003"
+                message:
+                  key: "theme.error.not_found"
+                  defaultValue: "Theme not found"
+                description:
+                  key: "theme.error.not_found_description"
+                  defaultValue: "The requested theme configuration was not found"
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
   /design/layouts:
     get:
       tags:
@@ -830,6 +899,71 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ThemeListItem'
+
+    ThemeUsage:
+      type: object
+      description: A single resource that references the theme.
+      required:
+        - resourceType
+        - id
+        - displayName
+        - behaviorOnDelete
+      properties:
+        resourceType:
+          type: string
+          description: Type of the referencing resource.
+          enum: [application, agent]
+          example: application
+        id:
+          type: string
+          format: uuid
+          description: Identifier of the referencing resource.
+          example: "a1b2c3d4-0000-0000-0000-000000000001"
+        displayName:
+          type: string
+          description: Human-readable name of the referencing resource.
+          example: "Customer Portal"
+        behaviorOnDelete:
+          type: string
+          description: |
+            What happens to this resource when the theme is deleted.
+            - `fallback`: the reference is kept and resolved to the system default theme at read time.
+            - `cascade`: the resource is permanently deleted.
+          enum: [fallback, cascade]
+          example: fallback
+
+    ThemeUsagesSummary:
+      type: object
+      nullable: true
+      description: |
+        Per-resource-type count of usages, keyed by resource type
+        (e.g. `application`, `agent`). Null when the counts could not be determined.
+      additionalProperties:
+        type: integer
+      example:
+        application: 2
+        agent: 1
+
+    ThemeUsagesResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          nullable: true
+          description: |
+            Total number of resources that reference this theme.
+            Null when usage data is unavailable; 0 means confirmed empty.
+          example: 3
+        count:
+          type: integer
+          description: Number of results returned.
+          example: 3
+        summary:
+          $ref: '#/components/schemas/ThemeUsagesSummary'
+        usages:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThemeUsage'
 
     LayoutRequest:
       type: object

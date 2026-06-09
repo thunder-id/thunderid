@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	model0 "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 )
 
 // NewAgentServiceInterfaceMock creates a new instance of AgentServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -411,6 +412,80 @@ func (_c *AgentServiceInterfaceMock_GetAgentList_Call) Return(agentListResponse 
 }
 
 func (_c *AgentServiceInterfaceMock_GetAgentList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeDisplay bool) (*model.AgentListResponse, *serviceerror.ServiceError)) *AgentServiceInterfaceMock_GetAgentList_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetResourceUsages provides a mock function for the type AgentServiceInterfaceMock
+func (_mock *AgentServiceInterfaceMock) GetResourceUsages(ctx context.Context, resourceType string, id string) ([]usage.ResourceUsage, error) {
+	ret := _mock.Called(ctx, resourceType, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceUsages")
+	}
+
+	var r0 []usage.ResourceUsage
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) ([]usage.ResourceUsage, error)); ok {
+		return returnFunc(ctx, resourceType, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) []usage.ResourceUsage); ok {
+		r0 = returnFunc(ctx, resourceType, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]usage.ResourceUsage)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) error); ok {
+		r1 = returnFunc(ctx, resourceType, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// AgentServiceInterfaceMock_GetResourceUsages_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceUsages'
+type AgentServiceInterfaceMock_GetResourceUsages_Call struct {
+	*mock.Call
+}
+
+// GetResourceUsages is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceType string
+//   - id string
+func (_e *AgentServiceInterfaceMock_Expecter) GetResourceUsages(ctx interface{}, resourceType interface{}, id interface{}) *AgentServiceInterfaceMock_GetResourceUsages_Call {
+	return &AgentServiceInterfaceMock_GetResourceUsages_Call{Call: _e.mock.On("GetResourceUsages", ctx, resourceType, id)}
+}
+
+func (_c *AgentServiceInterfaceMock_GetResourceUsages_Call) Run(run func(ctx context.Context, resourceType string, id string)) *AgentServiceInterfaceMock_GetResourceUsages_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetResourceUsages_Call) Return(resourceUsages []usage.ResourceUsage, err error) *AgentServiceInterfaceMock_GetResourceUsages_Call {
+	_c.Call.Return(resourceUsages, err)
+	return _c
+}
+
+func (_c *AgentServiceInterfaceMock_GetResourceUsages_Call) RunAndReturn(run func(ctx context.Context, resourceType string, id string) ([]usage.ResourceUsage, error)) *AgentServiceInterfaceMock_GetResourceUsages_Call {
 	_c.Call.Return(run)
 	return _c
 }

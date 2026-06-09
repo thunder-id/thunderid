@@ -33,10 +33,12 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -55,6 +57,7 @@ type AgentServiceInterface interface {
 		*model.AgentGroupListResponse, *serviceerror.ServiceError)
 	ValidateAgent(ctx context.Context, agent *model.Agent, excludeID string) (
 		clientID, clientSecret string, client inboundmodel.InboundClient, svcErr *serviceerror.ServiceError)
+	GetResourceUsages(ctx context.Context, resourceType, id string) ([]usage.ResourceUsage, error)
 }
 
 type agentService struct {
@@ -385,6 +388,55 @@ func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *service
 		return &serviceerror.InternalServerError
 	}
 	return nil
+}
+
+// GetResourceUsages returns the agents that reference the resource identified by
+// (resourceType, id). It implements the usage.Provider interface.
+func (s *agentService) GetResourceUsages(
+	ctx context.Context, resourceType, id string) ([]usage.ResourceUsage, error) {
+	switch resourceType {
+	case usage.ResourceTypeTheme:
+		return s.getAgentsByThemeID(ctx, id)
+	default:
+		return []usage.ResourceUsage{}, nil
+	}
+}
+
+// getAgentsByThemeID returns agents referencing the given theme. The number of referencing
+// entities is bounded by MaxCompositeStoreRecords (the inbound-client store limit).
+func (s *agentService) getAgentsByThemeID(
+	ctx context.Context, themeID string) ([]usage.ResourceUsage, error) {
+	ids, _, err := s.inboundClientService.GetEntityIDsByThemeID(
+		ctx, themeID, serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to get entity IDs by theme ID", log.Error(err))
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []usage.ResourceUsage{}, nil
+	}
+
+	entities, err := s.entityService.GetEntitiesByIDs(ctx, ids)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to get entities by IDs", log.Error(err))
+		return nil, err
+	}
+
+	usages := make([]usage.ResourceUsage, 0, len(entities))
+	for _, e := range entities {
+		// Applications and agents share the inbound-client store; only report agents.
+		if e.Category != entity.EntityCategoryAgent {
+			continue
+		}
+		name, _, _, _ := readSystemAttributes(e.SystemAttributes)
+		usages = append(usages, usage.ResourceUsage{
+			ResourceType:     usage.ResourceTypeAgent,
+			ID:               e.ID,
+			DisplayName:      name,
+			BehaviorOnDelete: usage.BehaviorFallback,
+		})
+	}
+	return usages, nil
 }
 
 // GetAgentGroups returns the groups the agent belongs to.

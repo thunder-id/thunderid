@@ -29,6 +29,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -42,11 +43,15 @@ type ThemeMgtServiceInterface interface {
 	UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError)
 	DeleteTheme(ctx context.Context, id string) *serviceerror.ServiceError
 	IsThemeExist(ctx context.Context, id string) (bool, *serviceerror.ServiceError)
+	SetUsageRegistry(r usage.Registry)
+	GetThemeUsages(ctx context.Context, id string, limit, offset int) (
+		*usage.UsagesResponse, *serviceerror.ServiceError)
 }
 
 // themeMgtService is the default implementation of the ThemeMgtServiceInterface.
 type themeMgtService struct {
 	themeMgtStore themeMgtStoreInterface
+	usageRegistry usage.Registry
 	logger        *log.Logger
 }
 
@@ -289,6 +294,51 @@ func (ts *themeMgtService) IsThemeExist(ctx context.Context, id string) (bool, *
 	}
 
 	return exists, nil
+}
+
+// SetUsageRegistry injects the usage registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (ts *themeMgtService) SetUsageRegistry(r usage.Registry) {
+	ts.usageRegistry = r
+}
+
+// GetThemeUsages returns the resources that reference this theme.
+func (ts *themeMgtService) GetThemeUsages(
+	ctx context.Context, id string, limit, offset int) (*usage.UsagesResponse, *serviceerror.ServiceError) {
+	if id == "" {
+		return nil, &ErrorInvalidThemeID
+	}
+
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	exists, err := ts.themeMgtStore.IsThemeExist(id)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to check theme existence", log.String("id", id), log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+	if !exists {
+		return nil, &ErrorThemeNotFound
+	}
+
+	if ts.usageRegistry == nil {
+		ts.logger.Warn(ctx, "Usage registry not set; returning unknown usages", log.String("id", id))
+		return &usage.UsagesResponse{
+			TotalResults: nil,
+			Count:        0,
+			Summary:      nil,
+			Usages:       []usage.ResourceUsage{},
+		}, nil
+	}
+
+	result, err := ts.usageRegistry.GetUsages(ctx, usage.ResourceTypeTheme, id)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to get theme usages", log.String("id", id), log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+
+	return result, nil
 }
 
 // validateThemePreferences validates the theme JSON.
