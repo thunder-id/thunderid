@@ -24,6 +24,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	stdlog "log"
 	"net"
 	"net/http"
 	"os"
@@ -48,10 +49,46 @@ import (
 // shutdownTimeout defines the timeout duration for graceful shutdown.
 const shutdownTimeout = 5 * time.Second
 
+const (
+	httpServerTLSHandshakeErrorPattern = "http: TLS handshake error"
+	httpServerTLSBadCertificatePattern = "tls: bad certificate"
+)
+
 var (
 	netListen = net.Listen
 	tlsListen = tls.Listen
 )
+
+// httpServerErrorLogWriter adapts http.Server internal logs to Thunder structured logging.
+type httpServerErrorLogWriter struct {
+	logFn func(message string)
+}
+
+// newHTTPServerErrorLogWriter creates an io.Writer for http.Server ErrorLog output.
+func newHTTPServerErrorLogWriter(logger *log.Logger) *httpServerErrorLogWriter {
+	return &httpServerErrorLogWriter{
+		logFn: func(message string) {
+			logger.Error("HTTP server internal error", log.String("message", message))
+		},
+	}
+}
+
+// shouldSuppressHTTPServerErrorLog checks whether an HTTP server internal error log should be suppressed.
+func shouldSuppressHTTPServerErrorLog(message string) bool {
+	return strings.Contains(message, httpServerTLSHandshakeErrorPattern) ||
+		strings.Contains(message, httpServerTLSBadCertificatePattern)
+}
+
+// Write filters expected TLS handshake noise and forwards unexpected errors to structured logging.
+func (w *httpServerErrorLogWriter) Write(p []byte) (n int, err error) {
+	message := strings.TrimSpace(string(p))
+	if message == "" || shouldSuppressHTTPServerErrorLog(message) {
+		return len(p), nil
+	}
+
+	w.logFn(message)
+	return len(p), nil
+}
 
 func main() {
 	startupStartedAt := time.Now()
@@ -198,6 +235,7 @@ func createHTTPServer(logger *log.Logger, cfg *config.Config, mux *http.ServeMux
 		ReadHeaderTimeout: 10 * time.Second, // Mitigate Slowloris attacks
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       120 * time.Second,
+		ErrorLog:          stdlog.New(newHTTPServerErrorLogWriter(logger), "", 0),
 	}
 
 	return server

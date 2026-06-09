@@ -202,6 +202,77 @@ func TestCreateHTTPServer_WithHTTPOnly(t *testing.T) {
 	assert.NotZero(t, server.ReadHeaderTimeout)
 	assert.NotZero(t, server.WriteTimeout)
 	assert.NotZero(t, server.IdleTimeout)
+	assert.NotNil(t, server.ErrorLog)
+}
+
+func TestShouldSuppressHTTPServerErrorLog(t *testing.T) {
+	testCases := []struct {
+		name     string
+		message  string
+		expected bool
+	}{
+		{
+			name:     "suppresses tls handshake error",
+			message:  "http: TLS handshake error from 127.0.0.1:52264: remote error: tls: unknown certificate",
+			expected: true,
+		},
+		{
+			name:     "suppresses bad certificate error",
+			message:  "remote error: tls: bad certificate",
+			expected: true,
+		},
+		{
+			name:     "does not suppress unexpected server error",
+			message:  "http: superfluous response.WriteHeader call",
+			expected: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, shouldSuppressHTTPServerErrorLog(tc.message))
+		})
+	}
+}
+
+func TestHTTPServerErrorLogWriterWrite(t *testing.T) {
+	var forwardedMessages []string
+	writer := newHTTPServerErrorLogWriter(log.GetLogger())
+	writer.logFn = func(message string) {
+		forwardedMessages = append(forwardedMessages, message)
+	}
+
+	testCases := []struct {
+		name              string
+		payload           string
+		expectedForwarded []string
+	}{
+		{
+			name:              "suppresses TLS handshake errors",
+			payload:           "http: TLS handshake error from 127.0.0.1:52264: remote error: tls: bad certificate\n",
+			expectedForwarded: nil,
+		},
+		{
+			name:              "forwards non TLS errors",
+			payload:           "http: superfluous response.WriteHeader call\n",
+			expectedForwarded: []string{"http: superfluous response.WriteHeader call"},
+		},
+		{
+			name:              "ignores empty payloads",
+			payload:           " \n",
+			expectedForwarded: nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			forwardedMessages = nil
+			bytesWritten, err := writer.Write([]byte(tc.payload))
+			assert.NoError(t, err)
+			assert.Equal(t, len(tc.payload), bytesWritten)
+			assert.Equal(t, tc.expectedForwarded, forwardedMessages)
+		})
+	}
 }
 
 func TestCreateListener_Success(t *testing.T) {
