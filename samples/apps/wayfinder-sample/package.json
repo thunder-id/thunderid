@@ -12,6 +12,6 @@
     "dev": "concurrently \"npm --workspace backend run start\" \"npm --workspace ai-agent run start\" \"npm --workspace frontend run dev\""
   },
   "devDependencies": {
-    "concurrently": "^9.0.0"
+    "concurrently": "10.0.3"
   }
 }

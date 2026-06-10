@@ -93,6 +93,8 @@ catalog:
   uuid: 11.1.1
 
 overrides:
+  # JUSTIFICATION: Fixes GHSA-w7jw-789q-3m8p by overriding to fix docusaurus version in docs workspace only.
+  "@thunderid/docs>shell-quote": 1.8.4
   # JUSTIFICATION: The `ws` package is a transitive dependency of `docusaurus/core -> webpack-bundle-analyzer` and it requires a major version bump.
   ws: '>=8.20.1'
   # JUSTIFICATION: Packed through next@15.5.18. Could be resolved once next is updated to 16 versions.
