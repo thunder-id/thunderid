@@ -722,6 +722,15 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
+        {
+          type: 'category',
+          label: 'Secure Token Service (STS)',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            {type: 'doc', id: 'use-cases/sts/krakend/krakend', label: 'Protect APIs on KrakenD'},
+          ],
+        },
       ],
     },
 

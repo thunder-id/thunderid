@@ -1,0 +1,422 @@
+---
+title: Protect APIs on KrakenD with {{ProductName}}
+description: Configure KrakenD API Gateway to validate JWTs issued by {{ProductName}} and enforce access control on your upstream APIs.
+sidebar_position: 1
+---
+
+# Protect APIs on KrakenD with <ProductName />
+
+This guide walks you through configuring [KrakenD API Gateway](https://www.krakend.io/) to protect upstream APIs using JSON Web Tokens (JWTs) issued by <ProductName />. KrakenD fetches public keys from the <ProductName /> JWKS endpoint and validates tokens on every request before forwarding traffic to the upstream service.
+
+## Prerequisites
+
+Before you begin, ensure you have the following:
+
+- A running <ProductName /> installation. Follow [Get <ProductName />](/docs/next/guides/getting-started/get-thunderid) for download, setup, and start commands.
+- [KrakenD](https://www.krakend.io/docs/overview/installing/) installed.
+- A backend REST API service running and accessible (for example, `http://localhost:8081`).
+- `curl` available in your terminal.
+
+## JWT Authentication
+
+JWT authentication is the foundation of API security with KrakenD and <ProductName />. In this section, you register an application in <ProductName /> to obtain credentials, configure KrakenD to validate tokens using the <ProductName /> JWKS endpoint, and verify that unauthenticated requests are rejected.
+
+### Configure <ProductName />
+
+#### Create an Application
+
+1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:<THUNDER_PORT>/console`.
+2. Navigate to **Applications** → **New Application**.
+3. Enter an **Application Name**.
+4. Select **Backend Service** as the application type.
+5. Click **Create Application**.
+6. Note the **Client ID** and **Client Secret** from the application details page.
+
+#### Obtain an Access Token
+
+Use the client credentials grant to request an access token:
+
+```bash
+curl --location 'https://<THUNDER_HOST>:8090/oauth2/token' \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials' \
+  --data-urlencode 'client_id=<CLIENT_ID>' \
+  --data-urlencode 'client_secret=<CLIENT_SECRET>'
+```
+
+Save the returned `access_token`. You will use it in the **Try It Out** section.
+
+### Configure KrakenD
+
+#### Create an API
+
+Create a `krakend.json` configuration file. See the [KrakenD configuration structure](https://www.krakend.io/docs/configuration/structure/) for a full reference.
+
+The [endpoint object](https://www.krakend.io/docs/endpoints/) defines the routes KrakenD exposes. The [backend object](https://www.krakend.io/docs/backends/) defines the upstream services each endpoint connects to.
+
+```json
+{
+  "$schema": "https://www.krakend.io/schema/v2.7/krakend.json",
+  "version": 3,
+  "name": "KrakenD API Gateway",
+  "port": 8082,
+  "cache_ttl": "3600s",
+  "timeout": "3000ms",
+  "endpoints": [
+    {
+      "endpoint": "/api/items",
+      "method": "POST",
+      "output_encoding": "json",
+      "backend": [
+        {
+          "url_pattern": "/api/items",
+          "encoding": "json",
+          "method": "POST",
+          "host": [
+            "http://localhost:8081"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Start KrakenD to verify the API is reachable before adding authentication:
+
+```bash
+krakend run -c krakend.json
+```
+
+KrakenD starts on port `8082`. Verify the endpoint responds:
+
+```bash
+curl --location 'http://localhost:8082/api/items' \
+  --header 'Content-Type: application/json' \
+  --data '{"name":"Widget","description":"A test item"}'
+```
+
+#### Add JWT Authentication
+
+KrakenD validates JWTs using the [`auth/validator`](https://www.krakend.io/docs/authorization/jwt-validation/) component. KrakenD fetches public keys from the <ProductName /> JWKS endpoint and uses the keys to verify the signature on incoming tokens.
+
+Add the `auth/validator` block inside the endpoint:
+
+```json
+{
+  "$schema": "https://www.krakend.io/schema/v2.7/krakend.json",
+  "version": 3,
+  "name": "KrakenD API Gateway",
+  "port": 8082,
+  "cache_ttl": "3600s",
+  "timeout": "3000ms",
+  "endpoints": [
+    {
+      "endpoint": "/api/items",
+      "method": "POST",
+      "output_encoding": "json",
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "https://<THUNDER_HOST>:8090/oauth2/jwks",
+          "disable_jwk_security": true,
+          "cache": true
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/items",
+          "encoding": "json",
+          "method": "POST",
+          "host": [
+            "http://localhost:8081"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Configuration reference** — see the full list of options in the [JWT validation docs](https://www.krakend.io/docs/authorization/jwt-validation/):
+
+| Field | Value | Description |
+|---|---|---|
+| `alg` | `RS256` | Signing algorithm used by <ProductName /> |
+| `jwk_url` | `https://<THUNDER_HOST>:<THUNDER_PORT>/oauth2/jwks` | <ProductName /> JWKS endpoint for fetching public keys |
+| `disable_jwk_security` | `true` | Skips TLS certificate verification. Use only in local development — remove in production. |
+| `cache` | `true` | Caches JWKS keys to avoid fetching them on every request |
+
+Restart KrakenD to apply the changes:
+
+```bash
+pkill -f "krakend run"
+krakend run -c krakend.json
+```
+
+The log output confirms authentication is active:
+
+```
+KRAKEND INFO: Starting KrakenD v2.13.7
+KRAKEND INFO: [SERVICE: Gin] Listening on port: 8082
+KRAKEND DEBUG: [ENDPOINT: /api/items][JWTValidator] Validator enabled for this endpoint
+```
+
+### Try It Out
+
+**Request without a token — expect `401 Unauthorized`:**
+
+```bash
+curl --location 'http://localhost:8082/api/items' \
+  --header 'Content-Type: application/json'
+```
+
+**Request with a valid <ProductName /> token — expect `200 OK`:**
+
+```bash
+curl --location 'http://localhost:8082/api/items' \
+  --header 'Authorization: Bearer <ACCESS_TOKEN>' \
+  --header 'Content-Type: application/json'
+```
+
+Expected response:
+
+```json
+{"id": 10, "name": "Widget", "description": "A test item"}
+```
+
+## Scope-Based Authorization
+
+JWT authentication confirms that a token is valid and was issued by <ProductName />. It does not control what the token holder is allowed to do. With the configuration from the previous section, KrakenD accepts any valid <ProductName /> token regardless of the application or its assigned permissions.
+
+Scope-based authorization adds a second layer of control. <ProductName /> embeds scopes in tokens based on the roles assigned to an application. KrakenD then checks those scopes on every request and rejects tokens that do not carry the required permissions. This lets you enforce fine-grained access control — for example, restricting a read endpoint to tokens with `booking-api:item:read` and a write endpoint to tokens with `booking-api:item:write` — without changing the upstream service.
+
+The steps below build on the JWT authentication configuration from the previous section. You will define a Resource Server, a Resource, and actions in <ProductName /> to model your API permissions. Then bundle them into a role, assign the role to your application, and update the KrakenD configuration to enforce scope validation.
+
+### Configure <ProductName />
+
+#### Get a Management Access Token
+
+<ProductName /> exposes management REST APIs to create resources, roles, and assignments. Request an admin token to call them:
+
+```bash
+curl --location 'https://<THUNDER_HOST>:8090/oauth2/token' \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials' \
+  --data-urlencode 'client_id=<ADMIN_CLIENT_ID>' \
+  --data-urlencode 'client_secret=<ADMIN_CLIENT_SECRET>' \
+  --data-urlencode 'scope=system'
+```
+
+Save the returned `access_token` as `MGMT_TOKEN`:
+
+```bash
+MGMT_TOKEN=<RETURNED_ACCESS_TOKEN>
+```
+
+#### Create a Resource Server
+
+A Resource Server represents your API in <ProductName />. The Resource Server groups all resources and actions under a single identifier and acts as the audience for tokens issued to clients of that API.
+
+```bash
+curl --location 'https://<THUNDER_HOST>:8090/api/server/v1/resource-servers' \
+  --header 'Authorization: Bearer '"$MGMT_TOKEN"'' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "Items API",
+    "description": "Handles reservation operations",
+    "handle": "booking-api",
+    "identifier": "https://api.example.com/booking",
+    "ouId": "<OU_ID>",
+    "delimiter": ":"
+  }'
+```
+
+Note the `id` from the response — you will need it in the following steps.
+
+#### Create a Resource
+
+A Resource represents a specific entity within the API, such as `/api/items`. Resources let you model your API surface so that permissions can be granted at a granular level.
+
+```bash
+curl --location 'https://<THUNDER_HOST>:8090/api/server/v1/resource-servers/<RESOURCE_SERVER_ID>/resources' \
+  --header 'Authorization: Bearer '"$MGMT_TOKEN"'' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "Items",
+    "handle": "item"
+  }'
+```
+
+Note the `id` of the created resource.
+
+#### Create Resource Actions
+
+Actions define the operations allowed on a resource. Each action produces a scope in the format `<resource-server-handle>:<resource-handle>:<action-handle>`. <ProductName /> includes these scopes in tokens issued to applications that hold the corresponding role.
+
+```bash
+curl --location 'https://<THUNDER_HOST>:8090/api/server/v1/resource-servers/<RESOURCE_SERVER_ID>/resources/<RESOURCE_ID>/actions' \
+  --header 'Authorization: Bearer '"$MGMT_TOKEN"'' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "Read Item",
+    "description": "Permission to read an item",
+    "handle": "read"
+  }'
+```
+
+The response includes the generated permission:
+
+```json
+{
+  "id": "<ACTION_ID>",
+  "name": "Read Item",
+  "handle": "read",
+  "description": "Permission to read an item",
+  "permission": "booking-api:item:read"
+}
+```
+
+#### Create a Role
+
+Roles bundle one or more permissions together. Assign roles to applications to control which scopes appear in their tokens.
+
+```bash
+curl --location 'https://<THUNDER_HOST>:8090/api/server/v1/roles' \
+  --header 'Authorization: Bearer '"$MGMT_TOKEN"'' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "name": "Booking API Reader",
+    "description": "Access to read booking items in the booking API",
+    "ouId": "<OU_ID>",
+    "permissions": [
+      {
+        "resourceServerId": "<RESOURCE_SERVER_ID>",
+        "permissions": ["booking-api:item:read"]
+      }
+    ]
+  }'
+```
+
+Note the `id` of the created role.
+
+#### Assign a Role to the Application
+
+Assign the role to the application you created in the previous section. <ProductName /> includes the role's scopes in every token issued for that application.
+
+```bash
+curl --location 'https://<THUNDER_HOST>:8090/api/server/v1/applications/<APP_ID>/roles' \
+  --header 'Authorization: Bearer '"$MGMT_TOKEN"'' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "roles": ["<ROLE_ID>"]
+  }'
+```
+
+### Configure KrakenD
+
+Add `scopes`, `scopes_key`, and `scopes_matcher` to the `auth/validator` block you configured in the previous section. See the [JWT validation docs](https://www.krakend.io/docs/authorization/jwt-validation/) for the full list of options.
+
+```json
+{
+  "$schema": "https://www.krakend.io/schema/v2.7/krakend.json",
+  "version": 3,
+  "name": "KrakenD API Gateway",
+  "port": 8082,
+  "cache_ttl": "3600s",
+  "timeout": "3000ms",
+  "endpoints": [
+    {
+      "endpoint": "/api/items",
+      "method": "POST",
+      "output_encoding": "json",
+      "extra_config": {
+        "auth/validator": {
+          "alg": "RS256",
+          "jwk_url": "https://<THUNDER_HOST>:<THUNDER_PORT>/oauth2/jwks",
+          "disable_jwk_security": true,
+          "cache": true,
+          "scopes_key": "scope",
+          "scopes_matcher": "any",
+          "scopes": ["booking-api:item:read"]
+        }
+      },
+      "backend": [
+        {
+          "url_pattern": "/api/items",
+          "encoding": "json",
+          "method": "POST",
+          "host": [
+            "http://localhost:8081"
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Scope configuration reference:**
+
+| Field | Value | Description |
+|---|---|---|
+| `scopes_key` | `scope` | JWT claim that stores scopes |
+| `scopes_matcher` | `any` | `any` — the token needs at least one matching scope; `all` — the token must carry every listed scope |
+| `scopes` | `["booking-api:item:read"]` | Required scopes to access this endpoint |
+
+Restart KrakenD to apply:
+
+```bash
+pkill -f "krakend run"
+krakend run -c krakend.json
+```
+
+### Try It Out
+
+#### Obtain an Access Token with the Required Scope
+
+Request a token for the application that has the role assigned:
+
+```bash
+curl --location 'https://<THUNDER_HOST>:8090/oauth2/token' \
+  --header 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'grant_type=client_credentials' \
+  --data-urlencode 'scope=booking-api:item:read' \
+  --data-urlencode 'client_id=<CLIENT_ID>' \
+  --data-urlencode 'client_secret=<CLIENT_SECRET>'
+```
+
+The response confirms the scope is present:
+
+```json
+{
+  "access_token": "<ACCESS_TOKEN>",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "booking-api:item:read"
+}
+```
+
+#### Call the Protected API
+
+**With a token that has the required scope — expect `200 OK`:**
+
+```bash
+curl --location 'http://localhost:8082/api/items' \
+  --header 'Authorization: Bearer <ACCESS_TOKEN>' \
+  --header 'Content-Type: application/json'
+```
+
+Expected response:
+
+```json
+{"id": 10, "name": "Widget", "description": "A test item"}
+```
+
+**With a token missing the required scope — expect `403 Forbidden`:**
+
+```bash
+curl --location 'http://localhost:8082/api/items' \
+  --header 'Authorization: Bearer <TOKEN_WITHOUT_REQUIRED_SCOPE>' \
+  --header 'Content-Type: application/json'
+```

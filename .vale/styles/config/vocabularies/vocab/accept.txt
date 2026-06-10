@@ -188,3 +188,4 @@ txn
 rp_id
 EUDI
 [Vv]erifiable
+[Kk]rakenD
