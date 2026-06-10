@@ -42,7 +42,7 @@ type AuthenticationResponseDTO struct {
 
 // IDPAuthInitRequestDTO is the request to initiate IDP authentication.
 type IDPAuthInitRequestDTO struct {
-	IDPID string `json:"idpId"`
+	IDPID string `json:"idpId" native:"required"`
 }
 
 // IDPAuthInitResponseDTO is the response after initiating IDP authentication.
@@ -53,16 +53,16 @@ type IDPAuthInitResponseDTO struct {
 
 // IDPAuthFinishRequestDTO is the request to complete IDP authentication.
 type IDPAuthFinishRequestDTO struct {
-	SessionToken  string `json:"sessionToken"`
+	SessionToken  string `json:"sessionToken" native:"required,max=500"`
 	SkipAssertion bool   `json:"skipAssertion"`
 	Assertion     string `json:"assertion,omitempty"`
-	Code          string `json:"code"`
+	Code          string `json:"code" native:"required,max=500"`
 }
 
 // SendOTPAuthRequestDTO is the request to send an OTP for authentication.
 type SendOTPAuthRequestDTO struct {
-	SenderID  string `json:"senderId"`
-	Recipient string `json:"recipient"`
+	SenderID  string `json:"senderId" native:"required"`
+	Recipient string `json:"recipient" native:"required"`
 }
 
 // SendOTPAuthResponseDTO is the response after sending an OTP for authentication.
@@ -73,10 +73,10 @@ type SendOTPAuthResponseDTO struct {
 
 // VerifyOTPAuthRequestDTO is the request to verify an OTP for authentication.
 type VerifyOTPAuthRequestDTO struct {
-	SessionToken  string `json:"sessionToken"`
+	SessionToken  string `json:"sessionToken" native:"required,max=500"`
 	SkipAssertion bool   `json:"skipAssertion"`
 	Assertion     string `json:"assertion,omitempty"`
-	OTP           string `json:"otp"`
+	OTP           string `json:"otp" native:"required"`
 }
 
 // PasskeyAuthenticatorSelectionDTO represents the authenticator selection criteria for passkey.
@@ -122,22 +122,22 @@ type PasskeyRegisterFinishRequestDTO struct {
 
 // PasskeyStartRequestDTO is the request to start passkey authentication.
 type PasskeyStartRequestDTO struct {
-	UserID         string `json:"userId"`
-	RelyingPartyID string `json:"relyingPartyId"`
+	UserID         string `json:"userId" native:"required"`
+	RelyingPartyID string `json:"relyingPartyId" native:"required"`
 }
 
 // PasskeyFinishRequestDTO is the request to finish passkey authentication.
 type PasskeyFinishRequestDTO struct {
 	PublicKeyCredential PasskeyPublicKeyCredentialDTO `json:"publicKeyCredential"`
-	SessionToken        string                        `json:"sessionToken"`
+	SessionToken        string                        `json:"sessionToken" native:"required"`
 	SkipAssertion       bool                          `json:"skipAssertion"`
 	Assertion           string                        `json:"assertion,omitempty"`
 }
 
 // AuthenticateWithCredentialsRequestDTO represents the request body for authenticating with credentials.
 type AuthenticateWithCredentialsRequestDTO struct {
-	Identifiers   map[string]interface{} `json:"identifiers"`
-	Credentials   map[string]interface{} `json:"credentials"`
+	Identifiers   map[string]interface{} `json:"identifiers" native:"required,min=1"`
+	Credentials   map[string]interface{} `json:"credentials" native:"required,min=1"`
 	SkipAssertion *bool                  `json:"skipAssertion,omitempty"`
 	Assertion     *string                `json:"assertion,omitempty"`
 }

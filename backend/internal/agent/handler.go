@@ -19,6 +19,7 @@
 package agent
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -78,6 +79,11 @@ func (h *agentHandler) HandleAgentPostRequest(w http.ResponseWriter, r *http.Req
 
 	req, err := sysutils.DecodeJSONBody[model.CreateAgentRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		writeServiceError(w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -131,6 +137,11 @@ func (h *agentHandler) HandleAgentPutRequest(w http.ResponseWriter, r *http.Requ
 
 	req, err := sysutils.DecodeJSONBody[model.UpdateAgentRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		writeServiceError(w, &ErrorInvalidRequestFormat)
 		return
 	}

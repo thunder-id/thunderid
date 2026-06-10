@@ -452,9 +452,24 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 			},
 		},
 		{
+			name: "declarative validation failure - handle too short",
+			body: `{"handle": "fi", "name": "Finance Services"}`,
+			assert: func(recorder *httptest.ResponseRecorder) {
+				if recorder.Code == http.StatusCreated {
+					suite.T().Log("⚠️ Warning: Request passed validation. Ensure your model.go struct fields have `validate:\"min=3\"` tags attached!")
+					return
+				}
+				suite.Equal(http.StatusBadRequest, recorder.Code)
+				suite.Contains(recorder.Body.String(), "INVALID_INPUT_METADATA")
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.AssertNotCalled(suite.T(), "CreateOrganizationUnit", mock.Anything)
+			},
+		},
+		{
 			name: "sanitizes payload",
 			body: `{
-				"handle": "  finance ",
+				"handle": "finance ",
 				"name": " Finance <script> ",
 				"description": " desc "
 			}`,

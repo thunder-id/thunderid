@@ -118,10 +118,10 @@ type ActionListResponse struct {
 type CreateResourceServerRequest struct {
 	Name        string             `json:"name"`
 	Description string             `json:"description,omitempty"`
-	Handle      string             `json:"handle,omitempty"`
+	Handle      string             `json:"handle,omitempty" native:"required,max=100"`
 	Identifier  string             `json:"identifier,omitempty"`
 	Type        ResourceServerType `json:"type,omitempty"`
-	OUID        string             `json:"ouId"`
+	OUID        string             `json:"ouId" native:"required"`
 	Delimiter   string             `json:"delimiter,omitempty"`
 }
 
@@ -129,35 +129,35 @@ type CreateResourceServerRequest struct {
 type UpdateResourceServerRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	Handle      string `json:"handle,omitempty"`
+	Handle      string `json:"handle,omitempty" native:"required,max=100"`
 	Identifier  string `json:"identifier,omitempty"`
-	OUID        string `json:"ouId"`
+	OUID        string `json:"ouId" native:"required"`
 }
 
 // CreateResourceRequest represents the request to create a resource.
 type CreateResourceRequest struct {
 	Name        string  `json:"name"`
-	Handle      string  `json:"handle"`
+	Handle      string  `json:"handle" native:"required,max=100"`
 	Description string  `json:"description,omitempty"`
 	Parent      *string `json:"parent"`
 }
 
 // UpdateResourceRequest represents the request to update a resource.
 type UpdateResourceRequest struct {
-	Name        string `json:"name"`
+	Name        string `json:"name" native:"required"`
 	Description string `json:"description,omitempty"`
 }
 
 // CreateActionRequest represents the request to create an action.
 type CreateActionRequest struct {
-	Name        string `json:"name"`
-	Handle      string `json:"handle"`
+	Name        string `json:"name" native:"required"`
+	Handle      string `json:"handle" native:"required,max=50"`
 	Description string `json:"description,omitempty"`
 }
 
 // UpdateActionRequest represents the request to update an action.
 type UpdateActionRequest struct {
-	Name        string `json:"name"`
+	Name        string `json:"name" native:"required"`
 	Description string `json:"description,omitempty"`
 }
 

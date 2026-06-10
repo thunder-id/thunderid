@@ -22,10 +22,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html"
 	"net/http"
 	"net/url"
 	"path"
+	"reflect"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -34,6 +37,153 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
+
+type localFieldError interface {
+	Tag() string
+	Field() string
+	Param() string
+}
+
+// GetCustomErrorMessage translates a structural validation tag failure into a precise user message.
+func GetCustomErrorMessage(fe localFieldError) string {
+	switch fe.Tag() {
+	case "required":
+		return fmt.Sprintf("The field '%s' is missing but is strictly required.", fe.Field())
+	case "max":
+		return fmt.Sprintf("The field '%s' exceeds its maximum allowed size of %s characters.", fe.Field(), fe.Param())
+	case "min":
+		return fmt.Sprintf("The field '%s' must be at least %s characters long.", fe.Field(), fe.Param())
+	case "oneof":
+		return fmt.Sprintf("The value provided for '%s' is invalid. It must be one of: [%s].", fe.Field(), fe.Param())
+	case "json":
+		return fmt.Sprintf("The field '%s' contains malformed or unparseable JSON formatting.", fe.Field())
+	case "url":
+		return fmt.Sprintf("The field '%s' must be a valid, well-formed URL.", fe.Field())
+	default:
+		return fmt.Sprintf("The field '%s' failed validation validation check (%s).", fe.Field(), fe.Tag())
+	}
+}
+
+// WriteStructuredErrorResponse sends back a dictionary map of localized field errors to the client.
+func WriteStructuredErrorResponse(w http.ResponseWriter, statusCode int, message string, errors map[string]string) {
+	w.Header().Set(constants.ContentTypeHeaderName, constants.ContentTypeJSON)
+	w.WriteHeader(statusCode)
+
+	response := map[string]interface{}{
+		"code":        "INVALID_INPUT_METADATA",
+		"message":     message,
+		"description": "One or more inbound fields failed structural edge-boundary rules.",
+		"errors":      errors,
+	}
+
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+// Validatable defines the interface for types that support self-validation rules.
+type Validatable interface {
+	Validate() map[string]string
+}
+
+// ValidationError is a lightweight wrapper for native field errors
+type ValidationError struct {
+	Errors map[string]string
+}
+
+func (e *ValidationError) Error() string { return "Validation Failed" }
+
+// DecodeJSONBody decodes JSON from the request body into any struct type T.
+func DecodeJSONBody[T any](r *http.Request) (*T, error) {
+	var data T
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		return nil, errors.New("failed to decode JSON: " + err.Error())
+	}
+	if fieldErrors := validateStructNatively(data); fieldErrors != nil {
+		return nil, &ValidationError{Errors: fieldErrors}
+	}
+	return &data, nil
+}
+
+func validateStructNatively(s interface{}) map[string]string {
+	fieldErrors := make(map[string]string)
+	val := reflect.ValueOf(s)
+
+	// Handle pointers automatically
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	if val.Kind() != reflect.Struct {
+		return nil
+	}
+
+	typ := val.Type()
+
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		fieldType := typ.Field(i)
+
+		// Look for our company's approved native constraint tag
+		tagValue := fieldType.Tag.Get("native")
+		if tagValue == "" {
+			continue
+		}
+
+		jsonName := fieldType.Tag.Get("json")
+		if jsonName == "" || strings.Contains(jsonName, ",") {
+			jsonName = fieldType.Name
+		}
+		jsonName = strings.Split(jsonName, ",")[0]
+
+		// Parse individual rules split by commas (e.g., "required,min=3")
+		rules := strings.Split(tagValue, ",")
+		for _, rule := range rules {
+			rule = strings.TrimSpace(rule)
+
+			// Rule 1: Required
+			if rule == "required" {
+				if isZeroValue(field) {
+					fieldErrors[jsonName] = "The field '" + jsonName + "' is missing but is strictly required."
+					break
+				}
+			}
+
+			// Rule 2: Minimum Length Bounds
+			if strings.HasPrefix(rule, "min=") {
+				minStr := strings.TrimPrefix(rule, "min=")
+				minVal, _ := strconv.Atoi(minStr)
+				if field.Kind() == reflect.String && len(field.String()) < minVal {
+					fieldErrors[jsonName] = "The field '" + jsonName + "' must be at least " + minStr + " characters long."
+					break
+				}
+			}
+
+			// Rule 3: Maximum Length Bounds
+			if strings.HasPrefix(rule, "max=") {
+				maxStr := strings.TrimPrefix(rule, "max=")
+				maxVal, _ := strconv.Atoi(maxStr)
+				if field.Kind() == reflect.String && len(field.String()) > maxVal {
+					fieldErrors[jsonName] = "The field '" + jsonName + "' exceeds its maximum allowed size of " + maxStr + " characters."
+					break
+				}
+			}
+		}
+	}
+
+	if len(fieldErrors) > 0 {
+		return fieldErrors
+	}
+	return nil
+}
+
+func isZeroValue(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.String:
+		return strings.TrimSpace(v.String()) == ""
+	case reflect.Slice, reflect.Array, reflect.Map:
+		return v.Len() == 0
+	default:
+		return v.IsZero()
+	}
+}
 
 // WriteJSONError writes a JSON error response with the given details.
 func WriteJSONError(w http.ResponseWriter, code, desc string, statusCode int, respHeaders []map[string]string) {
@@ -288,15 +438,6 @@ func GetURIWithQueryParams(uri string, queryParams map[string]string) (string, e
 
 	// Return the constructed URI.
 	return parsedURL.String(), nil
-}
-
-// DecodeJSONBody decodes JSON from the request body into any struct type T.
-func DecodeJSONBody[T any](r *http.Request) (*T, error) {
-	var data T
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		return nil, errors.New("failed to decode JSON: " + err.Error())
-	}
-	return &data, nil
 }
 
 // DecodeJSONResponse decodes JSON from the response body into any struct type T.

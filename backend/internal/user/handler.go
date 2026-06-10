@@ -19,6 +19,7 @@
 package user
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -29,7 +30,6 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -96,12 +96,16 @@ func (uh *userHandler) HandleUserPostRequest(w http.ResponseWriter, r *http.Requ
 
 	createRequest, err := sysutils.DecodeJSONBody[CreateUserRequest](r)
 	if err != nil {
-		errResp := apierror.ErrorResponse{
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorInvalidRequestFormat.Code,
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
-		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		})
 		return
 	}
 
@@ -198,23 +202,26 @@ func (uh *userHandler) HandleUserPutRequest(w http.ResponseWriter, r *http.Reque
 
 	id := strings.TrimPrefix(r.URL.Path, "/users/")
 	if id == "" {
-		errResp := apierror.ErrorResponse{
+		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorMissingUserID.Code,
 			Message:     ErrorMissingUserID.Error,
 			Description: ErrorMissingUserID.ErrorDescription,
-		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		})
 		return
 	}
 
 	updateRequest, err := sysutils.DecodeJSONBody[User](r)
 	if err != nil {
-		errResp := apierror.ErrorResponse{
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorInvalidRequestFormat.Code,
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
-		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		})
 		return
 	}
 	updateRequest.ID = id
@@ -317,15 +324,16 @@ func (uh *userHandler) HandleUserPostByPathRequest(w http.ResponseWriter, r *htt
 
 	createRequest, err := sysutils.DecodeJSONBody[CreateUserByPathRequest](r)
 	if err != nil {
-		errResp := apierror.ErrorResponse{
-			Code:    ErrorInvalidRequestFormat.Code,
-			Message: ErrorInvalidRequestFormat.Error,
-			Description: core.I18nMessage{
-				Key:          "error.userservice.invalid_request_format_description",
-				DefaultValue: "Failed to parse request body: " + err.Error(),
-			},
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
+			Code:        ErrorInvalidRequestFormat.Code,
+			Message:     ErrorInvalidRequestFormat.Error,
+			Description: ErrorInvalidRequestFormat.ErrorDescription,
+		})
 		return
 	}
 
@@ -379,11 +387,11 @@ func (uh *userHandler) HandleSelfUserPutRequest(w http.ResponseWriter, r *http.R
 
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateSelfUserRequest](r)
 	if err != nil {
-		handleError(w, &ErrorInvalidRequestFormat)
-		return
-	}
-
-	if updateRequest == nil || len(updateRequest.Attributes) == 0 {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -412,11 +420,20 @@ func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWrit
 
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateSelfUserRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(w, &ErrorInvalidRequestFormat)
 		return
 	}
-
-	if updateRequest == nil || len(updateRequest.Attributes) == 0 || string(updateRequest.Attributes) == "{}" {
+	if updateRequest == nil {
+		handleError(w, &ErrorInvalidRequestFormat)
+		return
+	}
+	attrStr := strings.TrimSpace(string(updateRequest.Attributes))
+	if updateRequest == nil || len(updateRequest.Attributes) == 0 || attrStr == "{}" {
 		handleError(w, &ErrorMissingCredentials)
 		return
 	}

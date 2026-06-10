@@ -176,6 +176,40 @@ func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_ServiceError() {
 	suite.Equal(http.StatusBadRequest, w.Code)
 }
 
+func (suite *RoleHandlerTestSuite) TestHandleRolePostRequest_ValidationError_NameTooShort() {
+	request := CreateRoleRequest{
+		Name: "ad",
+		OUID: "ou-tenancy-1",
+	}
+
+	body, _ := json.Marshal(request)
+	req := httptest.NewRequest(http.MethodPost, "/roles", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleRolePostRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	suite.Contains(w.Body.String(), "INVALID_INPUT_METADATA")
+
+	suite.mockService.AssertNotCalled(suite.T(), "CreateRole", mock.Anything, mock.Anything)
+}
+
+func (suite *RoleHandlerTestSuite) TestHandleRoleAddAssignmentsRequest_ValidationError_TypeSpoof() {
+	body := `{"assignments":[]}`
+	req := httptest.NewRequest(http.MethodPost, "/roles/role1/add-assignments", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "role1")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleRoleAddAssignmentsRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	suite.Contains(w.Body.String(), "Invalid request format")
+
+	suite.mockAssignmentService.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // HandleRoleGetRequest Tests
 func (suite *RoleHandlerTestSuite) TestHandleRoleGetRequest_Success() {
 	expectedRole := &RoleWithPermissions{

@@ -19,6 +19,7 @@
 package resource
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -67,6 +68,11 @@ func (h *resourceHandler) HandleResourceServerPostRequest(w http.ResponseWriter,
 	ctx := r.Context()
 	req, err := sysutils.DecodeJSONBody[CreateResourceServerRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -112,6 +118,11 @@ func (h *resourceHandler) HandleResourceServerPutRequest(w http.ResponseWriter, 
 	id := r.PathValue("id")
 	req, err := sysutils.DecodeJSONBody[UpdateResourceServerRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -184,6 +195,11 @@ func (h *resourceHandler) HandleResourcePostRequest(w http.ResponseWriter, r *ht
 	rsID := r.PathValue("rsId")
 	req, err := sysutils.DecodeJSONBody[CreateResourceRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -233,6 +249,12 @@ func (h *resourceHandler) HandleResourcePutRequest(w http.ResponseWriter, r *htt
 
 	req, err := sysutils.DecodeJSONBody[UpdateResourceRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+
 		handleError(w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -296,6 +318,11 @@ func (h *resourceHandler) HandleActionPostAtResourceServerRequest(w http.Respons
 	rsID := r.PathValue("rsId")
 	req, err := sysutils.DecodeJSONBody[CreateActionRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -341,6 +368,11 @@ func (h *resourceHandler) HandleActionPutAtResourceServerRequest(w http.Response
 
 	req, err := sysutils.DecodeJSONBody[UpdateActionRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -407,6 +439,11 @@ func (h *resourceHandler) HandleActionPostAtResourceRequest(w http.ResponseWrite
 
 	req, err := sysutils.DecodeJSONBody[CreateActionRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(w, &ErrorInvalidRequestFormat)
 		return
 	}

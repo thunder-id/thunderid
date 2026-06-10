@@ -20,6 +20,7 @@ package entitytype
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -90,6 +91,11 @@ func (h *entityTypeHandler) HandleEntityTypePostRequest(w http.ResponseWriter, r
 
 	createRequest, err := sysutils.DecodeJSONBody[CreateEntityTypeRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		errResp := apierror.ErrorResponse{
 			Code:    ErrorInvalidRequestFormat.Code,
 			Message: ErrorInvalidRequestFormat.Error,
@@ -272,6 +278,11 @@ func validateUpdateEntityTypeRequest(
 ) (UpdateEntityTypeRequest, bool) {
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateEntityTypeRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return UpdateEntityTypeRequest{}, true
+		}
 		errResp := apierror.ErrorResponse{
 			Code:    ErrorInvalidRequestFormat.Code,
 			Message: ErrorInvalidRequestFormat.Error,

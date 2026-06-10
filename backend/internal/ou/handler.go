@@ -19,6 +19,7 @@
 package ou
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -87,6 +88,11 @@ func (ouh *organizationUnitHandler) HandleOUPostRequest(w http.ResponseWriter, r
 
 	createRequest, err := sysutils.DecodeJSONBody[OrganizationUnitRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorInvalidRequestFormat.Code,
 			Message:     ErrorInvalidRequestFormat.Error,
@@ -138,11 +144,21 @@ func (ouh *organizationUnitHandler) HandleOUPutRequest(w http.ResponseWriter, r 
 	if idValidateFailed {
 		return
 	}
-
-	sanitizedRequest, requestValidationFailed := validateUpdateRequest(w, r, ouh)
-	if requestValidationFailed {
+	updateRequest, err := sysutils.DecodeJSONBody[OrganizationUnitRequest](r)
+	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
+			Code:        ErrorInvalidRequestFormat.Code,
+			Message:     ErrorInvalidRequestFormat.Error,
+			Description: ErrorInvalidRequestFormat.ErrorDescription,
+		})
 		return
 	}
+	sanitizedRequest := ouh.sanitizeOrganizationUnitRequest(*updateRequest)
 
 	ou, svcErr := ouh.service.UpdateOrganizationUnit(ctx, id, sanitizedRequest)
 	if svcErr != nil {
@@ -269,23 +285,6 @@ func extractAndValidateID(w http.ResponseWriter, r *http.Request) (string, bool)
 	return id, false
 }
 
-func validateUpdateRequest(
-	w http.ResponseWriter, r *http.Request, ouh *organizationUnitHandler,
-) (OrganizationUnitRequestWithID, bool) {
-	updateRequest, err := sysutils.DecodeJSONBody[OrganizationUnitRequest](r)
-	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
-			Code:        ErrorInvalidRequestFormat.Code,
-			Message:     ErrorInvalidRequestFormat.Error,
-			Description: ErrorInvalidRequestFormat.ErrorDescription,
-		})
-		return OrganizationUnitRequestWithID{}, true
-	}
-
-	sanitizedRequest := ouh.sanitizeOrganizationUnitRequest(*updateRequest)
-	return sanitizedRequest, false
-}
-
 // parsePaginationParams parses limit and offset query parameters from the request.
 func parsePaginationParams(query url.Values) (int, int, *serviceerror.ServiceError) {
 	limit := 0
@@ -392,10 +391,22 @@ func (ouh *organizationUnitHandler) HandleOUPutByPathRequest(w http.ResponseWrit
 		return
 	}
 
-	sanitizedRequest, requestValidationFailed := validateUpdateRequest(w, r, ouh)
-	if requestValidationFailed {
+	updateRequest, err := sysutils.DecodeJSONBody[OrganizationUnitRequest](r)
+	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
+
+		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
+			Code:        ErrorInvalidRequestFormat.Code,
+			Message:     ErrorInvalidRequestFormat.Error,
+			Description: ErrorInvalidRequestFormat.ErrorDescription,
+		})
 		return
 	}
+	sanitizedRequest := ouh.sanitizeOrganizationUnitRequest(*updateRequest)
 
 	ou, svcErr := ouh.service.UpdateOrganizationUnitByPath(ctx, path, sanitizedRequest)
 	if svcErr != nil {
