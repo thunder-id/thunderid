@@ -46,7 +46,6 @@ For a complete list of props, refer to the [Props section](#props) below.
 const scopes = [
   'openid',
   'profile',
-  'internal_login',
   'internal_organization_create',
   'internal_organization_view',
   'internal_organization_update',
@@ -82,7 +81,7 @@ The `ThunderIDProvider` component accepts the following props:
 | `applicationId` | `string` | ❌ | The <ProductName /> application ID |
 | `afterSignInUrl` | `string` | ❌ | URL to redirect to after sign-in completes. Defaults to `window.location.origin`. |
 | `afterSignOutUrl` | `string` | ❌ | URL to redirect to after sign-out completes. Defaults to `window.location.origin`. |
-| `scopes` | `string[]` | ❌ | OpenID Connect Scopes to request during sign-in. Defaults to `'openid profile internal_login'` if not provided. |
+| `scopes` | `string[]` | ❌ | OpenID Connect Scopes to request during sign-in. Defaults to `'openid profile'` if not provided. |
 | `signInUrl` | `string` | ❌ | Custom sign-in URL. When set, `<SignInButton />` navigates to this URL instead of triggering the embedded flow. |
 | `signUpUrl` | `string` | ❌ | Custom sign-up URL. When set, `<SignUpButton />` navigates to this URL instead of triggering the embedded flow. |
 | `signInOptions` | `SignInOptions` | ❌ | Additional sign-in options forwarded to the underlying client. |

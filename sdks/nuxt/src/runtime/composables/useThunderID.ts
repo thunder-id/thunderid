@@ -48,18 +48,19 @@ export function useThunderID(): ThunderIDContext {
    * Sign in the user.
    *
    * **Embedded flow**: call with `(payload, request)` where `payload` has a
-   * `flowId` property (use `{flowId: ''}` to initiate).  The method POSTs to
-   * `/api/auth/signin` and returns the flow-step response or redirects on
-   * completion.
+   * `flowType` (to initiate) or `executionId` (to continue a step). The method
+   * POSTs to `/api/auth/signin` and returns the flow-step response or redirects
+   * on completion.
    *
    * **Redirect flow**: call with an optional `options` object (or no args).
    * Navigates to `/api/auth/signin` (which triggers a server redirect to the
    * IdP).
    */
   const signIn = async (...args: any[]): Promise<any> => {
-    // Embedded-flow path: second arg is a non-null object with `flowId`.
+    // Embedded-flow path: payload has `flowType` (init) or `executionId` (step continuation).
     const arg0: unknown = args[0];
-    const isEmbedded: boolean = typeof arg0 === 'object' && arg0 !== null && 'flowId' in arg0;
+    const isEmbedded: boolean =
+      typeof arg0 === 'object' && arg0 !== null && ('flowType' in arg0 || 'executionId' in arg0);
 
     if (isEmbedded) {
       const payload: Record<string, unknown> = arg0 as Record<string, unknown>;
@@ -92,7 +93,7 @@ export function useThunderID(): ThunderIDContext {
         }
         return {
           authData: {},
-          flowStatus: EmbeddedSignInFlowStatus.SuccessCompleted,
+          flowStatus: EmbeddedSignInFlowStatus.Complete,
         };
       }
       return res.data;
@@ -127,7 +128,7 @@ export function useThunderID(): ThunderIDContext {
   const signUp = async (...args: any[]): Promise<any> => {
     const payload: unknown = args[0];
 
-    // Embedded flow — payload must look like an EmbeddedFlowExecuteRequestPayload
+    // Embedded flow — payload must look like an embedded flow request payload
     // (i.e. have a `flowType` field). Plain options objects without `flowType`
     // fall through to the redirect path so `signUp({applicationId: '...'})`
     // still goes to the hosted register page.

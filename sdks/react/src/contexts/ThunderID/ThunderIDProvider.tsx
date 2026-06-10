@@ -29,10 +29,9 @@ import {
   GetBrandingPreferenceConfig,
   BrandingPreference,
   IdToken,
-  getActiveTheme,
   Platform,
   extractUserClaimsFromIdToken,
-  EmbeddedSignInFlowResponseV2,
+  EmbeddedSignInFlowResponse,
   TokenResponse,
   createPackageComponentLogger,
 } from '@thunderid/browser';
@@ -177,7 +176,7 @@ const ThunderIDProvider: FC<PropsWithChildren<ThunderIDProviderProps>> = ({
     }
   }
 
-  async function signIn(...args: any): Promise<User | EmbeddedSignInFlowResponseV2> {
+  async function signIn(...args: any): Promise<User | EmbeddedSignInFlowResponse> {
     // Check if this is a V2 embedded flow request BEFORE calling signIn
     // This allows us to skip session checks entirely for V2 flows
     const arg1: any = args[0];
@@ -631,12 +630,10 @@ const ThunderIDProvider: FC<PropsWithChildren<ThunderIDProviderProps>> = ({
             refetch={refetchBranding}
           >
             <ThemeProvider
-              inheritFromBranding={preferences?.theme?.inheritFromBranding}
               theme={{
                 ...preferences?.theme?.overrides,
                 direction: preferences?.theme?.direction,
               }}
-              mode={getActiveTheme(preferences?.theme?.mode ?? 'light')}
             >
               <FlowProvider>
                 <UserProvider profile={userProfile!} onUpdateProfile={handleProfileUpdate}>

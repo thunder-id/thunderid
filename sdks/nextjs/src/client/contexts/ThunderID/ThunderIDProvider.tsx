@@ -21,8 +21,8 @@
 import {
   AllOrganizationsApiResponse,
   EmbeddedFlowExecuteRequestConfig,
-  EmbeddedFlowExecuteRequestPayload,
-  EmbeddedSignInFlowHandleRequestPayload,
+  
+  
   generateFlattenedUserProfile,
   Organization,
   UpdateMeProfileConfig,
@@ -194,8 +194,8 @@ const ThunderIDClientProvider: FC<PropsWithChildren<ThunderIDClientProviderProps
   }, [isSignedIn, user]);
 
   const handleSignIn = async (
-    payload: EmbeddedSignInFlowHandleRequestPayload,
-    request: EmbeddedFlowExecuteRequestConfig,
+    payload: any,
+    request?: EmbeddedFlowExecuteRequestConfig,
   ): Promise<any> => {
     if (!signIn) {
       throw new ThunderIDRuntimeError(
@@ -229,8 +229,8 @@ const ThunderIDClientProvider: FC<PropsWithChildren<ThunderIDClientProviderProps
   };
 
   const handleSignUp = async (
-    payload: EmbeddedFlowExecuteRequestPayload,
-    request: EmbeddedFlowExecuteRequestConfig,
+    payload: any,
+    request?: EmbeddedFlowExecuteRequestConfig,
   ): Promise<any> => {
     if (!signUp) {
       throw new ThunderIDRuntimeError(
@@ -331,8 +331,6 @@ const ThunderIDClientProvider: FC<PropsWithChildren<ThunderIDClientProviderProps
           <BrandingProvider brandingPreference={brandingPreference}>
             <ThemeProvider
               theme={preferences?.theme?.overrides}
-              mode={getActiveTheme(preferences?.theme?.mode as any)}
-              inheritFromBranding
             >
               <FlowProvider>
                 <UserProvider profile={userProfile} onUpdateProfile={handleProfileUpdate} updateProfile={updateProfile}>

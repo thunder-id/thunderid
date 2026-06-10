@@ -17,7 +17,7 @@
  */
 
 import {describe, expect, it} from 'vitest';
-import injectRequestedPermissions from '../../utils/v2/injectRequestedPermissions';
+import injectRequestedPermissions from '../../utils/injectRequestedPermissions';
 
 describe('injectRequestedPermissions', (): void => {
   it('joins multiple scopes into a space-separated requested_permissions string', (): void => {

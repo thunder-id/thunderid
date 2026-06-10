@@ -35,15 +35,8 @@ import {
   getAllOrganizations,
   createOrganization,
   getOrganization,
-  initializeEmbeddedSignInFlow,
-  executeEmbeddedSignInFlow,
   executeEmbeddedSignUpFlow,
-  type EmbeddedSignInFlowHandleRequestPayload,
-  type EmbeddedFlowExecuteRequestConfig,
-  type EmbeddedFlowExecuteRequestPayload,
-  type EmbeddedFlowExecuteResponse,
   type ExtendedAuthorizeRequestUrlParams,
-  type SignUpOptions,
   type GetBrandingPreferenceConfig,
   type BrandingPreference,
 } from '@thunderid/node';
@@ -119,28 +112,6 @@ class ThunderIDNuxtClient extends ThunderIDNodeClient<ThunderIDNuxtConfig> {
   override signIn(...args: any[]): Promise<any> {
     const arg0: unknown = args[0];
 
-    if (typeof arg0 === 'object' && arg0 !== null && 'flowId' in arg0) {
-      const sessionId: string | undefined = args[2] as string | undefined;
-
-      if ((arg0 as any).flowId === '') {
-        return this.getSignInUrl({client_secret: '{{clientSecret}}', response_mode: 'direct'}, sessionId).then(
-          (authorizeUrl: string) => {
-            const url: URL = new URL(authorizeUrl);
-            return initializeEmbeddedSignInFlow({
-              payload: Object.fromEntries(url.searchParams.entries()),
-              url: `${url.origin}${url.pathname}`,
-            });
-          },
-        );
-      }
-
-      const request: EmbeddedFlowExecuteRequestConfig = args[1] ?? {};
-      return executeEmbeddedSignInFlow({
-        payload: arg0 as EmbeddedSignInFlowHandleRequestPayload,
-        url: request.url,
-      });
-    }
-
     if (typeof arg0 === 'object' && arg0 !== null && ('code' in arg0 || 'state' in arg0)) {
       const payload: {code?: unknown; session_state?: unknown; state?: unknown} = arg0 as {
         code?: unknown;
@@ -163,21 +134,16 @@ class ThunderIDNuxtClient extends ThunderIDNodeClient<ThunderIDNuxtConfig> {
     return super.signIn(args[0], args[1], args[2], args[3], args[4], args[5]);
   }
 
-  override signUp(options?: SignUpOptions): Promise<void>;
-  override signUp(payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse>;
-  override async signUp(
-    payloadOrOptions?: EmbeddedFlowExecuteRequestPayload | SignUpOptions,
-  ): Promise<void | EmbeddedFlowExecuteResponse> {
+  override async signUp(payloadOrOptions?: any): Promise<any> {
     if (!payloadOrOptions || !('flowType' in payloadOrOptions)) {
       return undefined;
     }
     const configData: any = this.getStorageManager().getConfigData();
     const baseUrl: string | undefined = configData?.baseUrl as string | undefined;
-    const response: EmbeddedFlowExecuteResponse = await executeEmbeddedSignUpFlow({
+    return executeEmbeddedSignUpFlow({
       baseUrl,
-      payload: payloadOrOptions as EmbeddedFlowExecuteRequestPayload,
+      payload: payloadOrOptions,
     });
-    return response;
   }
 
   public async getAuthorizeRequestUrl(

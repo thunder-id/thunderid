@@ -18,7 +18,7 @@
 
 'use server';
 
-import {EmbeddedFlowExecuteRequestPayload, EmbeddedFlowExecuteResponse, EmbeddedFlowStatus} from '@thunderid/node';
+import {EmbeddedSignUpFlowStatus} from '@thunderid/node';
 import getClient from '../getClient';
 
 /**
@@ -30,14 +30,9 @@ import getClient from '../getClient';
  * @returns Promise that resolves when sign-in is complete
  */
 const signUpAction = async (
-  payload?: EmbeddedFlowExecuteRequestPayload,
+  payload?: any,
 ): Promise<{
-  data?:
-    | {
-        afterSignUpUrl?: string;
-        signUpUrl?: string;
-      }
-    | EmbeddedFlowExecuteResponse;
+  data?: {afterSignUpUrl?: string; signUpUrl?: string} | any;
   error?: string;
   success: boolean;
 }> => {
@@ -53,13 +48,13 @@ const signUpAction = async (
     }
     const response: any = await client.signUp(payload);
 
-    if (response.flowStatus === EmbeddedFlowStatus.Complete) {
+    if (response.flowStatus === EmbeddedSignUpFlowStatus.Complete) {
       const afterSignUpUrl: string = await (await client.getStorageManager()).getConfigDataParameter('afterSignInUrl');
 
       return {data: {afterSignUpUrl: String(afterSignUpUrl)}, success: true};
     }
 
-    return {data: response as EmbeddedFlowExecuteResponse, success: true};
+    return {data: response, success: true};
   } catch (error) {
     return {error: String(error), success: false};
   }

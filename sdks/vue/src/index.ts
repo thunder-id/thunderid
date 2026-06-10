@@ -43,11 +43,6 @@ export {default as useTheme} from './composables/useTheme';
 export {default as useUser} from './composables/useUser';
 export {useOAuthCallback} from './composables/useOAuthCallback';
 export type {UseOAuthCallbackOptions, OAuthCallbackPayload} from './composables/useOAuthCallback';
-export {useOAuthCallback as useOAuthCallbackV2} from './composables/v2/useOAuthCallback';
-export type {
-  UseOAuthCallbackOptions as UseOAuthCallbackOptionsV2,
-  OAuthCallbackPayload as OAuthCallbackPayloadV2,
-} from './composables/v2/useOAuthCallback';
 
 // ── Client ──
 export {default as ThunderIDVueClient} from './ThunderIDVueClient';
@@ -180,18 +175,15 @@ export {default as FieldFactory, createField, validateFieldValue} from './compon
 export type {FieldConfig} from './components/factories/FieldFactory';
 
 // ── Utilities ──
-export {default as buildThemeConfigFromFlowMeta} from './utils/v2/buildThemeConfigFromFlowMeta';
-export {default as getAuthComponentHeadings} from './utils/v2/getAuthComponentHeadings';
-export type {HeadingExtractionResult, AuthComponentHeadingsResult} from './utils/v2/getAuthComponentHeadings';
+export {default as buildThemeConfigFromFlowMeta} from './utils/buildThemeConfigFromFlowMeta';
+export {default as getAuthComponentHeadings} from './utils/getAuthComponentHeadings';
+export type {HeadingExtractionResult, AuthComponentHeadingsResult} from './utils/getAuthComponentHeadings';
 
 // ── Re-exports from @thunderid/browser ──
 export {
   FieldType,
   type AllOrganizationsApiResponse,
   type Config,
-  type EmbeddedFlowExecuteRequestPayload,
-  type EmbeddedFlowExecuteResponse,
-  type EmbeddedSignInFlowHandleRequestPayload,
   type HttpRequestConfig,
   type HttpResponse,
   type IdToken,
@@ -222,31 +214,31 @@ export {getActiveTheme} from './theme/getActiveTheme';
 export {detectThemeMode, createClassObserver, createMediaQueryListener} from './theme/themeDetection';
 export type {BrowserThemeDetection} from './theme/themeDetection';
 
-// ── Phase 4 — Re-exports from @thunderid/browser (V2 embedded flow models) ──
+// ── Phase 4 — Re-exports from @thunderid/browser (embedded flow models) ──
 export {
   ThunderIDRuntimeError,
-  EmbeddedFlowComponentTypeV2 as EmbeddedFlowComponentType,
-  EmbeddedFlowActionVariantV2 as EmbeddedFlowActionVariant,
-  EmbeddedFlowTextVariantV2 as EmbeddedFlowTextVariant,
-  EmbeddedFlowEventTypeV2 as EmbeddedFlowEventType,
-  type EmbeddedFlowComponentV2 as EmbeddedFlowComponent,
-  type EmbeddedFlowResponseDataV2 as EmbeddedFlowResponseData,
-  type EmbeddedFlowExecuteRequestConfigV2 as EmbeddedFlowExecuteRequestConfig,
-  EmbeddedSignInFlowStatusV2 as EmbeddedSignInFlowStatus,
-  EmbeddedSignInFlowTypeV2 as EmbeddedSignInFlowType,
-  type ExtendedEmbeddedSignInFlowResponseV2 as ExtendedEmbeddedSignInFlowResponse,
-  type EmbeddedSignInFlowResponseV2 as EmbeddedSignInFlowResponse,
-  type EmbeddedSignInFlowCompleteResponseV2 as EmbeddedSignInFlowCompleteResponse,
-  type EmbeddedSignInFlowInitiateRequestV2 as EmbeddedSignInFlowInitiateRequest,
-  type EmbeddedSignInFlowRequestV2 as EmbeddedSignInFlowRequest,
-  type EmbeddedSignUpFlowStatusV2 as EmbeddedSignUpFlowStatus,
-  type EmbeddedSignUpFlowTypeV2 as EmbeddedSignUpFlowType,
-  type ExtendedEmbeddedSignUpFlowResponseV2 as ExtendedEmbeddedSignUpFlowResponse,
-  type EmbeddedSignUpFlowResponseV2 as EmbeddedSignUpFlowResponse,
-  type EmbeddedSignUpFlowCompleteResponseV2 as EmbeddedSignUpFlowCompleteResponse,
-  type EmbeddedSignUpFlowInitiateRequestV2 as EmbeddedSignUpFlowInitiateRequest,
-  type EmbeddedSignUpFlowRequestV2 as EmbeddedSignUpFlowRequest,
-  type EmbeddedSignUpFlowErrorResponseV2 as EmbeddedSignUpFlowErrorResponse,
+  EmbeddedFlowComponentType,
+  EmbeddedFlowActionVariant,
+  EmbeddedFlowTextVariant,
+  EmbeddedFlowEventType,
+  type EmbeddedFlowComponent,
+  type EmbeddedFlowResponseData,
+  type EmbeddedFlowExecuteRequestConfig,
+  EmbeddedSignInFlowStatus,
+  EmbeddedSignInFlowType,
+  type ExtendedEmbeddedSignInFlowResponse,
+  type EmbeddedSignInFlowResponse,
+  type EmbeddedSignInFlowCompleteResponse,
+  type EmbeddedSignInFlowInitiateRequest,
+  type EmbeddedSignInFlowRequest,
+  type EmbeddedSignUpFlowStatus,
+  type EmbeddedSignUpFlowType,
+  type ExtendedEmbeddedSignUpFlowResponse,
+  type EmbeddedSignUpFlowResponse,
+  type EmbeddedSignUpFlowCompleteResponse,
+  type EmbeddedSignUpFlowInitiateRequest,
+  type EmbeddedSignUpFlowRequest,
+  type EmbeddedSignUpFlowErrorResponse,
   type ComponentRenderContext,
   type ComponentsExtensions,
   type ComponentRenderer,

@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -18,12 +18,12 @@
 
 import {Mock, beforeEach, describe, expect, it, vi} from 'vitest';
 import ThunderIDAPIError from '../../errors/ThunderIDAPIError';
+import {EmbeddedFlowType} from '../../models/embedded-flow';
 import {
-  EmbeddedFlowExecuteResponse,
-  EmbeddedFlowResponseType,
-  EmbeddedFlowStatus,
-  EmbeddedFlowType,
-} from '../../models/embedded-flow';
+  EmbeddedSignUpFlowResponse,
+  EmbeddedSignUpFlowStatus,
+  EmbeddedSignUpFlowType,
+} from '../../models/embedded-signup-flow';
 import executeEmbeddedSignUpFlow from '../executeEmbeddedSignUpFlow';
 
 describe('executeEmbeddedSignUpFlow', (): void => {
@@ -32,11 +32,11 @@ describe('executeEmbeddedSignUpFlow', (): void => {
   });
 
   it('should execute successfully with explicit url', async (): Promise<void> => {
-    const mockResponse: EmbeddedFlowExecuteResponse = {
+    const mockResponse: EmbeddedSignUpFlowResponse = {
       data: {},
-      flowId: 'flow-123',
-      flowStatus: EmbeddedFlowStatus.Complete,
-      type: EmbeddedFlowResponseType.View,
+      executionId: 'exec-123',
+      flowStatus: EmbeddedSignUpFlowStatus.Incomplete,
+      type: EmbeddedSignUpFlowType.View,
     };
 
     global.fetch = vi.fn().mockResolvedValue({
@@ -44,37 +44,21 @@ describe('executeEmbeddedSignUpFlow', (): void => {
       ok: true,
     });
 
-    const url = 'https://localhost:8090/api/server/v1/flow/execute';
-    const payload: Record<string, string> = {foo: 'bar'};
+    const url = 'https://localhost:8090/flow/execute';
+    const payload = {executionId: 'exec-123', action: 'submit', inputs: {username: 'user@example.com'}};
 
-    const result: EmbeddedFlowExecuteResponse = await executeEmbeddedSignUpFlow({payload, url});
+    const result: EmbeddedSignUpFlowResponse = await executeEmbeddedSignUpFlow({payload, url});
 
-    expect(fetch).toHaveBeenCalledWith(
-      url,
-      expect.objectContaining({
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
-        method: 'POST',
-      }),
-    );
-
-    const callArgs: [string, RequestInit] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    const parsedBody: Record<string, unknown> = JSON.parse(callArgs[1].body as string);
-    expect(parsedBody).toEqual({
-      flowType: EmbeddedFlowType.Registration,
-      foo: 'bar',
-    });
+    expect(fetch).toHaveBeenCalledWith(url, expect.objectContaining({method: 'POST'}));
     expect(result).toEqual(mockResponse);
   });
 
   it('should fall back to baseUrl when url is not provided', async (): Promise<void> => {
-    const mockResponse: EmbeddedFlowExecuteResponse = {
+    const mockResponse: EmbeddedSignUpFlowResponse = {
       data: {},
-      flowId: 'flow-123',
-      flowStatus: EmbeddedFlowStatus.Complete,
-      type: EmbeddedFlowResponseType.View,
+      executionId: 'exec-456',
+      flowStatus: EmbeddedSignUpFlowStatus.Incomplete,
+      type: EmbeddedSignUpFlowType.View,
     };
 
     global.fetch = vi.fn().mockResolvedValue({
@@ -83,30 +67,20 @@ describe('executeEmbeddedSignUpFlow', (): void => {
     });
 
     const baseUrl = 'https://localhost:8090';
-    const payload: Record<string, number> = {a: 1};
+    const payload = {executionId: 'exec-456', action: 'submit', inputs: {username: 'user'}};
 
-    const result: EmbeddedFlowExecuteResponse = await executeEmbeddedSignUpFlow({baseUrl, payload});
+    const result: EmbeddedSignUpFlowResponse = await executeEmbeddedSignUpFlow({baseUrl, payload});
 
-    expect(fetch).toHaveBeenCalledWith(`${baseUrl}/api/server/v1/flow/execute`, {
-      body: JSON.stringify({
-        a: 1,
-        flowType: EmbeddedFlowType.Registration,
-      }),
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      method: 'POST',
-    });
+    expect(fetch).toHaveBeenCalledWith(`${baseUrl}/flow/execute`, expect.any(Object));
     expect(result).toEqual(mockResponse);
   });
 
   it('should prefer url over baseUrl when both are provided', async (): Promise<void> => {
-    const mockResponse: EmbeddedFlowExecuteResponse = {
+    const mockResponse: EmbeddedSignUpFlowResponse = {
       data: {},
-      flowId: 'flow-123',
-      flowStatus: EmbeddedFlowStatus.Complete,
-      type: EmbeddedFlowResponseType.View,
+      executionId: 'exec-789',
+      flowStatus: EmbeddedSignUpFlowStatus.Incomplete,
+      type: EmbeddedSignUpFlowType.View,
     };
 
     global.fetch = vi.fn().mockResolvedValue({
@@ -114,20 +88,20 @@ describe('executeEmbeddedSignUpFlow', (): void => {
       ok: true,
     });
 
-    const url = 'https://localhost:8090/api/server/v1/flow/execute';
+    const url = 'https://localhost:8090/flow/execute';
     const baseUrl = 'https://localhost:8090';
 
-    await executeEmbeddedSignUpFlow({baseUrl, payload: {x: 1}, url});
+    await executeEmbeddedSignUpFlow({baseUrl, payload: {executionId: 'exec-789'}, url});
 
     expect(fetch).toHaveBeenCalledWith(url, expect.any(Object));
   });
 
   it('should respect method override from requestConfig', async (): Promise<void> => {
-    const mockResponse: EmbeddedFlowExecuteResponse = {
+    const mockResponse: EmbeddedSignUpFlowResponse = {
       data: {},
-      flowId: 'flow-123',
-      flowStatus: EmbeddedFlowStatus.Complete,
-      type: EmbeddedFlowResponseType.View,
+      executionId: 'exec-1',
+      flowStatus: EmbeddedSignUpFlowStatus.Incomplete,
+      type: EmbeddedSignUpFlowType.View,
     };
 
     global.fetch = vi.fn().mockResolvedValue({
@@ -140,93 +114,74 @@ describe('executeEmbeddedSignUpFlow', (): void => {
     await executeEmbeddedSignUpFlow({
       baseUrl,
       method: 'PUT' as any,
-      payload: {y: 1},
+      payload: {executionId: 'exec-1'},
     });
 
     expect(fetch).toHaveBeenCalledWith(
-      `${baseUrl}/api/server/v1/flow/execute`,
+      `${baseUrl}/flow/execute`,
       expect.objectContaining({method: 'PUT'}),
     );
   });
 
-  it('should enforce flowType=Registration even if provided differently', async (): Promise<void> => {
-    const mockResponse: EmbeddedFlowExecuteResponse = {
-      data: {},
-      flowId: 'flow-123',
-      flowStatus: EmbeddedFlowStatus.Complete,
-      type: EmbeddedFlowResponseType.View,
-    };
+  it('should throw ThunderIDAPIError when payload is missing', async (): Promise<void> => {
+    const baseUrl = 'https://localhost:8090';
 
-    global.fetch = vi.fn().mockResolvedValue({
-      json: () => Promise.resolve(mockResponse),
-      ok: true,
-    });
+    await expect(executeEmbeddedSignUpFlow({baseUrl} as any)).rejects.toThrow(ThunderIDAPIError);
+    await expect(executeEmbeddedSignUpFlow({baseUrl} as any)).rejects.toThrow('Registration payload is required');
+  });
+
+  it('should add verbose=true for new flow start (applicationId + flowType in payload)', async (): Promise<void> => {
+    const mockResponse: EmbeddedSignUpFlowResponse = {
+      data: {},
+      executionId: 'exec-new',
+      flowStatus: EmbeddedSignUpFlowStatus.Incomplete,
+      type: EmbeddedSignUpFlowType.View,
+    };
+    global.fetch = vi.fn().mockResolvedValue({json: () => Promise.resolve(mockResponse), ok: true});
 
     const baseUrl = 'https://localhost:8090';
-    const payload: Record<string, unknown> = {flowType: 'SOMETHING_ELSE', p: 1} as any;
-
+    const payload = {applicationId: 'app-123', flowType: EmbeddedFlowType.Registration};
     await executeEmbeddedSignUpFlow({baseUrl, payload});
 
     const [, init]: [string, RequestInit] = (fetch as unknown as Mock).mock.calls[0];
-    expect(JSON.parse(init.body as string)).toEqual({
-      flowType: EmbeddedFlowType.Registration,
-      p: 1,
-    });
+    expect(JSON.parse(init.body as string)).toMatchObject({applicationId: 'app-123', verbose: true});
   });
 
-  it('should send only flowType when payload is omitted', async (): Promise<void> => {
-    const mockResponse: EmbeddedFlowExecuteResponse = {
+  it('should strip user-provided verbose before adding it', async (): Promise<void> => {
+    const mockResponse: EmbeddedSignUpFlowResponse = {
       data: {},
-      flowId: 'flow-123',
-      flowStatus: EmbeddedFlowStatus.Complete,
-      type: EmbeddedFlowResponseType.View,
+      executionId: 'exec-2',
+      flowStatus: EmbeddedSignUpFlowStatus.Incomplete,
+      type: EmbeddedSignUpFlowType.View,
     };
-
-    global.fetch = vi.fn().mockResolvedValue({
-      json: () => Promise.resolve(mockResponse),
-      ok: true,
-    });
+    global.fetch = vi.fn().mockResolvedValue({json: () => Promise.resolve(mockResponse), ok: true});
 
     const baseUrl = 'https://localhost:8090';
-    await executeEmbeddedSignUpFlow({baseUrl});
+    const payload = {applicationId: 'app-123', flowType: EmbeddedFlowType.Registration, verbose: false};
+    await executeEmbeddedSignUpFlow({baseUrl, payload});
 
     const [, init]: [string, RequestInit] = (fetch as unknown as Mock).mock.calls[0];
-    expect(JSON.parse(init.body as string)).toEqual({
-      flowType: EmbeddedFlowType.Registration,
-    });
+    expect(JSON.parse(init.body as string)).toMatchObject({verbose: true});
   });
 
-  it('should throw ThunderIDAPIError when both url and baseUrl are missing', async (): Promise<void> => {
-    await expect(executeEmbeddedSignUpFlow({payload: {a: 1}} as any)).rejects.toThrow(ThunderIDAPIError);
+  it('should send payload without verbose for mid-flow step', async (): Promise<void> => {
+    const mockResponse: EmbeddedSignUpFlowResponse = {
+      data: {},
+      executionId: 'exec-3',
+      flowStatus: EmbeddedSignUpFlowStatus.Incomplete,
+      type: EmbeddedSignUpFlowType.View,
+    };
+    global.fetch = vi.fn().mockResolvedValue({json: () => Promise.resolve(mockResponse), ok: true});
 
-    await expect(executeEmbeddedSignUpFlow({payload: {a: 1}} as any)).rejects.toThrow(
-      'Base URL or URL is not provided',
-    );
+    const baseUrl = 'https://localhost:8090';
+    const payload = {executionId: 'exec-3', action: 'submit', inputs: {email: 'user@example.com'}};
+    await executeEmbeddedSignUpFlow({baseUrl, payload});
+
+    const [, init]: [string, RequestInit] = (fetch as unknown as Mock).mock.calls[0];
+    expect(JSON.parse(init.body as string)).toEqual(payload);
   });
 
-  it('should throw ThunderIDAPIError for invalid URL', async (): Promise<void> => {
-    await expect(executeEmbeddedSignUpFlow({url: 'invalid-url' as any})).rejects.toThrow(ThunderIDAPIError);
-
-    await expect(executeEmbeddedSignUpFlow({url: 'invalid-url' as any})).rejects.toThrow('Invalid URL provided.');
-  });
-
-  it('should throw ThunderIDAPIError for undefined URL and baseUrl', async (): Promise<void> => {
-    await expect(
-      executeEmbeddedSignUpFlow({baseUrl: undefined, payload: {a: 1}, url: undefined} as any),
-    ).rejects.toThrow(ThunderIDAPIError);
-    await expect(
-      executeEmbeddedSignUpFlow({baseUrl: undefined, payload: {a: 1}, url: undefined} as any),
-    ).rejects.toThrow('Base URL or URL is not provided');
-  });
-
-  it('should throw ThunderIDAPIError for empty string URL and baseUrl', async (): Promise<void> => {
-    await expect(executeEmbeddedSignUpFlow({baseUrl: '', payload: {a: 1}, url: ''})).rejects.toThrow(ThunderIDAPIError);
-    await expect(executeEmbeddedSignUpFlow({baseUrl: '', payload: {a: 1}, url: ''})).rejects.toThrow(
-      'Base URL or URL is not provided',
-    );
-  });
-
-  it('should handle HTTP error responses', async (): Promise<void> => {
+  it('should throw ThunderIDAPIError when HTTP response is not ok', async (): Promise<void> => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 400,
@@ -235,37 +190,18 @@ describe('executeEmbeddedSignUpFlow', (): void => {
     });
 
     const baseUrl = 'https://localhost:8090';
-    await expect(executeEmbeddedSignUpFlow({baseUrl, payload: {a: 1}})).rejects.toThrow(ThunderIDAPIError);
-    await expect(executeEmbeddedSignUpFlow({baseUrl, payload: {a: 1}})).rejects.toThrow(
-      'Embedded SignUp flow execution failed: Bad payload',
-    );
-  });
-
-  it('should handle network or parsing errors', async (): Promise<void> => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('Network error'));
-
-    const baseUrl = 'https://localhost:8090';
-    await expect(executeEmbeddedSignUpFlow({baseUrl, payload: {a: 1}})).rejects.toThrow(ThunderIDAPIError);
-    await expect(executeEmbeddedSignUpFlow({baseUrl, payload: {a: 1}})).rejects.toThrow(
-      'Network or parsing error: Network error',
-    );
-  });
-
-  it('should handle non-Error rejections', async (): Promise<void> => {
-    global.fetch = vi.fn().mockRejectedValue('boom');
-
-    const baseUrl = 'https://localhost:8090';
-    await expect(executeEmbeddedSignUpFlow({baseUrl, payload: {a: 1}})).rejects.toThrow(
-      'Network or parsing error: Unknown error',
+    await expect(executeEmbeddedSignUpFlow({baseUrl, payload: {executionId: 'exec-err'}})).rejects.toThrow(ThunderIDAPIError);
+    await expect(executeEmbeddedSignUpFlow({baseUrl, payload: {executionId: 'exec-err'}})).rejects.toThrow(
+      'Bad payload',
     );
   });
 
   it('should include custom headers when provided', async (): Promise<void> => {
-    const mockResponse: EmbeddedFlowExecuteResponse = {
+    const mockResponse: EmbeddedSignUpFlowResponse = {
       data: {},
-      flowId: 'flow-123',
-      flowStatus: EmbeddedFlowStatus.Complete,
-      type: EmbeddedFlowResponseType.View,
+      executionId: 'exec-4',
+      flowStatus: EmbeddedSignUpFlowStatus.Incomplete,
+      type: EmbeddedSignUpFlowType.View,
     };
 
     global.fetch = vi.fn().mockResolvedValue({
@@ -282,11 +218,11 @@ describe('executeEmbeddedSignUpFlow', (): void => {
     await executeEmbeddedSignUpFlow({
       baseUrl,
       headers,
-      payload: {a: 1},
+      payload: {executionId: 'exec-4'},
     });
 
     expect(fetch).toHaveBeenCalledWith(
-      `${baseUrl}/api/server/v1/flow/execute`,
+      `${baseUrl}/flow/execute`,
       expect.objectContaining({
         headers: {
           Accept: 'application/json',

@@ -16,8 +16,7 @@
  * under the License.
  */
 
-// v2 exports (current)
-export {default as AcceptInvite} from './v2/AcceptInvite';
-export type {AcceptInviteProps, AcceptInviteRenderProps} from './v2/AcceptInvite';
-export {default as BaseAcceptInvite} from './v2/BaseAcceptInvite';
-export type {BaseAcceptInviteProps, BaseAcceptInviteRenderProps, AcceptInviteFlowResponse} from './v2/BaseAcceptInvite';
+export {default as AcceptInvite} from './AcceptInvite';
+export type {AcceptInviteProps, AcceptInviteRenderProps} from './AcceptInvite';
+export {default as BaseAcceptInvite} from './BaseAcceptInvite';
+export type {BaseAcceptInviteProps, BaseAcceptInviteRenderProps, AcceptInviteFlowResponse} from './BaseAcceptInvite';

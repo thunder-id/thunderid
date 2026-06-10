@@ -32,7 +32,7 @@ import useFlowMeta from '../../../composables/useFlowMeta';
 import useI18n from '../../../composables/useI18n';
 import {useOAuthCallback} from '../../../composables/useOAuthCallback';
 import {initiateOAuthRedirect} from '../../../utils/oauth';
-import {extractErrorMessage, normalizeFlowResponse} from '../../../utils/v2/flowTransformer';
+import {extractErrorMessage, normalizeFlowResponse} from '../../../utils/flowTransformer';
 import {renderInviteUserComponents} from '../../auth/sign-in/AuthOptionFactory';
 import Alert from '../../primitives/Alert';
 import Button from '../../primitives/Button';
@@ -178,7 +178,7 @@ const BaseAcceptInvite: Component = defineComponent({
     // ── OAuth callback ──
 
     useOAuthCallback({
-      currentFlowId: ref(props.flowId ?? null),
+      currentExecutionId: ref(props.flowId ?? null),
       isInitialized: ref(true),
       onComplete: () => {
         isComplete.value = true;

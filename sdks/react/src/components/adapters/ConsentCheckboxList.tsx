@@ -17,7 +17,7 @@
  */
 
 import {cx} from '@emotion/css';
-import {type ConsentPurposeDataV2 as ConsentPurposeData, withVendorCSSClassPrefix, bem} from '@thunderid/browser';
+import {type ConsentPurposeData, withVendorCSSClassPrefix, bem} from '@thunderid/browser';
 import {type ChangeEvent, FC, ReactNode} from 'react';
 import useStyles from './ConsentCheckboxList.styles';
 import useTheme from '../../contexts/Theme/useTheme';

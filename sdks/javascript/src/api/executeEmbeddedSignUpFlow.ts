@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -17,103 +17,136 @@
  */
 
 import ThunderIDAPIError from '../errors/ThunderIDAPIError';
-import {EmbeddedFlowType, EmbeddedFlowExecuteResponse, EmbeddedFlowExecuteRequestConfig} from '../models/embedded-flow';
+import {EmbeddedFlowExecuteRequestConfig} from '../models/embedded-flow';
+import {EmbeddedSignUpFlowResponse, EmbeddedSignUpFlowStatus} from '../models/embedded-signup-flow';
+import injectRequestedPermissions from '../utils/injectRequestedPermissions';
 
-/**
- * Executes an embedded signup flow by sending a request to the specified flow execution endpoint.
- *
- * @param requestConfig - Request configuration object containing URL and payload.
- * @returns A promise that resolves with the flow execution response.
- * @throws ThunderIDAPIError when the request fails or URL is invalid.
- *
- * @example
- * ```typescript
- * try {
- *   const embeddedSignUpResponse = await executeEmbeddedSignUpFlow({
- *     url: "https://localhost:8090/api/server/v1/flow/execute",
- *     payload: {
- *       flowType: "REGISTRATION"
- *     }
- *   });
- *   console.log(embeddedSignUpResponse);
- * } catch (error) {
- *   if (error instanceof ThunderIDAPIError) {
- *     console.error('Embedded SignUp flow execution failed:', error.message);
- *   }
- * }
- * ```
- */
 const executeEmbeddedSignUpFlow = async ({
   url,
   baseUrl,
   payload,
+  authId,
   ...requestConfig
-}: EmbeddedFlowExecuteRequestConfig): Promise<EmbeddedFlowExecuteResponse> => {
-  if (!baseUrl && !url) {
+}: EmbeddedFlowExecuteRequestConfig): Promise<EmbeddedSignUpFlowResponse> => {
+  if (!payload) {
     throw new ThunderIDAPIError(
-      'Embedded SignUp flow execution failed: Base URL or URL is not provided.',
-      'javascript-executeEmbeddedSignUpFlow-ValidationError-001',
+      'Registration payload is required',
+      'executeEmbeddedSignUpFlow-ValidationError-002',
       'javascript',
       400,
-      'At least one of the baseUrl or url must be provided to execute the embedded sign up flow.',
+      'If a registration payload is not provided, the request cannot be constructed correctly.',
     );
   }
 
-  try {
-    // eslint-disable-next-line no-new
-    new URL((url ?? baseUrl)!);
-  } catch (error) {
+  const endpoint: string = url ?? `${baseUrl}/flow/execute`;
+
+  // Strip any user-provided 'verbose' parameter as it should only be used internally
+  const cleanPayload: typeof payload =
+    typeof payload === 'object' && payload !== null
+      ? Object.fromEntries(Object.entries(payload).filter(([key]: [string, unknown]) => key !== 'verbose'))
+      : payload;
+
+  // `verbose: true` is required to get the `meta` field in the response that includes component details.
+  // Add verbose:true if:
+  // 1. payload contains applicationId and flowType (new flow start; may also carry scopes or other init params)
+  // 2. payload contains only executionId (flow resumption without step data)
+  const isNewFlowStart: boolean =
+    typeof cleanPayload === 'object' &&
+    cleanPayload !== null &&
+    'applicationId' in cleanPayload &&
+    'flowType' in cleanPayload;
+  const hasOnlyFlowId: boolean =
+    typeof cleanPayload === 'object' &&
+    cleanPayload !== null &&
+    'executionId' in cleanPayload &&
+    Object.keys(cleanPayload).length === 1;
+
+  const basePayload: Record<string, unknown> = isNewFlowStart
+    ? injectRequestedPermissions(cleanPayload as Record<string, unknown>)
+    : (cleanPayload as Record<string, unknown>);
+
+  const requestPayload: Record<string, unknown> =
+    isNewFlowStart || hasOnlyFlowId ? {...basePayload, verbose: true} : basePayload;
+
+  const response: Response = await fetch(endpoint, {
+    ...requestConfig,
+    body: JSON.stringify(requestPayload),
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...requestConfig.headers,
+    } as HeadersInit,
+    method: requestConfig.method || 'POST',
+  });
+
+  if (!response.ok) {
+    const errorText: string = await response.text();
+
     throw new ThunderIDAPIError(
-      `Invalid URL provided. ${error?.toString()}`,
-      'executeEmbeddedSignUpFlow-ValidationError-001',
+      errorText,
+      'executeEmbeddedSignUpFlow-ResponseError-001',
       'javascript',
-      400,
-      'The provided `url` or `baseUrl` path does not adhere to the URL schema.',
+      response.status,
+      response.statusText,
+      'Registration request failed',
     );
   }
 
-  try {
-    const response: Response = await fetch(url ?? `${baseUrl}/api/server/v1/flow/execute`, {
-      ...requestConfig,
-      body: JSON.stringify({
-        ...(payload ?? {}),
-        flowType: EmbeddedFlowType.Registration,
-      }),
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...requestConfig.headers,
-      } as HeadersInit,
-      method: requestConfig.method || 'POST',
-    });
+  const flowResponse: EmbeddedSignUpFlowResponse = await response.json();
 
-    if (!response.ok) {
-      const errorText: string = await response.text();
+  // Check if the flow is complete and has an assertion and authId is provided, then call OAuth2 auth callback.
+  if (flowResponse.flowStatus === EmbeddedSignUpFlowStatus.Complete && (flowResponse as any).assertion && authId) {
+    try {
+      const oauth2Response: Response = await fetch(`${baseUrl}/oauth2/auth/callback`, {
+        body: JSON.stringify({
+          assertion: (flowResponse as any).assertion,
+          authId,
+        }),
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...requestConfig.headers,
+        } as HeadersInit,
+        method: 'POST',
+      });
+
+      if (!oauth2Response.ok) {
+        const oauth2ErrorText: string = await oauth2Response.text();
+
+        throw new ThunderIDAPIError(
+          oauth2ErrorText,
+          'executeEmbeddedSignUpFlow-OAuth2Error-002',
+          'javascript',
+          oauth2Response.status,
+          oauth2Response.statusText,
+          'OAuth2 authorization failed',
+        );
+      }
+
+      const oauth2Result: Record<string, unknown> = await oauth2Response.json();
+
+      return {
+        flowStatus: flowResponse.flowStatus,
+        redirectUrl: oauth2Result['redirect_uri'],
+      } as any;
+    } catch (authError) {
+      if (authError instanceof ThunderIDAPIError) {
+        throw authError;
+      }
 
       throw new ThunderIDAPIError(
-        errorText,
-        'javascript-executeEmbeddedSignUpFlow-ResponseError-100',
+        authError instanceof Error ? authError.message : 'Unknown error',
+        'executeEmbeddedSignUpFlow-OAuth2Error-001',
         'javascript',
-        response.status,
-        response.statusText,
-        'Embedded SignUp flow execution failed',
+        500,
+        'Failed to complete OAuth2 authorization after successful embedded sign-up flow.',
+        'OAuth2 authorization failed',
       );
     }
-
-    return (await response.json()) as EmbeddedFlowExecuteResponse;
-  } catch (error) {
-    if (error instanceof ThunderIDAPIError) {
-      throw error;
-    }
-
-    throw new ThunderIDAPIError(
-      `Network or parsing error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      'executeEmbeddedSignUpFlow-NetworkError-001',
-      'javascript',
-      0,
-      'Network Error',
-    );
   }
+
+  return flowResponse;
 };
 
 export default executeEmbeddedSignUpFlow;

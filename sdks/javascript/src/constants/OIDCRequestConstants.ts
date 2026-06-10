@@ -78,7 +78,7 @@ const OIDCRequestConstants: {
       /**
        * The default scopes used in OIDC sign-in requests.
        */
-      DEFAULT_SCOPES: [ScopeConstants.OPENID, ScopeConstants.PROFILE, ScopeConstants.INTERNAL_LOGIN],
+      DEFAULT_SCOPES: [ScopeConstants.OPENID, ScopeConstants.PROFILE],
     },
   },
 

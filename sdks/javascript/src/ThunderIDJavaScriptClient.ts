@@ -16,8 +16,6 @@
  * under the License.
  */
 
-import executeEmbeddedSignInFlow from './api/executeEmbeddedSignInFlow';
-import initializeEmbeddedSignInFlow from './api/initializeEmbeddedSignInFlow';
 import OIDCDiscoveryConstants from './constants/OIDCDiscoveryConstants';
 import OIDCRequestConstants from './constants/OIDCRequestConstants';
 import PKCEConstants from './constants/PKCEConstants';
@@ -26,21 +24,9 @@ import {DefaultCrypto} from './DefaultCrypto';
 import {ThunderIDAuthException} from './errors/exception';
 import {IsomorphicCrypto} from './IsomorphicCrypto';
 import {AgentConfig} from './models/agent';
-import {AuthCodeResponse} from './models/auth-code-response';
 import {ThunderIDClient} from './models/client';
 import {AuthClientConfig, Config, SignInOptions, SignOutOptions, SignUpOptions} from './models/config';
 import {Crypto} from './models/crypto';
-import {
-  EmbeddedFlowExecuteRequestConfig,
-  EmbeddedFlowExecuteRequestPayload,
-  EmbeddedFlowExecuteResponse,
-} from './models/embedded-flow';
-import {
-  EmbeddedSignInFlowAuthenticator,
-  EmbeddedSignInFlowHandleResponse,
-  EmbeddedSignInFlowInitiateResponse,
-  EmbeddedSignInFlowStatus,
-} from './models/embedded-signin-flow';
 import {ExtendedAuthorizeRequestUrlParams} from './models/oauth-request';
 import {OIDCDiscoveryApiResponse} from './models/oidc-discovery';
 import {OIDCEndpoints} from './models/oidc-endpoints';
@@ -320,15 +306,7 @@ class ThunderIDJavaScriptClient<T = Config> implements ThunderIDClient<T> {
     throw new Error('Method not implemented.');
   }
 
-  public signUp(options?: SignUpOptions): Promise<void>;
-  public signUp(payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse>;
-  public signUp(
-    _optionsOrPayload?: SignUpOptions | EmbeddedFlowExecuteRequestPayload,
-  ): Promise<void | EmbeddedFlowExecuteResponse> {
-    throw new Error('Method not implemented.');
-  }
-
-  public recover(_payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse> {
+  public signUp(_options?: SignUpOptions): Promise<void> {
     throw new Error('Method not implemented.');
   }
 
@@ -832,54 +810,6 @@ class ThunderIDJavaScriptClient<T = Config> implements ThunderIDClient<T> {
     return stateParam ? stateParam === OIDCRequestConstants.Params.SIGN_OUT_SUCCESS && error : false;
   }
 
-  // ─── Agent / OBO helpers ─────────────────────────────────────────────────────
-
-  public async getAgentToken(agentConfig: AgentConfig): Promise<TokenResponse> {
-    const customParam: Record<string, string> = {response_mode: 'direct'};
-    const authorizeURL: URL = new URL(await this.getSignInUrl(customParam));
-
-    const authorizeResponse: EmbeddedSignInFlowInitiateResponse = await initializeEmbeddedSignInFlow({
-      payload: Object.fromEntries(authorizeURL.searchParams.entries()),
-      url: `${authorizeURL.origin}${authorizeURL.pathname}`,
-    });
-
-    const authenticatorName: string = agentConfig.authenticatorName ?? AgentConfig.DEFAULT_AUTHENTICATOR_NAME;
-    const targetAuthenticator: EmbeddedSignInFlowAuthenticator | undefined =
-      authorizeResponse.nextStep.authenticators.find(
-        (auth: EmbeddedSignInFlowAuthenticator) => auth.authenticator === authenticatorName,
-      );
-
-    if (!targetAuthenticator) {
-      throw new Error(`Authenticator '${authenticatorName}' not found among authentication steps.`);
-    }
-
-    const authnRequest: EmbeddedFlowExecuteRequestConfig = {
-      baseUrl: this.baseURL,
-      payload: {
-        flowId: authorizeResponse.flowId,
-        selectedAuthenticator: {
-          authenticatorId: targetAuthenticator.authenticatorId,
-          params: {
-            password: agentConfig.agentSecret,
-            username: agentConfig.agentID,
-          },
-        },
-      },
-    };
-
-    const authnResponse: EmbeddedSignInFlowHandleResponse = await executeEmbeddedSignInFlow(authnRequest);
-
-    if (authnResponse.flowStatus !== EmbeddedSignInFlowStatus.SuccessCompleted) {
-      throw new Error('Agent authentication failed.');
-    }
-
-    return this.requestAccessToken(
-      authnResponse.authData['code'],
-      authnResponse.authData['session_state'],
-      authnResponse.authData['state'],
-    );
-  }
-
   public async getOBOSignInURL(agentConfig: AgentConfig): Promise<string> {
     const authURL: string = await this.getSignInUrl({requested_actor: agentConfig.agentID});
 
@@ -888,18 +818,6 @@ class ThunderIDJavaScriptClient<T = Config> implements ThunderIDClient<T> {
     }
 
     throw new Error('Could not build Authorize URL');
-  }
-
-  public async getOBOToken(agentConfig: AgentConfig, authCodeResponse: AuthCodeResponse): Promise<TokenResponse> {
-    const agentToken: TokenResponse = await this.getAgentToken(agentConfig);
-
-    return this.requestAccessToken(
-      authCodeResponse.code,
-      authCodeResponse.session_state,
-      authCodeResponse.state,
-      undefined,
-      {params: {actor_token: agentToken.accessToken}},
-    );
   }
 }
 

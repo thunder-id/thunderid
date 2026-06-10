@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {EmbeddedFlowComponentV2 as EmbeddedFlowComponent, FlowMetadataResponse} from '@thunderid/browser';
+import {EmbeddedFlowComponent, FlowMetadataResponse} from '@thunderid/browser';
 import {Context, createContext, ReactElement} from 'react';
 
 export interface ComponentRenderContext {

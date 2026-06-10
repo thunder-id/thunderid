@@ -19,7 +19,7 @@
 import {
   FlowMetadataResponse,
   FlowMetaType,
-  getFlowMetaV2,
+  getFlowMeta,
   I18nBundle,
   TranslationBundleConstants,
 } from '@thunderid/browser';
@@ -85,7 +85,7 @@ const FlowMetaProvider: Component = defineComponent({
       error.value = null;
 
       try {
-        const result: FlowMetadataResponse = await getFlowMetaV2({
+        const result: FlowMetadataResponse = await getFlowMeta({
           baseUrl,
           id: applicationId,
           type: FlowMetaType.App,
@@ -105,7 +105,7 @@ const FlowMetaProvider: Component = defineComponent({
       error.value = null;
 
       try {
-        const result: FlowMetadataResponse = await getFlowMetaV2({
+        const result: FlowMetadataResponse = await getFlowMeta({
           baseUrl,
           id: applicationId,
           language,

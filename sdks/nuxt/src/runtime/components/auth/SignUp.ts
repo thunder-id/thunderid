@@ -18,8 +18,8 @@
 
 import {navigateTo} from '#app';
 import {
-  type EmbeddedFlowExecuteRequestPayload,
-  type EmbeddedFlowExecuteResponse,
+
+
   EmbeddedFlowResponseType,
   EmbeddedFlowType,
 } from '@thunderid/browser';
@@ -57,7 +57,7 @@ const SignUp: Component = defineComponent({
     errorClassName: {default: '', type: String},
     inputClassName: {default: '', type: String},
     messageClassName: {default: '', type: String},
-    onComplete: {default: undefined, type: Function as PropType<(response: EmbeddedFlowExecuteResponse) => void>},
+    onComplete: {default: undefined, type: Function as PropType<(response: any) => void>},
     onError: {default: undefined, type: Function as PropType<(error: Error) => void>},
     shouldRedirectAfterSignUp: {default: true, type: Boolean},
     showSubtitle: {default: true, type: Boolean},
@@ -69,8 +69,8 @@ const SignUp: Component = defineComponent({
     const {signUp, isInitialized, applicationId, scopes} = useThunderID();
 
     const handleInitialize = async (
-      payload?: EmbeddedFlowExecuteRequestPayload,
-    ): Promise<EmbeddedFlowExecuteResponse> => {
+      payload?: any,
+    ): Promise<any> => {
       // Guard URL parsing — `window` is only available on the client.
       let applicationIdFromUrl: string | null = null;
       if (import.meta.client) {
@@ -90,13 +90,13 @@ const SignUp: Component = defineComponent({
         ...(scopes && {scopes}),
       };
 
-      return (await signUp(initialPayload)) as EmbeddedFlowExecuteResponse;
+      return (await signUp(initialPayload));
     };
 
-    const handleOnSubmit = async (payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse> =>
-      (await signUp(payload)) as EmbeddedFlowExecuteResponse;
+    const handleOnSubmit = async (payload: any): Promise<any> =>
+      (await signUp(payload));
 
-    const handleComplete = async (response: EmbeddedFlowExecuteResponse): Promise<void> => {
+    const handleComplete = async (response: any): Promise<void> => {
       props.onComplete?.(response);
 
       const oauthRedirectUrl: string | undefined = (response as any)?.redirectUrl;

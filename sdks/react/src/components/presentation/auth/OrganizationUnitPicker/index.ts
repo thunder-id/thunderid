@@ -16,5 +16,5 @@
  * under the License.
  */
 
-export {default as OrganizationUnitPicker} from './v2/OrganizationUnitPicker';
-export type {OrganizationUnitPickerProps} from './v2/OrganizationUnitPicker';
+export {default as OrganizationUnitPicker} from './OrganizationUnitPicker';
+export type {OrganizationUnitPickerProps} from './OrganizationUnitPicker';

@@ -61,7 +61,7 @@ createRoot(document.getElementById('root')).render(
     <ThunderIDProvider
       clientId="<your-app-client-id>"
       baseUrl="https://localhost:8090"
-      scopes="openid profile internal_login internal_organization_create internal_organization_view internal_organization_update internal_organization_delete"
+      scopes="openid profile internal_organization_create internal_organization_view internal_organization_update internal_organization_delete"
       afterSignInUrl="/dashboard"
       afterSignOutUrl="/home"
       preferences={{
@@ -107,7 +107,7 @@ The `ThunderIDProvider` component accepts the following props:
 | `clientId` | `string` | ✅ | Client ID of your application |
 | `baseUrl` | `string` | ✅ | The base URL of the <ProductName /> instance (e.g., `https://localhost:8090`) |
 | `clientSecret` | `string` | ❌ | Client secret of your application. Only required for confidential clients. |
-| `scopes` | `string \| string[]` | ❌ | OpenID Connect Scopes to request during the sign-in. Defaults to `'openid profile internal_login'` if not provided. |
+| `scopes` | `string \| string[]` | ❌ | OpenID Connect Scopes to request during the sign-in. Defaults to `'openid profile'` if not provided. |
 | `storage` | `sessionStorage` or `localStorage \| webWorker` | ❌ | Storage mechanism to use for session management. Defaults to `sessionStorage` if not provided. |
 | `afterSignInUrl` | `string` | ❌ | URL to redirect to after sign-in process is completed. |
 | `afterSignUpUrl` | `string` | ❌ | URL to redirect to after sign-up process is completed. |
