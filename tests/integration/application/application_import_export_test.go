@@ -203,7 +203,7 @@ func (s *ApplicationImportExportSuite) TestExportImportRoundTrip_ConfidentialOAu
 			"exported YAML must not contain a bare `:` key")
 	}
 
-	s.Assert().Contains(yamlContent, "# resource_type: application")
+	s.Assert().Contains(yamlContent, "resource_type: application")
 	s.Assert().Contains(yamlContent, "id: "+createdID)
 	s.Assert().Contains(yamlContent, "ou_id: "+s.ouID)
 	s.Assert().Contains(yamlContent, "name: "+appName)
