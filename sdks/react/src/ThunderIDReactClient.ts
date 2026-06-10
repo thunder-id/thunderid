@@ -21,12 +21,9 @@ import {
   UserProfile,
   SignInOptions,
   User,
-  EmbeddedFlowExecuteResponse,
   SignUpOptions,
-  EmbeddedFlowExecuteRequestPayload,
   ThunderIDRuntimeError,
-  EmbeddedSignInFlowHandleRequestPayload,
-  executeEmbeddedSignInFlowV2,
+  executeEmbeddedSignInFlow,
   Organization,
   IdToken,
   deriveOrganizationHandleFromBaseUrl,
@@ -37,11 +34,11 @@ import {
   HttpResponse,
   TokenExchangeRequestConfig,
   isEmpty,
-  EmbeddedSignInFlowResponseV2,
-  executeEmbeddedSignUpFlowV2,
-  executeEmbeddedRecoveryFlowV2,
-  EmbeddedSignInFlowStatusV2,
-  EmbeddedSignUpFlowStatusV2,
+  EmbeddedSignInFlowResponse,
+  executeEmbeddedSignUpFlow,
+  executeEmbeddedRecoveryFlow,
+  EmbeddedSignInFlowStatus,
+  EmbeddedSignUpFlowStatus,
 } from '@thunderid/browser';
 import getAllOrganizations from './api/getAllOrganizations';
 import getMeOrganizations from './api/getMeOrganizations';
@@ -251,7 +248,7 @@ class ThunderIDReactClient<T extends ThunderIDReactConfig = ThunderIDReactConfig
     return this.withLoading(async () => super.exchangeToken(config) as unknown as TokenResponse | Response);
   }
 
-  override async signIn(...args: any[]): Promise<User | EmbeddedSignInFlowResponseV2> {
+  override async signIn(...args: any[]): Promise<User | EmbeddedSignInFlowResponse> {
     return this.withLoading(async () => {
       const arg1: any = args[0];
       const arg2: any = args[1];
@@ -282,17 +279,17 @@ class ThunderIDReactClient<T extends ThunderIDReactConfig = ThunderIDReactConfig
         const authId: string = authIdFromUrl || authIdFromStorage;
         const baseUrl: string = config?.baseUrl ?? '';
 
-        const response: EmbeddedSignInFlowResponseV2 = await executeEmbeddedSignInFlowV2({
+        const response: EmbeddedSignInFlowResponse = await executeEmbeddedSignInFlow({
           authId,
           baseUrl,
-          payload: arg1 as EmbeddedSignInFlowHandleRequestPayload,
+          payload: arg1 as any,
           url: arg2?.url,
         });
 
         if (
           response &&
           typeof response === 'object' &&
-          response.flowStatus === EmbeddedSignInFlowStatusV2.Complete &&
+          response.flowStatus === EmbeddedSignInFlowStatus.Complete &&
           response.assertion
         ) {
           const decodedAssertion: {
@@ -335,8 +332,7 @@ class ThunderIDReactClient<T extends ThunderIDReactConfig = ThunderIDReactConfig
   }
 
   override async signUp(options?: SignUpOptions): Promise<void>;
-  override async signUp(payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse>;
-  override async signUp(...args: any[]): Promise<void | EmbeddedFlowExecuteResponse> {
+  override async signUp(...args: any[]): Promise<void> {
     const config: ThunderIDReactConfig = (await this.getStorageManager().getConfigData()) as ThunderIDReactConfig;
     const firstArg: any = args[0];
     const baseUrl: string = config?.baseUrl ?? '';
@@ -349,19 +345,19 @@ class ThunderIDReactClient<T extends ThunderIDReactConfig = ThunderIDReactConfig
       sessionStorage.setItem('thunderid_auth_id', authIdFromUrl);
     }
 
-    const response: any = await executeEmbeddedSignUpFlowV2({
+    const response: any = await executeEmbeddedSignUpFlow({
       authId,
       baseUrl,
       payload:
         typeof firstArg === 'object' && 'flowType' in firstArg
-          ? {...(firstArg as EmbeddedFlowExecuteRequestPayload), verbose: true}
-          : (firstArg as EmbeddedFlowExecuteRequestPayload),
+          ? {...firstArg, verbose: true}
+          : firstArg,
     });
 
     if (
       response &&
       typeof response === 'object' &&
-      response.flowStatus === EmbeddedSignUpFlowStatusV2.Complete &&
+      response.flowStatus === EmbeddedSignUpFlowStatus.Complete &&
       response.assertion
     ) {
       const decodedAssertion: {
@@ -395,10 +391,10 @@ class ThunderIDReactClient<T extends ThunderIDReactConfig = ThunderIDReactConfig
     return response;
   }
 
-  override async recover(payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse> {
+  async recover(payload: any): Promise<any> {
     const config: ThunderIDReactConfig = (await this.getStorageManager().getConfigData()) as ThunderIDReactConfig;
 
-    return executeEmbeddedRecoveryFlowV2({
+    return executeEmbeddedRecoveryFlow({
       baseUrl: config?.baseUrl,
       payload: {...payload, verbose: true},
     }) as any;

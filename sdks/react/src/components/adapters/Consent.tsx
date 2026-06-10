@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {type ConsentPurposeDataV2 as ConsentPurposeData} from '@thunderid/browser';
+import {type ConsentPurposeData} from '@thunderid/browser';
 import {FC, ReactNode} from 'react';
 import ConsentCheckboxList from './ConsentCheckboxList';
 import Typography from '../primitives/Typography/Typography';

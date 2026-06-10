@@ -18,8 +18,6 @@
 
 import {FC, FormEvent} from 'react';
 import {AdapterProps} from '../../models/adapters';
-// eslint-disable-next-line import/no-cycle
-import {createSignUpComponent} from '../presentation/auth/SignUp/v1/SignUpOptionFactory';
 
 /**
  * Form container component that renders child components.
@@ -45,14 +43,7 @@ const FormContainer: FC<AdapterProps> = (props: AdapterProps) => {
     };
 
     return (
-      <form key={component.id} onSubmit={handleFormSubmit} style={{display: 'flex', flexDirection: 'column'}}>
-        {component.components.map((childComponent: any) =>
-          createSignUpComponent({
-            ...props,
-            component: childComponent,
-          }),
-        )}
-      </form>
+      <form key={component.id} onSubmit={handleFormSubmit} style={{display: 'flex', flexDirection: 'column'}} />
     );
   }
 

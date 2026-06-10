@@ -53,7 +53,7 @@ export {default as hasCalledForThisInstanceInUrl} from './utils/hasCalledForThis
 export {default as navigate} from './utils/navigate';
 export {default as http} from './utils/http';
 export {default as handleWebAuthnAuthentication} from './utils/handleWebAuthnAuthentication';
-export {default as resolveEmojiUrisInHtml} from './utils/v2/resolveEmojiUrisInHtml';
+export {default as resolveEmojiUrisInHtml} from './utils/resolveEmojiUrisInHtml';
 
 // Theme
 export {detectThemeMode, createClassObserver, createMediaQueryListener} from './theme/themeDetection';

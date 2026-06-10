@@ -36,16 +36,9 @@
  * ```
  */
 const ScopeConstants: {
-  INTERNAL_LOGIN: string;
   OPENID: string;
   PROFILE: string;
 } = {
-  /**
-   * The scope for accessing the user's profile information from SCIM.
-   * This scope allows the client to retrieve basic user information such as
-   * name, email, profile picture, etc.
-   */
-  INTERNAL_LOGIN: 'internal_login',
 
   /**
    * The base OpenID Connect scope.

@@ -17,13 +17,9 @@
  */
 
 import {navigateTo} from '#app';
-import {
-  type EmbeddedSignInFlowHandleRequestPayload,
-  type EmbeddedSignInFlowHandleResponse,
-  type EmbeddedSignInFlowInitiateResponse,
-} from '@thunderid/browser';
+import {EmbeddedFlowType} from '@thunderid/browser';
 import {BaseSignIn} from '@thunderid/vue';
-import {type Component, type PropType, type SetupContext, type VNode, defineComponent, h} from 'vue';
+import {type Component, type PropType, type Ref, type SetupContext, type VNode, defineComponent, h, onMounted, ref} from 'vue';
 import {useThunderID} from '#imports';
 
 /**
@@ -36,8 +32,7 @@ import {useThunderID} from '#imports';
  * Uses `useThunderID()` from the Nuxt auto-import layer — the Nuxt-specific
  * wrapper that provides Nitro-route-aware `signIn`, `signOut`, `signUp`.
  *
- * Delegates all UI rendering to {@link BaseSignIn} from `@thunderid/vue`, which
- * itself is platform-aware (routes to V1 authenticator or V2 component flow).
+ * Delegates all UI rendering to {@link BaseSignIn} from `@thunderid/vue`.
  *
  * @example
  * ```vue
@@ -62,18 +57,31 @@ const SignIn: Component = defineComponent({
     props: Readonly<{className: string; size: 'small' | 'medium' | 'large'; variant: 'elevated' | 'outlined' | 'flat'}>,
     {emit, attrs}: SetupContext,
   ): () => VNode {
-    const {signIn, afterSignInUrl, isInitialized, isLoading} = useThunderID();
+    const {signIn, afterSignInUrl, applicationId, scopes} = useThunderID();
+    const components: Ref<any[]> = ref([]);
+    const isFlowLoading: Ref<boolean> = ref(true);
 
-    const handleInitialize = async (): Promise<EmbeddedSignInFlowInitiateResponse> =>
-      // Pass flowId='' to trigger the embedded-flow initiation path in useThunderID.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (await signIn({flowId: ''} as any, {} as any)) as EmbeddedSignInFlowInitiateResponse;
+    onMounted(async () => {
+      try {
+        const response: any = await signIn({
+          flowType: EmbeddedFlowType.Authentication,
+          ...(applicationId && {applicationId}),
+          ...(scopes && {scopes}),
+        });
+        if (response?.meta?.components) {
+          components.value = response.meta.components;
+        } else if (response?.data?.meta?.components) {
+          components.value = response.data.meta.components;
+        }
+      } catch (err) {
+        emit('error', err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        isFlowLoading.value = false;
+      }
+    });
 
-    const handleOnSubmit = async (
-      payload: EmbeddedSignInFlowHandleRequestPayload,
-      request: any,
-    ): Promise<EmbeddedSignInFlowHandleResponse> =>
-      (await signIn(payload, request)) as EmbeddedSignInFlowHandleResponse;
+    const handleOnSubmit = async (payload: any, request: any): Promise<any> =>
+      (await signIn(payload, request)) as any;
 
     const handleSuccess = async (authData: Record<string, any>): Promise<void> => {
       emit('success', authData);
@@ -98,11 +106,10 @@ const SignIn: Component = defineComponent({
     return (): VNode =>
       h(BaseSignIn, {
         ...attrs,
-        afterSignInUrl,
         class: props.className,
-        isLoading: (isLoading?.value ?? false) || !(isInitialized?.value ?? true),
+        components: components.value,
+        isLoading: isFlowLoading.value,
         onError: (err: Error) => emit('error', err),
-        onInitialize: handleInitialize,
         onSubmit: handleOnSubmit,
         onSuccess: handleSuccess,
         showLogo: true,

@@ -21,12 +21,11 @@
 import {
   ThunderIDRuntimeError,
   EmbeddedFlowExecuteRequestConfig,
-  EmbeddedSignInFlowHandleRequestPayload,
-  EmbeddedSignInFlowHandleResponse,
-  EmbeddedSignInFlowInitiateResponse,
+  EmbeddedFlowType,
+  EmbeddedSignInFlowResponse,
 } from '@thunderid/node';
 import {BaseSignIn, BaseSignInProps} from '@thunderid/react';
-import {FC} from 'react';
+import {FC, useEffect, useRef, useState} from 'react';
 import useThunderID from '../../../contexts/ThunderID/useThunderID';
 
 /**
@@ -37,64 +36,41 @@ export type SignInProps = Pick<BaseSignInProps, 'className' | 'onSuccess' | 'onE
 
 /**
  * A SignIn component for Next.js that provides native authentication flow.
- * This component delegates to the BaseSignIn from @thunderid/react and requires
- * the API functions to be provided as props.
- *
- * @remarks This component requires the authentication API functions to be provided
- * as props. For a complete working example, you'll need to implement the server-side
- * authentication endpoints or use the traditional OAuth flow with SignInButton.
- *
- * @example
- * ```tsx
- * import { SignIn } from '@thunderid/nextjs';
- * import { executeEmbeddedSignInFlow } from '@thunderid/browser';
- *
- * const LoginPage = () => {
- *   const handleInitialize = async () => {
- *     return await executeEmbeddedSignInFlow({
- *       response_mode: 'direct',
- *     });
- *   };
- *
- *   const handleSubmit = async (flow) => {
- *     return await executeEmbeddedSignInFlow({ flow });
- *   };
- *
- *   return (
- *     <SignIn
- *       onInitialize={handleInitialize}
- *       onSubmit={handleSubmit}
- *       onSuccess={(authData) => {
- *         console.log('Authentication successful:', authData);
- *       }}
- *       onError={(error) => {
- *         console.error('Authentication failed:', error);
- *       }}
- *       size="medium"
- *       variant="outlined"
- *       afterSignInUrl="/dashboard"
- *     />
- *   );
- * };
- * ```
+ * Initializes the embedded sign-in flow on mount and delegates UI rendering to BaseSignIn.
  */
 const SignIn: FC<SignInProps> = ({size = 'medium', variant = 'outlined', ...rest}: SignInProps) => {
-  const {signIn, afterSignInUrl} = useThunderID();
+  const {signIn, applicationId, scopes} = useThunderID();
+  const [components, setComponents] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [flowError, setFlowError] = useState<Error | null>(null);
+  const initAttemptedRef = useRef(false);
 
-  const handleInitialize = async (): Promise<EmbeddedSignInFlowInitiateResponse> =>
-    signIn &&
-    (await signIn({
-      flowId: '',
-      selectedAuthenticator: {
-        authenticatorId: '',
-        params: {},
-      },
-    }));
+  useEffect(() => {
+    if (initAttemptedRef.current || !signIn) return;
+    initAttemptedRef.current = true;
+
+    (async (): Promise<void> => {
+      try {
+        const response: EmbeddedSignInFlowResponse | undefined = await signIn({
+          flowType: EmbeddedFlowType.Authentication,
+          ...(applicationId && {applicationId}),
+          ...(scopes && {scopes}),
+        });
+
+        const flowComponents: any[] = response?.data?.meta?.components ?? [];
+        setComponents(flowComponents);
+      } catch (err) {
+        setFlowError(err instanceof Error ? err : new Error(String(err)));
+      } finally {
+        setIsLoading(false);
+      }
+    })();
+  }, [signIn]);
 
   const handleOnSubmit = async (
-    payload: EmbeddedSignInFlowHandleRequestPayload,
-    request: EmbeddedFlowExecuteRequestConfig,
-  ): Promise<EmbeddedSignInFlowHandleResponse> => {
+    payload: any,
+    request?: EmbeddedFlowExecuteRequestConfig,
+  ): Promise<any> => {
     if (!signIn) {
       throw new ThunderIDRuntimeError(
         '`signIn` function is not available.',
@@ -103,15 +79,15 @@ const SignIn: FC<SignInProps> = ({size = 'medium', variant = 'outlined', ...rest
       );
     }
 
-    return (await signIn(payload, request)) as Promise<EmbeddedSignInFlowHandleResponse>;
+    return signIn(payload, request);
   };
 
   return (
     <BaseSignIn
-      // isLoading={isLoading || !isInitialized}
-      afterSignInUrl={afterSignInUrl}
-      onInitialize={handleInitialize}
-      onSubmit={handleOnSubmit}
+      components={components}
+      error={flowError}
+      isLoading={isLoading}
+      onSubmit={handleOnSubmit as any}
       size={size}
       variant={variant}
       {...rest}

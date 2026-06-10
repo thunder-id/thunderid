@@ -16,38 +16,39 @@
  * under the License.
  */
 
-import {Platform} from '@thunderid/browser';
-import {FC} from 'react';
-import RecoveryV1, {RecoveryProps as RecoveryV1Props} from './v1/Recovery';
-import RecoveryV2, {RecoveryProps as RecoveryV2Props} from './v2/Recovery';
+import {EmbeddedRecoveryFlowRequest, EmbeddedRecoveryFlowResponse, EmbeddedFlowType} from '@thunderid/browser';
+import {FC, PropsWithChildren, ReactElement, useCallback} from 'react';
+import BaseRecovery, {BaseRecoveryProps} from './BaseRecovery';
 import useThunderID from '../../../../contexts/ThunderID/useThunderID';
 
-/**
- * Props for the Recovery component.
- * Extends RecoveryV1Props & RecoveryV2Props for full compatibility with both implementations.
- */
-export type RecoveryProps = RecoveryV1Props | RecoveryV2Props;
+export type RecoveryProps = PropsWithChildren<
+  BaseRecoveryProps & {
+    /**
+     * URL query parameter name that carries the recovery token when the user lands via a recovery link.
+     * When set and both `executionId` and this param are present in the URL, the component resumes the
+     * existing flow instead of starting a new one.
+     *
+     * @example
+     * // For a link like /recovery?executionId=xxx&recoveryToken=yyy
+     * <Recovery tokenUrlParam="recoveryToken" />
+     */
+    tokenUrlParam?: string;
+  }
+>;
 
 /**
- * Recovery component that provides an embedded account/password recovery flow.
- * Routes to the appropriate version-specific implementation based on the platform.
+ * Recovery component for ThunderIDV2 that provides an embedded account/password recovery flow.
  *
  * @example
  * ```tsx
- * import { Recovery } from '@thunderid/react';
+ * // Default UI
+ * <Recovery
+ *   afterRecoveryUrl="/sign-in"
+ *   onComplete={(response) => console.log('Recovery complete', response)}
+ *   onError={(error) => console.error('Recovery failed', error)}
+ * />
  *
- * const App = () => (
- *   <Recovery
- *     afterRecoveryUrl="/sign-in"
- *     onComplete={(response) => console.log('Recovery complete', response)}
- *     onError={(error) => console.error('Recovery failed', error)}
- *   />
- * );
- * ```
- *
- * @example
  * // Custom UI with render props
- * ```tsx
  * <Recovery>
  *   {({ values, fieldErrors, handleInputChange, handleSubmit, isLoading, components }) => (
  *     <form onSubmit={(e) => { e.preventDefault(); handleSubmit(components[0], values); }}>
@@ -57,14 +58,82 @@ export type RecoveryProps = RecoveryV1Props | RecoveryV2Props;
  * </Recovery>
  * ```
  */
-const Recovery: FC<RecoveryProps> = (props: RecoveryProps) => {
-  const {platform} = useThunderID();
+const Recovery: FC<RecoveryProps> = ({
+  className,
+  size = 'medium',
+  afterRecoveryUrl,
+  onError,
+  onComplete,
+  tokenUrlParam,
+  children,
+  ...rest
+}: RecoveryProps): ReactElement => {
+  const {recover, isInitialized, applicationId} = useThunderID();
 
-  if (platform === Platform.ThunderID) {
-    return <RecoveryV2 {...(props as RecoveryV2Props)} />;
-  }
+  const handleInitialize: (payload?: EmbeddedRecoveryFlowRequest) => Promise<EmbeddedRecoveryFlowResponse> =
+    useCallback(
+      async (payload?: EmbeddedRecoveryFlowRequest): Promise<EmbeddedRecoveryFlowResponse> => {
+        const urlParams: URLSearchParams = new URL(window.location.href).searchParams;
+        const applicationIdFromUrl: string | null = urlParams.get('applicationId');
+        const effectiveApplicationId: string | null = applicationId ?? applicationIdFromUrl;
 
-  return <RecoveryV1 {...(props as RecoveryV1Props)} />;
+        if (tokenUrlParam) {
+          const executionId: string | null = urlParams.get('executionId');
+          const tokenValue: string | null = urlParams.get(tokenUrlParam);
+
+          if (executionId && tokenValue) {
+            const resumePayload: EmbeddedRecoveryFlowRequest = {
+              executionId,
+              inputs: {[tokenUrlParam]: tokenValue},
+            };
+            return (await recover(resumePayload)) as EmbeddedRecoveryFlowResponse;
+          }
+        }
+
+        const initialPayload: EmbeddedRecoveryFlowRequest = payload ?? {
+          flowType: EmbeddedFlowType.Recovery,
+          ...(effectiveApplicationId && {applicationId: effectiveApplicationId}),
+        };
+
+        return (await recover(initialPayload)) as EmbeddedRecoveryFlowResponse;
+      },
+      [applicationId, tokenUrlParam, recover],
+    );
+
+  const handleOnSubmit: (payload: EmbeddedRecoveryFlowRequest) => Promise<EmbeddedRecoveryFlowResponse> =
+    useCallback(
+      async (payload: EmbeddedRecoveryFlowRequest): Promise<EmbeddedRecoveryFlowResponse> =>
+        (await recover(payload)) as EmbeddedRecoveryFlowResponse,
+      [recover],
+    );
+
+  const handleComplete: (response: EmbeddedRecoveryFlowResponse) => void = useCallback(
+    (response: EmbeddedRecoveryFlowResponse): void => {
+      onComplete?.(response);
+
+      if (afterRecoveryUrl) {
+        window.location.href = afterRecoveryUrl;
+      }
+    },
+    [onComplete, afterRecoveryUrl],
+  );
+
+  return (
+    <BaseRecovery
+      afterRecoveryUrl={afterRecoveryUrl}
+      onInitialize={handleInitialize}
+      onSubmit={handleOnSubmit}
+      onError={onError}
+      onComplete={handleComplete}
+      className={className}
+      size={size}
+      isInitialized={isInitialized}
+      showTitle={true}
+      showSubtitle={true}
+      children={children}
+      {...rest}
+    />
+  );
 };
 
 export default Recovery;

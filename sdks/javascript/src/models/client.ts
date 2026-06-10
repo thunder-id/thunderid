@@ -17,12 +17,6 @@
  */
 
 import {SignInOptions, SignOutOptions, SignUpOptions} from './config';
-import {
-  EmbeddedFlowExecuteRequestConfig,
-  EmbeddedFlowExecuteRequestPayload,
-  EmbeddedFlowExecuteResponse,
-} from './embedded-flow';
-import {EmbeddedSignInFlowHandleRequestPayload} from './embedded-signin-flow';
 import {Organization, AllOrganizationsApiResponse} from './organization';
 import {Storage} from './store';
 import {TokenExchangeRequestConfig, TokenResponse} from './token';
@@ -144,14 +138,6 @@ export interface ThunderIDClient<T> {
   reInitialize(config: Partial<T>): Promise<boolean>;
 
   /**
-   * Initiates an embedded recovery flow for the user (e.g. password reset).
-   *
-   * @param payload - The payload containing the necessary information to execute the embedded recovery flow.
-   * @returns A promise that resolves to an EmbeddedFlowExecuteResponse containing the flow execution details.
-   */
-  recover(payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse>;
-
-  /**
    * Sets the session data for the specified session ID.
    * @param sessionData - The session data to be set.
    * @param sessionId - Optional session ID to set the session data for.
@@ -168,22 +154,6 @@ export interface ThunderIDClient<T> {
    */
   signIn(
     options?: SignInOptions,
-    sessionId?: string,
-    onSignInSuccess?: (afterSignInUrl: string) => void,
-  ): Promise<User | TokenResponse | undefined>;
-
-  /**
-   * Initiates an embedded (App-Native) sign-in flow for the user.
-   *
-   * @param payload - The payload containing the necessary information to execute the embedded sign-in flow.
-   * @param request - The request object containing URL and parameters for the sign-in flow HTTP request.
-   * @param sessionId - Optional session ID to be used for sign-in.
-   * @param onSignInSuccess - Callback function to be executed upon successful sign-in.
-   * @returns A promise that resolves to an EmbeddedFlowExecuteResponse containing the flow execution details.
-   */
-  signIn(
-    payload: EmbeddedSignInFlowHandleRequestPayload,
-    request: EmbeddedFlowExecuteRequestConfig<EmbeddedSignInFlowHandleRequestPayload>,
     sessionId?: string,
     onSignInSuccess?: (afterSignInUrl: string) => void,
   ): Promise<User | TokenResponse | undefined>;
@@ -230,14 +200,6 @@ export interface ThunderIDClient<T> {
    * @returns Promise resolving to the user upon successful sign up.
    */
   signUp(options?: SignUpOptions): Promise<void>;
-
-  /**
-   * Initiates an embedded (App-Native) sign-up flow for the user.
-   *
-   * @param payload - The payload containing the necessary information to execute the embedded sign-up flow.
-   * @returns A promise that resolves to an EmbeddedFlowExecuteResponse containing the flow execution details.
-   */
-  signUp(payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse>;
 
   /**
    * Switches the current organization to the specified one.

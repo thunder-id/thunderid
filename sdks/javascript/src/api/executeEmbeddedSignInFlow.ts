@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -18,27 +18,16 @@
 
 import ThunderIDAPIError from '../errors/ThunderIDAPIError';
 import {EmbeddedFlowExecuteRequestConfig} from '../models/embedded-flow';
-import {EmbeddedSignInFlowHandleResponse} from '../models/embedded-signin-flow';
+import {EmbeddedSignInFlowResponse, EmbeddedSignInFlowStatus} from '../models/embedded-signin-flow';
+import injectRequestedPermissions from '../utils/injectRequestedPermissions';
 
 const executeEmbeddedSignInFlow = async ({
   url,
   baseUrl,
   payload,
+  authId,
   ...requestConfig
-}: EmbeddedFlowExecuteRequestConfig): Promise<EmbeddedSignInFlowHandleResponse> => {
-  try {
-    // eslint-disable-next-line no-new
-    new URL((url ?? baseUrl)!);
-  } catch (error) {
-    throw new ThunderIDAPIError(
-      `Invalid URL provided. ${error?.toString()}`,
-      'executeEmbeddedSignInFlow-ValidationError-001',
-      'javascript',
-      400,
-      'The provided `url` or `baseUrl` path does not adhere to the URL schema.',
-    );
-  }
-
+}: EmbeddedFlowExecuteRequestConfig): Promise<EmbeddedSignInFlowResponse> => {
   if (!payload) {
     throw new ThunderIDAPIError(
       'Authorization payload is required',
@@ -49,45 +38,115 @@ const executeEmbeddedSignInFlow = async ({
     );
   }
 
-  try {
-    const response: Response = await fetch(url ?? `${baseUrl}/oauth2/authn`, {
-      ...requestConfig,
-      body: JSON.stringify(payload),
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...requestConfig.headers,
-      } as HeadersInit,
-      method: requestConfig.method || 'POST',
-    });
+  const endpoint: string = url ?? `${baseUrl}/flow/execute`;
 
-    if (!response.ok) {
-      const errorText: string = await response.text();
+  // Strip any user-provided 'verbose' parameter as it should only be used internally
+  const cleanPayload: typeof payload =
+    typeof payload === 'object' && payload !== null
+      ? Object.fromEntries(Object.entries(payload).filter(([key]: [string, unknown]) => key !== 'verbose'))
+      : payload;
 
-      throw new ThunderIDAPIError(
-        errorText,
-        'initializeEmbeddedSignInFlow-ResponseError-001',
-        'javascript',
-        response.status,
-        response.statusText,
-        'Authorization request failed',
-      );
-    }
+  // `verbose: true` is required to get the `meta` field in the response that includes component details.
+  // Add verbose:true if:
+  // 1. payload contains applicationId and flowType (new flow start; may also carry scopes or other init params)
+  // 2. payload contains only executionId (flow resumption without step data)
+  const isNewFlowStart: boolean =
+    typeof cleanPayload === 'object' &&
+    cleanPayload !== null &&
+    'applicationId' in cleanPayload &&
+    'flowType' in cleanPayload;
+  const hasOnlyFlowId: boolean =
+    typeof cleanPayload === 'object' &&
+    cleanPayload !== null &&
+    'executionId' in cleanPayload &&
+    Object.keys(cleanPayload).length === 1;
 
-    return (await response.json()) as EmbeddedSignInFlowHandleResponse;
-  } catch (error) {
-    if (error instanceof ThunderIDAPIError) {
-      throw error;
-    }
+  const basePayload: Record<string, unknown> = isNewFlowStart
+    ? injectRequestedPermissions(cleanPayload as Record<string, unknown>)
+    : (cleanPayload as Record<string, unknown>);
+
+  const requestPayload: Record<string, unknown> =
+    isNewFlowStart || hasOnlyFlowId ? {...basePayload, verbose: true} : basePayload;
+
+  const response: Response = await fetch(endpoint, {
+    ...requestConfig,
+    body: JSON.stringify(requestPayload),
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      ...requestConfig.headers,
+    } as HeadersInit,
+    method: requestConfig.method || 'POST',
+  });
+
+  if (!response.ok) {
+    const errorText: string = await response.text();
 
     throw new ThunderIDAPIError(
-      `Network or parsing error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      'executeEmbeddedSignInFlow-NetworkError-001',
+      errorText,
+      'executeEmbeddedSignInFlow-ResponseError-001',
       'javascript',
-      0,
-      'Network Error',
+      response.status,
+      response.statusText,
+      'Authorization request failed',
     );
   }
+
+  const flowResponse: EmbeddedSignInFlowResponse = await response.json();
+
+  // Check if the flow is complete and has an assertion and authId is provided, then call OAuth2 auth callback.
+  if (flowResponse.flowStatus === EmbeddedSignInFlowStatus.Complete && flowResponse.assertion && authId) {
+    try {
+      const oauth2Response: Response = await fetch(`${baseUrl}/oauth2/auth/callback`, {
+        body: JSON.stringify({
+          assertion: flowResponse.assertion,
+          authId,
+        }),
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...requestConfig.headers,
+        } as HeadersInit,
+        method: 'POST',
+      });
+
+      if (!oauth2Response.ok) {
+        const oauth2ErrorText: string = await oauth2Response.text();
+
+        throw new ThunderIDAPIError(
+          oauth2ErrorText,
+          'executeEmbeddedSignInFlow-OAuth2Error-002',
+          'javascript',
+          oauth2Response.status,
+          oauth2Response.statusText,
+          'OAuth2 authorization failed',
+        );
+      }
+
+      const oauth2Result: Record<string, unknown> = await oauth2Response.json();
+
+      return {
+        flowStatus: flowResponse.flowStatus,
+        redirectUrl: oauth2Result['redirect_uri'],
+      } as any;
+    } catch (authError) {
+      if (authError instanceof ThunderIDAPIError) {
+        throw authError;
+      }
+
+      throw new ThunderIDAPIError(
+        authError instanceof Error ? authError.message : 'Unknown error',
+        'executeEmbeddedSignInFlow-OAuth2Error-001',
+        'javascript',
+        500,
+        'Failed to complete OAuth2 authorization after successful embedded sign-in flow.',
+        'OAuth2 authorization failed',
+      );
+    }
+  }
+
+  return flowResponse;
 };
 
 export default executeEmbeddedSignInFlow;

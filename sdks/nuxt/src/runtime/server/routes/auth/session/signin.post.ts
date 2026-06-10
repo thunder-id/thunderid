@@ -45,7 +45,7 @@ function isTokenResponse(value: unknown): value is TokenResponse {
  * Handles embedded (app-native) sign-in flow steps.
  *
  * Request body:
- * - `payload` — the embedded flow step payload (`EmbeddedSignInFlowHandleRequestPayload`).
+ * - `payload` — the embedded flow step payload .
  *   When omitted or `{}`, the flow is initialised and the authorize URL is returned.
  * - `request` — optional per-step config (e.g. `{ url }` override).
  *
@@ -95,8 +95,11 @@ export default defineEventHandler(async (event: H3Event) => {
   const payload: Record<string, unknown> = body?.payload ?? {};
   const request: Record<string, unknown> = body?.request ?? {};
 
-  // ── Initiate flow (no payload or empty payload) ────────────────────────────
-  if (isEmpty(payload) || !('flowId' in payload)) {
+  // ── Initiate flow (no payload or not an embedded-flow payload) ──────────────
+  // Embedded flow payloads carry `flowType` (init) or `executionId` (step).
+  const isEmbeddedPayload: boolean =
+    !isEmpty(payload) && ('flowType' in payload || 'executionId' in payload);
+  if (!isEmbeddedPayload) {
     try {
       const signInUrl: string = await client.getAuthorizeRequestUrl(
         {client_secret: '{{clientSecret}}', response_mode: 'direct'},
@@ -123,7 +126,7 @@ export default defineEventHandler(async (event: H3Event) => {
   }
 
   // ── Flow complete — exchange code for tokens and issue session cookie ───────
-  if ((response as {flowStatus?: unknown})?.flowStatus === EmbeddedSignInFlowStatus.SuccessCompleted) {
+  if ((response as {flowStatus?: unknown})?.flowStatus === EmbeddedSignInFlowStatus.Complete) {
     const authData: {code?: string; session_state?: string; state?: string} =
       (response as {authData?: {code?: string; session_state?: string; state?: string}})?.authData ?? {};
     const {code, state, session_state: sessionState} = authData;

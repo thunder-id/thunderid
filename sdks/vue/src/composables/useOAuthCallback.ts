@@ -19,11 +19,11 @@
 import {watch, type Ref} from 'vue';
 
 export interface UseOAuthCallbackOptions {
-  /** Current flowId from component state */
-  currentFlowId: Ref<string | null>;
+  /** Current executionId from component state */
+  currentExecutionId: Ref<string | null>;
 
-  /** SessionStorage key for flowId (defaults to 'thunderid_flow_id') */
-  flowIdStorageKey?: string;
+  /** SessionStorage key for executionId (defaults to 'thunderid_execution_id') */
+  executionIdStorageKey?: string;
 
   /** Whether the component is initialized and ready to process OAuth callback */
   isInitialized: Ref<boolean>;
@@ -49,8 +49,8 @@ export interface UseOAuthCallbackOptions {
   /** Mutable flag to track whether OAuth has already been processed */
   processedFlag?: {value: boolean};
 
-  /** Additional handler for setting state (e.g., setFlowId) */
-  setFlowId?: (flowId: string) => void;
+  /** Additional handler for setting state (e.g., setExecutionId) */
+  setExecutionId?: (executionId: string) => void;
 
   /**
    * Mutable flag for token validation tracking.
@@ -60,13 +60,23 @@ export interface UseOAuthCallbackOptions {
 }
 
 export interface OAuthCallbackPayload {
-  flowId: string;
+  /** The execution ID of the active flow step */
+  executionId: string;
+
+  /** OAuth callback inputs extracted from the redirect URL */
   inputs: {
+    /** The authorization code returned by the OAuth provider */
     code: string;
+
+    /** Optional nonce for OIDC replay protection */
     nonce?: string;
   };
 }
 
+/**
+ * Removes OAuth-related query parameters from the current URL without triggering a navigation.
+ * This prevents re-processing the callback on subsequent renders or page interactions.
+ */
 function cleanupUrlParams(): void {
   if (typeof window === 'undefined') return;
 
@@ -81,14 +91,14 @@ function cleanupUrlParams(): void {
 }
 
 /**
- * Processes OAuth callbacks by detecting auth code in URL, resolving flowId, and submitting to server.
+ * Processes OAuth callbacks by detecting auth code in URL, resolving executionId, and submitting to server.
  * Used by SignIn, SignUp, and AcceptInvite components.
  *
  * Vue composable equivalent of React's useOAuthCallback hook.
  */
 export function useOAuthCallback({
-  currentFlowId,
-  flowIdStorageKey = 'thunderid_flow_id',
+  currentExecutionId,
+  executionIdStorageKey = 'thunderid_execution_id',
   isInitialized,
   isSubmitting,
   onComplete,
@@ -97,28 +107,38 @@ export function useOAuthCallback({
   onProcessingStart,
   onSubmit,
   processedFlag,
-  setFlowId,
+  setExecutionId,
   tokenValidationAttemptedFlag,
 }: UseOAuthCallbackOptions): void {
+  /** Fallback mutable flag used when no external processedFlag is provided */
   const internalFlag: {value: boolean} = {value: false};
+
+  /** Ensures OAuth code is submitted only once, even across reactive re-evaluations */
   const oauthCodeProcessedFlag: {value: boolean} = processedFlag ?? internalFlag;
+
+  /** Tracks whether token validation has been attempted; used to coordinate with AcceptInvite */
   const tokenValidationFlag: {value: boolean} | undefined = tokenValidationAttemptedFlag;
 
+  // Re-run whenever initialization state, executionId, or submission state changes.
+  // `immediate: true` ensures the callback runs on mount to catch OAuth redirects on first load.
   watch(
-    () => [isInitialized.value, currentFlowId.value, isSubmitting?.value] as const,
+    () => [isInitialized.value, currentExecutionId.value, isSubmitting?.value] as const,
     ([initialized, , submitting]: readonly [boolean, string | null, boolean | undefined]) => {
+      // Wait until the component is ready and any in-flight submission has settled.
       if (!initialized || submitting) {
         return;
       }
 
+      // Extract all OAuth-related parameters from the redirect URL.
       const urlParams: URLSearchParams = new URLSearchParams(window.location.search);
       const code: string | null = urlParams.get('code');
       const nonce: string | null = urlParams.get('nonce');
       const state: string | null = urlParams.get('state');
-      const flowIdFromUrl: string | null = urlParams.get('flowId');
+      const executionIdFromUrl: string | null = urlParams.get('executionId');
       const error: string | null = urlParams.get('error');
       const errorDescription: string | null = urlParams.get('error_description');
 
+      // Handle OAuth provider errors (e.g., user denied consent) before processing the code.
       if (error) {
         oauthCodeProcessedFlag.value = true;
         if (tokenValidationFlag) {
@@ -129,40 +149,53 @@ export function useOAuthCallback({
         return;
       }
 
+      // Skip if there is no authorization code or if it has already been submitted.
       if (!code || oauthCodeProcessedFlag.value) {
         return;
       }
 
+      // In AcceptInvite flows, token validation runs concurrently. If it has already
+      // started, the OAuth callback should not interfere.
       if (tokenValidationFlag?.value) {
         return;
       }
 
-      const storedFlowId: string | null = sessionStorage.getItem(flowIdStorageKey);
-      const flowIdToUse: string | null = currentFlowId.value || storedFlowId || flowIdFromUrl || state || null;
+      // Resolve executionId using the most specific available source:
+      // component state > sessionStorage > URL param > OAuth state param.
+      const storedExecutionId: string | null = sessionStorage.getItem(executionIdStorageKey);
+      const executionIdToUse: string | null =
+        currentExecutionId.value || storedExecutionId || executionIdFromUrl || state || null;
 
-      if (!flowIdToUse) {
+      // Cannot proceed without an executionId — the flow context is missing.
+      if (!executionIdToUse) {
         oauthCodeProcessedFlag.value = true;
-        onError?.(new Error('Invalid flow. Missing flowId.'));
+        onError?.(new Error('Invalid flow. Missing executionId.'));
         cleanupUrlParams();
         return;
       }
 
+      // Mark as processed synchronously before the async submission to prevent
+      // duplicate submissions if the watcher fires again during the await.
       oauthCodeProcessedFlag.value = true;
 
       if (tokenValidationFlag) {
         tokenValidationFlag.value = true;
       }
 
+      // Signal the component to enter a loading state before the async work begins.
       onProcessingStart?.();
 
-      if (!currentFlowId.value && setFlowId) {
-        setFlowId(flowIdToUse);
+      // Sync the resolved executionId back into component state if it was sourced
+      // from sessionStorage or the URL rather than reactive state.
+      if (!currentExecutionId.value && setExecutionId) {
+        setExecutionId(executionIdToUse);
       }
 
+      // Submit the OAuth code in an IIFE to allow async/await inside a synchronous watcher callback.
       (async (): Promise<void> => {
         try {
           const payload: OAuthCallbackPayload = {
-            flowId: flowIdToUse,
+            executionId: executionIdToUse,
             inputs: {
               code,
               ...(nonce && {nonce}),
@@ -171,6 +204,7 @@ export function useOAuthCallback({
 
           const response: any = await onSubmit(payload);
 
+          // Notify the component so it can update its flow state (e.g., move to the next step).
           onFlowChange?.(response);
 
           if (response?.flowStatus === 'COMPLETE' || response?.status === 'COMPLETE') {

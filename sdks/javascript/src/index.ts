@@ -18,9 +18,13 @@
 
 export {IsomorphicCrypto} from './IsomorphicCrypto';
 
-export {default as initializeEmbeddedSignInFlow} from './api/initializeEmbeddedSignInFlow';
 export {default as executeEmbeddedSignInFlow} from './api/executeEmbeddedSignInFlow';
 export {default as executeEmbeddedSignUpFlow} from './api/executeEmbeddedSignUpFlow';
+export {default as executeEmbeddedRecoveryFlow} from './api/executeEmbeddedRecoveryFlow';
+export {default as executeEmbeddedUserOnboardingFlow} from './api/executeEmbeddedUserOnboardingFlow';
+export type {EmbeddedUserOnboardingFlowResponse} from './api/executeEmbeddedUserOnboardingFlow';
+export {default as getFlowMeta} from './api/getFlowMeta';
+export {default as getOrganizationUnitChildren} from './api/getOrganizationUnitChildren';
 export {default as getUserInfo} from './api/getUserInfo';
 export {default as getScim2Me} from './api/getScim2Me';
 export type {GetScim2MeConfig} from './api/getScim2Me';
@@ -40,13 +44,6 @@ export {default as updateMeProfile} from './api/updateMeProfile';
 export type {UpdateMeProfileConfig} from './api/updateMeProfile';
 export {default as getBrandingPreference} from './api/getBrandingPreference';
 export type {GetBrandingPreferenceConfig} from './api/getBrandingPreference';
-export {default as executeEmbeddedSignInFlowV2} from './api/v2/executeEmbeddedSignInFlowV2';
-export {default as executeEmbeddedSignUpFlowV2} from './api/v2/executeEmbeddedSignUpFlowV2';
-export {default as executeEmbeddedRecoveryFlowV2} from './api/v2/executeEmbeddedRecoveryFlowV2';
-export {default as executeEmbeddedUserOnboardingFlowV2} from './api/v2/executeEmbeddedUserOnboardingFlowV2';
-export type {EmbeddedUserOnboardingFlowResponse} from './api/v2/executeEmbeddedUserOnboardingFlowV2';
-export {default as getFlowMetaV2} from './api/v2/getFlowMetaV2';
-export {default as getOrganizationUnitChildren} from './api/v2/getOrganizationUnitChildren';
 
 export {default as ApplicationNativeAuthenticationConstants} from './constants/ApplicationNativeAuthenticationConstants';
 export {default as TokenConstants} from './constants/TokenConstants';
@@ -61,77 +58,64 @@ export {ThunderIDAuthException} from './errors/exception';
 export type {AllOrganizationsApiResponse} from './models/organization';
 export {Platform} from './models/platforms';
 export {
+  EmbeddedFlowType,
+  EmbeddedFlowResponseType,
+  EmbeddedFlowComponentType,
+  EmbeddedFlowActionVariant,
+  EmbeddedFlowTextVariant,
+  EmbeddedFlowEventType,
+} from './models/embedded-flow';
+export type {
+  EmbeddedFlowComponent,
+  EmbeddedFlowResponseData,
+  EmbeddedFlowExecuteRequestConfig,
+  FlowExecutionError,
+  ConsentAttributeElement,
+  ConsentPurposeDecision,
+  ConsentDecisions,
+  ConsentPurposeData,
+  ConsentPromptData,
+  I18nMessage,
+} from './models/embedded-flow';
+export {
   EmbeddedSignInFlowStatus,
   EmbeddedSignInFlowType,
-  EmbeddedSignInFlowStepType,
-  EmbeddedSignInFlowAuthenticatorParamType,
-  EmbeddedSignInFlowAuthenticatorPromptType,
-  EmbeddedSignInFlowAuthenticatorKnownIdPType,
 } from './models/embedded-signin-flow';
 export type {
-  EmbeddedSignInFlowInitiateResponse,
-  EmbeddedSignInFlowAuthenticator,
-  EmbeddedSignInFlowLink,
-  EmbeddedSignInFlowHandleRequestPayload,
-  EmbeddedSignInFlowHandleResponse,
+  ExtendedEmbeddedSignInFlowResponse,
+  EmbeddedSignInFlowResponse,
+  EmbeddedSignInFlowCompleteResponse,
+  EmbeddedSignInFlowInitiateRequest,
+  EmbeddedSignInFlowRequest,
 } from './models/embedded-signin-flow';
 export {
-  EmbeddedFlowComponentType as EmbeddedFlowComponentTypeV2,
-  EmbeddedFlowActionVariant as EmbeddedFlowActionVariantV2,
-  EmbeddedFlowTextVariant as EmbeddedFlowTextVariantV2,
-  EmbeddedFlowEventType as EmbeddedFlowEventTypeV2,
-} from './models/v2/embedded-flow-v2';
+  EmbeddedSignUpFlowStatus,
+  EmbeddedSignUpFlowType,
+} from './models/embedded-signup-flow';
 export type {
-  EmbeddedFlowComponent as EmbeddedFlowComponentV2,
-  EmbeddedFlowResponseData as EmbeddedFlowResponseDataV2,
-  EmbeddedFlowExecuteRequestConfig as EmbeddedFlowExecuteRequestConfigV2,
-  FlowExecutionError,
-  ConsentAttributeElement as ConsentAttributeElementV2,
-  ConsentPurposeDecision as ConsentPurposeDecisionV2,
-  ConsentDecisions as ConsentDecisionsV2,
-  ConsentPurposeData as ConsentPurposeDataV2,
-  ConsentPromptData as ConsentPromptDataV2,
-  I18nMessage,
-} from './models/v2/embedded-flow-v2';
+  ExtendedEmbeddedSignUpFlowResponse,
+  EmbeddedSignUpFlowResponse,
+  EmbeddedSignUpFlowCompleteResponse,
+  EmbeddedSignUpFlowInitiateRequest,
+  EmbeddedSignUpFlowRequest,
+  EmbeddedSignUpFlowErrorResponse,
+} from './models/embedded-signup-flow';
 export {
-  EmbeddedSignInFlowStatus as EmbeddedSignInFlowStatusV2,
-  EmbeddedSignInFlowType as EmbeddedSignInFlowTypeV2,
-} from './models/v2/embedded-signin-flow-v2';
+  EmbeddedRecoveryFlowStatus,
+  EmbeddedRecoveryFlowType,
+} from './models/embedded-recovery-flow';
 export type {
-  ExtendedEmbeddedSignInFlowResponse as ExtendedEmbeddedSignInFlowResponseV2,
-  EmbeddedSignInFlowResponse as EmbeddedSignInFlowResponseV2,
-  EmbeddedSignInFlowCompleteResponse as EmbeddedSignInFlowCompleteResponseV2,
-  EmbeddedSignInFlowInitiateRequest as EmbeddedSignInFlowInitiateRequestV2,
-  EmbeddedSignInFlowRequest as EmbeddedSignInFlowRequestV2,
-} from './models/v2/embedded-signin-flow-v2';
-export {
-  EmbeddedSignUpFlowStatus as EmbeddedSignUpFlowStatusV2,
-  EmbeddedSignUpFlowType as EmbeddedSignUpFlowTypeV2,
-} from './models/v2/embedded-signup-flow-v2';
-export type {
-  ExtendedEmbeddedSignUpFlowResponse as ExtendedEmbeddedSignUpFlowResponseV2,
-  EmbeddedSignUpFlowResponse as EmbeddedSignUpFlowResponseV2,
-  EmbeddedSignUpFlowCompleteResponse as EmbeddedSignUpFlowCompleteResponseV2,
-  EmbeddedSignUpFlowInitiateRequest as EmbeddedSignUpFlowInitiateRequestV2,
-  EmbeddedSignUpFlowRequest as EmbeddedSignUpFlowRequestV2,
-  EmbeddedSignUpFlowErrorResponse as EmbeddedSignUpFlowErrorResponseV2,
-} from './models/v2/embedded-signup-flow-v2';
-export {
-  EmbeddedRecoveryFlowStatus as EmbeddedRecoveryFlowStatusV2,
-  EmbeddedRecoveryFlowType as EmbeddedRecoveryFlowTypeV2,
-} from './models/v2/embedded-recovery-flow-v2';
-export type {
-  EmbeddedRecoveryFlowResponse as EmbeddedRecoveryFlowResponseV2,
-  EmbeddedRecoveryFlowInitiateRequest as EmbeddedRecoveryFlowInitiateRequestV2,
-  EmbeddedRecoveryFlowRequest as EmbeddedRecoveryFlowRequestV2,
-  EmbeddedRecoveryFlowErrorResponse as EmbeddedRecoveryFlowErrorResponseV2,
-} from './models/v2/embedded-recovery-flow-v2';
+  EmbeddedRecoveryFlowResponse,
+  EmbeddedRecoveryFlowInitiateRequest,
+  EmbeddedRecoveryFlowRequest,
+  EmbeddedRecoveryFlowErrorResponse,
+} from './models/embedded-recovery-flow';
 export type {
   OrganizationUnit,
   OrganizationUnitListResponse,
   GetOrganizationUnitChildrenConfig,
-} from './models/v2/organization-unit';
-export {FlowMetaType} from './models/v2/flow-meta-v2';
+} from './models/organization-unit';
+export {FlowMetaType} from './models/flow-meta';
 export type {
   ApplicationMetadata,
   OUMetadata,
@@ -147,21 +131,7 @@ export type {
   FlowMetaThemeColorScheme,
   FlowMetaThemeShape,
   FlowMetaThemeTypography,
-} from './models/v2/flow-meta-v2';
-export {
-  EmbeddedFlowType,
-  EmbeddedFlowStatus,
-  EmbeddedFlowResponseType,
-  EmbeddedFlowComponentType,
-} from './models/embedded-flow';
-export type {
-  EmbeddedFlowExecuteResponse,
-  EmbeddedSignUpFlowData,
-  EmbeddedFlowComponent,
-  EmbeddedFlowExecuteRequestPayload,
-  EmbeddedFlowExecuteRequestConfig,
-  EmbeddedFlowExecuteErrorResponse,
-} from './models/embedded-flow';
+} from './models/flow-meta';
 export {FlowMode} from './models/flow';
 export type {ThunderIDClient} from './models/client';
 export type {
@@ -185,7 +155,7 @@ export type {
   SignUpOptions,
 } from './models/config';
 export type {TokenEndpointAuthMethod} from './models/token-endpoint-auth';
-export type {ComponentRenderContext, ComponentRenderer, ComponentsExtensions} from './models/v2/extensions/components';
+export type {ComponentRenderContext, ComponentRenderer, ComponentsExtensions} from './models/extensions/components';
 export type {TokenResponse, IdToken, TokenExchangeRequestConfig} from './models/token';
 export type {AgentConfig} from './models/agent';
 export type {AuthCodeResponse} from './models/auth-code-response';
@@ -202,8 +172,8 @@ export type {Storage, TemporaryStore} from './models/store';
 export type {User, UserProfile} from './models/user';
 export type {SessionData} from './models/session';
 export type {Organization} from './models/organization';
-export type {TranslationFn} from './models/v2/translation';
-export type {ResolveFlowTemplateLiteralsOptions} from './models/v2/vars';
+export type {TranslationFn} from './models/translation';
+export type {ResolveFlowTemplateLiteralsOptions} from './models/vars';
 export type {
   BrandingPreference,
   BrandingPreferenceConfig,
@@ -244,18 +214,17 @@ export {default as generateFlattenedUserProfile} from './utils/generateFlattened
 export {default as getRedirectBasedSignUpUrl} from './utils/getRedirectBasedSignUpUrl';
 export {default as identifyPlatform} from './utils/identifyPlatform';
 export {default as isEmpty} from './utils/isEmpty';
-export {default as isEmojiUri, EMOJI_URI_SCHEME} from './utils/v2/isEmojiUri';
-export {default as extractEmojiFromUri} from './utils/v2/extractEmojiFromUri';
+export {default as isEmojiUri, EMOJI_URI_SCHEME} from './utils/isEmojiUri';
+export {default as extractEmojiFromUri} from './utils/extractEmojiFromUri';
 export {default as set} from './utils/set';
 export {default as get} from './utils/get';
 export {default as removeTrailingSlash} from './utils/removeTrailingSlash';
-export {default as resolveFieldType} from './utils/resolveFieldType';
 export {default as resolveFieldName} from './utils/resolveFieldName';
-export {default as resolveMeta} from './utils/v2/resolveMeta';
-export {default as resolveFlowTemplateLiterals} from './utils/v2/resolveFlowTemplateLiterals';
-export {default as countryCodeToFlagEmoji} from './utils/v2/countryCodeToFlagEmoji';
-export {default as resolveLocaleDisplayName} from './utils/v2/resolveLocaleDisplayName';
-export {default as resolveLocaleEmoji} from './utils/v2/resolveLocaleEmoji';
+export {default as resolveMeta} from './utils/resolveMeta';
+export {default as resolveFlowTemplateLiterals} from './utils/resolveFlowTemplateLiterals';
+export {default as countryCodeToFlagEmoji} from './utils/countryCodeToFlagEmoji';
+export {default as resolveLocaleDisplayName} from './utils/resolveLocaleDisplayName';
+export {default as resolveLocaleEmoji} from './utils/resolveLocaleEmoji';
 export {default as processOpenIDScopes} from './utils/processOpenIDScopes';
 export {default as withVendorCSSClassPrefix} from './utils/withVendorCSSClassPrefix';
 export {default as transformBrandingPreferenceToTheme} from './utils/transformBrandingPreferenceToTheme';

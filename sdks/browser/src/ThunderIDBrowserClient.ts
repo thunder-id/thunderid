@@ -28,7 +28,6 @@ import {
   Storage,
   TokenResponse,
   extractPkceStorageKeyFromState,
-  initializeEmbeddedSignInFlow,
   HttpError,
   HttpRequestConfig,
   HttpResponse,
@@ -299,14 +298,6 @@ class ThunderIDBrowserClient<T = BrowserAuthConfig> extends ThunderIDJavaScriptC
 
       if (tokenRequestConfig) {
         (sm as any).setTemporaryDataParameter(TOKEN_REQUEST_CONFIG_KEY, JSON.stringify(tokenRequestConfig));
-      }
-
-      if ((signInConfig as any)?.response_mode === 'direct') {
-        const authorizeUrl: URL = new URL(url);
-        return initializeEmbeddedSignInFlow({
-          url: `${authorizeUrl.origin}${authorizeUrl.pathname}`,
-          payload: Object.fromEntries(authorizeUrl.searchParams.entries()),
-        });
       }
 
       location.href = url;

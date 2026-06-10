@@ -31,7 +31,7 @@ import {
   UserProfile,
   SignInOptions,
   TokenResponse,
-  EmbeddedSignInFlowResponseV2,
+  EmbeddedSignInFlowResponse,
 } from '@thunderid/browser';
 import {
   type Component,
@@ -255,7 +255,7 @@ const ThunderIDProvider: Component = defineComponent({
     }
 
     // ── Sign In (wrapper) ──
-    async function signIn(...args: any[]): Promise<User | EmbeddedSignInFlowResponseV2> {
+    async function signIn(...args: any[]): Promise<User | EmbeddedSignInFlowResponse> {
       const arg1: any = args[0];
       const isV2FlowRequest: boolean =
         typeof arg1 === 'object' && arg1 !== null && ('executionId' in arg1 || 'applicationId' in arg1);

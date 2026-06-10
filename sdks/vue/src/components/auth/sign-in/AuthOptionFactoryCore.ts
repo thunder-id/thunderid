@@ -19,18 +19,18 @@
 import {
   FieldType,
   FlowMetadataResponse,
-  EmbeddedFlowComponentV2 as EmbeddedFlowComponent,
-  EmbeddedFlowComponentTypeV2 as EmbeddedFlowComponentType,
-  EmbeddedFlowTextVariantV2 as EmbeddedFlowTextVariant,
-  EmbeddedFlowEventTypeV2 as EmbeddedFlowEventType,
+  EmbeddedFlowComponent,
+  EmbeddedFlowComponentType,
+  EmbeddedFlowTextVariant,
+  EmbeddedFlowEventType,
   resolveFlowTemplateLiterals,
   extractEmojiFromUri,
   isEmojiUri,
-  ConsentPurposeDataV2 as ConsentPurposeData,
-  ConsentPromptDataV2 as ConsentPromptData,
-  ConsentDecisionsV2 as ConsentDecisions,
-  ConsentPurposeDecisionV2 as ConsentPurposeDecision,
-  ConsentAttributeElementV2 as ConsentAttributeElement,
+  ConsentPurposeData,
+  ConsentPromptData,
+  ConsentDecisions,
+  ConsentPurposeDecision,
+  ConsentAttributeElement,
 } from '@thunderid/browser';
 import DOMPurify from 'dompurify';
 import {h, type VNode} from 'vue';

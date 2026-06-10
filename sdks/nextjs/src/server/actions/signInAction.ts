@@ -21,9 +21,8 @@
 import {
   generateSessionId,
   EmbeddedSignInFlowStatus,
-  EmbeddedSignInFlowHandleRequestPayload,
   EmbeddedFlowExecuteRequestConfig,
-  EmbeddedSignInFlowInitiateResponse,
+  EmbeddedSignInFlowResponse,
   IdToken,
   isEmpty,
 } from '@thunderid/node';
@@ -44,15 +43,10 @@ type RequestCookies = Awaited<ReturnType<typeof cookies>>;
  * @returns Promise that resolves when sign-in is complete
  */
 const signInAction = async (
-  payload?: EmbeddedSignInFlowHandleRequestPayload,
+  payload?: any,
   request?: EmbeddedFlowExecuteRequestConfig,
 ): Promise<{
-  data?:
-    | {
-        afterSignInUrl?: string;
-        signInUrl?: string;
-      }
-    | EmbeddedSignInFlowInitiateResponse;
+  data?: {afterSignInUrl?: string; signInUrl?: string} | EmbeddedSignInFlowResponse;
   error?: string;
   success: boolean;
 }> => {
@@ -107,7 +101,7 @@ const signInAction = async (
     // Handle embedded sign-in flow
     const response: any = await client.signIn(payload, request!, sessionId);
 
-    if (response.flowStatus === EmbeddedSignInFlowStatus.SuccessCompleted) {
+    if (response.flowStatus === EmbeddedSignInFlowStatus.Complete) {
       const signInResult: Record<string, unknown> = await client.signIn(
         {
           code: response?.authData?.code,
@@ -163,7 +157,7 @@ const signInAction = async (
       return {data: {afterSignInUrl: String(afterSignInUrl)}, success: true};
     }
 
-    return {data: response as EmbeddedSignInFlowInitiateResponse, success: true};
+    return {data: response as EmbeddedSignInFlowResponse, success: true};
   } catch (error) {
     logger.error(`[signInAction] Error during sign-in: ${error instanceof Error ? error.message : String(error)}`);
     return {error: String(error), success: false};

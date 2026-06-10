@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -16,107 +16,140 @@
  * under the License.
  */
 
-import {
-  BrowserThemeDetection,
-  Platform,
-  RecursivePartial,
-  ThemeConfig,
-  ThemeMode,
-  ThemePreferences,
-} from '@thunderid/browser';
-import {FC, PropsWithChildren, ReactElement} from 'react';
-import V1ThemeProvider from './v1/ThemeProvider';
-import ThemeProviderV2, {ThemeProviderProps as ThemeProviderV2Props} from './v2/ThemeProvider';
-import useThunderID from '../ThunderID/useThunderID';
+import {createTheme, Theme, ThemeConfig, RecursivePartial, FlowMetaTheme} from '@thunderid/browser';
+import {FC, PropsWithChildren, ReactElement, useCallback, useContext, useEffect, useMemo, useState} from 'react';
+import applyThemeToDOM from '../../utils/applyThemeToDOM';
+import normalizeThemeConfig from '../../utils/normalizeThemeConfig';
+import buildThemeConfigFromFlowMeta from '../../utils/buildThemeConfigFromFlowMeta';
+import FlowMetaContext, {FlowMetaContextValue} from '../FlowMeta/FlowMetaContext';
+import ThemeContext from './ThemeContext';
 
 export interface ThemeProviderProps {
-  // ─── v1 props (ignored in v2 mode) ──────────────────────────────────────────
   /**
-   * Configuration for theme detection when using 'class' or 'system' mode.
-   */
-  detection?: BrowserThemeDetection;
-  /**
-   * Whether to inherit the theme from the ThunderID branding preference.
-   * @default true
-   */
-  inheritFromBranding?: ThemePreferences['inheritFromBranding'];
-  /**
-   * The theme mode to use for automatic detection.
-   * - `'light'` | `'dark'`: Fixed color scheme.
-   * - `'system'`: Follows the OS preference.
-   * - `'class'`: Detects theme from CSS classes on the `<html>` element.
-   * - `'branding'`: Follows the active theme from the branding preference.
-   */
-  mode?: ThemeMode | 'branding';
-
-  // ─── shared ──────────────────────────────────────────────────────────────────
-  /**
-   * Optional partial theme overrides applied on top of the resolved theme.
-   * User-supplied values always take the highest precedence.
+   * Optional theme overrides merged on top of the server-side flow meta theme.
+   * User-supplied values take highest precedence.
    */
   theme?: RecursivePartial<ThemeConfig>;
 }
 
 /**
- * ThemeProvider is the single entry-point for theme management in `@thunderid/react`.
+ * ThemeProvider is the v2 drop-in replacement for `ThemeProvider`.
  *
- * It transparently switches between two internal implementations:
+ * It reads the design theme from the nearest `FlowMetaContext` (provided by
+ * `FlowMetaProvider`) and publishes a resolved `Theme` object through the
+ * **same** `ThemeContext` that `useTheme` consumes.  This means all existing
+ * components that call `useTheme` continue to work without any changes.
  *
- * **v1** (`ThemeProvider` classic): Sources colors from the ThunderID Branding API.
- * Used automatically when no `FlowMetaProvider` is present in the component tree.
- *
- * **v2** (`FlowMetaThemeProvider`): Sources colors from the `GET /flow/meta` endpoint
- * via `FlowMetaProvider`. Used automatically when a `FlowMetaProvider` is present
- * in the tree — or when `version="v2"` is set explicitly.
- *
- * The active version can also be pinned explicitly via the `version` prop.
- * All components that consume `useTheme()` continue to work regardless of which
- * version is active.
+ * The `defaultColorScheme` field returned by the server is used to seed the
+ * active color scheme; the user can still toggle it locally via the
+ * `toggleTheme` value exposed in the context.
  *
  * @example
- * Auto-detection (recommended):
  * ```tsx
- * // v2 mode – FlowMetaProvider is present
  * <FlowMetaProvider config={{ baseUrl, type: FlowMetaType.App, id: appId }}>
  *   <ThemeProvider>
- *     <App />
+ *     <App />   {/* useTheme() works here as usual *\/}
  *   </ThemeProvider>
  * </FlowMetaProvider>
- *
- * // v1 mode – no FlowMetaProvider
- * <ThemeProvider>
- *   <App />
- * </ThemeProvider>
  * ```
  *
  * @example
- * Explicit version pinning:
+ * With user theme overrides (user values win over server values):
  * ```tsx
- * <ThemeProvider version="v2">
+ * <ThemeProvider theme={{ colors: { primary: { main: '#ff0000' } } }}>
  *   <App />
  * </ThemeProvider>
  * ```
  */
 const ThemeProvider: FC<PropsWithChildren<ThemeProviderProps>> = ({
   children,
-  theme,
-  detection,
-  inheritFromBranding,
-  mode,
+  theme: themeOverrideProp,
 }: PropsWithChildren<ThemeProviderProps>): ReactElement => {
-  const {platform} = useThunderID();
+  const themeOverride: RecursivePartial<ThemeConfig> | undefined = normalizeThemeConfig(themeOverrideProp);
+  const flowMetaContext: FlowMetaContextValue | null = useContext(FlowMetaContext);
 
-  if (platform === Platform.ThunderID) {
-    const v2Props: ThemeProviderV2Props = {theme};
+  const flowMetaTheme: FlowMetaTheme | null = flowMetaContext?.meta?.design?.theme ?? null;
+  const isLoading: boolean = flowMetaContext?.isLoading ?? false;
+  const error: Error | null = flowMetaContext?.error ?? null;
 
-    return <ThemeProviderV2 {...v2Props}>{children}</ThemeProviderV2>;
-  }
+  // Seed the color scheme from the server's defaultColorScheme; allow local toggling.
+  const [colorScheme, setColorScheme] = useState<'light' | 'dark'>(() => flowMetaTheme?.defaultColorScheme ?? 'light');
 
-  return (
-    <V1ThemeProvider detection={detection} inheritFromBranding={inheritFromBranding} mode={mode} theme={theme}>
-      {children}
-    </V1ThemeProvider>
+  // When meta finishes loading, sync the color scheme with the server default.
+  useEffect(() => {
+    if (flowMetaTheme?.defaultColorScheme) {
+      setColorScheme(flowMetaTheme.defaultColorScheme);
+    }
+  }, [flowMetaTheme?.defaultColorScheme]);
+
+  const toggleTheme: () => void = useCallback(() => {
+    setColorScheme((prev: 'light' | 'dark') => (prev === 'light' ? 'dark' : 'light'));
+  }, []);
+
+  // Build the resolved ThemeConfig: flow meta base → user overrides on top.
+  const finalThemeConfig: RecursivePartial<ThemeConfig> | undefined = useMemo(() => {
+    if (!flowMetaTheme) {
+      return themeOverride;
+    }
+
+    const metaConfig: RecursivePartial<ThemeConfig> = buildThemeConfigFromFlowMeta(flowMetaTheme, colorScheme);
+
+    if (!themeOverride) {
+      return metaConfig;
+    }
+
+    return {
+      ...metaConfig,
+      ...themeOverride,
+      borderRadius: {
+        ...metaConfig.borderRadius,
+        ...themeOverride.borderRadius,
+      },
+      colors: {
+        ...metaConfig.colors,
+        ...themeOverride.colors,
+      },
+      ...(metaConfig.typography || themeOverride.typography
+        ? {
+            typography: {
+              ...(metaConfig as any).typography,
+              ...themeOverride.typography,
+            },
+          }
+        : {}),
+    };
+  }, [flowMetaTheme, colorScheme, themeOverride]);
+
+  const theme: Theme = useMemo(
+    () => createTheme(finalThemeConfig, colorScheme === 'dark'),
+    [finalThemeConfig, colorScheme],
   );
+
+  const direction: 'ltr' | 'rtl' = flowMetaTheme?.direction ?? 'ltr';
+
+  // Apply CSS variables to the document root.
+  useEffect(() => {
+    applyThemeToDOM(theme);
+  }, [theme]);
+
+  // Apply text direction to the document root.
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dir = direction;
+    }
+  }, [direction]);
+
+  const value: any = {
+    brandingError: error,
+    colorScheme,
+    direction,
+    inheritFromBranding: false,
+    isBrandingLoading: isLoading,
+    theme,
+    toggleTheme,
+  };
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };
 
 export default ThemeProvider;

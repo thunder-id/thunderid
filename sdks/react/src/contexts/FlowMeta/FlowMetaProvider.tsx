@@ -19,8 +19,7 @@
 import {
   FlowMetadataResponse,
   FlowMetaType,
-  getFlowMetaV2,
-  Platform,
+  getFlowMeta,
   I18nBundle,
   TranslationBundleConstants,
 } from '@thunderid/browser';
@@ -65,7 +64,7 @@ const FlowMetaProvider: FC<PropsWithChildren<FlowMetaProviderProps>> = ({
   children,
   enabled = true,
 }: PropsWithChildren<FlowMetaProviderProps>): ReactElement => {
-  const {baseUrl, applicationId, platform, isInitialized} = useThunderID();
+  const {baseUrl, applicationId, isInitialized} = useThunderID();
   const i18nContext: I18nContextValue = useI18n();
 
   const [meta, setMeta] = useState<FlowMetadataResponse | null>(null);
@@ -82,7 +81,7 @@ const FlowMetaProvider: FC<PropsWithChildren<FlowMetaProviderProps>> = ({
   //      effect firings before the first fetch completes.
   const lastFetchedRef: RefObject<(() => Promise<void>) | null> = useRef<(() => Promise<void>) | null>(null);
   const fetchFlowMeta: () => Promise<void> = useCallback(async (): Promise<void> => {
-    if (!enabled || platform !== Platform.ThunderID) {
+    if (!enabled) {
       setMeta(null);
       setIsLoading(false);
       return;
@@ -99,7 +98,7 @@ const FlowMetaProvider: FC<PropsWithChildren<FlowMetaProviderProps>> = ({
     setError(null);
 
     try {
-      const result: FlowMetadataResponse = await getFlowMetaV2({
+      const result: FlowMetadataResponse = await getFlowMeta({
         baseUrl,
         ...(applicationId ? {id: applicationId, type: FlowMetaType.App} : {}),
         language: i18nContext?.currentLanguage,
@@ -110,17 +109,17 @@ const FlowMetaProvider: FC<PropsWithChildren<FlowMetaProviderProps>> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [enabled, platform, baseUrl, applicationId, isInitialized, i18nContext?.currentLanguage]);
+  }, [enabled, baseUrl, applicationId, isInitialized, i18nContext?.currentLanguage]);
 
   const switchLanguage: (language: string) => Promise<void> = useCallback(
     async (language: string): Promise<void> => {
-      if (!enabled || platform !== Platform.ThunderID) return;
+      if (!enabled) return;
 
       setIsLoading(true);
       setError(null);
 
       try {
-        const result: FlowMetadataResponse = await getFlowMetaV2({
+        const result: FlowMetadataResponse = await getFlowMeta({
           baseUrl,
           ...(applicationId ? {id: applicationId, type: FlowMetaType.App} : {}),
           language,
@@ -148,7 +147,7 @@ const FlowMetaProvider: FC<PropsWithChildren<FlowMetaProviderProps>> = ({
         setIsLoading(false);
       }
     },
-    [enabled, platform, baseUrl, applicationId, i18nContext],
+    [enabled, baseUrl, applicationId, i18nContext],
   );
 
   // After injectBundles + setPendingLanguage are batched and committed, this

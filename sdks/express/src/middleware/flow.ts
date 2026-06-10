@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {executeEmbeddedSignInFlowV2, logger as Logger} from '@thunderid/node';
+import {executeEmbeddedSignInFlow, logger as Logger} from '@thunderid/node';
 import express from 'express';
 import ThunderIDExpressClient from '../ThunderIDExpressClient';
 
@@ -82,7 +82,7 @@ const handleFlow = (): express.RequestHandler => {
         ? {action: 'submit', challengeToken, executionId, inputs}
         : {applicationId, flowType: flowType ?? 'SIGN_IN'};
 
-      const flowResponse = await executeEmbeddedSignInFlowV2({
+      const flowResponse = await executeEmbeddedSignInFlow({
         authId: resolvedAuthId,
         baseUrl: baseUrl,
         payload,

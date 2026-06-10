@@ -20,7 +20,7 @@ import type {OAuthResponseMode} from './oauth-response';
 import type {OIDCEndpoints} from './oidc-endpoints';
 import {TokenEndpointAuthMethod} from './token-endpoint-auth';
 import {RecursivePartial} from './utility-types';
-import {ComponentsExtensions} from './v2/extensions/components';
+import {ComponentsExtensions} from './extensions/components';
 import {I18nBundle} from '../i18n/models/i18n';
 import {ThemeConfig, ThemeMode} from '../theme/types';
 
