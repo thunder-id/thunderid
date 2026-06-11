@@ -711,7 +711,8 @@ function Package {
         if ($LASTEXITCODE -ne 0) {
             throw "Consent server packaging failed with exit code $LASTEXITCODE"
         }
-    } else {
+    }
+    else {
         Write-Host "Skipping consent server packaging (--without-consent)..."
         $targetYaml = Join-Path $package_folder "repository/conf/deployment.yaml"
         $yqPatched = $false
@@ -727,10 +728,12 @@ function Package {
             for ($i = 0; $i -lt $content.Length; $i++) {
                 if ($content[$i] -match '^consent:') {
                     $inConsent = $true
-                } elseif ($inConsent -and $content[$i] -match '^\s*enabled:\s*true') {
+                }
+                elseif ($inConsent -and $content[$i] -match '^\s*enabled:\s*true') {
                     $content[$i] = $content[$i] -replace 'enabled:\s*true', 'enabled: false'
                     $inConsent = $false
-                } elseif ($inConsent -and $content[$i] -match '^\S') {
+                }
+                elseif ($inConsent -and $content[$i] -match '^\S') {
                     $inConsent = $false
                 }
             }
@@ -741,10 +744,12 @@ function Package {
         foreach ($line in (Get-Content $targetYaml)) {
             if ($line -match '^consent:') {
                 $inConsentBlock = $true
-            } elseif ($inConsentBlock -and $line -match '^\s+enabled:\s*false') {
+            }
+            elseif ($inConsentBlock -and $line -match '^\s+enabled:\s*false') {
                 $consentDisabled = $true
                 break
-            } elseif ($inConsentBlock -and $line -match '^\S') {
+            }
+            elseif ($inConsentBlock -and $line -match '^\S') {
                 break
             }
         }
@@ -781,9 +786,9 @@ function Build-Sample-App {
     Push-Location $VANILLA_SAMPLE_APP_DIR
     try {
         Write-Host "Installing React Vanilla sample dependencies..."
-        & npm ci
+        & pnpm install --frozen-lockfile
         if ($LASTEXITCODE -ne 0) {
-            throw "npm ci failed with exit code $LASTEXITCODE"
+            throw "pnpm install failed with exit code $LASTEXITCODE"
         }
 
         Write-Host "Building React Vanilla sample app (TypeScript + Vite)..."
@@ -823,9 +828,9 @@ function Build-Sample-App {
         Push-Location $serverDir
         try {
             Write-Host " - Installing server dependencies..."
-            & npm ci
+            & pnpm install --frozen-lockfile
             if ($LASTEXITCODE -ne 0) {
-                throw "npm ci (server) failed with exit code $LASTEXITCODE"
+                throw "pnpm install (server) failed with exit code $LASTEXITCODE"
             }
         }
         finally {
@@ -848,15 +853,15 @@ function Build-Sample-App {
     Push-Location $REACT_SDK_SAMPLE_APP_DIR
     try {
         Write-Host "Installing React SDK sample dependencies..."
-        & npm ci
+        & pnpm install --frozen-lockfile
         if ($LASTEXITCODE -ne 0) {
-            throw "npm ci failed with exit code $LASTEXITCODE"
+            throw "pnpm install failed with exit code $LASTEXITCODE"
         }
 
         Write-Host "Building React SDK sample app..."
-        & npm run build
+        & pnpm run build
         if ($LASTEXITCODE -ne 0) {
-            throw "npm run build failed with exit code $LASTEXITCODE"
+            throw "pnpm run build failed with exit code $LASTEXITCODE"
         }
     }
     finally {
@@ -875,15 +880,15 @@ function Build-Sample-App {
     Push-Location $REACT_API_SAMPLE_APP_DIR
     try {
         Write-Host "Installing React API-based sample dependencies..."
-        & npm ci
+        & pnpm install --frozen-lockfile
         if ($LASTEXITCODE -ne 0) {
-            throw "npm ci failed with exit code $LASTEXITCODE"
+            throw "pnpm install failed with exit code $LASTEXITCODE"
         }
 
         Write-Host "Building React API-based sample app..."
-        & npm run build
+        & pnpm run build
         if ($LASTEXITCODE -ne 0) {
-            throw "npm run build failed with exit code $LASTEXITCODE"
+            throw "pnpm run build failed with exit code $LASTEXITCODE"
         }
     }
     finally {
@@ -898,15 +903,15 @@ function Build-Sample-App {
     Push-Location (Join-Path $WAYFINDER_SAMPLE_APP_DIR "frontend")
     try {
         Write-Host "Installing Wayfinder sample frontend dependencies..."
-        & npm ci
+        & pnpm install --frozen-lockfile
         if ($LASTEXITCODE -ne 0) {
-            throw "npm ci failed with exit code $LASTEXITCODE"
+            throw "pnpm install failed with exit code $LASTEXITCODE"
         }
 
         Write-Host "Building Wayfinder sample frontend..."
-        & npm run build
+        & pnpm run build
         if ($LASTEXITCODE -ne 0) {
-            throw "npm run build failed with exit code $LASTEXITCODE"
+            throw "pnpm run build failed with exit code $LASTEXITCODE"
         }
     }
     finally {
@@ -917,9 +922,9 @@ function Build-Sample-App {
         Write-Host "Installing Wayfinder sample $svc dependencies..."
         Push-Location (Join-Path $WAYFINDER_SAMPLE_APP_DIR $svc)
         try {
-            & npm ci
+            & pnpm install --frozen-lockfile
             if ($LASTEXITCODE -ne 0) {
-                throw "npm ci ($svc) failed with exit code $LASTEXITCODE"
+                throw "pnpm install ($svc) failed with exit code $LASTEXITCODE"
             }
         }
         finally {
@@ -1169,7 +1174,8 @@ function Test-Integration {
         Write-Host "Coverage data will be collected in: $coverage_dir"
         if ($extra_args.Count -gt 0) {
             & go run -C ./tests/integration ./main.go @extra_args
-        } else {
+        }
+        else {
             & go run -C ./tests/integration ./main.go
         }
         $test_exit_code = $LASTEXITCODE
@@ -1546,7 +1552,7 @@ function Ensure-Crypto-File {
                     $NEW_KEY = $POS_KEY_RAW.ToLower()
                     
                     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($NEW_KEY) -or $NEW_KEY.Length -ne 64) {
-                         throw "POSIX key generation command failed or returned invalid length."
+                        throw "POSIX key generation command failed or returned invalid length."
                     }
                 }
                 catch {
@@ -1572,7 +1578,7 @@ function Ensure-Crypto-File {
                 $NEW_KEY = ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLower()
             }
             catch {
-                 throw "Failed to generate crypto key using .NET: $_"
+                throw "Failed to generate crypto key using .NET: $_"
             }
         }
         # --- END: .NET cryptography fallback ---
@@ -1633,7 +1639,8 @@ function Run {
     # Configure TLS to use modern protocols (required for HTTPS requests on Windows)
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-    } catch {
+    }
+    catch {
         # Fallback to TLS 1.2 if TLS 1.3 is not available
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     }
@@ -1885,7 +1892,8 @@ function Run-Consent {
                 Write-Host "Consent server is ready"
                 break
             }
-        } catch { }
+        }
+        catch { }
         Start-Sleep -Seconds 1
         $consentElapsed++
     }
