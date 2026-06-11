@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -54,6 +55,7 @@ type groupStoreInterface interface {
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) error
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error)
 	IsGroupDeclarative(ctx context.Context, id string) (bool, error)
+	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]entity.EntityGroup, error)
 }
 
 // groupStore is the default implementation of groupStoreInterface.
@@ -556,6 +558,40 @@ func (s *groupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]G
 // IsGroupDeclarative returns false for the database store — database groups are never declarative.
 func (s *groupStore) IsGroupDeclarative(ctx context.Context, id string) (bool, error) {
 	return false, nil
+}
+
+// GetTransitiveGroupsForEntity retrieves all groups an entity belongs to, including groups
+// inherited through nested group membership, using a recursive CTE.
+func (s *groupStore) GetTransitiveGroupsForEntity(
+	ctx context.Context, entityID string,
+) ([]entity.EntityGroup, error) {
+	dbClient, err := s.dbProvider.GetUserDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, QueryGetTransitiveGroupsForMember, entityID, s.deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transitive groups for entity: %w", err)
+	}
+
+	groups := make([]entity.EntityGroup, 0, len(results))
+	for _, row := range results {
+		groupID, ok := row["id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse group id as string")
+		}
+		name, ok := row["name"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse group name as string")
+		}
+		ouID, ok := row["ou_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse group ou_id as string")
+		}
+		groups = append(groups, entity.EntityGroup{ID: groupID, Name: name, OUID: ouID})
+	}
+	return groups, nil
 }
 
 // buildGroupFromResultRow constructs a GroupDAO from a database result row.

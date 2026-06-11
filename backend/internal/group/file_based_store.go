@@ -23,8 +23,9 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/thunder-id/thunderid/internal/entity"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	entitystore "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
@@ -36,7 +37,7 @@ type fileBasedGroupStore struct {
 // newFileBasedGroupStore creates a new file-based store for groups.
 func newFileBasedGroupStore() (groupStoreInterface, transaction.Transactioner) {
 	return &fileBasedGroupStore{
-		GenericFileBasedStore: declarativeresource.NewGenericFileBasedStore(entity.KeyTypeGroup),
+		GenericFileBasedStore: declarativeresource.NewGenericFileBasedStore(entitystore.KeyTypeGroup),
 	}, transaction.NewNoOpTransactioner()
 }
 
@@ -484,6 +485,35 @@ func groupFromDeclarativeData(id string, data interface{}) (groupDeclarativeReso
 		return groupDeclarativeResource{}, ErrGroupDataCorrupted
 	}
 	return *grp, nil
+}
+
+// GetTransitiveGroupsForEntity returns all declarative groups that have the given entity as a member.
+func (f *fileBasedGroupStore) GetTransitiveGroupsForEntity(
+	ctx context.Context, entityID string,
+) ([]entity.EntityGroup, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	groups := make([]entity.EntityGroup, 0)
+	for _, item := range list {
+		grpData, err := groupFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			continue
+		}
+		for _, member := range grpData.Members {
+			if member.Type != MemberTypeGroup && member.ID == entityID {
+				groups = append(groups, entity.EntityGroup{
+					ID:   grpData.ID,
+					Name: grpData.Name,
+					OUID: grpData.OUID,
+				})
+				break
+			}
+		}
+	}
+	return groups, nil
 }
 
 // isGroupNotFoundError checks whether the error signals a missing entity.

@@ -38,6 +38,26 @@ var (
 		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" ` +
 			`WHERE DEPLOYMENT_ID = $3 ORDER BY NAME LIMIT $1 OFFSET $2`,
 	}
+
+	// QueryGetTransitiveGroupsForMember retrieves all groups a member belongs to, including groups
+	// inherited through nested group membership, using a recursive CTE.
+	QueryGetTransitiveGroupsForMember = dbmodel.DBQuery{
+		ID: "GRQ-GROUP_MGT-20",
+		Query: `WITH RECURSIVE transitive_groups AS (
+			SELECT GMR.GROUP_ID
+			FROM "GROUP_MEMBER_REFERENCE" GMR
+			WHERE GMR.MEMBER_ID = $1 AND GMR.DEPLOYMENT_ID = $2
+			UNION
+			SELECT GMR.GROUP_ID
+			FROM "GROUP_MEMBER_REFERENCE" GMR
+			INNER JOIN transitive_groups tg ON GMR.MEMBER_ID = tg.GROUP_ID
+			WHERE GMR.MEMBER_TYPE = 'group' AND GMR.DEPLOYMENT_ID = $2
+		)
+		SELECT G.ID, G.OU_ID, G.NAME
+		FROM transitive_groups tg
+		INNER JOIN "GROUP" G ON tg.GROUP_ID = G.ID AND G.DEPLOYMENT_ID = $2
+		ORDER BY G.NAME`,
+	}
 )
 
 // buildGetGroupsCountByOUIDsQuery returns the query and args to count groups

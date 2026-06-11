@@ -30,13 +30,14 @@ import (
 // getGroupStoreMode determines the store mode for groups.
 //
 // Resolution order:
-//  1. If Group.Store is explicitly configured, use it
+//  1. If Group.Store is explicitly configured, validate and use it — an
+//     unrecognised value is a hard error so the server cannot boot silently
+//     with a mistyped mode.
 //  2. Otherwise, fall back to global DeclarativeResources.Enabled:
 //     - If enabled: return "declarative"
 //     - If disabled: return "mutable"
 //
 // Returns normalized store mode: "mutable", "declarative", or "composite".
-// Returns an error when cfg.Group.Store is non-empty but not a recognized value.
 func getGroupStoreMode() (serverconst.StoreMode, error) {
 	cfg := config.GetServerRuntime().Config
 	if cfg.Group.Store != "" {
@@ -62,7 +63,8 @@ func getGroupStoreMode() (serverconst.StoreMode, error) {
 }
 
 // isGroupDeclarativeModeEnabled checks if immutable-only store mode is enabled for groups.
-// Returns false and logs on invalid configuration (startup validation should have caught it first).
+// Returns false on invalid configuration — startup validation in initializeGroupStore will
+// have already caught it.
 func isGroupDeclarativeModeEnabled() bool {
 	mode, err := getGroupStoreMode()
 	if err != nil {

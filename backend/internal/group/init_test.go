@@ -58,7 +58,6 @@ func (s *GroupInitTestSuite) TestGetGroupStoreMode_ExplicitMutable() {
 	})
 
 	mode, err := getGroupStoreMode()
-
 	s.NoError(err)
 	s.Equal(serverconst.StoreModeMutable, mode)
 }
@@ -70,7 +69,6 @@ func (s *GroupInitTestSuite) TestGetGroupStoreMode_ExplicitDeclarative() {
 	})
 
 	mode, err := getGroupStoreMode()
-
 	s.NoError(err)
 	s.Equal(serverconst.StoreModeDeclarative, mode)
 }
@@ -82,7 +80,6 @@ func (s *GroupInitTestSuite) TestGetGroupStoreMode_ExplicitComposite() {
 	})
 
 	mode, err := getGroupStoreMode()
-
 	s.NoError(err)
 	s.Equal(serverconst.StoreModeComposite, mode)
 }
@@ -95,7 +92,6 @@ func (s *GroupInitTestSuite) TestGetGroupStoreMode_FallbackToDeclarative() {
 	})
 
 	mode, err := getGroupStoreMode()
-
 	s.NoError(err)
 	s.Equal(serverconst.StoreModeDeclarative, mode)
 }
@@ -108,7 +104,6 @@ func (s *GroupInitTestSuite) TestGetGroupStoreMode_FallbackToMutable() {
 	})
 
 	mode, err := getGroupStoreMode()
-
 	s.NoError(err)
 	s.Equal(serverconst.StoreModeMutable, mode)
 }
@@ -120,10 +115,9 @@ func (s *GroupInitTestSuite) TestGetGroupStoreMode_InvalidValue() {
 	})
 
 	mode, err := getGroupStoreMode()
-
 	s.Error(err)
-	s.Empty(mode)
 	s.Contains(err.Error(), "invalid group store mode")
+	s.Empty(mode)
 }
 
 // --- isGroupDeclarativeModeEnabled ---

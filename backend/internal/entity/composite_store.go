@@ -318,11 +318,6 @@ func (c *entityCompositeStore) GetEntityGroups(ctx context.Context, entityID str
 	return c.dbStore.GetEntityGroups(ctx, entityID, limit, offset)
 }
 
-// GetTransitiveEntityGroups delegates to DB store only (groups are for mutable entities).
-func (c *entityCompositeStore) GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]EntityGroup, error) {
-	return c.dbStore.GetTransitiveEntityGroups(ctx, entityID)
-}
-
 // IsEntityDeclarative checks if an entity is declarative (exists in file store).
 func (c *entityCompositeStore) IsEntityDeclarative(ctx context.Context, id string) (bool, error) {
 	isDeclarative, err := c.fileStore.IsEntityDeclarative(ctx, id)
