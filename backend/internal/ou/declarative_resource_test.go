@@ -86,7 +86,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateResource() {
 		Name:   "Test OU",
 	}
 
-	name, err := s.exporter.ValidateResource(ou, "test-ou-1", nil)
+	name, err := s.exporter.ValidateResource(context.Background(), ou, "test-ou-1", nil)
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Test OU", name)
 }
@@ -94,7 +94,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateResource() {
 func (s *DeclarativeResourceTestSuite) TestValidateResourceInvalidType() {
 	invalidResource := "not an OU"
 
-	name, err := s.exporter.ValidateResource(invalidResource, "test-id", nil)
+	name, err := s.exporter.ValidateResource(context.Background(), invalidResource, "test-id", nil)
 	assert.NotNil(s.T(), err)
 	assert.Empty(s.T(), name)
 	assert.Equal(s.T(), "INVALID_TYPE", err.Code)

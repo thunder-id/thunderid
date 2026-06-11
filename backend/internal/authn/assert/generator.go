@@ -21,6 +21,8 @@
 package assert
 
 import (
+	"context"
+
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -32,11 +34,12 @@ const loggerComponentName = "AuthAssertGenerator"
 
 // AuthAssertGeneratorInterface defines the interface for generating auth assertion claims.
 type AuthAssertGeneratorInterface interface {
-	GenerateAssertion(authenticators []authncm.AuthenticatorReference) (*AssertionResult,
+	GenerateAssertion(ctx context.Context, authenticators []authncm.AuthenticatorReference) (*AssertionResult,
 		*serviceerror.ServiceError)
-	UpdateAssertion(context *AssuranceContext, authenticator authncm.AuthenticatorReference) (
+	UpdateAssertion(ctx context.Context, context *AssuranceContext, authenticator authncm.AuthenticatorReference) (
 		*AssertionResult, *serviceerror.ServiceError)
-	VerifyAssurance(context *AssuranceContext, requiredAAL AssuranceLevel, requiredIAL AssuranceLevel) (
+	VerifyAssurance(ctx context.Context,
+		context *AssuranceContext, requiredAAL AssuranceLevel, requiredIAL AssuranceLevel) (
 		bool, *serviceerror.ServiceError)
 }
 
@@ -49,18 +52,18 @@ func newAuthAssertGenerator() AuthAssertGeneratorInterface {
 }
 
 // GenerateAssertion generates authenticator assertion based on the provided authenticators.
-func (ag *authAssertGenerator) GenerateAssertion(
+func (ag *authAssertGenerator) GenerateAssertion(ctx context.Context,
 	authenticators []authncm.AuthenticatorReference) (*AssertionResult, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.Debug("Generating authentication assertion")
+	logger.Debug(ctx, "Generating authentication assertion")
 
 	if len(authenticators) == 0 {
-		logger.Debug("No authenticators provided for assertion generation")
+		logger.Debug(ctx, "No authenticators provided for assertion generation")
 		return nil, &ErrorNoAuthenticators
 	}
 
-	_, factorSet := ag.extractUniqueAuthenticators(authenticators, logger)
-	aal := ag.calculateAAL(factorSet, logger)
+	_, factorSet := ag.extractUniqueAuthenticators(ctx, authenticators, logger)
+	aal := ag.calculateAAL(ctx, factorSet, logger)
 	ial := ag.calculateIAL()
 
 	return &AssertionResult{
@@ -73,19 +76,19 @@ func (ag *authAssertGenerator) GenerateAssertion(
 }
 
 // UpdateAssertion updates existing assurance context with the provided authenticator.
-func (ag *authAssertGenerator) UpdateAssertion(context *AssuranceContext,
+func (ag *authAssertGenerator) UpdateAssertion(ctx context.Context, context *AssuranceContext,
 	authenticator authncm.AuthenticatorReference) (*AssertionResult, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.Debug("Updating authentication assertion with new authenticator")
+	logger.Debug(ctx, "Updating authentication assertion with new authenticator")
 
 	if context == nil {
-		logger.Debug("No existing assurance context found, generating new assertion")
-		return ag.GenerateAssertion([]authncm.AuthenticatorReference{authenticator})
+		logger.Debug(ctx, "No existing assurance context found, generating new assertion")
+		return ag.GenerateAssertion(ctx, []authncm.AuthenticatorReference{authenticator})
 	}
 
 	// Validate authenticator name is present
 	if authenticator.Authenticator == "" {
-		logger.Debug("Invalid authenticator: missing authenticator name")
+		logger.Debug(ctx, "Invalid authenticator: missing authenticator name")
 		return nil, &ErrorInvalidAuthenticator
 	}
 
@@ -95,34 +98,37 @@ func (ag *authAssertGenerator) UpdateAssertion(context *AssuranceContext,
 	allAuthenticators = append(allAuthenticators, authenticator)
 
 	// Regenerate claims with all authenticators
-	return ag.GenerateAssertion(allAuthenticators)
+	return ag.GenerateAssertion(ctx, allAuthenticators)
 }
 
 // VerifyAssurance verifies if actual assurance meets the required assurance level.
-func (ag *authAssertGenerator) VerifyAssurance(context *AssuranceContext, requiredAAL AssuranceLevel,
+func (ag *authAssertGenerator) VerifyAssurance(
+	ctx context.Context, context *AssuranceContext, requiredAAL AssuranceLevel,
 	requiredIAL AssuranceLevel) (bool, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.Debug("Verifying assurance levels")
+	logger.Debug(ctx, "Verifying assurance levels")
 
 	if context == nil {
-		logger.Debug("Nil assurance context provided")
+		logger.Debug(ctx, "Nil assurance context provided")
 		return false, &ErrorNilAssuranceContext
 	}
 	if requiredAAL == "" && requiredIAL == "" {
-		logger.Debug("No assurance levels specified for verification")
+		logger.Debug(ctx, "No assurance levels specified for verification")
 		return false, &ErrorNoAssuranceRequirements
 	}
 
 	// Check AAL level
 	if requiredAAL != "" && !ag.meetsAssuranceLevel(context.AAL, requiredAAL) {
-		logger.Debug("Actual AAL does not meet required AAL", log.String("actualAAL", string(context.AAL)),
+		logger.Debug(ctx, "Actual AAL does not meet required AAL",
+			log.String("actualAAL", string(context.AAL)),
 			log.String("requiredAAL", string(requiredAAL)))
 		return false, nil
 	}
 
 	// Check IAL level
 	if requiredIAL != "" && !ag.meetsAssuranceLevel(context.IAL, requiredIAL) {
-		logger.Debug("Actual IAL does not meet required IAL", log.String("actualIAL", string(context.IAL)),
+		logger.Debug(ctx, "Actual IAL does not meet required IAL",
+			log.String("actualIAL", string(context.IAL)),
 			log.String("requiredIAL", string(requiredIAL)))
 		return false, nil
 	}
@@ -132,7 +138,8 @@ func (ag *authAssertGenerator) VerifyAssurance(context *AssuranceContext, requir
 
 // extractUniqueAuthenticators extracts unique authenticators and factors from authenticator references.
 // Returns slices of unique authenticator names and authentication factors.
-func (ag *authAssertGenerator) extractUniqueAuthenticators(authenticators []authncm.AuthenticatorReference,
+func (ag *authAssertGenerator) extractUniqueAuthenticators(
+	ctx context.Context, authenticators []authncm.AuthenticatorReference,
 	logger *log.Logger) ([]string, []authncm.AuthenticationFactor) {
 	authenticatorsMap := make(map[string]bool)
 	factorSet := make(map[authncm.AuthenticationFactor]bool)
@@ -142,7 +149,7 @@ func (ag *authAssertGenerator) extractUniqueAuthenticators(authenticators []auth
 
 		factors := authncm.GetAuthenticatorFactors(auth.Authenticator)
 		if len(factors) == 0 {
-			logger.Debug("No factors found for authenticator. Skipping",
+			logger.Debug(ctx, "No factors found for authenticator. Skipping",
 				log.String("authenticator", auth.Authenticator))
 			continue
 		}
@@ -171,7 +178,7 @@ func (ag *authAssertGenerator) extractUniqueAuthenticators(authenticators []auth
 // - AAL1: Single-factor authentication (any one factor)
 // - AAL2: Two-factor authentication (two different factors)
 // - AAL3: Multi-factor authentication with hardware-based cryptographic authenticator
-func (ag *authAssertGenerator) calculateAAL(factorSet []authncm.AuthenticationFactor,
+func (ag *authAssertGenerator) calculateAAL(ctx context.Context, factorSet []authncm.AuthenticationFactor,
 	logger *log.Logger) AssuranceLevel {
 	var aal AssuranceLevel
 	factorCount := len(factorSet)
@@ -187,7 +194,7 @@ func (ag *authAssertGenerator) calculateAAL(factorSet []authncm.AuthenticationFa
 		aal = AALLevel3
 	}
 
-	logger.Debug("Calculated AAL from authentication factors", log.Any("factors", factorSet),
+	logger.Debug(ctx, "Calculated AAL from authentication factors", log.Any("factors", factorSet),
 		log.String("aal", string(aal)))
 
 	return aal

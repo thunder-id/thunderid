@@ -21,14 +21,19 @@ package flowexec
 import (
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
 )
@@ -879,7 +884,7 @@ func (s *EngineTestSuite) TestResolveStepDetailsForPrompt_WithMeta() {
 	s.NotNil(flowStep.Data.Meta)
 }
 
-func (s *EngineTestSuite) TestResolveStepDetailsForPrompt_WithFailureReason() {
+func (s *EngineTestSuite) TestResolveStepDetailsForPrompt_WithError() {
 	fe := &flowEngine{}
 
 	ctx := &EngineContext{}
@@ -888,7 +893,17 @@ func (s *EngineTestSuite) TestResolveStepDetailsForPrompt_WithFailureReason() {
 		Inputs: []common.Input{
 			{Identifier: "otp", Type: "string", Required: true},
 		},
-		FailureReason: "Invalid OTP provided",
+		Error: &serviceerror.ServiceError{
+			Code: "FET-1008",
+			Error: i18ncore.I18nMessage{
+				Key:          "flows.executor.errors.invalid_otp",
+				DefaultValue: "Invalid OTP provided",
+			},
+			ErrorDescription: i18ncore.I18nMessage{
+				Key:          "flows.executor.errors.invalid_otp_desc",
+				DefaultValue: "The one-time password provided is invalid or has expired",
+			},
+		},
 	}
 
 	flowStep := &FlowStep{
@@ -898,7 +913,9 @@ func (s *EngineTestSuite) TestResolveStepDetailsForPrompt_WithFailureReason() {
 	err := fe.resolveStepDetailsForPrompt(ctx, nodeResp, flowStep)
 
 	s.NoError(err)
-	s.Equal("Invalid OTP provided", flowStep.FailureReason)
+	s.NotNil(flowStep.Error)
+	s.Equal("FET-1008", flowStep.Error.Code)
+	s.Equal("Invalid OTP provided", flowStep.Error.Error.DefaultValue)
 	s.Equal(common.FlowStatusIncomplete, flowStep.Status)
 	s.Equal(common.StepTypeView, flowStep.Type)
 }
@@ -2008,4 +2025,249 @@ func (s *EngineTestSuite) TestHandleDisplayOnlyPromptResponse_ForwardToNextNode_
 	s.Nil(err)
 	s.False(complete)
 	s.Equal("", ctx.CurrentSegmentID)
+}
+
+func (s *EngineTestSuite) TestPublishNodeExecutionCompletedEvent_NodeRespErrorPublished() {
+	t := s.T()
+	mockObservability := observabilitymock.NewObservabilityServiceInterfaceMock(t)
+	mockObservability.On("IsEnabled").Return(true)
+
+	var capturedEvent *event.Event
+	mockObservability.On("PublishEvent", mock.Anything, mock.AnythingOfType("*event.Event")).
+		Run(func(args mock.Arguments) {
+			capturedEvent = args.Get(1).(*event.Event)
+		}).Return()
+
+	mockNode := coremock.NewNodeInterfaceMock(t)
+	mockNode.On("GetID").Return("test-node")
+	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
+
+	ctx := &EngineContext{
+		ExecutionID: "exec-123",
+		FlowType:    common.FlowTypeAuthentication,
+		AppID:       "app-456",
+		ExecutionHistory: map[string]*common.NodeExecutionRecord{
+			"test-node": {
+				Step: 1,
+				Executions: []common.ExecutionAttempt{
+					{Attempt: 1},
+				},
+			},
+		},
+	}
+
+	nodeResp := &common.NodeResponse{
+		Status: common.NodeStatusIncomplete,
+		Error: &serviceerror.ServiceError{
+			Code: "FET-1008",
+			Error: i18ncore.I18nMessage{
+				Key:          "flows.executor.errors.invalid_otp",
+				DefaultValue: "Invalid OTP provided",
+			},
+			ErrorDescription: i18ncore.I18nMessage{
+				Key:          "flows.executor.errors.invalid_otp_desc",
+				DefaultValue: "The one-time password provided is invalid or has expired",
+			},
+		},
+	}
+
+	publishNodeExecutionCompletedEvent(ctx, mockNode, nodeResp, nil, 1000, 2000, mockObservability)
+
+	s.NotNil(capturedEvent)
+	s.Equal(string(event.EventTypeFlowNodeExecutionCompleted), capturedEvent.Type)
+	s.Equal(event.StatusSuccess, capturedEvent.Status)
+
+	errorData, ok := capturedEvent.Data[event.DataKey.Error].(map[string]interface{})
+	s.True(ok)
+	s.Equal("FET-1008", errorData["code"])
+
+	message, ok := errorData["message"].(map[string]string)
+	s.True(ok)
+	s.Equal("flows.executor.errors.invalid_otp", message["key"])
+	s.Equal("Invalid OTP provided", message["defaultValue"])
+
+	description, ok := errorData["description"].(map[string]string)
+	s.True(ok)
+	s.Equal("flows.executor.errors.invalid_otp_desc", description["key"])
+	s.Equal("The one-time password provided is invalid or has expired", description["defaultValue"])
+}
+
+func (s *EngineTestSuite) TestPublishNodeExecutionCompletedEvent_NodeErrTakesPrecedenceOverNodeRespError() {
+	t := s.T()
+	mockObservability := observabilitymock.NewObservabilityServiceInterfaceMock(t)
+	mockObservability.On("IsEnabled").Return(true)
+
+	var capturedEvent *event.Event
+	mockObservability.On("PublishEvent", mock.Anything, mock.AnythingOfType("*event.Event")).
+		Run(func(args mock.Arguments) {
+			capturedEvent = args.Get(1).(*event.Event)
+		}).Return()
+
+	mockNode := coremock.NewNodeInterfaceMock(t)
+	mockNode.On("GetID").Return("test-node")
+	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
+
+	ctx := &EngineContext{
+		ExecutionID: "exec-123",
+		FlowType:    common.FlowTypeAuthentication,
+		AppID:       "app-456",
+		ExecutionHistory: map[string]*common.NodeExecutionRecord{
+			"test-node": {
+				Step:       1,
+				Executions: []common.ExecutionAttempt{{Attempt: 1}},
+			},
+		},
+	}
+
+	nodeErr := &serviceerror.ServiceError{
+		Code: "SVC-50001",
+		Error: i18ncore.I18nMessage{
+			Key:          "service.errors.internal",
+			DefaultValue: "Internal server error",
+		},
+		ErrorDescription: i18ncore.I18nMessage{
+			Key:          "service.errors.internal_desc",
+			DefaultValue: "An unexpected error occurred",
+		},
+	}
+
+	nodeResp := &common.NodeResponse{
+		Status: common.NodeStatusFailure,
+		Error: &serviceerror.ServiceError{
+			Code: "FET-1008",
+			Error: i18ncore.I18nMessage{
+				Key:          "flows.executor.errors.invalid_otp",
+				DefaultValue: "Invalid OTP provided",
+			},
+		},
+	}
+
+	publishNodeExecutionCompletedEvent(ctx, mockNode, nodeResp, nodeErr, 1000, 2000, mockObservability)
+
+	s.NotNil(capturedEvent)
+	s.Equal(string(event.EventTypeFlowNodeExecutionFailed), capturedEvent.Type)
+	s.Equal(event.StatusFailure, capturedEvent.Status)
+
+	errorData, ok := capturedEvent.Data[event.DataKey.Error].(map[string]interface{})
+	s.True(ok)
+	s.Equal("SVC-50001", errorData["code"], "nodeErr should take precedence over nodeResp.Error")
+}
+
+func (s *EngineTestSuite) TestPublishNodeExecutionCompletedEvent_NoErrorPublishedWhenBothNil() {
+	t := s.T()
+	mockObservability := observabilitymock.NewObservabilityServiceInterfaceMock(t)
+	mockObservability.On("IsEnabled").Return(true)
+
+	var capturedEvent *event.Event
+	mockObservability.On("PublishEvent", mock.Anything, mock.AnythingOfType("*event.Event")).
+		Run(func(args mock.Arguments) {
+			capturedEvent = args.Get(1).(*event.Event)
+		}).Return()
+
+	mockNode := coremock.NewNodeInterfaceMock(t)
+	mockNode.On("GetID").Return("test-node")
+	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
+
+	ctx := &EngineContext{
+		ExecutionID: "exec-123",
+		FlowType:    common.FlowTypeAuthentication,
+		AppID:       "app-456",
+		ExecutionHistory: map[string]*common.NodeExecutionRecord{
+			"test-node": {
+				Step:       1,
+				Executions: []common.ExecutionAttempt{{Attempt: 1}},
+			},
+		},
+	}
+
+	nodeResp := &common.NodeResponse{
+		Status: common.NodeStatusComplete,
+	}
+
+	publishNodeExecutionCompletedEvent(ctx, mockNode, nodeResp, nil, 1000, 2000, mockObservability)
+
+	s.NotNil(capturedEvent)
+	s.Equal(string(event.EventTypeFlowNodeExecutionCompleted), capturedEvent.Type)
+	s.Equal(event.StatusSuccess, capturedEvent.Status)
+	_, hasError := capturedEvent.Data[event.DataKey.Error]
+	s.False(hasError)
+}
+
+func (s *EngineTestSuite) TestProcessNodeResponseErrorForEventPublish_ReturnsErrorDetails() {
+	nodeResp := &common.NodeResponse{
+		Error: &serviceerror.ServiceError{
+			Code: "FET-1021",
+			Error: i18ncore.I18nMessage{
+				Key:          "flows.executor.errors.auth_failed",
+				DefaultValue: "Authentication failed",
+			},
+			ErrorDescription: i18ncore.I18nMessage{
+				Key:          "flows.executor.errors.auth_failed_desc",
+				DefaultValue: "The authentication attempt was unsuccessful",
+			},
+		},
+	}
+
+	result := processNodeResponseErrorForEventPublish(nodeResp)
+
+	s.NotNil(result)
+	s.Equal("FET-1021", result["code"])
+
+	message, ok := result["message"].(map[string]string)
+	s.True(ok)
+	s.Equal("flows.executor.errors.auth_failed", message["key"])
+	s.Equal("Authentication failed", message["defaultValue"])
+
+	description, ok := result["description"].(map[string]string)
+	s.True(ok)
+	s.Equal("flows.executor.errors.auth_failed_desc", description["key"])
+	s.Equal("The authentication attempt was unsuccessful", description["defaultValue"])
+}
+
+func (s *EngineTestSuite) TestProcessNodeResponseErrorForEventPublish_NilNodeResponse() {
+	result := processNodeResponseErrorForEventPublish(nil)
+	s.Nil(result)
+}
+
+func (s *EngineTestSuite) TestProcessNodeResponseErrorForEventPublish_NilError() {
+	nodeResp := &common.NodeResponse{
+		Status: common.NodeStatusComplete,
+	}
+
+	result := processNodeResponseErrorForEventPublish(nodeResp)
+	s.Nil(result)
+}
+
+func (s *EngineTestSuite) TestProcessServiceErrorForEventPublish_ReturnsErrorDetails() {
+	svcErr := &serviceerror.ServiceError{
+		Code: "SVC-50001",
+		Error: i18ncore.I18nMessage{
+			Key:          "service.errors.internal",
+			DefaultValue: "Internal server error",
+		},
+		ErrorDescription: i18ncore.I18nMessage{
+			Key:          "service.errors.internal_desc",
+			DefaultValue: "An unexpected error occurred",
+		},
+	}
+
+	result := processServiceErrorForEventPublish(svcErr)
+
+	s.NotNil(result)
+	s.Equal("SVC-50001", result["code"])
+
+	message, ok := result["message"].(map[string]string)
+	s.True(ok)
+	s.Equal("service.errors.internal", message["key"])
+	s.Equal("Internal server error", message["defaultValue"])
+
+	description, ok := result["description"].(map[string]string)
+	s.True(ok)
+	s.Equal("service.errors.internal_desc", description["key"])
+	s.Equal("An unexpected error occurred", description["defaultValue"])
+}
+
+func (s *EngineTestSuite) TestProcessServiceErrorForEventPublish_NilError() {
+	result := processServiceErrorForEventPublish(nil)
+	s.Nil(result)
 }

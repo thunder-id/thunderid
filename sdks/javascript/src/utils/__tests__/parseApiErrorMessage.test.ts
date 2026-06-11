@@ -20,13 +20,13 @@ import {describe, expect, it} from 'vitest';
 import parseApiErrorMessage from '../parseApiErrorMessage';
 
 describe('parseApiErrorMessage', () => {
-  it('should return description.defaultValue when present', () => {
+  it('should return message.defaultValue when present', () => {
     const errorText: string = JSON.stringify({
       code: 'SSE-5000',
       description: {defaultValue: 'An unexpected error occurred while processing the request', key: 'error.desc'},
       message: {defaultValue: 'Internal server error', key: 'error.msg'},
     });
-    expect(parseApiErrorMessage(errorText)).toBe('An unexpected error occurred while processing the request');
+    expect(parseApiErrorMessage(errorText)).toBe('Internal server error');
   });
 
   it('should fall back to message.defaultValue when description is absent', () => {
@@ -46,13 +46,13 @@ describe('parseApiErrorMessage', () => {
     expect(parseApiErrorMessage(errorText)).toBe(errorText);
   });
 
-  it('should return raw text when description.defaultValue is an empty string', () => {
+  it('should fall back to description.defaultValue when message.defaultValue is an empty string', () => {
     const errorText: string = JSON.stringify({
       code: 'SSE-5000',
-      description: {defaultValue: '', key: 'error.desc'},
-      message: {defaultValue: 'Internal server error', key: 'error.msg'},
+      description: {defaultValue: 'An unexpected error occurred while processing the request', key: 'error.desc'},
+      message: {defaultValue: '', key: 'error.msg'},
     });
-    expect(parseApiErrorMessage(errorText)).toBe('Internal server error');
+    expect(parseApiErrorMessage(errorText)).toBe('An unexpected error occurred while processing the request');
   });
 
   it('should return raw text when both defaultValue fields are absent', () => {

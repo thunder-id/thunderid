@@ -102,6 +102,10 @@ vi.mock('./ResourceSummaryTable', () => ({
   ),
 }));
 
+vi.mock('@/lib/MonacoEditor', () => ({
+  default: () => null,
+}));
+
 vi.mock('./FileContentViewer', () => ({
   default: ({content}: {content: string}) => <div data-testid="file-content-viewer">{content}</div>,
 }));

@@ -1,0 +1,112 @@
+---
+title: Token Exchange
+sidebar_position: 4
+description: RFC 8693 Token Exchange in {{ProductName}} — swap one token for another to delegate, impersonate, or downscope across services.
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import { TokenExchangeDiagram } from '../../../../../src/components/OAuthFlowDiagrams';
+
+# Token Exchange
+
+**Token Exchange** ([RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693)) lets a client present an existing token to <ProductName /> and request a different token in return. The exchanged token can target a different audience, carry narrower scopes, or represent an "on-behalf-of" act in a service-to-service call chain.
+
+Typical uses:
+
+- A frontend exchanges a user's access token for a downscoped token before passing it to a third-party API.
+- A gateway exchanges an inbound token for a service-mesh token whose `aud` matches a downstream microservice.
+- A backend acts on behalf of a user it received an `id_token` for, asking <ProductName /> to mint an access token for that user against a specific resource server.
+
+## How It Works
+
+<TokenExchangeDiagram />
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Endpoint | `POST /oauth2/token` |
+| Grant type | `urn:ietf:params:oauth:grant-type:token-exchange` |
+| `subject_token_type` (input) | `urn:ietf:params:oauth:token-type:access_token` · `:refresh_token` · `:id_token` · `:jwt` |
+| `actor_token_type` (input) | Same set as `subject_token_type`; used for delegation chains |
+| `requested_token_type` (output) | `urn:ietf:params:oauth:token-type:access_token` · `:jwt` only. **`id_token` and `refresh_token` outputs are not supported.** |
+| `audience` parameter | Narrows the `aud` claim on the issued token |
+| `resource` parameter | RFC 8707 resource indicator — combined with `audience` when present |
+| `scope` parameter | Requested scopes; downscoping is allowed, widening is rejected with `invalid_scope` |
+| Client authentication | Required — same methods as the token endpoint |
+| Issued token shape | `issued_token_type` is echoed in the response so the caller knows what it received |
+
+### Request Fields
+
+| Field | Required | Description |
+|---|---|---|
+| `grant_type` | Yes | `urn:ietf:params:oauth:grant-type:token-exchange` |
+| `subject_token` | Yes | The token being exchanged |
+| `subject_token_type` | Yes | The type URI of `subject_token` |
+| `requested_token_type` | No | Defaults to `:access_token` |
+| `actor_token` | No | Token of the acting party in delegation |
+| `actor_token_type` | No | Required when `actor_token` is supplied |
+| `audience` | No | Logical name(s) of the target service |
+| `resource` | No | Absolute URI of the target resource server (see [Resource Indicators](../resource-indicators)) |
+| `scope` | No | Requested scopes — must be a subset of the subject token's grant |
+
+</details>
+
+## Try It in <ProductName />
+
+<Tabs groupId="client-registration">
+<TabItem value="console" label="Console" default>
+
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select the client that will perform the exchange.
+2. Open the **Advanced Settings** tab.
+3. Under **Grant Types**, add `urn:ietf:params:oauth:grant-type:token-exchange`.
+4. Save.
+
+</TabItem>
+<TabItem value="dcr" label="Dynamic Client Registration">
+
+```http
+POST /oauth2/dcr/register
+Content-Type: application/json
+
+{
+  "client_name": "API Gateway",
+  "grant_types": ["urn:ietf:params:oauth:grant-type:token-exchange"],
+  "token_endpoint_auth_method": "private_key_jwt",
+  "jwks_uri": "https://gateway.example.com/.well-known/jwks.json"
+}
+```
+
+</TabItem>
+</Tabs>
+
+### Exchange a Token
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
+  -d "subject_token=$ACCESS_TOKEN" \
+  -d "subject_token_type=urn:ietf:params:oauth:token-type:access_token" \
+  -d "resource=https://api.example.com/payments" \
+  -d "scope=payments:read"
+```
+
+Response:
+
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "issued_token_type": "urn:ietf:params:oauth:token-type:access_token",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "payments:read"
+}
+```
+
+## Related Guides
+
+- [Resource Indicators](../resource-indicators) — target the new token at a specific resource server
+- [Client Credentials](../client-credentials) — for service tokens that don't require a subject token
+- [Refresh Token](../refresh-token) — for renewing access tokens without exchange semantics

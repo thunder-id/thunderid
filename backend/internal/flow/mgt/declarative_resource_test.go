@@ -281,7 +281,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_ValidateResource() 
 	}
 
 	logger := log.GetLogger()
-	name, exportErr := exporter.ValidateResource(flow, "flow-001", logger)
+	name, exportErr := exporter.ValidateResource(context.Background(), flow, "flow-001", logger)
 
 	assert.Nil(s.T(), exportErr)
 	assert.Equal(s.T(), "Valid Flow Name", name)
@@ -293,7 +293,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_ValidateResource_In
 	exporter := newFlowGraphExporter(mockService)
 
 	logger := log.GetLogger()
-	_, exportErr := exporter.ValidateResource("not a flow", "invalid", logger)
+	_, exportErr := exporter.ValidateResource(context.Background(), "not a flow", "invalid", logger)
 
 	assert.NotNil(s.T(), exportErr)
 	assert.Equal(s.T(), "flow", exportErr.ResourceType)
@@ -312,7 +312,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporter_ValidateResource_Em
 	}
 
 	logger := log.GetLogger()
-	name, exportErr := exporter.ValidateResource(flow, "flow-001", logger)
+	name, exportErr := exporter.ValidateResource(context.Background(), flow, "flow-001", logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), exportErr)
@@ -549,7 +549,7 @@ func (s *DeclarativeResourceTestSuite) TestFlowGraphExporterIntegration() {
 
 	// Validate resource
 	logger := log.GetLogger()
-	validName, exportErr := exporter.ValidateResource(resource, ids[0], logger)
+	validName, exportErr := exporter.ValidateResource(context.Background(), resource, ids[0], logger)
 	assert.Nil(s.T(), exportErr)
 	assert.Equal(s.T(), "Authentication Flow", validName)
 }

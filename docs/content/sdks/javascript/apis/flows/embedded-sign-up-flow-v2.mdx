@@ -68,7 +68,7 @@ if (step2.flowStatus === EmbeddedSignUpFlowStatusV2.Complete) {
 | `data` | `EmbeddedFlowResponseDataV2` | Component tree or redirect data |
 | `challengeToken` | `string` | Present when a verification step is required |
 | `redirectUrl` | `string` | Present when `type` is `Redirection` |
-| `failureReason` | `string` | Present when `flowStatus` is `Error` |
+| `error` | `FlowExecutionError` | Present when `flowStatus` is `Error`. Contains `code`, `message`, and `description` |
 
 ## Enums
 
@@ -78,7 +78,7 @@ if (step2.flowStatus === EmbeddedSignUpFlowStatusV2.Complete) {
 |-------|-------------|
 | `Incomplete` | More steps required |
 | `Complete` | Registration completed successfully |
-| `Error` | Registration failed — check `failureReason` |
+| `Error` | Registration failed, check `error` for details |
 
 ### `EmbeddedSignUpFlowTypeV2`
 

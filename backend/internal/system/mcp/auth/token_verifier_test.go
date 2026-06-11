@@ -80,12 +80,13 @@ func (m *MockJWTService) VerifyJWT(
 }
 
 func (m *MockJWTService) VerifyJWTWithPublicKey(
+	ctx context.Context,
 	jwtToken string,
 	jwtPublicKey crypto.PublicKey,
 	expectedAud string,
 	expectedIss string,
 ) *serviceerror.ServiceError {
-	args := m.Called(jwtToken, jwtPublicKey, expectedAud, expectedIss)
+	args := m.Called(ctx, jwtToken, jwtPublicKey, expectedAud, expectedIss)
 	if args.Get(0) == nil {
 		return nil
 	}
@@ -93,12 +94,13 @@ func (m *MockJWTService) VerifyJWTWithPublicKey(
 }
 
 func (m *MockJWTService) VerifyJWTWithJWKS(
+	ctx context.Context,
 	jwtToken string,
 	jwksURL string,
 	expectedAud string,
 	expectedIss string,
 ) *serviceerror.ServiceError {
-	args := m.Called(jwtToken, jwksURL, expectedAud, expectedIss)
+	args := m.Called(ctx, jwtToken, jwksURL, expectedAud, expectedIss)
 	if args.Get(0) == nil {
 		return nil
 	}
@@ -125,10 +127,11 @@ func (m *MockJWTService) VerifyJWTSignatureWithPublicKey(
 }
 
 func (m *MockJWTService) VerifyJWTSignatureWithJWKS(
+	ctx context.Context,
 	jwtToken string,
 	jwksURL string,
 ) *serviceerror.ServiceError {
-	args := m.Called(jwtToken, jwksURL)
+	args := m.Called(ctx, jwtToken, jwksURL)
 	if args.Get(0) == nil {
 		return nil
 	}

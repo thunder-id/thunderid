@@ -25,6 +25,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
@@ -91,7 +92,7 @@ func (e *ouResolverExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 
 	resolveFrom := e.getResolveFrom(ctx)
 	if resolveFrom == "" {
-		logger.Debug("resolveFrom not configured, skipping OU override")
+		logger.Debug(ctx.Context, "resolveFrom not configured, skipping OU override")
 		return execResp, nil
 	}
 
@@ -103,9 +104,12 @@ func (e *ouResolverExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 	case ouResolveFromPromptAll:
 		return e.resolveFromPromptAll(ctx, logger)
 	default:
-		logger.Error("Unsupported resolveFrom value", log.String("resolveFrom", resolveFrom))
+		logger.Error(ctx.Context, "Unsupported resolveFrom value", log.String("resolveFrom", resolveFrom))
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Unsupported OU resolution strategy: " + resolveFrom
+		execResp.Error = serviceerror.CustomServiceError(ErrOUResolutionFailed, i18ncore.I18nMessage{
+			Key:          ErrOUResolutionFailed.ErrorDescription.Key,
+			DefaultValue: "Unsupported OU resolution strategy: " + resolveFrom,
+		})
 		return execResp, nil
 	}
 }
@@ -115,13 +119,16 @@ func (e *ouResolverExecutor) resolveFromCaller(ctx *core.NodeContext,
 	execResp *common.ExecutorResponse, logger *log.Logger) (*common.ExecutorResponse, error) {
 	callerOUID := security.GetOUID(ctx.Context)
 	if callerOUID == "" {
-		logger.Error("Caller OU not found in security context")
+		logger.Error(ctx.Context, "Caller OU not found in security context")
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Unable to determine caller organization unit"
+		execResp.Error = serviceerror.CustomServiceError(ErrOUResolutionFailed, i18ncore.I18nMessage{
+			Key:          ErrOUResolutionFailed.ErrorDescription.Key,
+			DefaultValue: "Unable to resolve caller organization unit from  context",
+		})
 		return execResp, nil
 	}
 
-	logger.Debug("Overriding user OU with caller's OU", log.String("callerOUID", callerOUID))
+	logger.Debug(ctx.Context, "Overriding user OU with caller's OU", log.String("callerOUID", callerOUID))
 	execResp.RuntimeData[ouIDKey] = callerOUID
 
 	return execResp, nil
@@ -154,23 +161,23 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *core.NodeContext,
 			if svcErr.Type == serviceerror.ClientErrorType {
 				execResp.Status = common.ExecUserInputRequired
 				execResp.Inputs = e.GetDefaultInputs()
-				execResp.FailureReason = "The selected organization unit is not valid."
+				execResp.Error = &ErrInvalidOU
 				return execResp, nil
 			}
 
 			return nil, errors.New("failed to validate selected organization unit: " + svcErr.Error.DefaultValue)
 		}
 		if !isDescendant {
-			logger.Debug("Selected OU is not a descendant of the parent OU",
+			logger.Debug(ctx.Context, "Selected OU is not a descendant of the parent OU",
 				log.String(ouIDKey, selectedOUID),
 				log.String("parentOUID", parentOUID))
 			execResp.Status = common.ExecUserInputRequired
 			execResp.Inputs = e.GetDefaultInputs()
-			execResp.FailureReason = "The selected organization unit is not valid for the chosen user type."
+			execResp.Error = &ErrOUNotValidForUserType
 			return execResp, nil
 		}
 
-		logger.Debug("OU selected by user", log.String(ouIDKey, selectedOUID))
+		logger.Debug(ctx.Context, "OU selected by user", log.String(ouIDKey, selectedOUID))
 		execResp.RuntimeData[ouIDKey] = selectedOUID
 		execResp.Status = common.ExecComplete
 		return execResp, nil
@@ -183,13 +190,13 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *core.NodeContext,
 	}
 
 	if children.TotalResults == 0 {
-		logger.Debug("No child OUs found, skipping OU selection")
+		logger.Debug(ctx.Context, "No child OUs found, skipping OU selection")
 		execResp.Status = common.ExecComplete
 		return execResp, nil
 	}
 
 	// Child OUs exist — prompt the user to select one.
-	logger.Debug("Child OUs found, requesting OU selection",
+	logger.Debug(ctx.Context, "Child OUs found, requesting OU selection",
 		log.String("parentOUID", parentOUID),
 		log.Int("totalChildren", children.TotalResults))
 
@@ -226,18 +233,18 @@ func (e *ouResolverExecutor) resolveFromPromptAll(ctx *core.NodeContext,
 		if !exists {
 			execResp.Status = common.ExecUserInputRequired
 			execResp.Inputs = e.GetDefaultInputs()
-			execResp.FailureReason = "The selected organization unit does not exist."
+			execResp.Error = &ErrOUNotFound
 			return execResp, nil
 		}
 
-		logger.Debug("OU selected by user", log.String(ouIDKey, selectedOUID))
+		logger.Debug(ctx.Context, "OU selected by user", log.String(ouIDKey, selectedOUID))
 		execResp.RuntimeData[ouIDKey] = selectedOUID
 		execResp.Status = common.ExecComplete
 		return execResp, nil
 	}
 
 	// No selection yet — prompt the user with the full OU tree.
-	logger.Debug("Requesting OU selection from full tree")
+	logger.Debug(ctx.Context, "Requesting OU selection from full tree")
 	execResp.Status = common.ExecUserInputRequired
 
 	inputs := e.GetDefaultInputs()

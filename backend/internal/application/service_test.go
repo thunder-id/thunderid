@@ -41,6 +41,7 @@ import (
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
@@ -1967,7 +1968,7 @@ func TestResolveClientSecret_PublicClient(t *testing.T) {
 		},
 	}
 
-	err := resolveClientSecret(inboundAuthConfig, nil)
+	err := resolveClientSecret(context.Background(), inboundAuthConfig, nil)
 
 	assert.Nil(t, err)
 	assert.Equal(t, "", inboundAuthConfig.OAuthConfig.ClientSecret)
@@ -1984,7 +1985,7 @@ func TestResolveClientSecret_SecretAlreadyProvided(t *testing.T) {
 		},
 	}
 
-	err := resolveClientSecret(inboundAuthConfig, nil)
+	err := resolveClientSecret(context.Background(), inboundAuthConfig, nil)
 
 	assert.Nil(t, err)
 	assert.Equal(t, providedSecret, inboundAuthConfig.OAuthConfig.ClientSecret)
@@ -2000,7 +2001,7 @@ func TestResolveClientSecret_GenerateForNewConfidentialClient(t *testing.T) {
 		},
 	}
 
-	err := resolveClientSecret(inboundAuthConfig, nil)
+	err := resolveClientSecret(context.Background(), inboundAuthConfig, nil)
 
 	assert.Nil(t, err)
 	assert.NotEmpty(t, inboundAuthConfig.OAuthConfig.ClientSecret)
@@ -2030,7 +2031,7 @@ func TestResolveClientSecret_PreserveExistingSecret(t *testing.T) {
 		},
 	}
 
-	err := resolveClientSecret(inboundAuthConfig, existingApp)
+	err := resolveClientSecret(context.Background(), inboundAuthConfig, existingApp)
 
 	assert.Nil(t, err)
 	// Secret should remain empty (not generated) because existing app has a secret
@@ -2047,7 +2048,7 @@ func TestResolveClientSecret_NoExistingApp(t *testing.T) {
 		},
 	}
 
-	err := resolveClientSecret(inboundAuthConfig, nil)
+	err := resolveClientSecret(context.Background(), inboundAuthConfig, nil)
 
 	assert.Nil(t, err)
 	assert.NotEmpty(t, inboundAuthConfig.OAuthConfig.ClientSecret)
@@ -2075,7 +2076,7 @@ func TestResolveClientSecret_ExistingAppWithoutSecret(t *testing.T) {
 		},
 	}
 
-	err := resolveClientSecret(inboundAuthConfig, existingApp)
+	err := resolveClientSecret(context.Background(), inboundAuthConfig, existingApp)
 
 	assert.Nil(t, err)
 	// Should generate a new secret since existing app doesn't have one
@@ -2751,7 +2752,7 @@ func (suite *ServiceTestSuite) TestValidateApplication_ErrorFromProcessInboundAu
 // ErrOAuthIDTokenUnsupportedEncryptionAlg to a ServiceError.
 func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_UnsupportedEncryptionAlg() {
 	svcErr := (&applicationService{}).
-		translateInboundClientError(inboundclient.ErrOAuthIDTokenUnsupportedEncryptionAlg)
+		translateInboundClientError(context.Background(), inboundclient.ErrOAuthIDTokenUnsupportedEncryptionAlg)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 }
@@ -2760,7 +2761,7 @@ func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_UnsupportedEn
 // ErrOAuthIDTokenUnsupportedEncryptionEnc to a ServiceError.
 func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_UnsupportedEncryptionEnc() {
 	svcErr := (&applicationService{}).
-		translateInboundClientError(inboundclient.ErrOAuthIDTokenUnsupportedEncryptionEnc)
+		translateInboundClientError(context.Background(), inboundclient.ErrOAuthIDTokenUnsupportedEncryptionEnc)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 }
@@ -2769,7 +2770,7 @@ func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_UnsupportedEn
 // ErrOAuthIDTokenEncryptionAlgRequiresEnc to a ServiceError.
 func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_EncryptionAlgRequiresEnc() {
 	svcErr := (&applicationService{}).
-		translateInboundClientError(inboundclient.ErrOAuthIDTokenEncryptionAlgRequiresEnc)
+		translateInboundClientError(context.Background(), inboundclient.ErrOAuthIDTokenEncryptionAlgRequiresEnc)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 }
@@ -2778,7 +2779,7 @@ func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_EncryptionAlg
 // ErrOAuthIDTokenEncryptionEncRequiresAlg to a ServiceError.
 func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_EncryptionEncRequiresAlg() {
 	svcErr := (&applicationService{}).
-		translateInboundClientError(inboundclient.ErrOAuthIDTokenEncryptionEncRequiresAlg)
+		translateInboundClientError(context.Background(), inboundclient.ErrOAuthIDTokenEncryptionEncRequiresAlg)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 }
@@ -2787,7 +2788,7 @@ func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_EncryptionEnc
 // ErrOAuthIDTokenEncryptionRequiresCertificate to a ServiceError.
 func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_EncryptionRequiresCertificate() {
 	svcErr := (&applicationService{}).translateInboundClientError(
-		inboundclient.ErrOAuthIDTokenEncryptionRequiresCertificate)
+		context.Background(), inboundclient.ErrOAuthIDTokenEncryptionRequiresCertificate)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 }
@@ -2796,7 +2797,7 @@ func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_EncryptionReq
 // ErrOAuthIDTokenJWKSURINotSSRFSafe to a ServiceError.
 func (suite *ServiceTestSuite) TestTranslateIDTokenValidationError_JWKSURINotSSRFSafe() {
 	svcErr := (&applicationService{}).
-		translateInboundClientError(inboundclient.ErrOAuthIDTokenJWKSURINotSSRFSafe)
+		translateInboundClientError(context.Background(), inboundclient.ErrOAuthIDTokenJWKSURINotSSRFSafe)
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidOAuthConfiguration.Code, svcErr.Code)
 	assert.Equal(suite.T(),
@@ -3406,4 +3407,250 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_FlowHandleResolutio
 
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidRequestFormat.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestCreateApplication_CreateInboundClientFailsAndCompensationFails() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{
+			Enabled: false,
+		},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(suite.T(), err)
+	defer config.ResetServerRuntime()
+
+	service, mockStore := suite.setupTestService()
+
+	app := &model.ApplicationDTO{
+		Name: "Test App",
+		OUID: testOUID,
+		InboundAuthProfile: inboundmodel.InboundAuthProfile{
+			AuthFlowID:         "edc013d0-e893-4dc0-990c-3e1d203e005b",
+			RegistrationFlowID: "80024fb3-29ed-4c33-aa48-8aee5e96d522",
+		},
+	}
+
+	mockStore.On("CreateInboundClient",
+		mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return(errors.New("internal server error"))
+
+	ep := resetEntityProviderMethod(service, "DeleteEntity")
+	ep.On("DeleteEntity", mock.Anything).
+		Return(entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeSystemError, "delete failed", ""))
+
+	result, svcErr := service.CreateApplication(context.Background(), app)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestValidateApplication_InboundClientValidateError() {
+	service, mockStore := suite.setupTestService()
+
+	for i, c := range mockStore.ExpectedCalls {
+		if c.Method == "Validate" {
+			mockStore.ExpectedCalls = append(mockStore.ExpectedCalls[:i], mockStore.ExpectedCalls[i+1:]...)
+			break
+		}
+	}
+	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("validation failed"))
+
+	app := &model.ApplicationDTO{
+		Name: "Test App",
+		OUID: testOUID,
+	}
+
+	processed, inboundAuthConfig, svcErr := service.ValidateApplication(context.Background(), app)
+
+	assert.Nil(suite.T(), processed)
+	assert.Nil(suite.T(), inboundAuthConfig)
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationList_CountError() {
+	service, _ := suite.setupTestService()
+
+	resetEntityProviderMethod(service, "GetEntityListCount").
+		On("GetEntityListCount", entityprovider.EntityCategoryApp, mock.Anything).
+		Return(0, entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeSystemError, "count failed", ""))
+
+	result, svcErr := service.GetApplicationList(context.Background())
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationList_EntityWithoutInboundClient() {
+	service, mockStore := suite.setupTestService()
+
+	entities := []entityprovider.Entity{
+		{ID: "app1", Category: entityprovider.EntityCategoryApp},
+	}
+	resetEntityProviderMethod(service, "GetEntityListCount").
+		On("GetEntityListCount", entityprovider.EntityCategoryApp, mock.Anything).
+		Return(1, (*entityprovider.EntityProviderError)(nil))
+	ep := resetEntityProviderMethod(service, "GetEntityList")
+	ep.On("GetEntityList", entityprovider.EntityCategoryApp,
+		mock.AnythingOfType("int"), mock.AnythingOfType("int"), mock.Anything).
+		Return(entities, (*entityprovider.EntityProviderError)(nil))
+
+	mockStore.On("GetInboundClientList", mock.Anything).
+		Return([]inboundmodel.InboundClient{}, nil)
+
+	result, svcErr := service.GetApplicationList(context.Background())
+
+	assert.Nil(suite.T(), svcErr)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), 0, result.Count)
+}
+
+func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_UpdateSystemAttributesError() {
+	service, _ := suite.setupTestService()
+
+	app := &model.ApplicationDTO{Name: "Test App", OUID: testOUID}
+
+	ep := resetEntityProviderMethod(service, "UpdateSystemAttributes")
+	ep.On("UpdateSystemAttributes", mock.Anything, mock.Anything).
+		Return(entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeSystemError, "update failed", ""))
+
+	svcErr := service.updateEntityDataForApplicationUpdate(context.Background(), testServiceAppID, app, nil)
+
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_ClearCredentialsError() {
+	service, _ := suite.setupTestService()
+
+	app := &model.ApplicationDTO{Name: "Test App", OUID: testOUID}
+
+	ep := resetEntityProviderMethod(service, "UpdateSystemCredentials")
+	ep.On("UpdateSystemCredentials", mock.Anything, mock.Anything).
+		Return(entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeSystemError, "clear failed", ""))
+
+	svcErr := service.updateEntityDataForApplicationUpdate(context.Background(), testServiceAppID, app, nil)
+
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_UpdateCredentialsError() {
+	service, _ := suite.setupTestService()
+
+	app := &model.ApplicationDTO{Name: "Test App", OUID: testOUID}
+	inboundAuthConfig := &inboundmodel.InboundAuthConfigWithSecret{
+		OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+			ClientID:                testClientID,
+			ClientSecret:            "secret-value",
+			TokenEndpointAuthMethod: oauth2const.TokenEndpointAuthMethodClientSecretBasic,
+		},
+	}
+
+	ep := resetEntityProviderMethod(service, "UpdateSystemCredentials")
+	ep.On("UpdateSystemCredentials", mock.Anything, mock.Anything).
+		Return(entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeSystemError, "update creds failed", ""))
+
+	svcErr := service.updateEntityDataForApplicationUpdate(
+		context.Background(), testServiceAppID, app, inboundAuthConfig)
+
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestDeleteApplication_DeleteEntityError() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{
+			Enabled: false,
+		},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(suite.T(), err)
+	defer config.ResetServerRuntime()
+
+	service, mockStore := suite.setupTestService()
+
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(nil)
+	ep := resetEntityProviderMethod(service, "DeleteEntity")
+	ep.On("DeleteEntity", testServiceAppID).
+		Return(entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeSystemError, "delete failed", ""))
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetApplication_GetEntityError() {
+	service, mockStore := suite.setupTestService()
+
+	inboundClient := &inboundmodel.InboundClient{ID: testServiceAppID}
+	mockStore.On("GetInboundClientByEntityID", mock.Anything, testServiceAppID).Return(inboundClient, nil)
+
+	ep := resetEntityProviderMethod(service, "GetEntity")
+	ep.On("GetEntity", testServiceAppID).
+		Return((*entityprovider.Entity)(nil), entityprovider.NewEntityProviderError(
+			entityprovider.ErrorCodeSystemError, "get failed", ""))
+
+	result, svcErr := service.getApplication(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetApplication_GetOAuthProfileError() {
+	service, mockStore := suite.setupTestService()
+
+	inboundClient := &inboundmodel.InboundClient{ID: testServiceAppID}
+	mockStore.On("GetInboundClientByEntityID", mock.Anything, testServiceAppID).Return(inboundClient, nil)
+	mockStore.On("GetOAuthProfileByEntityID", mock.Anything, testServiceAppID).
+		Return((*inboundmodel.OAuthProfile)(nil), errors.New("oauth profile load failed"))
+
+	ep := resetEntityProviderMethod(service, "GetEntity")
+	ep.On("GetEntity", testServiceAppID).
+		Return(&entityprovider.Entity{ID: testServiceAppID, Category: entityprovider.EntityCategoryApp},
+			(*entityprovider.EntityProviderError)(nil))
+
+	result, svcErr := service.getApplication(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestDeleteLocalizedVariants_DeleteError() {
+	service, _ := suite.setupTestService()
+
+	i18nMock := mgtmock.NewI18nServiceInterfaceMock(suite.T())
+	i18nMock.On("DeleteTranslationsByKey", mock.Anything, mock.Anything, mock.Anything).
+		Return(&serviceerror.InternalServerError)
+	service.i18nService = i18nMock
+
+	svcErr := service.deleteLocalizedVariants(context.Background(), testServiceAppID)
+
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestCleanupStaleI18nKeys_DeleteError() {
+	service, _ := suite.setupTestService()
+
+	i18nMock := mgtmock.NewI18nServiceInterfaceMock(suite.T())
+	i18nMock.On("DeleteTranslationsByKey", mock.Anything, mock.Anything, mock.Anything).
+		Return(&serviceerror.InternalServerError)
+	service.i18nService = i18nMock
+
+	existing := &model.ApplicationProcessedDTO{
+		ID:   testServiceAppID,
+		Name: AppI18nRef(testServiceAppID, "name"),
+	}
+	updated := &model.ApplicationDTO{
+		Name: "Plain Name",
+	}
+
+	svcErr := service.cleanupStaleI18nKeys(context.Background(), testServiceAppID, existing, updated)
+
+	assert.Equal(suite.T(), &serviceerror.InternalServerError, svcErr)
 }

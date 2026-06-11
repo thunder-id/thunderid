@@ -118,11 +118,12 @@ const executeEmbeddedRecoveryFlowV2 = async ({
     const errorText: string = await response.text();
 
     throw new ThunderIDAPIError(
-      `Recovery request failed: ${errorText}`,
+      errorText,
       'executeEmbeddedRecoveryFlow-ResponseError-001',
       'javascript',
       response.status,
       response.statusText,
+      'Recovery request failed',
     );
   }
 

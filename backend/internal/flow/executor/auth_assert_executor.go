@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -96,7 +96,7 @@ func newAuthAssertExecutor(
 // Execute executes the authentication assertion logic.
 func (a *authAssertExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Executing authentication assertion executor")
+	logger.Debug(ctx.Context, "Executing authentication assertion executor")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -109,16 +109,19 @@ func (a *authAssertExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 			return nil, err
 		}
 
-		logger.Debug("Generated JWT token for authentication assertion")
+		logger.Debug(ctx.Context, "Generated JWT token for authentication assertion")
 
 		execResp.Status = common.ExecComplete
 		execResp.Assertion = token
+		if callbackType, ok := ctx.NodeProperties[propertyKeyCallbackType].(string); ok && callbackType != "" {
+			execResp.AdditionalData[propertyKeyCallbackType] = callbackType
+		}
 	} else {
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = failureReasonUserNotAuthenticated
+		execResp.Error = &ErrUserNotAuthenticated
 	}
 
-	logger.Debug("Authentication assertion executor execution completed",
+	logger.Debug(ctx.Context, "Authentication assertion executor execution completed",
 		log.String("status", string(execResp.Status)))
 
 	return execResp, nil
@@ -147,10 +150,10 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *core.NodeContext, logger
 
 	// Generate assertion from engaged authenticators
 	if len(authenticatorRefs) > 0 {
-		assertionResult, svcErr := a.authAssertGenerator.GenerateAssertion(authenticatorRefs)
+		assertionResult, svcErr := a.authAssertGenerator.GenerateAssertion(ctx.Context, authenticatorRefs)
 		if svcErr != nil {
 			if svcErr.Type == serviceerror.ServerErrorType {
-				logger.Error("Failed to generate auth assertion",
+				logger.Error(ctx.Context, "Failed to generate auth assertion",
 					log.String("error", svcErr.Error.DefaultValue))
 				return "", errors.New("something went wrong while generating auth assertion")
 			}
@@ -169,6 +172,13 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *core.NodeContext, logger
 		jwtClaims[oauth2const.ClaimCompletedAuthClass] = completedACR
 	}
 
+	// Bind the assertion to the originating CIBA request when present, so the CIBA callback can
+	// verify that this assertion authorizes the specific auth_req_id it accompanies. This key is
+	// only set for CIBA-initiated flows, leaving the interactive authorization_code assertion unchanged.
+	if cibaAuthReqID, exists := ctx.RuntimeData[common.RuntimeKeyCIBAAuthReqID]; exists && cibaAuthReqID != "" {
+		jwtClaims[oauth2const.ClaimCIBAAuthReqID] = cibaAuthReqID
+	}
+
 	requiredAttributes := a.getRequiredUserAttributes(ctx)
 
 	resolvedAttributes, attrErr := a.resolveUserAttributes(ctx, requiredAttributes)
@@ -181,7 +191,7 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *core.NodeContext, logger
 		if len(resolvedAttributes) > 0 {
 			ttlSeconds, err := strconv.Atoi(ttlSecondsStr)
 			if err != nil {
-				logger.Error("Failed to parse TTL seconds from runtime data",
+				logger.Error(ctx.Context, "Failed to parse TTL seconds from runtime data",
 					log.String("key", common.RuntimeKeyUserAttributesCacheTTLSeconds),
 					log.String("ttlValue", ttlSecondsStr),
 					log.String("error", err.Error()))
@@ -193,7 +203,7 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *core.NodeContext, logger
 			}
 			result, creationErr := a.attributeCacheSvc.CreateAttributeCache(ctx.Context, attributeCache)
 			if creationErr != nil {
-				logger.Error("Failed to create attribute cache",
+				logger.Error(ctx.Context, "Failed to create attribute cache",
 					log.String("error", creationErr.ErrorDescription.DefaultValue))
 				return "", errors.New("failed to create attribute cache")
 			}
@@ -210,7 +220,8 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *core.NodeContext, logger
 	token, _, err := a.jwtService.GenerateJWT(
 		ctx.Context, tokenSub, iss, validityPeriod, jwtClaims, jwt.TokenTypeJWT, "")
 	if err != nil {
-		logger.Error("Failed to generate JWT token", log.String("error", err.Error.DefaultValue))
+		logger.Error(ctx.Context, "Failed to generate JWT token",
+			log.String("error", err.Error.DefaultValue))
 		return "", errors.New("failed to generate JWT token: " + err.Error.DefaultValue)
 	}
 
@@ -273,12 +284,12 @@ func (a *authAssertExecutor) getRequiredUserAttributes(ctx *core.NodeContext) (u
 	if _, consentRecorded := ctx.RuntimeData[common.RuntimeKeyConsentID]; consentRecorded {
 		// Get user attributes from consented attributes if consent was collected in this flow
 		if consentedAttrsStr, exists := ctx.RuntimeData[common.RuntimeKeyConsentedAttributes]; exists {
-			logger.Debug("Consent recorded with approved attributes")
+			logger.Debug(ctx.Context, "Consent recorded with approved attributes")
 			return strings.Fields(consentedAttrsStr)
 		}
 
 		// If consent was recorded but no attributes were approved, attributes are empty
-		logger.Debug("Consent recorded but no attributes approved")
+		logger.Debug(ctx.Context, "Consent recorded but no attributes approved")
 		return []string{}
 	}
 
@@ -289,15 +300,16 @@ func (a *authAssertExecutor) getRequiredUserAttributes(ctx *core.NodeContext) (u
 
 	if essentialExists || optionalExists {
 		userAttributes = []string{}
-		logger.Debug("Essential/ optional attributes exists in runtime data. Applying attribute filtering")
+		logger.Debug(ctx.Context,
+			"Essential/ optional attributes exists in runtime data. Applying attribute filtering")
 
 		if essentialExists {
-			logger.Debug("Adding required essential attributes to user attributes list")
+			logger.Debug(ctx.Context, "Adding required essential attributes to user attributes list")
 			userAttributes = append(userAttributes,
 				strings.Fields(ctx.RuntimeData[common.RuntimeKeyRequiredEssentialAttributes])...)
 		}
 		if optionalExists {
-			logger.Debug("Adding required optional attributes to user attributes list")
+			logger.Debug(ctx.Context, "Adding required optional attributes to user attributes list")
 			userAttributes = append(userAttributes,
 				strings.Fields(ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes])...)
 		}
@@ -308,11 +320,11 @@ func (a *authAssertExecutor) getRequiredUserAttributes(ctx *core.NodeContext) (u
 	// If consent was not recorded and no essential/ optional attributes specified, fallback to
 	// application token config
 	if ctx.Application.Assertion != nil {
-		logger.Debug("Adding application token attributes to user attributes list")
+		logger.Debug(ctx.Context, "Adding application token attributes to user attributes list")
 		return ctx.Application.Assertion.UserAttributes
 	}
 
-	logger.Debug("No user attributes configured for inclusion in assertion")
+	logger.Debug(ctx.Context, "No user attributes configured for inclusion in assertion")
 	return []string{}
 }
 
@@ -364,7 +376,7 @@ func (a *authAssertExecutor) resolveUserAttributes(ctx *core.NodeContext, reques
 				fetchedAttributes, err = a.getUserAttributesFromAuthnProvider(ctx.Context,
 					requestedAttributes, metadata, ctx.AuthUser)
 			} else {
-				fetchedAttributes, err = a.getUserAttributesFromUserProvider(ctx.AuthenticatedUser.UserID)
+				fetchedAttributes, err = a.getUserAttributesFromUserProvider(ctx.Context, ctx.AuthenticatedUser.UserID)
 			}
 			if err != nil {
 				return nil, err
@@ -396,7 +408,7 @@ func (a *authAssertExecutor) appendComputedAttributes(
 
 	// Fetch all user groups once if either groups or roles are requested.
 	if (groupsRequested || rolesRequested) && ctx.AuthenticatedUser.UserID != "" {
-		allGroups, err := a.fetchAllUserGroups(ctx.AuthenticatedUser.UserID)
+		allGroups, err := a.fetchAllUserGroups(ctx.Context, ctx.AuthenticatedUser.UserID)
 		if err != nil {
 			return err
 		}
@@ -465,27 +477,28 @@ func (a *authAssertExecutor) getUserAttributesFromAuthnProvider(ctx context.Cont
 }
 
 // getUserAttributesFromUserProvider retrieves user attributes from the user provider.
-func (a *authAssertExecutor) getUserAttributesFromUserProvider(userID string) (
+func (a *authAssertExecutor) getUserAttributesFromUserProvider(ctx context.Context, userID string) (
 	map[string]interface{}, error) {
 	logger := a.logger.With(log.MaskedString(log.LoggerKeyUserID, userID))
 
 	var jsonAttrs json.RawMessage
 	res, err := a.entityProvider.GetEntity(userID)
 	if err != nil {
-		logger.Error("Failed to fetch user attributes",
+		logger.Error(ctx, "Failed to fetch user attributes",
 			log.MaskedString(log.LoggerKeyUserID, userID), log.Any("error", err))
 		return nil, errors.New("something went wrong while fetching user attributes: " + err.Error())
 	}
 	jsonAttrs = res.Attributes
 
 	if len(jsonAttrs) == 0 {
-		logger.Error("No user attributes returned")
+		logger.Error(ctx, "No user attributes returned")
 		return nil, errors.New("no user attributes returned")
 	}
 
 	var attrs map[string]interface{}
 	if err := json.Unmarshal(jsonAttrs, &attrs); err != nil {
-		logger.Error("Failed to unmarshal user attributes", log.MaskedString(log.LoggerKeyUserID, userID),
+		logger.Error(ctx, "Failed to unmarshal user attributes",
+			log.MaskedString(log.LoggerKeyUserID, userID),
 			log.Error(err))
 		return nil, errors.New("something went wrong while unmarshalling user attributes: " + err.Error())
 	}
@@ -501,7 +514,7 @@ func (a *authAssertExecutor) appendOUDetailsToClaims(
 
 	organizationUnit, svcErr := a.ouService.GetOrganizationUnit(ctx, ouID)
 	if svcErr != nil {
-		logger.Error("Failed to fetch organization unit details",
+		logger.Error(ctx, "Failed to fetch organization unit details",
 			log.String(ouIDKey, ouID), log.Any("error", svcErr))
 		return errors.New("something went wrong while fetching organization unit: " +
 			svcErr.ErrorDescription.DefaultValue)
@@ -527,14 +540,15 @@ func (a *authAssertExecutor) appendOUDetailsToClaims(
 
 // fetchAllUserGroups retrieves all groups a user belongs to, including groups inherited through
 // nested group membership.
-func (a *authAssertExecutor) fetchAllUserGroups(userID string) ([]entityprovider.EntityGroup, error) {
+func (a *authAssertExecutor) fetchAllUserGroups(
+	ctx context.Context, userID string) ([]entityprovider.EntityGroup, error) {
 	if a.entityProvider == nil || userID == "" {
 		return nil, nil
 	}
 
 	groups, err := a.entityProvider.GetTransitiveEntityGroups(userID)
 	if err != nil {
-		a.logger.Error("Failed to fetch transitive user groups",
+		a.logger.Error(ctx, "Failed to fetch transitive user groups",
 			log.MaskedString(log.LoggerKeyUserID, userID), log.Any("error", err))
 		return nil, errors.New("something went wrong while fetching user groups: " + err.Error())
 	}
@@ -567,7 +581,7 @@ func (a *authAssertExecutor) appendRolesToClaims(
 
 	roles, svcErr := a.roleService.GetUserRoles(ctx.Context, ctx.AuthenticatedUser.UserID, groupIDs)
 	if svcErr != nil {
-		logger.Error("Failed to fetch user roles",
+		logger.Error(ctx.Context, "Failed to fetch user roles",
 			log.MaskedString(log.LoggerKeyUserID, ctx.AuthenticatedUser.UserID),
 			log.Any("error", svcErr))
 		return errors.New("something went wrong while fetching user roles: " + svcErr.ErrorDescription.DefaultValue)

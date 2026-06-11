@@ -355,9 +355,11 @@ func (suite *SignUtilsTestSuite) TestRoundTrip() {
 	}
 }
 
-func (suite *SignUtilsTestSuite) TestSignECDSAASN1Format() {
+func (suite *SignUtilsTestSuite) TestSignECDSARawFormat() {
 	signature, err := Generate(suite.testData, ECDSASHA256, suite.ecdsaPrivateKey)
 	assert.NoError(suite.T(), err)
+	// RFC 7518 §3.4: ES256 signature must be exactly 64 bytes (2 × 32-byte coord).
+	assert.Equal(suite.T(), 64, len(signature))
 	err = Verify(suite.testData, signature, ECDSASHA256, &suite.ecdsaPrivateKey.PublicKey)
 	assert.NoError(suite.T(), err)
 }

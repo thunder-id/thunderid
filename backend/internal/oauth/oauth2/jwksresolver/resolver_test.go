@@ -265,7 +265,11 @@ func (suite *ResolverTestSuite) TestFetchJWKS_BodyExceedsLimit() {
 
 func (suite *ResolverTestSuite) TestParseEncryptionKeyFromJWKS_InvalidJSON() {
 	r := newJWKSResolver(nil)
-	pub, kid, svcErr := r.parseEncryptionKeyFromJWKS([]byte("not-json"), "RSA-OAEP-256", KeyUseLenientEnc)
+	pub, kid, svcErr := r.parseEncryptionKeyFromJWKS(
+		context.Background(),
+		[]byte("not-json"),
+		"RSA-OAEP-256",
+		KeyUseLenientEnc)
 	assert.Nil(suite.T(), pub)
 	assert.Empty(suite.T(), kid)
 	assert.NotNil(suite.T(), svcErr)
@@ -274,7 +278,7 @@ func (suite *ResolverTestSuite) TestParseEncryptionKeyFromJWKS_InvalidJSON() {
 func (suite *ResolverTestSuite) TestParseEncryptionKeyFromJWKS_NoRSAKeys() {
 	jwks := `{"keys":[{"kty":"EC","use":"enc","crv":"P-256","x":"x","y":"y"}]}`
 	r := newJWKSResolver(nil)
-	pub, _, svcErr := r.parseEncryptionKeyFromJWKS([]byte(jwks), "RSA-OAEP-256", KeyUseLenientEnc)
+	pub, _, svcErr := r.parseEncryptionKeyFromJWKS(context.Background(), []byte(jwks), "RSA-OAEP-256", KeyUseLenientEnc)
 	assert.Nil(suite.T(), pub)
 	assert.NotNil(suite.T(), svcErr)
 }
@@ -287,7 +291,7 @@ func (suite *ResolverTestSuite) TestParseEncryptionKeyFromJWKS_AlgMismatch() {
 	jwks := multiKeyJWKS(entry)
 
 	r := newJWKSResolver(nil)
-	pub, _, svcErr := r.parseEncryptionKeyFromJWKS([]byte(jwks), "RSA-OAEP-256", KeyUseLenientEnc)
+	pub, _, svcErr := r.parseEncryptionKeyFromJWKS(context.Background(), []byte(jwks), "RSA-OAEP-256", KeyUseLenientEnc)
 	assert.Nil(suite.T(), pub)
 	assert.NotNil(suite.T(), svcErr)
 }
@@ -298,7 +302,11 @@ func (suite *ResolverTestSuite) TestParseEncryptionKeyFromJWKS_NoKid_ReturnsEmpt
 	jwks := rsaJWKS(&priv.PublicKey, "enc", "") // no kid
 
 	r := newJWKSResolver(nil)
-	pub, kid, svcErr := r.parseEncryptionKeyFromJWKS([]byte(jwks), "RSA-OAEP-256", KeyUseLenientEnc)
+	pub, kid, svcErr := r.parseEncryptionKeyFromJWKS(
+		context.Background(),
+		[]byte(jwks),
+		"RSA-OAEP-256",
+		KeyUseLenientEnc)
 	assert.NotNil(suite.T(), pub)
 	assert.Empty(suite.T(), kid)
 	assert.Nil(suite.T(), svcErr)
@@ -315,7 +323,11 @@ func (suite *ResolverTestSuite) TestParseEncryptionKeyFromJWKS_MultipleKeys_Firs
 	jwks := multiKeyJWKS(k1, k2)
 
 	r := newJWKSResolver(nil)
-	pub, kid, svcErr := r.parseEncryptionKeyFromJWKS([]byte(jwks), "RSA-OAEP-256", KeyUseLenientEnc)
+	pub, kid, svcErr := r.parseEncryptionKeyFromJWKS(
+		context.Background(),
+		[]byte(jwks),
+		"RSA-OAEP-256",
+		KeyUseLenientEnc)
 	assert.NotNil(suite.T(), pub)
 	assert.Equal(suite.T(), "k2", kid)
 	assert.Nil(suite.T(), svcErr)
@@ -331,7 +343,11 @@ func (suite *ResolverTestSuite) TestParseEncryptionKeyFromJWKS_TwoValidKeys_Firs
 	jwks := multiKeyJWKS(k1, k2)
 
 	r := newJWKSResolver(nil)
-	pub, kid, svcErr := r.parseEncryptionKeyFromJWKS([]byte(jwks), "RSA-OAEP-256", KeyUseLenientEnc)
+	pub, kid, svcErr := r.parseEncryptionKeyFromJWKS(
+		context.Background(),
+		[]byte(jwks),
+		"RSA-OAEP-256",
+		KeyUseLenientEnc)
 	assert.NotNil(suite.T(), pub)
 	assert.Equal(suite.T(), "first", kid) // deterministic: first matching key wins
 	assert.Nil(suite.T(), svcErr)
@@ -343,7 +359,7 @@ func (suite *ResolverTestSuite) TestParseEncryptionKeyFromJWKS_SigUseKey_Lenient
 	jwks := rsaJWKS(&priv.PublicKey, "sig", "")
 
 	r := newJWKSResolver(nil)
-	pub, _, svcErr := r.parseEncryptionKeyFromJWKS([]byte(jwks), "RSA-OAEP-256", KeyUseLenientEnc)
+	pub, _, svcErr := r.parseEncryptionKeyFromJWKS(context.Background(), []byte(jwks), "RSA-OAEP-256", KeyUseLenientEnc)
 	assert.Nil(suite.T(), pub) // use="sig" is explicitly non-enc; skipped in both policies
 	assert.NotNil(suite.T(), svcErr)
 }

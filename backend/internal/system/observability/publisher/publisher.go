@@ -23,6 +23,7 @@ import (
 	"context"
 	"sync"
 
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/observability/subscriber"
@@ -32,7 +33,8 @@ import (
 // Events are published synchronously to all interested subscribers.
 type CategoryPublisherInterface interface {
 	// Publish publishes an event immediately to all interested subscribers.
-	Publish(event *event.Event)
+	// The context carries the request trace ID used for correlated logging.
+	Publish(ctx context.Context, event *event.Event)
 
 	// Subscribe adds a subscriber (subscriber decides what categories it wants).
 	Subscribe(sub subscriber.SubscriberInterface)
@@ -83,21 +85,21 @@ func NewCategoryPublisher() CategoryPublisherInterface {
 // Publish publishes an event to all interested subscribers.
 // This method returns immediately without blocking the caller.
 // The entire publishing process (validation, routing, and dispatching) runs asynchronously.
-func (p *categoryEventPublisher) Publish(evt *event.Event) {
+func (p *categoryEventPublisher) Publish(ctx context.Context, evt *event.Event) {
 	if evt == nil {
 		return
 	}
 
 	// Validate event
 	if err := evt.Validate(); err != nil {
-		p.logger.Warn("Invalid event, skipping publish", log.Error(err))
+		p.logger.Warn(ctx, "Invalid event, skipping publish", log.Error(err))
 		return
 	}
 
 	p.mu.RLock()
 	if p.isShutdown {
 		p.mu.RUnlock()
-		p.logger.Warn("Attempted to publish event after shutdown",
+		p.logger.Warn(ctx, "Attempted to publish event after shutdown",
 			log.String("eventType", evt.Type))
 		return
 	}
@@ -106,12 +108,16 @@ func (p *categoryEventPublisher) Publish(evt *event.Event) {
 	// Increment WaitGroup for the dispatcher goroutine
 	p.wg.Add(1)
 
+	// Dispatch runs in a detached goroutine after the caller's context may be
+	// cancelled, so derive a logging context from the event's trace ID instead.
+	eventCtx := sysContext.WithTraceID(context.Background(), evt.TraceID)
+
 	// Process event asynchronously to avoid blocking the caller
 	go func() {
 		defer p.wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
-				p.logger.Error("Panic in event publisher dispatcher",
+				p.logger.Error(eventCtx, "Panic in event publisher dispatcher",
 					log.String("eventType", evt.Type),
 					log.Any("panic", r))
 			}
@@ -120,7 +126,7 @@ func (p *categoryEventPublisher) Publish(evt *event.Event) {
 		// Get event category
 		category, err := evt.GetCategory()
 		if err != nil {
-			p.logger.Error("Failed to get event category, skipping publish",
+			p.logger.Error(eventCtx, "Failed to get event category, skipping publish",
 				log.String("eventType", evt.Type),
 				log.Error(err))
 			return
@@ -141,7 +147,7 @@ func (p *categoryEventPublisher) Publish(evt *event.Event) {
 			// No subscribers for this category - skip it!
 			p.mu.RUnlock()
 			if p.logger.IsDebugEnabled() {
-				p.logger.Debug("No subscribers for event category, skipping",
+				p.logger.Debug(eventCtx, "No subscribers for event category, skipping",
 					log.String("eventType", evt.Type),
 					log.String("category", string(category)))
 			}
@@ -164,7 +170,7 @@ func (p *categoryEventPublisher) Publish(evt *event.Event) {
 				defer p.wg.Done() // Ensure WaitGroup is decremented when goroutine completes
 				defer func() {
 					if r := recover(); r != nil {
-						p.logger.Error("Subscriber panicked while handling event",
+						p.logger.Error(eventCtx, "Subscriber panicked while handling event",
 							log.String("subscriberID", s.GetID()),
 							log.Any("panic", r))
 					}
@@ -172,7 +178,7 @@ func (p *categoryEventPublisher) Publish(evt *event.Event) {
 
 				// Subscriber will filter the event itself based on its interests
 				if err := s.OnEvent(evt); err != nil {
-					p.logger.Error("Subscriber failed to handle event",
+					p.logger.Error(eventCtx, "Subscriber failed to handle event",
 						log.String("subscriberID", s.GetID()),
 						log.String("eventType", evt.Type),
 						log.Error(err))
@@ -204,7 +210,8 @@ func (p *categoryEventPublisher) Subscribe(sub subscriber.SubscriberInterface) {
 		p.subscribersByCategory[category] = append(p.subscribersByCategory[category], subscriberID)
 	}
 
-	p.logger.Debug("Subscriber registered",
+	// Subscriber registration happens during service startup, outside any request.
+	p.logger.Debug(context.Background(), "Subscriber registered",
 		log.String("subscriberID", subscriberID),
 		log.Int("categoryCount", len(categories)),
 		log.Any("categories", categories))
@@ -240,7 +247,9 @@ func (p *categoryEventPublisher) Unsubscribe(sub subscriber.SubscriberInterface)
 		}
 	}
 
-	p.logger.Debug("Subscriber unregistered", log.String("subscriberID", subscriberID))
+	// Subscriber removal happens during service shutdown, outside any request.
+	p.logger.Debug(context.Background(), "Subscriber unregistered",
+		log.String("subscriberID", subscriberID))
 }
 
 // GetActiveCategories returns categories that have at least one subscriber.
@@ -281,7 +290,10 @@ func (p *categoryEventPublisher) Shutdown() {
 	}
 	p.isShutdown = true
 
-	p.logger.Debug("Shutting down event publisher")
+	// Shutdown runs during application teardown, outside any request.
+	ctx := context.Background()
+
+	p.logger.Debug(ctx, "Shutting down event publisher")
 
 	// Signal all goroutines to stop accepting new events
 	p.cancel()
@@ -294,18 +306,18 @@ func (p *categoryEventPublisher) Shutdown() {
 	p.mu.Unlock()
 
 	// Wait for all in-flight event processing to complete
-	p.logger.Debug("Waiting for in-flight event processing to complete")
+	p.logger.Debug(ctx, "Waiting for in-flight event processing to complete")
 	p.wg.Wait()
-	p.logger.Debug("All in-flight events processed")
+	p.logger.Debug(ctx, "All in-flight events processed")
 
 	// Close all subscribers
 	for _, sub := range subscribers {
 		if err := sub.Close(); err != nil {
-			p.logger.Error("Error closing subscriber",
+			p.logger.Error(ctx, "Error closing subscriber",
 				log.String("subscriberID", sub.GetID()),
 				log.Error(err))
 		}
 	}
 
-	p.logger.Debug("Event bus shutdown complete")
+	p.logger.Debug(ctx, "Event bus shutdown complete")
 }

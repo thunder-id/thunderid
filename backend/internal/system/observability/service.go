@@ -21,6 +21,7 @@
 package observability
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -56,12 +57,15 @@ var _ ObservabilityServiceInterface = (*Service)(nil)
 func newServiceWithConfig() *Service {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
+	// Service construction runs during application startup, outside any request.
+	ctx := context.Background()
+
 	// Check if observability is disabled
 
-	logger.Debug("Initializing observability service")
+	logger.Debug(ctx, "Initializing observability service")
 	config := config.GetServerRuntime().Config.Observability
 	if !config.Enabled {
-		logger.Debug("Observability is disabled in configuration")
+		logger.Debug(ctx, "Observability is disabled in configuration")
 		return &Service{
 			logger: logger,
 			config: config,
@@ -81,7 +85,7 @@ func newServiceWithConfig() *Service {
 	subscribers, err := subscriber.Initialize(config)
 	if err != nil {
 		// This only happens in strict mode
-		logger.Error("Failed to initialize subscribers in strict mode", log.Error(err))
+		logger.Error(ctx, "Failed to initialize subscribers in strict mode", log.Error(err))
 		// In strict mode, we could return an error service, but for now we continue
 		// with no subscribers (observability will be disabled)
 		return svc
@@ -90,11 +94,11 @@ func newServiceWithConfig() *Service {
 	// Subscribe all initialized subscribers to the publisher
 	for _, sub := range subscribers {
 		pub.Subscribe(sub)
-		logger.Debug("Subscriber subscribed to publisher",
+		logger.Debug(ctx, "Subscriber subscribed to publisher",
 			log.String("subscriberID", sub.GetID()))
 	}
 
-	logger.Debug("Observability service initialized successfully",
+	logger.Debug(ctx, "Observability service initialized successfully",
 		log.Int("activeSubscribers", len(subscribers)))
 	return svc
 }
@@ -103,16 +107,19 @@ func newServiceWithConfig() *Service {
 // This is called by subscribers in their init() functions.
 // The subscriber will only be activated if IsEnabled returns true and Initialize succeeds.
 func (s *Service) RegisterSubscriber(sub subscriber.SubscriberInterface) {
+	// Subscriber self-registration runs during package init, outside any request.
+	ctx := context.Background()
+
 	// Skip registration if service is not enabled or has no publisher
 	if !s.config.Enabled || s.publisher == nil {
-		s.logger.Debug("Subscriber registration skipped - service not enabled",
+		s.logger.Debug(ctx, "Subscriber registration skipped - service not enabled",
 			log.String("subscriberType", fmt.Sprintf("%T", sub)))
 		return
 	}
 
 	// Check if subscriber is enabled in config
 	if !sub.IsEnabled() {
-		s.logger.Debug("Subscriber registration skipped - disabled by config",
+		s.logger.Debug(ctx, "Subscriber registration skipped - disabled by config",
 			log.String("subscriberType", fmt.Sprintf("%T", sub)))
 		return
 	}
@@ -120,12 +127,12 @@ func (s *Service) RegisterSubscriber(sub subscriber.SubscriberInterface) {
 	// Initialize the subscriber
 	if err := sub.Initialize(); err != nil {
 		if s.config.FailureMode == "strict" {
-			s.logger.Error("Failed to initialize subscriber in strict mode",
+			s.logger.Error(ctx, "Failed to initialize subscriber in strict mode",
 				log.String("subscriberType", fmt.Sprintf("%T", sub)),
 				log.Error(err))
 			// In strict mode, we could panic or store error for later retrieval
 		} else {
-			s.logger.Warn("Failed to initialize subscriber, skipping",
+			s.logger.Warn(ctx, "Failed to initialize subscriber, skipping",
 				log.String("subscriberType", fmt.Sprintf("%T", sub)),
 				log.Error(err))
 		}
@@ -135,7 +142,7 @@ func (s *Service) RegisterSubscriber(sub subscriber.SubscriberInterface) {
 	// Subscribe to publisher (publisher now owns the subscriber list)
 	s.publisher.Subscribe(sub)
 
-	s.logger.Debug("Subscriber registered and activated successfully",
+	s.logger.Debug(ctx, "Subscriber registered and activated successfully",
 		log.String("subscriberType", fmt.Sprintf("%T", sub)),
 		log.String("subscriberID", sub.GetID()))
 }
@@ -143,18 +150,18 @@ func (s *Service) RegisterSubscriber(sub subscriber.SubscriberInterface) {
 // PublishEvent publishes an event to the observability system.
 // This is a no-op if observability is disabled.
 // The publisher will validate the event, so no need to check here.
-func (s *Service) PublishEvent(evt *event.Event) {
+func (s *Service) PublishEvent(ctx context.Context, evt *event.Event) {
 	// Quick exit if observability is disabled
 	if !s.config.Enabled || s.publisher == nil {
 		return
 	}
 
 	// Publisher handles nil check and validation
-	s.publisher.Publish(evt)
+	s.publisher.Publish(ctx, evt)
 
 	// Only log if event is not nil (avoid panic on evt.Type access)
 	if evt != nil {
-		s.logger.Debug("Event published",
+		s.logger.Debug(ctx, "Event published",
 			log.String("eventType", evt.Type),
 			log.String("eventID", evt.EventID),
 			log.String("traceID", evt.TraceID))
@@ -195,7 +202,10 @@ func (s *Service) GetActiveSubscribers() []subscriber.SubscriberInterface {
 // Shutdown gracefully shuts down the observability service.
 // The publisher handles unsubscribing and closing all subscribers.
 func (s *Service) Shutdown() {
-	s.logger.Debug("Shutting down observability service")
+	// Shutdown runs during application teardown, outside any request.
+	ctx := context.Background()
+
+	s.logger.Debug(ctx, "Shutting down observability service")
 
 	if s.publisher != nil {
 		// Publisher handles all subscriber cleanup (unsubscribe, close)
@@ -204,5 +214,5 @@ func (s *Service) Shutdown() {
 		// Set publisher to nil to mark service as disabled
 		s.publisher = nil
 	}
-	s.logger.Debug("Observability service shutdown complete")
+	s.logger.Debug(ctx, "Observability service shutdown complete")
 }

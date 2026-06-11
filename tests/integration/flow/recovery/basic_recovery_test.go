@@ -28,23 +28,6 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-const (
-	mockSMTPPort = 2525
-)
-
-// emailPatch configures Thunder to use the mock SMTP server.
-var emailPatch = map[string]interface{}{
-	"email": map[string]interface{}{
-		"smtp": map[string]interface{}{
-			"host":                  "localhost",
-			"port":                  mockSMTPPort,
-			"from_address":          "noreply@thunder.test",
-			"enable_start_tls":      false,
-			"enable_authentication": false,
-		},
-	},
-}
-
 // emailPatchRemove removes the email config to restore the original state.
 var emailPatchRemove = map[string]interface{}{
 	"email": map[string]interface{}{},
@@ -125,9 +108,21 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) SetupSuite() {
 	ts.testUserID = userID[0]
 
 	// Start mock SMTP server
-	ts.mockSMTP = testutils.NewMockSMTPServer(mockSMTPPort)
+	ts.mockSMTP = testutils.NewMockSMTPServer(0)
 	ts.Require().NoError(ts.mockSMTP.Start(), "Failed to start mock SMTP server")
 	time.Sleep(100 * time.Millisecond)
+
+	emailPatch := map[string]interface{}{
+		"email": map[string]interface{}{
+			"smtp": map[string]interface{}{
+				"host":                  "localhost",
+				"port":                  ts.mockSMTP.GetPort(),
+				"from_address":          "noreply@thunder.test",
+				"enable_start_tls":      false,
+				"enable_authentication": false,
+			},
+		},
+	}
 
 	// Patch deployment.yaml to point email at the mock SMTP server and restart
 	ts.Require().NoError(testutils.PatchDeploymentConfig(emailPatch), "Failed to patch email config")
@@ -459,6 +454,13 @@ func buildEmailLinkPasswordRecoveryFlow() testutils.Flow {
 				"executor": map[string]interface{}{
 					"name": "EmailExecutor",
 					"mode": "send",
+					"inputs": []map[string]interface{}{
+						{
+							"identifier": "email",
+							"type":       "EMAIL_INPUT",
+							"required":   true,
+						},
+					},
 				},
 				"onSuccess": "email_sent_status",
 				"onFailure": "email_sent_status",

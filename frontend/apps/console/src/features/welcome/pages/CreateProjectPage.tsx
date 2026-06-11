@@ -17,23 +17,14 @@
  */
 
 import {useConfig} from '@thunderid/contexts';
-import {
-  Box,
-  Button,
-  Stack,
-  Typography,
-  Card,
-  IconButton,
-  LinearProgress,
-  Breadcrumbs,
-  ColorSchemeSVG,
-} from '@wso2/oxygen-ui';
+import {Box, Button, Stack, Typography, Card, IconButton, LinearProgress, ColorSchemeSVG} from '@wso2/oxygen-ui';
 import {ChevronRight, X, Settings, PlayCircle, CheckCircle} from '@wso2/oxygen-ui-icons-react';
 import {motion} from 'framer-motion';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import HowSolutionWorksIllustration from '../components/HowSolutionWorksIllustration';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 
 const MotionBox = motion.create(Box);
 
@@ -44,7 +35,7 @@ export default function CreateProjectPage(): JSX.Element {
   const productName = config.brand.product_name;
 
   const handleContinue = (): void => {
-    void navigate('/home');
+    void navigate('/welcome/get-started');
   };
 
   const handleClose = (): void => {
@@ -81,29 +72,12 @@ export default function CreateProjectPage(): JSX.Element {
             >
               <X size={24} />
             </IconButton>
-            <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb">
-              <Typography
-                variant="h5"
-                color="inherit"
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  void navigate('/welcome');
-                }}
-                onKeyDown={(e: React.KeyboardEvent) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    void navigate('/welcome');
-                  }
-                }}
-                sx={{cursor: 'pointer', '&:hover': {textDecoration: 'underline'}}}
-              >
-                {t('common:welcome.header')}
-              </Typography>
-              <Typography variant="h5" color="text.primary">
-                {t('common:welcome.createProject.breadcrumb')}
-              </Typography>
-            </Breadcrumbs>
+            <AppBreadcrumbs
+              items={[
+                {key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')},
+                {key: 'create-project', label: t('common:welcome.createProject.breadcrumb')},
+              ]}
+            />
           </Stack>
         </Box>
 
@@ -160,7 +134,7 @@ export default function CreateProjectPage(): JSX.Element {
               animate={{opacity: 1, scale: 1}}
               transition={{duration: 0.5, delay: 0.2}}
               sx={{
-                my: 8,
+                my: 4,
                 display: 'flex',
                 justifyContent: 'center',
                 overflow: 'auto',

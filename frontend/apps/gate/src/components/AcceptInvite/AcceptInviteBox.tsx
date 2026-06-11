@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -20,15 +20,27 @@ import {useConfig} from '@thunderid/contexts';
 import {useDesign, FlowComponentRenderer, AuthCardLayout} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
 import {AcceptInvite, useThunderID, type EmbeddedFlowComponent} from '@thunderid/react';
-import {Box, Alert, Typography, AlertTitle, CircularProgress} from '@wso2/oxygen-ui';
+import {Box, Alert, AlertTitle, Typography, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {useNavigate, useSearchParams} from 'react-router';
 import ROUTES from '../../constants/routes';
+
+export interface FlowChangeResponse {
+  flowStatus?: string;
+  assertion?: string;
+  data?: {additionalData?: Record<string, string>};
+  error?: {
+    code?: string;
+    message?: {key?: string; defaultValue?: string};
+    description?: {key?: string; defaultValue?: string};
+  };
+}
 
 export default function AcceptInviteBox(): JSX.Element {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const {resolveFlowTemplateLiterals} = useThunderID();
   const {t} = useTranslation();
   const {getServerUrl} = useConfig();
@@ -43,6 +55,47 @@ export default function AcceptInviteBox(): JSX.Element {
     const result = navigate(ROUTES.AUTH.SIGN_IN);
     if (result instanceof Promise) {
       result.catch(() => null);
+    }
+  };
+
+  /**
+   * Posts the completed flow assertion to the callback endpoint.
+   * Requires authId (from URL params) and assertion (from flow completion).
+   * callbackType is optional — the backend defaults to authorization_code when absent.
+   *
+   * Response handling is generic:
+   *   - redirect_uri present → redirect the browser (e.g. auth code flow)
+   *   - redirect_uri absent  → no redirect; the flow's completion components display the outcome
+   */
+  const handleFlowCallback = async (authId: string, assertion: string, callbackType?: string): Promise<void> => {
+    try {
+      const body: Record<string, string> = {authId, assertion};
+      if (callbackType) {
+        body.type = callbackType;
+      }
+
+      const resp = await fetch(`${baseUrl}/oauth2/auth/callback`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+
+      if (!resp.ok) {
+        logger.error('Flow callback returned non-OK status', {status: resp.status});
+        setFlowError(t('invite:errors.callback.failed', 'Failed to complete callback. Please try again.'));
+        return;
+      }
+
+      const result = (await resp.json()) as {redirect_uri?: string};
+
+      if (result.redirect_uri) {
+        window.location.href = result.redirect_uri;
+      }
+      // No redirect_uri: the flow's own completion components already display the outcome.
+    } catch (err) {
+      logger.error('Flow callback error:', err instanceof Error ? err : undefined);
+      setFlowError(t('invite:errors.callback.failed', 'Failed to complete callback. Please try again.'));
     }
   };
 
@@ -64,11 +117,33 @@ export default function AcceptInviteBox(): JSX.Element {
         onError={(error: Error) => {
           logger.error('Invite acceptance error:', error);
         }}
-        onFlowChange={(response: {failureReason?: string}) => {
-          setFlowError(response?.failureReason ?? null);
+        onFlowChange={(response: FlowChangeResponse) => {
+          const messageKey: string | undefined = response?.error?.message?.key;
+          if (messageKey) {
+            const translated: string = t(messageKey);
+            if (translated !== messageKey) {
+              setFlowError(translated);
+
+              return;
+            }
+          }
+          const fallback: string | undefined =
+            response?.error?.message?.defaultValue ?? response?.error?.description?.defaultValue;
+          setFlowError(fallback ?? null);
+
+          if (response.flowStatus === 'COMPLETE' && response.assertion) {
+            const authId = searchParams.get('auth_req_id') ?? searchParams.get('authId');
+            const {assertion} = response;
+            const callbackType = response.data?.additionalData?.callbackType;
+
+            if (authId && assertion) {
+              void handleFlowCallback(authId, assertion, callbackType);
+            }
+          }
         }}
       >
         {({
+          additionalData,
           fieldErrors,
           error,
           touched,
@@ -80,7 +155,6 @@ export default function AcceptInviteBox(): JSX.Element {
           isValidatingToken,
           isTokenInvalid,
         }) => {
-          // Validating token
           if (isValidatingToken) {
             return (
               <Box sx={{display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3, gap: 2}}>
@@ -90,7 +164,6 @@ export default function AcceptInviteBox(): JSX.Element {
             );
           }
 
-          // Invalid token
           if (isTokenInvalid) {
             return (
               <Alert severity="error">
@@ -100,7 +173,6 @@ export default function AcceptInviteBox(): JSX.Element {
             );
           }
 
-          // Loading
           if (isLoading && !components?.length) {
             return (
               <Box sx={{display: 'flex', justifyContent: 'center', p: 3}}>
@@ -128,6 +200,7 @@ export default function AcceptInviteBox(): JSX.Element {
                       touched={touched}
                       fieldErrors={fieldErrors}
                       isLoading={isLoading}
+                      additionalData={additionalData}
                       resolve={resolveFlowTemplateLiterals}
                       onInputChange={handleInputChange}
                       onSubmit={(action, inputs) => {

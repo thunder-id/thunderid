@@ -19,6 +19,7 @@
 package importer
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
@@ -47,17 +48,17 @@ func (ih *importHandler) HandleImportRequest(w http.ResponseWriter, r *http.Requ
 			Message:     ErrorInvalidImportRequest.Error,
 			Description: ErrorInvalidImportRequest.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(r.Context(), w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	importResponse, svcErr := ih.service.ImportResources(r.Context(), importRequest)
 	if svcErr != nil {
-		ih.handleError(w, svcErr)
+		ih.handleError(r.Context(), w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, importResponse)
+	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, importResponse)
 }
 
 func (ih *importHandler) HandleDeleteImportRequest(w http.ResponseWriter, r *http.Request) {
@@ -68,27 +69,27 @@ func (ih *importHandler) HandleDeleteImportRequest(w http.ResponseWriter, r *htt
 			Message:     ErrorInvalidImportRequest.Error,
 			Description: ErrorInvalidImportRequest.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(r.Context(), w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	deleteResponse, svcErr := ih.service.DeleteResource(r.Context(), deleteRequest)
 	if svcErr != nil {
-		ih.handleError(w, svcErr)
+		ih.handleError(r.Context(), w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, deleteResponse)
+	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, deleteResponse)
 }
 
-func (ih *importHandler) handleError(w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func (ih *importHandler) handleError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == serviceerror.ClientErrorType {
 		statusCode = http.StatusBadRequest
 	}
 
 	if statusCode == http.StatusInternalServerError {
-		ih.logger.Error(
+		ih.logger.Error(ctx,
 			"Import request failed with server error",
 			log.String("code", svcErr.Code),
 			log.String("error", svcErr.Error.DefaultValue),
@@ -102,5 +103,5 @@ func (ih *importHandler) handleError(w http.ResponseWriter, svcErr *serviceerror
 		Description: svcErr.ErrorDescription,
 	}
 
-	sysutils.WriteErrorResponse(w, statusCode, errResp)
+	sysutils.WriteErrorResponse(ctx, w, statusCode, errResp)
 }

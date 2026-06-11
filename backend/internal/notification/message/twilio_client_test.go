@@ -19,6 +19,7 @@
 package message
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -67,7 +68,7 @@ func (suite *TwilioClientTestSuite) getValidTwilioSender() common.NotificationSe
 func (suite *TwilioClientTestSuite) TestNewTwilioClient_Success() {
 	sender := suite.getValidTwilioSender()
 
-	client, err := NewTwilioClient(sender)
+	client, err := NewTwilioClient(context.Background(), sender)
 
 	suite.NoError(err)
 	suite.NotNil(client)
@@ -76,7 +77,7 @@ func (suite *TwilioClientTestSuite) TestNewTwilioClient_Success() {
 
 func (suite *TwilioClientTestSuite) TestGetName() {
 	sender := suite.getValidTwilioSender()
-	client, _ := NewTwilioClient(sender)
+	client, _ := NewTwilioClient(context.Background(), sender)
 
 	name := client.GetName()
 
@@ -111,7 +112,7 @@ func (suite *TwilioClientTestSuite) TestSendSMS_Success() {
 		createProperty("sender_id", "+15551234567", false),
 	}
 
-	client, _ := NewTwilioClient(sender)
+	client, _ := NewTwilioClient(context.Background(), sender)
 
 	// Replace the Twilio URL with test server URL
 	twilioClient := client.(*TwilioClient)
@@ -122,14 +123,14 @@ func (suite *TwilioClientTestSuite) TestSendSMS_Success() {
 		Body:      "Test message",
 	}
 
-	err := client.Send(common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.NoError(err)
 }
 
 func (suite *TwilioClientTestSuite) TestSendSMS_Error() {
 	sender := suite.getValidTwilioSender()
-	client, _ := NewTwilioClient(sender)
+	client, _ := NewTwilioClient(context.Background(), sender)
 
 	// Create a test server that returns an error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -149,7 +150,7 @@ func (suite *TwilioClientTestSuite) TestSendSMS_Error() {
 		Body:      "Test message",
 	}
 
-	err := client.Send(common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "status: 401")
@@ -157,7 +158,7 @@ func (suite *TwilioClientTestSuite) TestSendSMS_Error() {
 
 func (suite *TwilioClientTestSuite) TestSendSMS_NetworkError() {
 	sender := suite.getValidTwilioSender()
-	client, _ := NewTwilioClient(sender)
+	client, _ := NewTwilioClient(context.Background(), sender)
 
 	// Use an invalid URL to force a network error
 	twilioClient := client.(*TwilioClient)
@@ -168,7 +169,7 @@ func (suite *TwilioClientTestSuite) TestSendSMS_NetworkError() {
 		Body:      "Test message",
 	}
 
-	err := client.Send(common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.Error(err)
 }
@@ -177,7 +178,7 @@ func (suite *TwilioClientTestSuite) TestNewTwilioClient_WithUnknownProperty() {
 	sender := suite.getValidTwilioSender()
 	sender.Properties = append(sender.Properties, createProperty("unknown_prop", "value", false))
 
-	client, err := NewTwilioClient(sender)
+	client, err := NewTwilioClient(context.Background(), sender)
 
 	// Should succeed and just log a warning for unknown property
 	suite.NoError(err)

@@ -19,6 +19,7 @@
 package notification
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -44,7 +45,9 @@ func Initialize(mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
 		var err error
 		notificationStore, tx, err = newNotificationStore()
 		if err != nil {
-			log.GetLogger().Error("Failed to initialize notification store", log.Error(err))
+			// Service initialization runs during application startup, outside any request.
+			log.GetLogger().Error(context.Background(),
+				"Failed to initialize notification store", log.Error(err))
 			return nil, nil, nil, nil, err
 		}
 	}

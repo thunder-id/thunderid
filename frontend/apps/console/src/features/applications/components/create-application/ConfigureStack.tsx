@@ -16,34 +16,55 @@
  * under the License.
  */
 
-import {Box, Typography, Stack, Card, CardActionArea, CardContent, Divider} from '@wso2/oxygen-ui';
+import {Box, Typography, Stack, Card, CardContent, Chip} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
-import {useEffect} from 'react';
+import {useState, useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
 import PlatformBasedApplicationTemplateMetadata from '../../config/PlatformBasedApplicationTemplateMetadata';
 import TechnologyBasedApplicationTemplateMetadata from '../../config/TechnologyBasedApplicationTemplateMetadata';
 import useApplicationCreate from '../../contexts/ApplicationCreate/useApplicationCreate';
-import {ApplicationCreateFlowSignInApproach} from '../../models/application-create-flow';
+import type {
+  ApplicationTemplate,
+  ApplicationTemplateMetadata,
+  TemplateCategory,
+} from '../../models/application-templates';
 import {TechnologyApplicationTemplate, PlatformApplicationTemplate} from '../../models/application-templates';
-import type {ApplicationTemplate} from '../../models/application-templates';
 import {TokenEndpointAuthMethods, type OAuth2Config} from '../../models/oauth';
 import inferApplicationTemplateTechnologyFromConfig from '../../utils/inferApplicationTemplateTechnologyFromConfig';
 
+type CategoryFilter = TemplateCategory | 'all';
+
+const CATEGORIES: {value: CategoryFilter; titleKey: string}[] = [
+  {value: 'all', titleKey: 'applications:onboarding.configure.stack.category.all'},
+  {value: 'web', titleKey: 'applications:onboarding.configure.stack.category.web'},
+  {value: 'backend', titleKey: 'applications:onboarding.configure.stack.category.backend'},
+  {value: 'mobile', titleKey: 'applications:onboarding.configure.stack.category.mobile'},
+];
+
+const CATEGORY_I18N_KEY: Record<TemplateCategory, string> = {
+  web: 'applications:onboarding.configure.stack.category.web',
+  backend: 'applications:onboarding.configure.stack.category.backend',
+  mobile: 'applications:onboarding.configure.stack.category.mobile',
+};
+
+type AnyTemplateMetadata = ApplicationTemplateMetadata<TechnologyApplicationTemplate | PlatformApplicationTemplate>;
+
+const ALL_TEMPLATES: AnyTemplateMetadata[] = [
+  ...(TechnologyBasedApplicationTemplateMetadata as AnyTemplateMetadata[]),
+  ...(PlatformBasedApplicationTemplateMetadata as AnyTemplateMetadata[]),
+];
+
+const TECHNOLOGY_VALUES = new Set<string>(TechnologyBasedApplicationTemplateMetadata.map((m) => m.value));
+
 const TechnologyBasedTemplates: Record<TechnologyApplicationTemplate, ApplicationTemplate> =
   TechnologyBasedApplicationTemplateMetadata.reduce(
-    (acc, item) => ({
-      ...acc,
-      [item.value]: item.template,
-    }),
+    (acc, item) => ({...acc, [item.value]: item.template}),
     {} as Record<TechnologyApplicationTemplate, ApplicationTemplate>,
   );
 
 const PlatformBasedTemplates: Record<PlatformApplicationTemplate, ApplicationTemplate> =
   PlatformBasedApplicationTemplateMetadata.reduce(
-    (acc, item) => ({
-      ...acc,
-      [item.value]: item.template,
-    }),
+    (acc, item) => ({...acc, [item.value]: item.template}),
     {} as Record<PlatformApplicationTemplate, ApplicationTemplate>,
   );
 
@@ -67,58 +88,10 @@ export interface ConfigureStackProps {
    * Callback function to broadcast whether this step is ready to proceed
    */
   onReadyChange?: (isReady: boolean) => void;
-
-  /**
-   * Configuration for which stack types to show
-   */
-  stackTypes?: {
-    technology?: boolean;
-    platform?: boolean;
-  };
 }
 
 /**
- * React component that renders the technology/platform stack selection step in the
- * application creation onboarding flow.
- *
- * This component allows users to select their application's technology stack by choosing:
- * 1. Technology templates (React, Next.js, or Other) - can be hidden via stackTypes prop
- * 2. Platform templates (Browser, Server, Mobile, Backend) - can be hidden via stackTypes prop
- *
- * The component manages OAuth2 configuration based on the selected template, automatically
- * configuring grant types, PKCE requirements, and other OAuth settings. When the technology
- * section is hidden, it automatically selects the first platform template. Templates can
- * be pre-filled with redirect URIs or left empty to require configuration in the next step.
- *
- * The step is marked as ready once a valid template is selected. For "Other" technology,
- * a platform must also be selected.
- *
- * @param props - The component props
- * @param props.oauthConfig - Current OAuth2 configuration
- * @param props.onOAuthConfigChange - Callback when OAuth config changes based on template selection
- * @param props.onReadyChange - Optional callback to notify parent of step readiness
- * @param props.stackTypes - Configuration to show/hide technology and platform sections
- *
- * @returns JSX element displaying the technology/platform stack selection interface
- *
- * @example
- * ```tsx
- * import ConfigureStack from './ConfigureStack';
- * import { getDefaultOAuthConfig } from '../../models/oauth';
- *
- * function OnboardingFlow() {
- *   const [oauthConfig, setOAuthConfig] = useState(getDefaultOAuthConfig());
- *
- *   return (
- *     <ConfigureStack
- *       oauthConfig={oauthConfig}
- *       onOAuthConfigChange={setOAuthConfig}
- *       onReadyChange={(isReady) => console.log('Ready:', isReady)}
- *       stackTypes={{ technology: false, platform: true }}
- *     />
- *   );
- * }
- * ```
+ * Unified template gallery for the application creation onboarding flow.
  *
  * @public
  */
@@ -126,18 +99,13 @@ export default function ConfigureStack({
   oauthConfig,
   onOAuthConfigChange,
   onReadyChange = undefined,
-  stackTypes = {technology: true, platform: true},
 }: ConfigureStackProps): JSX.Element {
   const {t} = useTranslation();
 
-  const {
-    selectedTechnology,
-    setSelectedTechnology,
-    selectedPlatform,
-    setSelectedPlatform,
-    setSelectedTemplateConfig,
-    signInApproach,
-  } = useApplicationCreate();
+  const {selectedTechnology, setSelectedTechnology, selectedPlatform, setSelectedPlatform, setSelectedTemplateConfig} =
+    useApplicationCreate();
+
+  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
 
   const defaultTechnology: TechnologyApplicationTemplate =
     TechnologyBasedApplicationTemplateMetadata[0]?.value ?? TechnologyApplicationTemplate.REACT;
@@ -146,34 +114,20 @@ export default function ConfigureStack({
     PlatformBasedApplicationTemplateMetadata[0]?.value ?? PlatformApplicationTemplate.BROWSER;
 
   const getResolvedTechnology = (): TechnologyApplicationTemplate => {
-    if (selectedTechnology) {
-      return selectedTechnology;
-    }
-    if (selectedPlatform) {
-      return TechnologyApplicationTemplate.OTHER;
-    }
-    if (oauthConfig) {
-      return inferredTechnology;
-    }
-    if (stackTypes.technology) {
-      return defaultTechnology;
-    }
-    return TechnologyApplicationTemplate.OTHER;
+    if (selectedTechnology) return selectedTechnology;
+    if (selectedPlatform) return TechnologyApplicationTemplate.OTHER;
+    if (oauthConfig) return inferredTechnology;
+    return defaultTechnology;
   };
 
   const resolvedTechnology: TechnologyApplicationTemplate = getResolvedTechnology();
-
-  const platformForTemplate: PlatformApplicationTemplate =
-    selectedPlatform ?? (!stackTypes.technology ? defaultPlatform : (selectedPlatform ?? defaultPlatform));
+  const platformForTemplate: PlatformApplicationTemplate = selectedPlatform ?? defaultPlatform;
 
   const technologyConfig: ApplicationTemplate =
     resolvedTechnology === TechnologyApplicationTemplate.OTHER
       ? PlatformBasedTemplates[platformForTemplate]
       : TechnologyBasedTemplates[resolvedTechnology];
 
-  /**
-   * Update OAuth2 configuration when technology or platform changes.
-   */
   useEffect((): void => {
     setSelectedTemplateConfig(technologyConfig);
 
@@ -191,227 +145,191 @@ export default function ConfigureStack({
       pkceRequired: oauthInboundConfig.pkceRequired,
       grantTypes: [...oauthInboundConfig.grantTypes],
       responseTypes: [...(oauthInboundConfig.responseTypes ?? [])],
-      redirectUris: oauthInboundConfig.redirectUris ? [...oauthInboundConfig.redirectUris] : [], // Use from template or empty if not present
+      redirectUris: oauthInboundConfig.redirectUris ? [...oauthInboundConfig.redirectUris] : [],
       tokenEndpointAuthMethod: oauthInboundConfig.tokenEndpointAuthMethod,
       scopes: ['openid', 'profile', 'email'],
     });
   }, [resolvedTechnology, platformForTemplate, onOAuthConfigChange, technologyConfig, setSelectedTemplateConfig]);
 
-  /**
-   * Notify parent component about readiness to proceed.
-   * Always ready once technology is selected (platform required for "other")
-   * If technology section is hidden, auto-select first platform
-   */
   useEffect((): void => {
-    // If technology section is hidden and no platform selected, auto-select first platform
-    if (!stackTypes.technology && !selectedPlatform) {
-      setSelectedPlatform(defaultPlatform);
-    }
-
     const isReady: boolean = resolvedTechnology !== TechnologyApplicationTemplate.OTHER || selectedPlatform !== null;
-
     onReadyChange?.(isReady);
-  }, [
-    resolvedTechnology,
-    selectedPlatform,
-    onReadyChange,
-    stackTypes.technology,
-    setSelectedPlatform,
-    defaultPlatform,
-  ]);
+  }, [resolvedTechnology, selectedPlatform, onReadyChange]);
 
-  const handleTechnologyChange = (newTechnology: TechnologyApplicationTemplate): void => {
-    setSelectedTechnology(newTechnology);
-    setSelectedPlatform(null);
+  const handleTemplateSelect = (value: TechnologyApplicationTemplate | PlatformApplicationTemplate): void => {
+    if (TECHNOLOGY_VALUES.has(value)) {
+      setSelectedTechnology(value as TechnologyApplicationTemplate);
+      setSelectedPlatform(null);
+    } else {
+      setSelectedTechnology(null);
+      setSelectedPlatform(value as PlatformApplicationTemplate);
+    }
   };
 
-  const handlePlatformChange = (newPlatform: PlatformApplicationTemplate): void => {
-    setSelectedTechnology(null);
-    setSelectedPlatform(newPlatform);
+  const isTemplateSelected = (value: TechnologyApplicationTemplate | PlatformApplicationTemplate): boolean => {
+    if (TECHNOLOGY_VALUES.has(value)) return resolvedTechnology === value;
+    return selectedPlatform === value;
   };
+
+  const filteredTemplates: AnyTemplateMetadata[] =
+    selectedCategory === 'all'
+      ? ALL_TEMPLATES
+      : ALL_TEMPLATES.filter((tmpl) => tmpl.categories.includes(selectedCategory));
 
   return (
     <Stack direction="column" spacing={3} data-testid="application-configure-stack">
-      {stackTypes.technology && (
-        <>
-          <Stack direction="column" spacing={1}>
-            <Typography variant="h1" gutterBottom>
-              {t('applications:onboarding.configure.stack.technology.title')}
-            </Typography>
-            <Typography variant="subtitle1" gutterBottom>
-              {t('applications:onboarding.configure.stack.technology.subtitle')}
-            </Typography>
-          </Stack>
+      {/* Header */}
+      <Stack direction="column" spacing={0.5}>
+        <Typography variant="h1">{t('applications:onboarding.configure.stack.title')}</Typography>
+        <Typography variant="body1" color="text.secondary">
+          {t('applications:onboarding.configure.stack.subtitle')}
+        </Typography>
+      </Stack>
 
-          {/* Technology Grid */}
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: '1fr',
-                md: '1fr',
-                lg: '1fr',
-                xl: 'repeat(4, 1fr)',
-              },
-              gap: 1.5,
-            }}
-          >
-            {TechnologyBasedApplicationTemplateMetadata.map((option) => {
-              const isSelected: boolean = resolvedTechnology === option.value;
-              const isDisabled: boolean = option.disabled ?? false;
+      {/* Category filter chips */}
+      <Stack direction="row" spacing={1} flexWrap="wrap">
+        {CATEGORIES.map((cat) => {
+          const isActive = selectedCategory === cat.value;
+          return (
+            <Chip
+              key={cat.value}
+              label={t(cat.titleKey)}
+              onClick={() => setSelectedCategory(cat.value)}
+              variant={isActive ? 'filled' : 'outlined'}
+              color={isActive ? 'primary' : 'default'}
+              sx={{
+                fontWeight: isActive ? 600 : 400,
+                borderRadius: '20px',
+                cursor: 'pointer',
+              }}
+            />
+          );
+        })}
+      </Stack>
 
-              return (
-                <Card
-                  key={option.value}
-                  variant="outlined"
-                  onClick={isDisabled ? undefined : (): void => handleTechnologyChange(option.value)}
-                  sx={{position: 'relative'}}
+      {/* Template grid */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: {
+            xs: '1fr',
+            sm: 'repeat(2, 1fr)',
+            md: 'repeat(3, 1fr)',
+            xl: 'repeat(4, 1fr)',
+          },
+          gap: 2,
+        }}
+      >
+        {filteredTemplates.map((option) => {
+          const isSelected: boolean = isTemplateSelected(option.value);
+          const isDisabled: boolean = option.disabled ?? false;
+
+          return (
+            <Card
+              key={option.value}
+              variant="outlined"
+              role="button"
+              tabIndex={isDisabled ? -1 : 0}
+              aria-disabled={isDisabled}
+              aria-pressed={isSelected}
+              onClick={isDisabled ? undefined : () => handleTemplateSelect(option.value)}
+              onKeyDown={(e) => {
+                if (!isDisabled && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  handleTemplateSelect(option.value);
+                }
+              }}
+              sx={{
+                position: 'relative',
+                borderRadius: 2,
+                borderWidth: isSelected ? 2 : 1,
+                borderColor: isSelected ? 'primary.main' : 'divider',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                opacity: isDisabled ? 0.5 : 1,
+                bgcolor: isSelected ? 'action.selected' : 'background.paper',
+                transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.15s',
+                '&:hover': isDisabled
+                  ? {}
+                  : {
+                      borderColor: 'primary.main',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                      transform: 'translateY(-2px)',
+                    },
+                '&:focus-visible': isDisabled
+                  ? {}
+                  : {
+                      outline: 'none',
+                      borderColor: 'primary.main',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                      transform: 'translateY(-2px)',
+                    },
+              }}
+            >
+              {isDisabled && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 10,
+                    right: 10,
+                    bgcolor: 'warning.main',
+                    color: 'warning.contrastText',
+                    px: 1,
+                    py: 0.25,
+                    borderRadius: 1,
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    letterSpacing: 0.3,
+                    zIndex: 1,
+                  }}
                 >
-                  {isDisabled && (
-                    <Box
-                      sx={{
-                        position: 'absolute',
-                        top: 8,
-                        right: 8,
-                        bgcolor: 'warning.main',
-                        color: 'warning.contrastText',
-                        px: 1,
-                        py: 0.5,
-                        borderRadius: 1,
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        zIndex: 1,
-                      }}
-                    >
-                      Coming Soon
-                    </Box>
-                  )}
-                  <CardActionArea
-                    disabled={isDisabled}
+                  {t('applications:onboarding.configure.stack.comingSoon')}
+                </Box>
+              )}
+
+              <CardContent sx={{p: 2.5, '&:last-child': {pb: 2.5}}}>
+                <Stack direction="column" spacing={2}>
+                  {/* Icon */}
+                  <Box
                     sx={{
-                      height: '100%',
-                      cursor: isDisabled ? 'not-allowed' : 'pointer',
-                      border: 1,
-                      borderColor: isSelected ? 'primary.main' : 'divider',
-                      transition: 'all 0.2s ease-in-out',
-                      opacity: isDisabled ? 0.5 : 1,
-                      '&:hover': {
-                        borderColor: isDisabled ? 'divider' : 'primary.main',
-                        bgcolor: (() => {
-                          if (isDisabled) return 'transparent';
-                          if (isSelected) return 'action.selected';
-                          return 'action.hover';
-                        })(),
-                      },
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 48,
+                      height: 48,
                     }}
                   >
-                    <CardContent sx={{py: 2, px: 2}}>
-                      <Stack direction="column" spacing={1.5} alignItems="flex-start">
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 40,
-                            height: 40,
-                          }}
-                        >
-                          {option.icon}
-                        </Box>
-                        <Stack direction="column" spacing={0.5}>
-                          <Typography variant="subtitle1" sx={{fontWeight: 500}}>
-                            {t(option.titleKey)}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {t(option.descriptionKey)}
-                          </Typography>
-                        </Stack>
-                      </Stack>
-                    </CardContent>
-                  </CardActionArea>
-                </Card>
-              );
-            })}
-          </Box>
-        </>
-      )}
+                    {option.icon}
+                  </Box>
 
-      {/* Divider between technology and platform sections */}
-      {stackTypes.technology &&
-        stackTypes.platform &&
-        signInApproach !== ApplicationCreateFlowSignInApproach.EMBEDDED && (
-          <Divider sx={{my: 2}}>
-            <Typography variant="body2" color="text.secondary">
-              {t('applications:onboarding.configure.stack.dividerLabel')}
-            </Typography>
-          </Divider>
-        )}
+                  {/* Title + description */}
+                  <Stack direction="column" spacing={0.75} sx={{flex: 1}}>
+                    <Typography variant="subtitle1" sx={{fontWeight: 600, lineHeight: 1.3}}>
+                      {t(option.titleKey)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{lineHeight: 1.5}}>
+                      {t(option.descriptionKey)}
+                    </Typography>
+                  </Stack>
 
-      {/* Platform Selection */}
-      {stackTypes.platform && signInApproach !== ApplicationCreateFlowSignInApproach.EMBEDDED && (
-        <>
-          <Stack direction="column" spacing={1}>
-            <Typography variant="h1">{t('applications:onboarding.configure.stack.platform.title')}</Typography>
-            <Typography variant="body2" color="text.secondary">
-              {t('applications:onboarding.configure.stack.platform.subtitle')}
-            </Typography>
-          </Stack>
-
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-              gap: 2,
-            }}
-          >
-            {PlatformBasedApplicationTemplateMetadata.map((option) => {
-              const isSelected: boolean = selectedPlatform === option.value;
-
-              return (
-                <Card key={option.value} variant="outlined" onClick={(): void => handlePlatformChange(option.value)}>
-                  <CardActionArea
-                    sx={{
-                      height: '100%',
-                      cursor: 'pointer',
-                      border: 1,
-                      borderColor: isSelected ? 'primary.main' : 'divider',
-                      transition: 'all 0.2s ease-in-out',
-                      '&:hover': {
-                        borderColor: 'primary.main',
-                        bgcolor: isSelected ? 'action.selected' : 'action.hover',
-                      },
-                    }}
-                  >
-                    <CardContent>
-                      <Stack direction="row" spacing={2} alignItems="center">
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: 48,
-                            height: 48,
-                            borderRadius: 1,
-                          }}
-                        >
-                          {option.icon}
-                        </Box>
-                        <Box sx={{flex: 1}}>
-                          <Typography variant="subtitle1">{t(option.titleKey)}</Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {t(option.descriptionKey)}
-                          </Typography>
-                        </Box>
-                      </Stack>
-                    </CardContent>
-                  </CardActionArea>
-                </Card>
-              );
-            })}
-          </Box>
-        </>
-      )}
+                  {/* Category tags */}
+                  <Stack direction="row" spacing={0.75} flexWrap="wrap">
+                    {option.categories.map((cat) => (
+                      <Typography
+                        key={cat}
+                        variant="caption"
+                        color="text.disabled"
+                        sx={{fontWeight: 500, letterSpacing: 0.2}}
+                      >
+                        #{t(CATEGORY_I18N_KEY[cat]).toLocaleLowerCase()}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </Box>
     </Stack>
   );
 }

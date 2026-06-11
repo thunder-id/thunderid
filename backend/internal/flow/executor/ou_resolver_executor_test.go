@@ -120,7 +120,7 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_ResolveFromCaller_CallerOU
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Unable to determine caller organization unit", resp.FailureReason)
+	assert.Equal(suite.T(), ErrOUResolutionFailed.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *OUResolverExecutorTestSuite) TestExecute_ResolveFromNotConfigured() {
@@ -162,7 +162,8 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_UnsupportedResolveFrom() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Unsupported OU resolution strategy: unsupported", resp.FailureReason)
+	assert.Contains(suite.T(), resp.Error.ErrorDescription.DefaultValue,
+		"Unsupported OU resolution strategy: unsupported")
 }
 
 func (suite *OUResolverExecutorTestSuite) TestExecute_PropertyMissing() {
@@ -239,7 +240,7 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_NilContext() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Unable to determine caller organization unit", resp.FailureReason)
+	assert.Equal(suite.T(), ErrOUResolutionFailed.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 // --- Prompt strategy tests ---
@@ -316,7 +317,8 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_UserSelectedOU_NotI
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, result.Status)
-	assert.Contains(suite.T(), result.FailureReason, "not valid for the chosen user type")
+	assert.Contains(suite.T(), result.Error.ErrorDescription.DefaultValue,
+		ErrOUNotValidForUserType.ErrorDescription.DefaultValue)
 	suite.mockOUService.AssertExpectations(suite.T())
 }
 
@@ -382,7 +384,7 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_UserSelectedOU_Clie
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, result.Status)
-	assert.Contains(suite.T(), result.FailureReason, "not valid")
+	assert.Contains(suite.T(), result.Error.ErrorDescription.DefaultValue, "not valid")
 	suite.mockOUService.AssertExpectations(suite.T())
 }
 
@@ -538,7 +540,7 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_PromptAll_NonExistentOU() 
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, result.Status)
-	assert.Equal(suite.T(), "The selected organization unit does not exist.", result.FailureReason)
+	assert.Equal(suite.T(), ErrOUNotFound.ErrorDescription.DefaultValue, result.Error.ErrorDescription.DefaultValue)
 	suite.mockOUService.AssertExpectations(suite.T())
 }
 

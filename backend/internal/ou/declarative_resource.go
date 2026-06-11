@@ -140,7 +140,7 @@ func (e *ouExporter) GetResourceByID(
 }
 
 // ValidateResource validates an organization unit resource.
-func (e *ouExporter) ValidateResource(
+func (e *ouExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	ou, ok := resource.(*OrganizationUnit)
@@ -148,7 +148,7 @@ func (e *ouExporter) ValidateResource(
 		return "", declarativeresource.CreateTypeError(resourceTypeOU, id)
 	}
 
-	if err := declarativeresource.ValidateResourceName(
+	if err := declarativeresource.ValidateResourceName(ctx,
 		ou.Name, resourceTypeOU, id, "OU_VALIDATION_ERROR", logger); err != nil {
 		return "", err
 	}

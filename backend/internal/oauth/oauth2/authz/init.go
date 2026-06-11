@@ -30,7 +30,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
-	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
@@ -75,26 +74,13 @@ func initializeAuthorizationStores() (
 	return newAuthorizationCodeStore(), newAuthorizationRequestStore(), transactioner, nil
 }
 
-// registerRoutes registers the routes for OAuth2 authorization operations.
+// registerRoutes registers the GET /oauth2/authorize route. The POST /oauth2/auth/callback
+// route is registered by the callback package which dispatches by grant type.
 func registerRoutes(mux *http.ServeMux, authzHandler AuthorizeHandlerInterface) {
 	// CORS MUST NOT be enabled on the authorization endpoint.
 	// The client redirects the user agent to it; it is not accessed directly via XHR/fetch.
 	mux.HandleFunc("GET /oauth2/authorize",
 		withFrameProtection(authzHandler.HandleAuthorizeGetRequest))
-
-	callbackOpts := middleware.CORSOptions{
-		AllowedMethods:   []string{"POST"},
-		AllowedHeaders:   middleware.DefaultAllowedHeaders,
-		AllowCredentials: true,
-		MaxAge:           600,
-	}
-
-	mux.HandleFunc(middleware.WithCORS("POST /oauth2/auth/callback",
-		authzHandler.HandleAuthCallbackPostRequest, callbackOpts))
-	mux.HandleFunc(middleware.WithCORS("OPTIONS /oauth2/auth/callback",
-		func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		}, callbackOpts))
 }
 
 // withFrameProtection wraps an HTTP handler to prevent the page from being embedded in frames.

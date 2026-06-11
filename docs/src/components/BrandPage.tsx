@@ -18,12 +18,12 @@
 
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
-import ColorSchemeImage from '@site/src/components/ColorSchemeImage';
-import useIsDarkMode from '@site/src/hooks/useIsDarkMode';
 import {Box, Container, Typography, useTheme} from '@wso2/oxygen-ui';
 import {GitHub} from '@wso2/oxygen-ui-icons-react';
 import {JSX} from 'react';
+import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
+import ColorSchemeImage from '@site/src/components/ColorSchemeImage';
+import useIsDarkMode from '@site/src/hooks/useIsDarkMode';
 
 function CheckCircleIcon(): JSX.Element {
   return (

@@ -124,7 +124,14 @@
             },
             "executor": {
                 "name": "EmailExecutor",
-                "mode": "send"
+                "mode": "send",
+                "inputs": [
+                    {
+                        "identifier": "email",
+                        "type": "EMAIL_INPUT",
+                        "required": true
+                    }
+                ]
             },
             "onSuccess": "email_sent_status",
             "onFailure": "email_sent_status",

@@ -1,0 +1,99 @@
+{
+  "name": "@thunderid/configure-resource-servers",
+  "version": "0.0.0",
+  "description": "APIs (Resource Servers) feature for ⚡️ ThunderID applications",
+  "keywords": [
+    "thunderid",
+    "admin",
+    "resource-servers",
+    "apis",
+    "react",
+    "feature",
+    "wso2"
+  ],
+  "homepage": "https://github.com/asgardeo/thunder/tree/main/frontend/packages/configure-resource-servers#readme",
+  "bugs": {
+    "url": "https://github.com/asgardeo/thunder/issues"
+  },
+  "author": "WSO2",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/cjs/index.cjs",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/cjs/index.cjs"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/asgardeo/thunder",
+    "directory": "frontend/packages/configure-resource-servers"
+  },
+  "scripts": {
+    "build": "pnpm clean:dist && rolldown -c rolldown.config.js && tsc -p tsconfig.lib.json --emitDeclarationOnly --outDir dist",
+    "clean": "pnpm clean:node_modules && pnpm clean:dist",
+    "clean:dist": "rimraf dist",
+    "clean:node_modules": "rimraf node_modules",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.lib.json"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@vitest/browser-playwright": "catalog:",
+    "@thunderid/eslint-plugin": "workspace:^",
+    "@thunderid/prettier-config": "workspace:^",
+    "@thunderid/test-utils": "workspace:^",
+    "@thunderid/types": "workspace:^",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "rimraf": "catalog:",
+    "rolldown": "catalog:",
+    "tslib": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@thunderid/react": "workspace:^",
+    "@hookform/resolvers": "catalog:",
+    "@wso2/oxygen-ui": "catalog:",
+    "@wso2/oxygen-ui-icons-react": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@thunderid/components": "workspace:^",
+    "@thunderid/configure-organization-units": "workspace:^",
+    "@thunderid/contexts": "workspace:^",
+    "@thunderid/design": "workspace:^",
+    "@thunderid/hooks": "workspace:^",
+    "@thunderid/i18n": "workspace:^",
+    "@thunderid/logger": "workspace:^",
+    "@thunderid/utils": "workspace:^",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-hook-form": "catalog:",
+    "react-i18next": "catalog:",
+    "react-router": "catalog:",
+    "zod": "catalog:"
+  }
+}

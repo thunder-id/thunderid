@@ -143,7 +143,7 @@ func (e *userExporter) GetResourceByID(
 }
 
 // ValidateResource validates a user resource.
-func (e *userExporter) ValidateResource(
+func (e *userExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	user, ok := resource.(*userDeclarativeResource)
@@ -158,7 +158,7 @@ func (e *userExporter) ValidateResource(
 	}
 
 	if username == "" {
-		logger.Warn("USER_VALIDATION_ERROR: Missing username",
+		logger.Warn(ctx, "USER_VALIDATION_ERROR: Missing username",
 			log.MaskedString(log.LoggerKeyUserID, id))
 		return "", &declarativeresource.ExportError{
 			ResourceType: resourceTypeUser,

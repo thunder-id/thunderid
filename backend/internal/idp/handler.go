@@ -19,6 +19,7 @@
 package idp
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -54,14 +55,14 @@ func (ih *idpHandler) HandleIDPPostRequest(w http.ResponseWriter, r *http.Reques
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	properties, err := getSanitizedProperties(createRequest.Properties)
 	if err != nil {
-		logger.Error("Failed to sanitize properties", log.Error(err))
-		writeServiceErrorResponse(w, &serviceerror.InternalServerError)
+		logger.Error(ctx, "Failed to sanitize properties", log.Error(err))
+		writeServiceErrorResponse(ctx, w, &serviceerror.InternalServerError)
 		return
 	}
 
@@ -73,18 +74,19 @@ func (ih *idpHandler) HandleIDPPostRequest(w http.ResponseWriter, r *http.Reques
 	}
 	createdIDP, svcErr := ih.idpService.CreateIdentityProvider(ctx, idpDTO)
 	if svcErr != nil {
-		writeServiceErrorResponse(w, svcErr)
+		writeServiceErrorResponse(ctx, w, svcErr)
 		return
 	}
 
 	idpResponse, err := getIDPResponse(*createdIDP)
 	if err != nil {
-		logger.Error("Failed to convert IDP to response", log.String("idp", createdIDP.Name), log.Error(err))
-		writeServiceErrorResponse(w, &serviceerror.InternalServerError)
+		logger.Error(ctx, "Failed to convert IDP to response",
+			log.String("idp", createdIDP.Name), log.Error(err))
+		writeServiceErrorResponse(ctx, w, &serviceerror.InternalServerError)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusCreated, idpResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, idpResponse)
 }
 
 // HandleIDPListRequest handles the list identity providers request.
@@ -92,7 +94,7 @@ func (ih *idpHandler) HandleIDPListRequest(w http.ResponseWriter, r *http.Reques
 	ctx := r.Context()
 	idpList, svcErr := ih.idpService.GetIdentityProviderList(ctx)
 	if svcErr != nil {
-		writeServiceErrorResponse(w, svcErr)
+		writeServiceErrorResponse(ctx, w, svcErr)
 		return
 	}
 
@@ -107,7 +109,7 @@ func (ih *idpHandler) HandleIDPListRequest(w http.ResponseWriter, r *http.Reques
 		})
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, idpListResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, idpListResponse)
 }
 
 // HandleIDPGetRequest handles the get identity provider request.
@@ -122,24 +124,24 @@ func (ih *idpHandler) HandleIDPGetRequest(w http.ResponseWriter, r *http.Request
 			Message:     ErrorInvalidIDPID.Error,
 			Description: ErrorInvalidIDPID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	idp, svcErr := ih.idpService.GetIdentityProvider(ctx, id)
 	if svcErr != nil {
-		writeServiceErrorResponse(w, svcErr)
+		writeServiceErrorResponse(ctx, w, svcErr)
 		return
 	}
 
 	idpResponse, err := getIDPResponse(*idp)
 	if err != nil {
-		logger.Error("Failed to convert IDP to response", log.String("idp", idp.Name), log.Error(err))
-		writeServiceErrorResponse(w, &serviceerror.InternalServerError)
+		logger.Error(ctx, "Failed to convert IDP to response", log.String("idp", idp.Name), log.Error(err))
+		writeServiceErrorResponse(ctx, w, &serviceerror.InternalServerError)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, idpResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, idpResponse)
 }
 
 // HandleIDPPutRequest handles the update identity provider request.
@@ -153,7 +155,7 @@ func (ih *idpHandler) HandleIDPPutRequest(w http.ResponseWriter, r *http.Request
 			Message:     ErrorInvalidIDPID.Error,
 			Description: ErrorInvalidIDPID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
@@ -164,14 +166,14 @@ func (ih *idpHandler) HandleIDPPutRequest(w http.ResponseWriter, r *http.Request
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	properties, err := getSanitizedProperties(updateRequest.Properties)
 	if err != nil {
-		logger.Error("Failed to sanitize properties", log.Error(err))
-		writeServiceErrorResponse(w, &serviceerror.InternalServerError)
+		logger.Error(ctx, "Failed to sanitize properties", log.Error(err))
+		writeServiceErrorResponse(ctx, w, &serviceerror.InternalServerError)
 		return
 	}
 
@@ -185,18 +187,18 @@ func (ih *idpHandler) HandleIDPPutRequest(w http.ResponseWriter, r *http.Request
 
 	idp, svcErr := ih.idpService.UpdateIdentityProvider(ctx, id, idpDTO)
 	if svcErr != nil {
-		writeServiceErrorResponse(w, svcErr)
+		writeServiceErrorResponse(ctx, w, svcErr)
 		return
 	}
 
 	idpResponse, err := getIDPResponse(*idp)
 	if err != nil {
-		logger.Error("Failed to convert IDP to response", log.String("idp", idp.Name), log.Error(err))
-		writeServiceErrorResponse(w, &serviceerror.InternalServerError)
+		logger.Error(ctx, "Failed to convert IDP to response", log.String("idp", idp.Name), log.Error(err))
+		writeServiceErrorResponse(ctx, w, &serviceerror.InternalServerError)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, idpResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, idpResponse)
 }
 
 // HandleIDPDeleteRequest handles the delete identity provider request.
@@ -209,21 +211,21 @@ func (ih *idpHandler) HandleIDPDeleteRequest(w http.ResponseWriter, r *http.Requ
 			Message:     ErrorInvalidIDPID.Error,
 			Description: ErrorInvalidIDPID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	svcErr := ih.idpService.DeleteIdentityProvider(ctx, id)
 	if svcErr != nil {
-		writeServiceErrorResponse(w, svcErr)
+		writeServiceErrorResponse(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusNoContent, nil)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 }
 
 // writeServiceErrorResponse writes the appropriate HTTP error response based on the service error.
-func writeServiceErrorResponse(w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func writeServiceErrorResponse(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
 	var statusCode int
 	if svcErr.Type == serviceerror.ClientErrorType {
 		statusCode = getClientErrorStatusCode(svcErr.Code)
@@ -237,7 +239,7 @@ func writeServiceErrorResponse(w http.ResponseWriter, svcErr *serviceerror.Servi
 		Description: svcErr.ErrorDescription,
 	}
 
-	sysutils.WriteErrorResponse(w, statusCode, errResp)
+	sysutils.WriteErrorResponse(ctx, w, statusCode, errResp)
 }
 
 // getClientErrorStatusCode returns the appropriate HTTP status code for client errors.

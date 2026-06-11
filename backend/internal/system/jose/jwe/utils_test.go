@@ -20,6 +20,7 @@ package jwe
 
 import (
 	"crypto/aes"
+	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -437,4 +438,78 @@ func (s *JEWUtilsTestSuite) TestExtractEPKFromHeader() {
 	})
 	s.Error(err)
 	s.Contains(err.Error(), "invalid epk in header")
+}
+
+func (s *JEWUtilsTestSuite) TestGetECCurveInfoP256() {
+	curve, keySize, err := getECCurveInfo("P-256")
+	s.NoError(err)
+	s.Equal(ecdh.P256(), curve)
+	s.Equal(32, keySize)
+}
+
+func (s *JEWUtilsTestSuite) TestGetECCurveInfoP384() {
+	curve, keySize, err := getECCurveInfo("P-384")
+	s.NoError(err)
+	s.Equal(ecdh.P384(), curve)
+	s.Equal(48, keySize)
+}
+
+func (s *JEWUtilsTestSuite) TestGetECCurveInfoP521() {
+	curve, keySize, err := getECCurveInfo("P-521")
+	s.NoError(err)
+	s.Equal(ecdh.P521(), curve)
+	s.Equal(66, keySize)
+}
+
+func (s *JEWUtilsTestSuite) TestGetECCurveInfoUnsupported() {
+	curve, keySize, err := getECCurveInfo("P-999")
+	s.Error(err)
+	s.Nil(curve)
+	s.Equal(0, keySize)
+	s.Contains(err.Error(), "unsupported EC curve")
+}
+
+func (s *JEWUtilsTestSuite) TestJWKToECPublicKeyMissingParams() {
+	_, err := jwkToECPublicKey(map[string]interface{}{"x": "val", "y": "val"})
+	s.Error(err)
+	s.Contains(err.Error(), "JWK missing EC parameters")
+}
+
+func (s *JEWUtilsTestSuite) TestJWKToECPublicKeyUnsupportedCurve() {
+	_, err := jwkToECPublicKey(map[string]interface{}{
+		"crv": "P-999",
+		"x":   base64.RawURLEncoding.EncodeToString([]byte("value")),
+		"y":   base64.RawURLEncoding.EncodeToString([]byte("value")),
+	})
+	s.Error(err)
+	s.Contains(err.Error(), "unsupported EC curve")
+}
+
+func (s *JEWUtilsTestSuite) TestJWKToECPublicKeyInvalidCoordinateLength() {
+	_, err := jwkToECPublicKey(map[string]interface{}{
+		"crv": "P-256",
+		"x":   base64.RawURLEncoding.EncodeToString([]byte("short")),
+		"y":   base64.RawURLEncoding.EncodeToString([]byte("short")),
+	})
+	s.Error(err)
+	s.Contains(err.Error(), "invalid EC coordinate length")
+}
+
+func (s *JEWUtilsTestSuite) TestJWKToECPublicKeyValid() {
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	s.NoError(err)
+	ecdhPub, err := privKey.PublicKey.ECDH()
+	s.NoError(err)
+
+	raw := ecdhPub.Bytes() // 0x04 || x || y
+	jwk := map[string]interface{}{
+		"crv": "P-256",
+		"x":   base64.RawURLEncoding.EncodeToString(raw[1:33]),
+		"y":   base64.RawURLEncoding.EncodeToString(raw[33:]),
+	}
+
+	pub, err := jwkToECPublicKey(jwk)
+	s.NoError(err)
+	s.NotNil(pub)
+	s.Equal(ecdhPub, pub)
 }

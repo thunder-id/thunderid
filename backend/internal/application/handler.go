@@ -19,6 +19,7 @@
 package application
 
 import (
+	"context"
 	"net/http"
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -54,7 +55,7 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
@@ -88,7 +89,7 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 	// Create the app using the application service.
 	createdAppDTO, svcErr := ah.service.CreateApplication(ctx, &appDTO)
 	if svcErr != nil {
-		ah.handleError(w, r, svcErr)
+		ah.handleError(ctx, w, r, svcErr)
 		return
 	}
 
@@ -121,19 +122,19 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 
 	// TODO: Need to refactor when supporting other/multiple inbound auth types.
 	if len(createdAppDTO.InboundAuthConfig) > 0 {
-		success := ah.processInboundAuthConfig(logger, createdAppDTO, &returnApp)
+		success := ah.processInboundAuthConfig(ctx, logger, createdAppDTO, &returnApp)
 		if !success {
 			errResp := apierror.ErrorResponse{
 				Code:        serviceerror.InternalServerError.Code,
 				Message:     serviceerror.InternalServerError.Error,
 				Description: serviceerror.InternalServerError.ErrorDescription,
 			}
-			sysutils.WriteErrorResponse(w, http.StatusInternalServerError, errResp)
+			sysutils.WriteErrorResponse(ctx, w, http.StatusInternalServerError, errResp)
 			return
 		}
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusCreated, returnApp)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, returnApp)
 }
 
 // HandleApplicationListRequest handles the application request.
@@ -141,11 +142,11 @@ func (ah *applicationHandler) HandleApplicationListRequest(w http.ResponseWriter
 	ctx := r.Context()
 	listResponse, svcErr := ah.service.GetApplicationList(ctx)
 	if svcErr != nil {
-		ah.handleError(w, r, svcErr)
+		ah.handleError(ctx, w, r, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, listResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, listResponse)
 }
 
 // HandleApplicationGetRequest handles the application request.
@@ -160,13 +161,13 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 			Message:     ErrorInvalidApplicationID.Error,
 			Description: ErrorInvalidApplicationID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	appDTO, svcErr := ah.service.GetApplication(ctx, id)
 	if svcErr != nil {
-		ah.handleError(w, r, svcErr)
+		ah.handleError(ctx, w, r, svcErr)
 		return
 	}
 
@@ -200,7 +201,7 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 	// TODO: Need to refactor when supporting other/multiple inbound auth types.
 	if len(appDTO.InboundAuthConfig) > 0 {
 		if appDTO.InboundAuthConfig[0].Type != inboundmodel.OAuthInboundAuthType {
-			logger.Error("Unsupported inbound authentication type returned",
+			logger.Error(ctx, "Unsupported inbound authentication type returned",
 				log.String("type", string(appDTO.InboundAuthConfig[0].Type)))
 
 			errResp := apierror.ErrorResponse{
@@ -208,32 +209,32 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 				Message:     serviceerror.InternalServerError.Error,
 				Description: serviceerror.InternalServerError.ErrorDescription,
 			}
-			sysutils.WriteErrorResponse(w, http.StatusInternalServerError, errResp)
+			sysutils.WriteErrorResponse(ctx, w, http.StatusInternalServerError, errResp)
 			return
 		}
 
 		if appDTO.InboundAuthConfig[0].OAuthConfig == nil {
-			logger.Error("OAuth application configuration is nil")
+			logger.Error(ctx, "OAuth application configuration is nil")
 
 			errResp := apierror.ErrorResponse{
 				Code:        serviceerror.InternalServerError.Code,
 				Message:     serviceerror.InternalServerError.Error,
 				Description: serviceerror.InternalServerError.ErrorDescription,
 			}
-			sysutils.WriteErrorResponse(w, http.StatusInternalServerError, errResp)
+			sysutils.WriteErrorResponse(ctx, w, http.StatusInternalServerError, errResp)
 			return
 		}
 
 		returnInboundAuthConfigs := make([]inboundmodel.InboundAuthConfig, 0, len(appDTO.InboundAuthConfig))
 		for _, config := range appDTO.InboundAuthConfig {
 			if config.OAuthConfig == nil {
-				logger.Error("OAuth application configuration is nil")
+				logger.Error(ctx, "OAuth application configuration is nil")
 				errResp := apierror.ErrorResponse{
 					Code:        serviceerror.InternalServerError.Code,
 					Message:     serviceerror.InternalServerError.Error,
 					Description: serviceerror.InternalServerError.ErrorDescription,
 				}
-				sysutils.WriteErrorResponse(w, http.StatusInternalServerError, errResp)
+				sysutils.WriteErrorResponse(ctx, w, http.StatusInternalServerError, errResp)
 				return
 			}
 			redirectURIs := config.OAuthConfig.RedirectURIs
@@ -258,6 +259,7 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 				PublicClient:                       config.OAuthConfig.PublicClient,
 				RequirePushedAuthorizationRequests: config.OAuthConfig.RequirePushedAuthorizationRequests,
 				DPoPBoundAccessTokens:              config.OAuthConfig.DPoPBoundAccessTokens,
+				IncludeActClaim:                    config.OAuthConfig.IncludeActClaim,
 				Token:                              config.OAuthConfig.Token,
 				Scopes:                             config.OAuthConfig.Scopes,
 				UserInfo:                           config.OAuthConfig.UserInfo,
@@ -274,7 +276,7 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 		returnApp.ClientID = appDTO.InboundAuthConfig[0].OAuthConfig.ClientID
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, returnApp)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, returnApp)
 }
 
 // HandleApplicationPutRequest handles the application request.
@@ -289,7 +291,7 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 			Message:     ErrorInvalidApplicationID.Error,
 			Description: ErrorInvalidApplicationID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
@@ -300,7 +302,7 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
@@ -335,7 +337,7 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 	// Update the application using the application service.
 	updatedAppDTO, svcErr := ah.service.UpdateApplication(ctx, id, &updateReqAppDTO)
 	if svcErr != nil {
-		ah.handleError(w, r, svcErr)
+		ah.handleError(ctx, w, r, svcErr)
 		return
 	}
 
@@ -368,19 +370,19 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 
 	// TODO: Need to refactor when supporting other/multiple inbound auth types.
 	if len(updatedAppDTO.InboundAuthConfig) > 0 {
-		success := ah.processInboundAuthConfig(logger, updatedAppDTO, &returnApp)
+		success := ah.processInboundAuthConfig(ctx, logger, updatedAppDTO, &returnApp)
 		if !success {
 			errResp := apierror.ErrorResponse{
 				Code:        serviceerror.InternalServerError.Code,
 				Message:     serviceerror.InternalServerError.Error,
 				Description: serviceerror.InternalServerError.ErrorDescription,
 			}
-			sysutils.WriteErrorResponse(w, http.StatusInternalServerError, errResp)
+			sysutils.WriteErrorResponse(ctx, w, http.StatusInternalServerError, errResp)
 			return
 		}
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, returnApp)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, returnApp)
 }
 
 // HandleApplicationDeleteRequest handles the application request.
@@ -393,39 +395,40 @@ func (ah *applicationHandler) HandleApplicationDeleteRequest(w http.ResponseWrit
 			Message:     ErrorInvalidApplicationID.Error,
 			Description: ErrorInvalidApplicationID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	svcErr := ah.service.DeleteApplication(ctx, id)
 	if svcErr != nil {
-		ah.handleError(w, r, svcErr)
+		ah.handleError(ctx, w, r, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusNoContent, nil)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 }
 
 // processInboundAuthConfig prepares the response for OAuth app configuration.
-func (ah *applicationHandler) processInboundAuthConfig(logger *log.Logger, appDTO *model.ApplicationDTO,
+func (ah *applicationHandler) processInboundAuthConfig(
+	ctx context.Context, logger *log.Logger, appDTO *model.ApplicationDTO,
 	returnApp *model.ApplicationCompleteResponse) bool {
 	if len(appDTO.InboundAuthConfig) > 0 {
 		if appDTO.InboundAuthConfig[0].Type != inboundmodel.OAuthInboundAuthType {
-			logger.Error("Unsupported inbound authentication type returned",
+			logger.Error(ctx, "Unsupported inbound authentication type returned",
 				log.String("type", string(appDTO.InboundAuthConfig[0].Type)))
 
 			return false
 		}
 
 		if appDTO.InboundAuthConfig[0].OAuthConfig == nil {
-			logger.Error("OAuth application configuration is nil")
+			logger.Error(ctx, "OAuth application configuration is nil")
 			return false
 		}
 
 		returnInboundAuthConfigs := make([]inboundmodel.InboundAuthConfigWithSecret, 0, len(appDTO.InboundAuthConfig))
 		for _, config := range appDTO.InboundAuthConfig {
 			if config.OAuthConfig == nil {
-				logger.Error("OAuth application configuration is nil")
+				logger.Error(ctx, "OAuth application configuration is nil")
 				return false
 			}
 			redirectURIs := config.OAuthConfig.RedirectURIs
@@ -451,6 +454,7 @@ func (ah *applicationHandler) processInboundAuthConfig(logger *log.Logger, appDT
 				PublicClient:                       config.OAuthConfig.PublicClient,
 				RequirePushedAuthorizationRequests: config.OAuthConfig.RequirePushedAuthorizationRequests,
 				DPoPBoundAccessTokens:              config.OAuthConfig.DPoPBoundAccessTokens,
+				IncludeActClaim:                    config.OAuthConfig.IncludeActClaim,
 				Token:                              config.OAuthConfig.Token,
 				Scopes:                             config.OAuthConfig.Scopes,
 				UserInfo:                           config.OAuthConfig.UserInfo,
@@ -472,7 +476,7 @@ func (ah *applicationHandler) processInboundAuthConfig(logger *log.Logger, appDT
 
 // handleError handles service errors and returns appropriate HTTP responses.
 // When the resolved status is 500, the error is logged with request context.
-func (ah *applicationHandler) handleError(w http.ResponseWriter, r *http.Request,
+func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWriter, r *http.Request,
 	svcErr *serviceerror.ServiceError) {
 	errResp := apierror.ErrorResponse{
 		Code:        svcErr.Code,
@@ -491,7 +495,7 @@ func (ah *applicationHandler) handleError(w http.ResponseWriter, r *http.Request
 
 	if statusCode == http.StatusInternalServerError {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationHandler"))
-		logger.Error("Internal server error processing application request",
+		logger.Error(ctx, "Internal server error processing application request",
 			log.String("method", r.Method),
 			log.String("path", r.URL.Path),
 			log.String("error_code", svcErr.Code),
@@ -499,7 +503,7 @@ func (ah *applicationHandler) handleError(w http.ResponseWriter, r *http.Request
 		)
 	}
 
-	sysutils.WriteErrorResponse(w, statusCode, errResp)
+	sysutils.WriteErrorResponse(ctx, w, statusCode, errResp)
 }
 
 // processInboundAuthConfigFromRequest processes inbound auth config from request to DTO.
@@ -528,6 +532,7 @@ func (ah *applicationHandler) processInboundAuthConfigFromRequest(
 				PublicClient:                       config.OAuthConfig.PublicClient,
 				RequirePushedAuthorizationRequests: config.OAuthConfig.RequirePushedAuthorizationRequests,
 				DPoPBoundAccessTokens:              config.OAuthConfig.DPoPBoundAccessTokens,
+				IncludeActClaim:                    config.OAuthConfig.IncludeActClaim,
 				Token:                              config.OAuthConfig.Token,
 				Scopes:                             config.OAuthConfig.Scopes,
 				UserInfo:                           config.OAuthConfig.UserInfo,

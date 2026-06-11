@@ -19,11 +19,13 @@
 package idp
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -51,7 +53,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OAuth_AllRequired() {
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6}
 
-	result, err := validateIDPProperties(IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -69,7 +71,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OAuth_WithOptional() {
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6, *prop7}
 
-	result, err := validateIDPProperties(IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -82,7 +84,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OAuth_MissingRequired() {
 
 	properties := []cmodels.Property{*prop1, *prop2}
 
-	result, err := validateIDPProperties(IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -100,7 +102,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDC_AllRequired() {
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5}
 
-	result, err := validateIDPProperties(IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -127,7 +129,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDC_WithExistingScopes() 
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6}
 
-	result, err := validateIDPProperties(IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -152,7 +154,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDC_ScopesAlreadyHasOpenI
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6}
 
-	result, err := validateIDPProperties(IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -172,7 +174,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_Google_WithDefaults() {
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(IDPTypeGoogle, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeGoogle, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -199,7 +201,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_Google_WithCustomEndpoints
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4}
 
-	result, err := validateIDPProperties(IDPTypeGoogle, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeGoogle, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -221,7 +223,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_GitHub_WithDefaults() {
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(IDPTypeGitHub, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeGitHub, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -246,7 +248,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_GitHub_WithCustomEndpoints
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4}
 
-	result, err := validateIDPProperties(IDPTypeGitHub, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeGitHub, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -266,7 +268,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_EmptyPropertyName() {
 
 	properties := []cmodels.Property{*prop1}
 
-	result, err := validateIDPProperties(IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -279,7 +281,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_EmptyPropertyValue() {
 
 	properties := []cmodels.Property{*prop1}
 
-	result, err := validateIDPProperties(IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -293,7 +295,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_UnsupportedProperty() {
 
 	properties := []cmodels.Property{*prop1, *prop2}
 
-	result, err := validateIDPProperties(IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -307,7 +309,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_InvalidIDPType() {
 
 	properties := []cmodels.Property{*prop1}
 
-	result, err := validateIDPProperties(IDPType("INVALID"), properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPType("INVALID"), properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -339,7 +341,7 @@ func (s *IDPUtilsTestSuite) TestPropertyMapToSlice() {
 func (s *IDPUtilsTestSuite) TestEnsureOpenIDScope_NoExistingScopes() {
 	propertyMap := make(map[string]cmodels.Property)
 
-	err := ensureOpenIDScope(propertyMap, s.logger)
+	err := ensureOpenIDScope(context.Background(), propertyMap, s.logger)
 
 	s.Nil(err)
 	s.Contains(propertyMap, PropScopes)
@@ -355,7 +357,7 @@ func (s *IDPUtilsTestSuite) TestEnsureOpenIDScope_WithExistingScopes() {
 		PropScopes: *prop,
 	}
 
-	err := ensureOpenIDScope(propertyMap, s.logger)
+	err := ensureOpenIDScope(context.Background(), propertyMap, s.logger)
 
 	s.Nil(err)
 
@@ -372,7 +374,7 @@ func (s *IDPUtilsTestSuite) TestEnsureOpenIDScope_AlreadyHasOpenID() {
 		PropScopes: *prop,
 	}
 
-	err := ensureOpenIDScope(propertyMap, s.logger)
+	err := ensureOpenIDScope(context.Background(), propertyMap, s.logger)
 
 	s.Nil(err)
 
@@ -388,7 +390,7 @@ func (s *IDPUtilsTestSuite) TestEnsureOpenIDScope_EmptyScopesValue() {
 		PropScopes: *prop,
 	}
 
-	err := ensureOpenIDScope(propertyMap, s.logger)
+	err := ensureOpenIDScope(context.Background(), propertyMap, s.logger)
 
 	s.Nil(err)
 
@@ -411,14 +413,14 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_ValidOAuth() {
 		Properties: []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6},
 	}
 
-	err := validateIDP(idp, s.logger)
+	err := validateIDP(context.Background(), idp, s.logger)
 
 	s.Nil(err)
 	s.NotNil(idp.Properties)
 }
 
 func (s *IDPUtilsTestSuite) TestValidateIDP_NilIDP() {
-	err := validateIDP(nil, s.logger)
+	err := validateIDP(context.Background(), nil, s.logger)
 
 	s.NotNil(err)
 	s.Equal(ErrorIDPNil.Code, err.Code)
@@ -430,7 +432,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_EmptyName() {
 		Type: IDPTypeOAuth,
 	}
 
-	err := validateIDP(idp, s.logger)
+	err := validateIDP(context.Background(), idp, s.logger)
 
 	s.NotNil(err)
 	s.Equal(ErrorInvalidIDPName.Code, err.Code)
@@ -442,7 +444,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_EmptyType() {
 		Type: "",
 	}
 
-	err := validateIDP(idp, s.logger)
+	err := validateIDP(context.Background(), idp, s.logger)
 
 	s.NotNil(err)
 	s.Equal(ErrorInvalidIDPType.Code, err.Code)
@@ -454,7 +456,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_InvalidType() {
 		Type: "INVALID",
 	}
 
-	err := validateIDP(idp, s.logger)
+	err := validateIDP(context.Background(), idp, s.logger)
 
 	s.NotNil(err)
 	s.Equal(ErrorInvalidIDPType.Code, err.Code)
@@ -474,7 +476,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_WithWhitespaceName() {
 		Properties: []cmodels.Property{*prop1, *prop2, *prop3, *prop4, *prop5, *prop6},
 	}
 
-	err := validateIDP(idp, s.logger)
+	err := validateIDP(context.Background(), idp, s.logger)
 
 	s.NotNil(err)
 	s.Equal(ErrorInvalidIDPName.Code, err.Code)
@@ -486,7 +488,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDP_WithWhitespaceType() {
 		Type: "   ",
 	}
 
-	err := validateIDP(idp, s.logger)
+	err := validateIDP(context.Background(), idp, s.logger)
 
 	s.NotNil(err)
 	s.Equal(ErrorInvalidIDPType.Code, err.Code)
@@ -497,7 +499,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_WithWhitespacePropertyName
 
 	properties := []cmodels.Property{*prop1}
 
-	result, err := validateIDPProperties(IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -510,7 +512,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_WithWhitespacePropertyValu
 
 	properties := []cmodels.Property{*prop1}
 
-	result, err := validateIDPProperties(IDPTypeOAuth, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -521,7 +523,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_WithWhitespacePropertyValu
 func (s *IDPUtilsTestSuite) TestCreateAndAppendProperty_Success() {
 	propertyMap := make(map[string]cmodels.Property)
 
-	err := createAndAppendProperty(propertyMap, "test_prop", "test_value", false, s.logger)
+	err := createAndAppendProperty(context.Background(), propertyMap, "test_prop", "test_value", false, s.logger)
 
 	s.Nil(err)
 	s.Contains(propertyMap, "test_prop")
@@ -538,7 +540,7 @@ func (s *IDPUtilsTestSuite) TestCreateAndAppendProperty_OverwriteExisting() {
 		"test_prop": *prop1,
 	}
 
-	err := createAndAppendProperty(propertyMap, "test_prop", "new_value", false, s.logger)
+	err := createAndAppendProperty(context.Background(), propertyMap, "test_prop", "new_value", false, s.logger)
 
 	s.Nil(err)
 	s.Contains(propertyMap, "test_prop")
@@ -554,7 +556,7 @@ func (s *IDPUtilsTestSuite) TestEnsureOpenIDScope_WithWhitespaceScopes() {
 		PropScopes: *prop,
 	}
 
-	err := ensureOpenIDScope(propertyMap, s.logger)
+	err := ensureOpenIDScope(context.Background(), propertyMap, s.logger)
 
 	s.Nil(err)
 
@@ -569,7 +571,7 @@ func (s *IDPUtilsTestSuite) TestEnsureOpenIDScope_CommaSeparatedScopes() {
 		PropScopes: *prop,
 	}
 
-	err := ensureOpenIDScope(propertyMap, s.logger)
+	err := ensureOpenIDScope(context.Background(), propertyMap, s.logger)
 
 	s.Nil(err)
 
@@ -590,7 +592,7 @@ func (s *IDPUtilsTestSuite) TestEnsureOpenIDScope_WithEmptyStringInScopes() {
 		PropScopes: *prop,
 	}
 
-	err := ensureOpenIDScope(propertyMap, s.logger)
+	err := ensureOpenIDScope(context.Background(), propertyMap, s.logger)
 	s.Nil(err)
 
 	scopesProp := propertyMap[PropScopes]
@@ -612,7 +614,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_TokenExchangeOnly_OIDC_Suc
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
 
 	s.Nil(err)
 	s.NotNil(result)
@@ -626,7 +628,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_TokenExchangeEnabled_Missi
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -643,7 +645,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_TokenExchangeEnabled_Missi
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -660,7 +662,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDCWithoutTokenExchange_S
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3}
 
-	result, err := validateIDPProperties(IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
@@ -678,11 +680,50 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_OIDCWithoutTokenExchange_M
 
 	properties := []cmodels.Property{*prop1, *prop2, *prop3, *prop4}
 
-	result, err := validateIDPProperties(IDPTypeOIDC, properties, s.logger)
+	result, err := validateIDPProperties(context.Background(), IDPTypeOIDC, properties, s.logger)
 
 	s.NotNil(err)
 	s.Nil(result)
 	s.Equal(ErrorInvalidIDPProperty.Code, err.Code)
 	s.Contains(err.ErrorDescription.DefaultValue, "required property")
 	s.Contains(err.ErrorDescription.DefaultValue, PropClientSecret)
+}
+
+func (s *IDPUtilsTestSuite) TestValidateIDP_PropertyValidationFailure() {
+	prop, _ := cmodels.NewProperty("", "value", false)
+	idp := &IDPDTO{
+		Name:       "Test IDP",
+		Type:       IDPTypeOAuth,
+		Properties: []cmodels.Property{*prop},
+	}
+
+	err := validateIDP(context.Background(), idp, s.logger)
+
+	s.NotNil(err)
+	s.Equal(ErrorInvalidIDPProperty.Code, err.Code)
+}
+
+func (s *IDPUtilsTestSuite) TestValidateIDPProperties_SecretPropertyValueUnreadable() {
+	// Initialize the server runtime with the test crypto key; the secret
+	// property below holds a value that is not valid ciphertext, so reading
+	// it fails on decryption.
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("/tmp/test", &config.Config{
+		Crypto: config.CryptoConfig{
+			Encryption: config.EncryptionConfig{
+				Key: testCryptoKey,
+			},
+		},
+	})
+	defer config.ResetServerRuntime()
+
+	properties, dErr := cmodels.DeserializePropertiesFromJSONObject(
+		`{"client_secret":{"value":"not-valid-ciphertext","isSecret":true}}`)
+	s.NoError(dErr)
+
+	result, err := validateIDPProperties(context.Background(), IDPTypeOAuth, properties, s.logger)
+
+	s.Nil(result)
+	s.NotNil(err)
+	s.Equal(ErrorInvalidIDPProperty.Code, err.Code)
 }

@@ -61,21 +61,6 @@ GO_ARCH=${3:-$DEFAULT_ARCH}
 
 echo "Using GO OS: $GO_OS and ARCH: $GO_ARCH"
 
-SAMPLE_DIST_NODE_VERSION=node18
-SAMPLE_DIST_OS=${2:-$DEFAULT_OS}
-SAMPLE_DIST_ARCH=${3:-$DEFAULT_ARCH}
-
-# Transform OS for node packaging executor
-if [ "$SAMPLE_DIST_OS" = "darwin" ]; then
-    SAMPLE_DIST_OS=macos
-elif [ "$SAMPLE_DIST_OS" = "windows" ]; then
-    SAMPLE_DIST_OS="win"
-fi
-
-if [ "$SAMPLE_DIST_ARCH" = "amd64" ]; then
-    SAMPLE_DIST_ARCH=x64
-fi
-
 # --- Package Distribution details ---
 GO_PACKAGE_OS=$GO_OS
 GO_PACKAGE_ARCH=$GO_ARCH
@@ -103,25 +88,23 @@ BINARY_NAME="${PRODUCT_NAME_LOWERCASE}"
 PRODUCT_FOLDER=${BINARY_NAME}-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}
 
 # --- Sample App Distribution details ---
-SAMPLE_PACKAGE_OS=$SAMPLE_DIST_OS
-SAMPLE_PACKAGE_ARCH=$SAMPLE_DIST_ARCH
-
 # React Vanilla Sample
-VANILLA_SAMPLE_APP_SERVER_BINARY_NAME=server
 VANILLA_SAMPLE_APP_VERSION=$(grep -o '"version": *"[^"]*"' samples/apps/react-vanilla-sample/package.json | sed 's/"version": *"\(.*\)"/\1/')
-VANILLA_SAMPLE_APP_FOLDER="sample-app-react-vanilla-${VANILLA_SAMPLE_APP_VERSION}-${SAMPLE_PACKAGE_OS}-${SAMPLE_PACKAGE_ARCH}"
+VANILLA_SAMPLE_APP_FOLDER="sample-app-react-vanilla-${VANILLA_SAMPLE_APP_VERSION}"
 
 # React SDK Sample
 REACT_SDK_SAMPLE_APP_VERSION=$(grep -o '"version": *"[^"]*"' samples/apps/react-sdk-sample/package.json | sed 's/"version": *"\(.*\)"/\1/')
-REACT_SDK_SAMPLE_APP_FOLDER="sample-app-react-sdk-${REACT_SDK_SAMPLE_APP_VERSION}-${SAMPLE_PACKAGE_OS}-${SAMPLE_PACKAGE_ARCH}"
+REACT_SDK_SAMPLE_APP_FOLDER="sample-app-react-sdk-${REACT_SDK_SAMPLE_APP_VERSION}"
 
 # React API-based Sample
 REACT_API_SAMPLE_APP_VERSION=$(grep -o '"version": *"[^"]*"' samples/apps/react-api-based-sample/package.json | sed 's/"version": *"\(.*\)"/\1/')
-REACT_API_SAMPLE_APP_FOLDER="sample-app-react-api-based-${REACT_API_SAMPLE_APP_VERSION}-${SAMPLE_PACKAGE_OS}-${SAMPLE_PACKAGE_ARCH}"
+REACT_API_SAMPLE_APP_FOLDER="sample-app-react-api-based-${REACT_API_SAMPLE_APP_VERSION}"
 
 # Wayfinder Sample
 WAYFINDER_SAMPLE_APP_VERSION=$(grep -o '"version": *"[^"]*"' samples/apps/wayfinder-sample/package.json | sed 's/"version": *"\(.*\)"/\1/')
-WAYFINDER_SAMPLE_APP_FOLDER="sample-app-wayfinder-${WAYFINDER_SAMPLE_APP_VERSION}-${SAMPLE_PACKAGE_OS}-${SAMPLE_PACKAGE_ARCH}"
+WAYFINDER_SAMPLE_APP_FOLDER="sample-app-wayfinder-${WAYFINDER_SAMPLE_APP_VERSION}"
+
+
 
 # Directories
 TARGET_DIR=target
@@ -147,6 +130,16 @@ VANILLA_SAMPLE_APP_SERVER_DIR=$VANILLA_SAMPLE_APP_DIR/server
 REACT_SDK_SAMPLE_APP_DIR=$SAMPLE_BASE_DIR/apps/react-sdk-sample
 REACT_API_SAMPLE_APP_DIR=$SAMPLE_BASE_DIR/apps/react-api-based-sample
 WAYFINDER_SAMPLE_APP_DIR=$SAMPLE_BASE_DIR/apps/wayfinder-sample
+
+
+# Quick start declarative bundles staged into the console's welcome feature so they're inlined
+# into the console JS bundle at build time.
+# Add a new bundle as a single line: "<dest-name>:<source-dir>".
+# <dest-name> may include "/" for grouping (e.g. "wayfinder/redirect-based").
+QUICKSTART_SAMPLE_BUNDLES=(
+    "wayfinder:$WAYFINDER_SAMPLE_APP_DIR/thunderid-config"
+)
+QUICKSTART_BUNDLE_STAGE_DIR="$FRONTEND_CONSOLE_APP_SOURCE_DIR/src/features/welcome/data/sample-bundles"
 
 # Default ports
 GATE_APP_DEFAULT_PORT=5190
@@ -376,11 +369,13 @@ function build_frontend() {
     echo "================================================================"
     echo "Building frontend apps..."
     ensure_pnpm
-    
+
+    sync_quickstart_bundles
+
     # Install dependencies
     echo "Installing frontend dependencies..."
     pnpm install --frozen-lockfile
-    
+
     echo "Building frontend applications & packages..."
     pnpm build:frontend
     
@@ -522,6 +517,26 @@ function prepare_frontend_for_packaging() {
     echo "================================================================"
 }
 
+function sync_quickstart_bundles() {
+    # Stage Quick start declarative bundles into the console's public dir.
+    echo "Syncing quick start sample bundles to console welcome data dir..."
+    rm -rf "$QUICKSTART_BUNDLE_STAGE_DIR"
+    for entry in "${QUICKSTART_SAMPLE_BUNDLES[@]}"; do
+        local dest_name="${entry%%:*}"
+        local src_dir="${entry#*:}"
+        local dest_dir="$QUICKSTART_BUNDLE_STAGE_DIR/$dest_name"
+        if [ -d "$src_dir" ]; then
+            echo "  Staging '$dest_name' from $src_dir"
+            mkdir -p "$dest_dir"
+            shopt -s dotglob
+            cp -r "$src_dir/"* "$dest_dir"
+            shopt -u dotglob
+        else
+            echo "  Warning: quick start bundle source not found at $src_dir (dest '$dest_name')"
+        fi
+    done
+}
+
 function package() {
     echo "================================================================"
     echo "Packaging backend & frontend artifacts..."
@@ -577,10 +592,10 @@ function build_sample_app() {
 
     cd "$VANILLA_SAMPLE_APP_DIR" || exit 1
     echo "Installing React Vanilla sample dependencies..."
-    npm ci
+    pnpm install --frozen-lockfile
 
     echo "Building React Vanilla sample app..."
-    npm run build
+    pnpm run build
 
     cd - || exit 1
     echo "✅ React Vanilla sample app built successfully."
@@ -611,10 +626,10 @@ function build_sample_app() {
 
     cd "$REACT_API_SAMPLE_APP_DIR" || exit 1
     echo "Installing React API-based sample dependencies..."
-    npm ci
+    pnpm install --frozen-lockfile
 
     echo "Building React API-based sample app..."
-    npm run build
+    pnpm run build
 
     cd - || exit 1
     echo "✅ React API-based sample app built successfully."
@@ -622,19 +637,14 @@ function build_sample_app() {
     # Build Wayfinder sample (Wayfinder)
     echo "=== Building Wayfinder sample app ==="
 
-    cd "$WAYFINDER_SAMPLE_APP_DIR/frontend" || exit 1
-    echo "Installing Wayfinder sample frontend dependencies..."
-    npm ci
+    cd "$WAYFINDER_SAMPLE_APP_DIR" || exit 1
+    echo "Installing Wayfinder sample dependencies..."
+    npm install
 
     echo "Building Wayfinder sample frontend..."
-    npm run build
+    (cd frontend && npm run build)
 
     cd "$SCRIPT_DIR" || exit 1
-
-    for svc in backend ai-agent; do
-        echo "Installing Wayfinder sample $svc dependencies..."
-        (cd "$WAYFINDER_SAMPLE_APP_DIR/$svc" && npm ci)
-    done
 
     echo "✅ Wayfinder sample app built successfully."
 
@@ -665,263 +675,92 @@ function package_sample_app() {
 }
 
 function package_vanilla_sample() {
-    # Use appropriate binary name based on OS
-    local binary_name="$VANILLA_SAMPLE_APP_SERVER_BINARY_NAME"
-    local executable_name="$VANILLA_SAMPLE_APP_SERVER_BINARY_NAME-$SAMPLE_DIST_OS-$SAMPLE_DIST_ARCH"
+    local tgz
 
-    if [ "$SAMPLE_DIST_OS" = "win" ]; then
-        binary_name="${VANILLA_SAMPLE_APP_SERVER_BINARY_NAME}.exe"
-        executable_name="${VANILLA_SAMPLE_APP_SERVER_BINARY_NAME}-${SAMPLE_DIST_OS}-${SAMPLE_DIST_ARCH}.exe"
-    fi
-
-    mkdir -p "$DIST_DIR/$VANILLA_SAMPLE_APP_FOLDER"
-
-    # Copy the built app files
-    cp -r "$VANILLA_SAMPLE_APP_SERVER_DIR/app" "$DIST_DIR/$VANILLA_SAMPLE_APP_FOLDER/"
-
-    cd "$VANILLA_SAMPLE_APP_SERVER_DIR" || exit 1
-
-    mkdir -p "executables"
-
-    # Install dependencies to ensure pkg is available
-    npm ci
-
-    npx pkg . -t "$SAMPLE_DIST_NODE_VERSION-$SAMPLE_DIST_OS-$SAMPLE_DIST_ARCH" -o "executables/$executable_name"
-
+    cd "$VANILLA_SAMPLE_APP_DIR" || exit 1
+    pnpm pack --pack-destination "$SCRIPT_DIR/$DIST_DIR"
     cd "$SCRIPT_DIR" || exit 1
 
-    # Copy the server binary
-    cp "$VANILLA_SAMPLE_APP_SERVER_DIR/executables/$executable_name" "$DIST_DIR/$VANILLA_SAMPLE_APP_FOLDER/$binary_name"
-
-    # Copy README and other necessary files
-    if [ -f "$VANILLA_SAMPLE_APP_DIR/README.md" ]; then
-        cp "$VANILLA_SAMPLE_APP_DIR/README.md" "$DIST_DIR/$VANILLA_SAMPLE_APP_FOLDER/"
-    fi
-
-    # Ensure the certificates exist in the sample app directory
-    echo "=== Ensuring certificates exist in the React Vanilla sample distribution ==="
-    ensure_certificates "$DIST_DIR/$VANILLA_SAMPLE_APP_FOLDER" "server"
-
-    # Copy the appropriate startup script based on the target OS
-    if [ "$SAMPLE_DIST_OS" = "win" ]; then
-        echo "Including Windows start script (start.ps1)..."
-        cp -r "$VANILLA_SAMPLE_APP_SERVER_DIR/start.ps1" "$DIST_DIR/$VANILLA_SAMPLE_APP_FOLDER"
-    else
-        echo "Including Unix start script (start.sh)..."
-        cp -r "$VANILLA_SAMPLE_APP_SERVER_DIR/start.sh" "$DIST_DIR/$VANILLA_SAMPLE_APP_FOLDER"
-    fi
-
-    # Copy ThunderID declarative resource configs
-    if [ -d "$VANILLA_SAMPLE_APP_DIR/thunderid-config" ]; then
-        echo "Copying ThunderID config..."
-        cp -r "$VANILLA_SAMPLE_APP_DIR/thunderid-config" "$DIST_DIR/$VANILLA_SAMPLE_APP_FOLDER/"
-    else
-        echo "Error: thunderid-config directory not found at $VANILLA_SAMPLE_APP_DIR/thunderid-config"
-        echo "  VANILLA_SAMPLE_APP_DIR=$VANILLA_SAMPLE_APP_DIR"
-        echo "  VANILLA_SAMPLE_APP_FOLDER=$VANILLA_SAMPLE_APP_FOLDER"
-        echo "  DIST_DIR=$DIST_DIR"
+    tgz=$(ls "$DIST_DIR"/thunderid-react-vanilla-sample-*.tgz 2>/dev/null | head -1)
+    if [ -z "$tgz" ]; then
+        echo "Error: pnpm pack did not produce a tgz for react-vanilla-sample"
         exit 1
     fi
 
-    echo "Creating React Vanilla sample zip file..."
+    tar xzf "$tgz" -C "$DIST_DIR"
+    mv "$DIST_DIR/package" "$DIST_DIR/$VANILLA_SAMPLE_APP_FOLDER"
     (cd "$DIST_DIR" && find "$VANILLA_SAMPLE_APP_FOLDER" | sort | zip "$VANILLA_SAMPLE_APP_FOLDER.zip" -@)
-    rm -rf "${DIST_DIR:?}/$VANILLA_SAMPLE_APP_FOLDER"
+    rm -rf "${DIST_DIR:?}/$VANILLA_SAMPLE_APP_FOLDER" "$tgz"
 
     echo "✅ React Vanilla sample app packaged successfully as $DIST_DIR/$VANILLA_SAMPLE_APP_FOLDER.zip"
 }
 
 function package_react_sdk_sample() {
-    mkdir -p "$DIST_DIR/$REACT_SDK_SAMPLE_APP_FOLDER"
+    local tgz
 
-    # Copy the built React app (dist folder)
-    if [ -d "$REACT_SDK_SAMPLE_APP_DIR/dist" ]; then
-        echo "Copying React SDK sample build output..."
-        cp -r "$REACT_SDK_SAMPLE_APP_DIR/dist" "$DIST_DIR/$REACT_SDK_SAMPLE_APP_FOLDER/"
-    else
-        echo "Warning: React SDK sample build output not found at $REACT_SDK_SAMPLE_APP_DIR/dist"
+    cd "$REACT_SDK_SAMPLE_APP_DIR" || exit 1
+    pnpm pack --pack-destination "$SCRIPT_DIR/$DIST_DIR"
+    cd "$SCRIPT_DIR" || exit 1
+
+    tgz=$(ls "$DIST_DIR"/thunderid-react-sdk-sample-*.tgz 2>/dev/null | head -1)
+    if [ -z "$tgz" ]; then
+        echo "Error: pnpm pack did not produce a tgz for react-sdk-sample"
         exit 1
     fi
 
-    # Copy README and other necessary files
-    if [ -f "$REACT_SDK_SAMPLE_APP_DIR/README.md" ]; then
-        cp "$REACT_SDK_SAMPLE_APP_DIR/README.md" "$DIST_DIR/$REACT_SDK_SAMPLE_APP_FOLDER/"
-    fi
-
-    if [ -f "$REACT_SDK_SAMPLE_APP_DIR/.env.example" ]; then
-        cp "$REACT_SDK_SAMPLE_APP_DIR/.env.example" "$DIST_DIR/$REACT_SDK_SAMPLE_APP_FOLDER/"
-    fi
-
-    # Copy the appropriate startup script based on the target OS
-    if [ "$SAMPLE_DIST_OS" = "win" ]; then
-        echo "Including Windows start script (start.ps1)..."
-        cp -r "$REACT_SDK_SAMPLE_APP_DIR/start.ps1" "$DIST_DIR/$REACT_SDK_SAMPLE_APP_FOLDER"
-    else
-        echo "Including Unix start script (start.sh)..."
-        cp -r "$REACT_SDK_SAMPLE_APP_DIR/start.sh" "$DIST_DIR/$REACT_SDK_SAMPLE_APP_FOLDER"
-    fi
-
-    # Copy ThunderID declarative resource configs
-    if [ -d "$REACT_SDK_SAMPLE_APP_DIR/thunderid-config" ]; then
-        echo "Copying ThunderID config..."
-        cp -r "$REACT_SDK_SAMPLE_APP_DIR/thunderid-config" "$DIST_DIR/$REACT_SDK_SAMPLE_APP_FOLDER/"
-    else
-        echo "Error: thunderid-config directory not found at $REACT_SDK_SAMPLE_APP_DIR/thunderid-config"
-        echo "  REACT_SDK_SAMPLE_APP_DIR=$REACT_SDK_SAMPLE_APP_DIR"
-        echo "  REACT_SDK_SAMPLE_APP_FOLDER=$REACT_SDK_SAMPLE_APP_FOLDER"
-        echo "  DIST_DIR=$DIST_DIR"
-        exit 1
-    fi
-
-    echo "Creating React SDK sample zip file..."
+    tar xzf "$tgz" -C "$DIST_DIR"
+    mv "$DIST_DIR/package" "$DIST_DIR/$REACT_SDK_SAMPLE_APP_FOLDER"
     (cd "$DIST_DIR" && find "$REACT_SDK_SAMPLE_APP_FOLDER" | sort | zip "$REACT_SDK_SAMPLE_APP_FOLDER.zip" -@)
-    rm -rf "${DIST_DIR:?}/$REACT_SDK_SAMPLE_APP_FOLDER"
+    rm -rf "${DIST_DIR:?}/$REACT_SDK_SAMPLE_APP_FOLDER" "$tgz"
 
     echo "✅ React SDK sample app packaged successfully as $DIST_DIR/$REACT_SDK_SAMPLE_APP_FOLDER.zip"
 }
 
 function package_react_api_based_sample() {
-    mkdir -p "$DIST_DIR/$REACT_API_SAMPLE_APP_FOLDER"
+    local tgz
 
-    # Copy the built React app (dist folder)
-    if [ -d "$REACT_API_SAMPLE_APP_DIR/dist" ]; then
-        echo "Copying React API-based sample build output..."
-        cp -r "$REACT_API_SAMPLE_APP_DIR/dist" "$DIST_DIR/$REACT_API_SAMPLE_APP_FOLDER/"
-    else
-        echo "Warning: React API-based sample build output not found at $REACT_API_SAMPLE_APP_DIR/dist"
+    cd "$REACT_API_SAMPLE_APP_DIR" || exit 1
+    pnpm pack --pack-destination "$SCRIPT_DIR/$DIST_DIR"
+    cd "$SCRIPT_DIR" || exit 1
+
+    tgz=$(ls "$DIST_DIR"/thunderid-react-api-based-sample-*.tgz 2>/dev/null | head -1)
+    if [ -z "$tgz" ]; then
+        echo "Error: pnpm pack did not produce a tgz for react-api-based-sample"
         exit 1
     fi
 
-    # Copy README if it exists
-    if [ -f "$REACT_API_SAMPLE_APP_DIR/README.md" ]; then
-        cp "$REACT_API_SAMPLE_APP_DIR/README.md" "$DIST_DIR/$REACT_API_SAMPLE_APP_FOLDER/"
-    fi
-
-    # Ensure the certificates exist in the sample app dist directory
-    echo "=== Ensuring certificates exist in the React API-based sample distribution ==="
-    ensure_certificates "$DIST_DIR/$REACT_API_SAMPLE_APP_FOLDER/dist" "server"
-
-    # Copy the appropriate startup script based on the target OS
-    if [ "$SAMPLE_DIST_OS" = "win" ]; then
-        echo "Including Windows start script (start.ps1)..."
-        cp -r "$REACT_API_SAMPLE_APP_DIR/start.ps1" "$DIST_DIR/$REACT_API_SAMPLE_APP_FOLDER"
-    else
-        echo "Including Unix start script (start.sh)..."
-        cp -r "$REACT_API_SAMPLE_APP_DIR/start.sh" "$DIST_DIR/$REACT_API_SAMPLE_APP_FOLDER"
-    fi
-
-    # Copy ThunderID declarative resource configs
-    if [ -d "$REACT_API_SAMPLE_APP_DIR/thunderid-config" ]; then
-        echo "Copying ThunderID config..."
-        cp -r "$REACT_API_SAMPLE_APP_DIR/thunderid-config" "$DIST_DIR/$REACT_API_SAMPLE_APP_FOLDER/"
-    else
-        echo "Error: thunderid-config directory not found at $REACT_API_SAMPLE_APP_DIR/thunderid-config"
-        echo "  REACT_API_SAMPLE_APP_DIR=$REACT_API_SAMPLE_APP_DIR"
-        echo "  REACT_API_SAMPLE_APP_FOLDER=$REACT_API_SAMPLE_APP_FOLDER"
-        echo "  DIST_DIR=$DIST_DIR"
-        exit 1
-    fi
-
-    echo "Creating React API-based sample zip file..."
+    tar xzf "$tgz" -C "$DIST_DIR"
+    mv "$DIST_DIR/package" "$DIST_DIR/$REACT_API_SAMPLE_APP_FOLDER"
     (cd "$DIST_DIR" && find "$REACT_API_SAMPLE_APP_FOLDER" | sort | zip "$REACT_API_SAMPLE_APP_FOLDER.zip" -@)
-    rm -rf "${DIST_DIR:?}/$REACT_API_SAMPLE_APP_FOLDER"
+    rm -rf "${DIST_DIR:?}/$REACT_API_SAMPLE_APP_FOLDER" "$tgz"
 
     echo "✅ React API-based sample app packaged successfully as $DIST_DIR/$REACT_API_SAMPLE_APP_FOLDER.zip"
 }
 
 function package_wayfinder_sample() {
-    local dist_folder="$DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER"
-    mkdir -p "$dist_folder"
+    local tgz
 
-    # Frontend is built ahead of time; the backend and ai-agent services ship as
-    # source because pkg cannot bundle Node 22's node:sqlite binding and the chat
-    # agent requires runtime LLM keys from .env.
-    if [ -d "$WAYFINDER_SAMPLE_APP_DIR/frontend/dist" ]; then
-        echo "Copying Wayfinder sample frontend build output..."
-        mkdir -p "$dist_folder/frontend"
-        cp -r "$WAYFINDER_SAMPLE_APP_DIR/frontend/dist" "$dist_folder/frontend/"
-        cp "$WAYFINDER_SAMPLE_APP_DIR/frontend/package.json" "$dist_folder/frontend/"
-        cp "$WAYFINDER_SAMPLE_APP_DIR/frontend/package-lock.json" "$dist_folder/frontend/" 2>/dev/null || true
-        cp "$WAYFINDER_SAMPLE_APP_DIR/frontend/index.html" "$dist_folder/frontend/" 2>/dev/null || true
-        cp "$WAYFINDER_SAMPLE_APP_DIR/frontend/vite.config.js" "$dist_folder/frontend/" 2>/dev/null || true
-        if [ -d "$WAYFINDER_SAMPLE_APP_DIR/frontend/src" ]; then
-            cp -r "$WAYFINDER_SAMPLE_APP_DIR/frontend/src" "$dist_folder/frontend/"
-        fi
-        if [ -d "$WAYFINDER_SAMPLE_APP_DIR/frontend/public" ]; then
-            cp -r "$WAYFINDER_SAMPLE_APP_DIR/frontend/public" "$dist_folder/frontend/"
-        fi
-        if [ -f "$WAYFINDER_SAMPLE_APP_DIR/frontend/.env.example" ]; then
-            cp "$WAYFINDER_SAMPLE_APP_DIR/frontend/.env.example" "$dist_folder/frontend/"
-        fi
-        if [ -f "$WAYFINDER_SAMPLE_APP_DIR/frontend/README.md" ]; then
-            cp "$WAYFINDER_SAMPLE_APP_DIR/frontend/README.md" "$dist_folder/frontend/"
-        fi
-    else
-        echo "Error: Wayfinder sample frontend build output not found at $WAYFINDER_SAMPLE_APP_DIR/frontend/dist"
+    cd "$WAYFINDER_SAMPLE_APP_DIR" || exit 1
+    pnpm pack --pack-destination "$SCRIPT_DIR/$DIST_DIR"
+    cd "$SCRIPT_DIR" || exit 1
+
+    tgz=$(ls "$DIST_DIR"/thunderid-wayfinder-sample-*.tgz 2>/dev/null | head -1)
+    if [ -z "$tgz" ]; then
+        echo "Error: pnpm pack did not produce a tgz for wayfinder-sample"
         exit 1
     fi
 
-    for svc in backend ai-agent; do
-        local svc_src="$WAYFINDER_SAMPLE_APP_DIR/$svc"
-        local svc_dest="$dist_folder/$svc"
-        echo "Copying Wayfinder sample $svc source..."
-        mkdir -p "$svc_dest"
-        # Copy package metadata, source, and per-service docs but skip node_modules
-        cp "$svc_src/package.json" "$svc_dest/"
-        cp "$svc_src/package-lock.json" "$svc_dest/" 2>/dev/null || true
-        if [ -f "$svc_src/tsconfig.json" ]; then
-            cp "$svc_src/tsconfig.json" "$svc_dest/"
-        fi
-        if [ -f "$svc_src/README.md" ]; then
-            cp "$svc_src/README.md" "$svc_dest/"
-        fi
-        if [ -f "$svc_src/.env.example" ]; then
-            cp "$svc_src/.env.example" "$svc_dest/"
-        fi
-        if [ -d "$svc_src/src" ]; then
-            cp -r "$svc_src/src" "$svc_dest/"
-        fi
-        if [ -d "$svc_src/scripts" ]; then
-            cp -r "$svc_src/scripts" "$svc_dest/"
-        fi
-        # ai-agent ships a single TypeScript entry file at the root
-        if [ -f "$svc_src/agent.ts" ]; then
-            cp "$svc_src/agent.ts" "$svc_dest/"
+    tar xzf "$tgz" -C "$DIST_DIR"
+    mv "$DIST_DIR/package" "$DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER"
+
+    for dir in frontend backend smtp-server ai-agent; do
+        if [ -f "$DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER/$dir/.env.example" ]; then
+            cp "$DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER/$dir/.env.example" "$DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER/$dir/.env"
         fi
     done
 
-    # Copy top-level files
-    if [ -f "$WAYFINDER_SAMPLE_APP_DIR/README.md" ]; then
-        cp "$WAYFINDER_SAMPLE_APP_DIR/README.md" "$dist_folder/"
-    fi
-    if [ -f "$WAYFINDER_SAMPLE_APP_DIR/package.json" ]; then
-        cp "$WAYFINDER_SAMPLE_APP_DIR/package.json" "$dist_folder/"
-    fi
-
-    # Startup script for the appropriate OS
-    if [ "$SAMPLE_DIST_OS" = "win" ]; then
-        echo "Including Windows start script (start.ps1)..."
-        cp "$WAYFINDER_SAMPLE_APP_DIR/start.ps1" "$dist_folder/"
-    else
-        echo "Including Unix start script (start.sh)..."
-        cp "$WAYFINDER_SAMPLE_APP_DIR/start.sh" "$dist_folder/"
-        chmod +x "$dist_folder/start.sh"
-    fi
-
-    # ThunderID declarative resource configs
-    if [ -d "$WAYFINDER_SAMPLE_APP_DIR/thunderid-config" ]; then
-        echo "Copying ThunderID config..."
-        cp -r "$WAYFINDER_SAMPLE_APP_DIR/thunderid-config" "$dist_folder/"
-    else
-        echo "Error: thunderid-config directory not found at $WAYFINDER_SAMPLE_APP_DIR/thunderid-config"
-        echo "  WAYFINDER_SAMPLE_APP_DIR=$WAYFINDER_SAMPLE_APP_DIR"
-        echo "  WAYFINDER_SAMPLE_APP_FOLDER=$WAYFINDER_SAMPLE_APP_FOLDER"
-        echo "  DIST_DIR=$DIST_DIR"
-        exit 1
-    fi
-
-    echo "Creating Wayfinder sample zip file..."
     (cd "$DIST_DIR" && find "$WAYFINDER_SAMPLE_APP_FOLDER" | sort | zip "$WAYFINDER_SAMPLE_APP_FOLDER.zip" -@)
-    rm -rf "${DIST_DIR:?}/$WAYFINDER_SAMPLE_APP_FOLDER"
+    rm -rf "${DIST_DIR:?}/$WAYFINDER_SAMPLE_APP_FOLDER" "$tgz"
 
     echo "✅ Wayfinder sample app packaged successfully as $DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER.zip"
 }
@@ -1348,7 +1187,9 @@ function run_frontend() {
     echo "================================================================"
     echo "Running frontend apps..."
     ensure_pnpm
-    
+
+    sync_quickstart_bundles
+
     # Install dependencies
     echo "Installing frontend dependencies..."
     pnpm install --frozen-lockfile

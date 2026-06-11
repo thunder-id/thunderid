@@ -344,8 +344,8 @@ func (_c *OIDCAuthnCoreServiceInterfaceMock_FetchUserInfo_Call) RunAndReturn(run
 }
 
 // GetIDTokenClaims provides a mock function for the type OIDCAuthnCoreServiceInterfaceMock
-func (_mock *OIDCAuthnCoreServiceInterfaceMock) GetIDTokenClaims(idToken string) (map[string]interface{}, *serviceerror.ServiceError) {
-	ret := _mock.Called(idToken)
+func (_mock *OIDCAuthnCoreServiceInterfaceMock) GetIDTokenClaims(ctx context.Context, idToken string) (map[string]interface{}, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, idToken)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetIDTokenClaims")
@@ -353,18 +353,18 @@ func (_mock *OIDCAuthnCoreServiceInterfaceMock) GetIDTokenClaims(idToken string)
 
 	var r0 map[string]interface{}
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(string) (map[string]interface{}, *serviceerror.ServiceError)); ok {
-		return returnFunc(idToken)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (map[string]interface{}, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, idToken)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) map[string]interface{}); ok {
-		r0 = returnFunc(idToken)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) map[string]interface{}); ok {
+		r0 = returnFunc(ctx, idToken)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(map[string]interface{})
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *serviceerror.ServiceError); ok {
-		r1 = returnFunc(idToken)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, idToken)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -379,19 +379,25 @@ type OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call struct {
 }
 
 // GetIDTokenClaims is a helper method to define mock.On call
+//   - ctx context.Context
 //   - idToken string
-func (_e *OIDCAuthnCoreServiceInterfaceMock_Expecter) GetIDTokenClaims(idToken interface{}) *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call {
-	return &OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call{Call: _e.mock.On("GetIDTokenClaims", idToken)}
+func (_e *OIDCAuthnCoreServiceInterfaceMock_Expecter) GetIDTokenClaims(ctx interface{}, idToken interface{}) *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call {
+	return &OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call{Call: _e.mock.On("GetIDTokenClaims", ctx, idToken)}
 }
 
-func (_c *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call) Run(run func(idToken string)) *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call {
+func (_c *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call) Run(run func(ctx context.Context, idToken string)) *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -402,14 +408,14 @@ func (_c *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call) Return(string
 	return _c
 }
 
-func (_c *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call) RunAndReturn(run func(idToken string) (map[string]interface{}, *serviceerror.ServiceError)) *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call {
+func (_c *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call) RunAndReturn(run func(ctx context.Context, idToken string) (map[string]interface{}, *serviceerror.ServiceError)) *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetInternalUser provides a mock function for the type OIDCAuthnCoreServiceInterfaceMock
-func (_mock *OIDCAuthnCoreServiceInterfaceMock) GetInternalUser(sub string) (*entityprovider.Entity, *serviceerror.ServiceError) {
-	ret := _mock.Called(sub)
+func (_mock *OIDCAuthnCoreServiceInterfaceMock) GetInternalUser(ctx context.Context, sub string) (*entityprovider.Entity, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, sub)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetInternalUser")
@@ -417,18 +423,18 @@ func (_mock *OIDCAuthnCoreServiceInterfaceMock) GetInternalUser(sub string) (*en
 
 	var r0 *entityprovider.Entity
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(string) (*entityprovider.Entity, *serviceerror.ServiceError)); ok {
-		return returnFunc(sub)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*entityprovider.Entity, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, sub)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) *entityprovider.Entity); ok {
-		r0 = returnFunc(sub)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *entityprovider.Entity); ok {
+		r0 = returnFunc(ctx, sub)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*entityprovider.Entity)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *serviceerror.ServiceError); ok {
-		r1 = returnFunc(sub)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, sub)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -443,19 +449,25 @@ type OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call struct {
 }
 
 // GetInternalUser is a helper method to define mock.On call
+//   - ctx context.Context
 //   - sub string
-func (_e *OIDCAuthnCoreServiceInterfaceMock_Expecter) GetInternalUser(sub interface{}) *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call {
-	return &OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call{Call: _e.mock.On("GetInternalUser", sub)}
+func (_e *OIDCAuthnCoreServiceInterfaceMock_Expecter) GetInternalUser(ctx interface{}, sub interface{}) *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call {
+	return &OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call{Call: _e.mock.On("GetInternalUser", ctx, sub)}
 }
 
-func (_c *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call) Run(run func(sub string)) *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call {
+func (_c *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call) Run(run func(ctx context.Context, sub string)) *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -466,7 +478,7 @@ func (_c *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call) Return(entity 
 	return _c
 }
 
-func (_c *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call) RunAndReturn(run func(sub string) (*entityprovider.Entity, *serviceerror.ServiceError)) *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call {
+func (_c *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call) RunAndReturn(run func(ctx context.Context, sub string) (*entityprovider.Entity, *serviceerror.ServiceError)) *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call {
 	_c.Call.Return(run)
 	return _c
 }

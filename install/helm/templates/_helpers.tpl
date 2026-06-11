@@ -266,3 +266,19 @@ Each item may optionally specify a mountPath to override the global base path.
 {{- end }}
 {{- end }}
 {{- end }}
+
+{{/*
+Render volumeMount entries for singleFile.keys mode.
+Each key is mounted as <key>.yaml directly under the given mountPath.
+*/}}
+{{- define "thunderid.singleFileVolumeMounts" -}}
+{{- $keys := default (list) .keys -}}
+{{- $mountPath := .mountPath -}}
+{{- $readOnly := .readOnly -}}
+{{- range $keys }}
+- name: declarative-resources
+  mountPath: {{ printf "%s/%s.yaml" $mountPath . }}
+  subPath: {{ . }}
+  readOnly: {{ $readOnly }}
+{{- end }}
+{{- end }}

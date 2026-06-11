@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -116,6 +116,13 @@ type ErrorResponse struct {
 	Description I18nMessage `json:"description"`
 }
 
+// FlowExecutionError represents a structured error returned by flow execution.
+type FlowExecutionError struct {
+	Code        string      `json:"code,omitempty"`
+	Message     I18nMessage `json:"message,omitempty"`
+	Description I18nMessage `json:"description,omitempty"`
+}
+
 // AuthenticationResponse represents the response from an authentication request
 type AuthenticationResponse struct {
 	ID        string `json:"id"`
@@ -214,12 +221,12 @@ type ResourcePermissions struct {
 
 // FlowResponse represents the response from flow execution
 type FlowResponse struct {
-	ExecutionID   string    `json:"executionId"`
-	FlowStatus    string    `json:"flowStatus"`
-	Type          string    `json:"type"`
-	Data          *FlowData `json:"data,omitempty"`
-	Assertion     string    `json:"assertion,omitempty"`
-	FailureReason string    `json:"failureReason,omitempty"`
+	ExecutionID   string              `json:"executionId"`
+	FlowStatus    string              `json:"flowStatus"`
+	Type          string              `json:"type"`
+	Data          *FlowData           `json:"data,omitempty"`
+	Assertion     string              `json:"assertion,omitempty"`
+	Error         *FlowExecutionError `json:"error,omitempty"`
 }
 
 // FlowData represents the data returned by flow execution
@@ -247,13 +254,13 @@ type FlowAction struct {
 
 // FlowStep represents a single step in a flow execution
 type FlowStep struct {
-	ExecutionID    string    `json:"executionId"`
-	FlowStatus     string    `json:"flowStatus"`
-	Type           string    `json:"type"`
-	Data           *FlowData `json:"data,omitempty"`
-	Assertion      string    `json:"assertion,omitempty"`
-	FailureReason  string    `json:"failureReason,omitempty"`
-	ChallengeToken string    `json:"challengeToken,omitempty"`
+	ExecutionID    string              `json:"executionId"`
+	FlowStatus     string              `json:"flowStatus"`
+	Type           string              `json:"type"`
+	Data           *FlowData           `json:"data,omitempty"`
+	Assertion      string              `json:"assertion,omitempty"`
+	Error          *FlowExecutionError `json:"error,omitempty"`
+	ChallengeToken string              `json:"challengeToken,omitempty"`
 }
 
 // Flow represents a flow definition

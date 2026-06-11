@@ -1,0 +1,211 @@
+---
+title: Self Sign-Up
+description: Configure {{ProductName}} for self-registration and integrate it into your own application.
+sidebar_position: 3
+---
+
+# Self Sign-Up
+
+This walkthrough configures <ProductName /> so that new consumers can register themselves with an email and password. <ProductName /> creates a user record and returns the new user to your app signed in.
+
+:::info Background
+[Enable Self Sign-Up](../../customer-identity#enable-self-sign-up) covers the requirements story behind this use case.
+:::
+
+:::note Prerequisites
+Complete the [Login](../add-login) walkthrough first. The user type, application, and sign-in flow set up there are required here.
+:::
+
+## Pick Your Pattern
+
+<details open>
+  <summary>Redirect-based</summary>
+
+In the redirect-based pattern, your app redirects the user to <ProductName /> for the entire registration experience. After the user fills in the sign-up form, <ProductName /> creates the account and returns them to your app signed in.
+
+### Configure <ProductName />
+
+**1. Build a registration flow**
+
+Build a `REGISTRATION` flow using the Flow Designer or the flows API. See [Build a Flow](/docs/next/guides/guides/flows/build-a-flow).
+
+Your registration flow should collect the user's credentials, provision the account, and return an auth assertion so the user lands signed in.
+
+To automatically assign a default role to every self-registered user, create the role under **Roles** → **Add Role**. Then set `properties.assignRole` to that role's ID on the `ProvisioningExecutor` node in your flow. See [Authorization](/docs/next/guides/key-concepts/authorization).
+
+<details>
+  <summary>Sample registration flow</summary>
+
+```json
+{
+  "handle": "consumer-registration-flow",
+  "name": "Consumer Registration Flow",
+  "flowType": "REGISTRATION",
+  "nodes": [
+    { "id": "start", "type": "START", "onSuccess": "user_type_resolver" },
+    {
+      "id": "user_type_resolver",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "UserTypeResolver" },
+      "onSuccess": "prompt_credentials",
+      "onIncomplete": "prompt_usertype"
+    },
+    {
+      "id": "prompt_usertype",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "heading_usertype", "label": "Choose your account type", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_usertype",
+            "components": [
+              { "type": "SELECT", "id": "usertype_input", "ref": "userType", "label": "Account type", "placeholder": "Select an account type", "required": true, "options": [] },
+              { "type": "ACTION", "id": "action_usertype", "label": "Continue", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "inputs": [ { "ref": "usertype_input", "identifier": "userType", "type": "SELECT", "required": true } ],
+          "action": { "ref": "action_usertype", "nextNode": "user_type_resolver" }
+        }
+      ]
+    },
+    {
+      "id": "prompt_credentials",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "heading_credentials", "label": "Create your account", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_credentials",
+            "components": [
+              { "type": "TEXT_INPUT", "id": "input_username", "ref": "username", "label": "Username", "placeholder": "Pick a username", "required": true },
+              { "type": "PASSWORD_INPUT", "id": "input_password", "ref": "password", "label": "Password", "placeholder": "Choose a password", "required": true },
+              { "type": "ACTION", "id": "action_credentials", "label": "Continue", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        {
+          "inputs": [
+            { "ref": "input_username", "identifier": "username", "type": "TEXT_INPUT", "required": true },
+            { "ref": "input_password", "identifier": "password", "type": "PASSWORD_INPUT", "required": true }
+          ],
+          "action": { "ref": "action_credentials", "nextNode": "basic_auth" }
+        }
+      ]
+    },
+    {
+      "id": "basic_auth",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "BasicAuthExecutor" },
+      "onSuccess": "provisioning"
+    },
+    {
+      "id": "provisioning",
+      "type": "TASK_EXECUTION",
+      "executor": {
+        "name": "ProvisioningExecutor",
+        "inputs": [
+          { "ref": "input_username", "identifier": "username", "type": "TEXT_INPUT", "required": true },
+          { "ref": "input_password", "identifier": "password", "type": "PASSWORD_INPUT", "required": true }
+        ]
+      },
+      "onSuccess": "auth_assert",
+      "onIncomplete": "prompt_schema_attrs"
+    },
+    {
+      "id": "prompt_schema_attrs",
+      "type": "PROMPT",
+      "meta": {
+        "components": [
+          { "align": "center", "type": "TEXT", "id": "heading_schema_attrs", "label": "Tell us about you", "variant": "HEADING_1" },
+          {
+            "type": "BLOCK",
+            "id": "block_dynamic_user_inputs",
+            "components": [
+              { "type": "DYNAMIC_INPUT_PLACEHOLDER", "id": "dynamic_inputs" },
+              { "type": "ACTION", "id": "action_schema_attrs", "label": "Continue", "variant": "PRIMARY", "eventType": "SUBMIT" }
+            ]
+          }
+        ]
+      },
+      "prompts": [
+        { "inputs": [], "action": { "ref": "action_schema_attrs", "nextNode": "provisioning" } }
+      ]
+    },
+    {
+      "id": "auth_assert",
+      "type": "TASK_EXECUTION",
+      "executor": { "name": "AuthAssertExecutor" },
+      "onSuccess": "end"
+    },
+    { "id": "end", "type": "END" }
+  ]
+}
+```
+
+</details>
+
+**2. Attach the registration flow to your application**
+
+Go to **Applications** → your app → **Flows** tab. Under **Registration Flow**, select the flow you created. Save the application.
+
+See [Manage Applications](/docs/next/guides/guides/applications/manage-applications).
+
+### Integrate into Your App
+
+Trigger sign-up from your app using the SDK. The registration experience is hosted by <ProductName />, so your app only needs a sign-up entry point:
+
+| Framework   | Where to integrate                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| React       | [React Quickstart](/docs/next/guides/getting-started/connect-your-application/react) — `<SignUpButton />` component                       |
+| Next.js     | [Next.js Quickstart](/docs/next/guides/getting-started/connect-your-application/nextjs)                                                    |
+| Vue         | [Vue Quickstart](/docs/next/guides/getting-started/connect-your-application/vue)                                                           |
+| Browser SDK | [Browser SDK Overview](/docs/next/sdks/browser/overview)                                                                                   |
+
+:::tip Using a different SDK?
+The redirect-based pattern is standard OAuth 2.0 authorization code flow with PKCE, so **any OIDC-compliant SDK works** — you are not limited to the <ProductName /> SDK. Point it at your <ProductName /> server's discovery endpoint (`http://localhost:8080/oauth2/token/.well-known/openid-configuration`) and use your **Client ID** from the registered application.
+:::
+
+### Try It Out
+
+1. Start your app and open it in the browser.
+2. Click your sign-up button. The browser navigates to <ProductName />.
+3. Fill in a username, email, and password for a new user.
+4. Submit. <ProductName /> runs the registration flow, creates the user, and redirects back to your app.
+5. Verify that the new user lands in your app signed in.
+
+</details>
+
+<details>
+  <summary>App-native step-by-step</summary>
+
+Coming soon. See the [App-native pattern](../../solution-patterns#app-native) for what to expect.
+
+</details>
+
+<details>
+  <summary>App-native managed</summary>
+
+Coming soon. See the [App-native pattern](../../solution-patterns#app-native) for what to expect.
+
+</details>
+
+<details>
+  <summary>Direct API</summary>
+
+Coming soon. See the [Direct API pattern](../../solution-patterns#direct-api) for what to expect.
+
+</details>
+
+## Going Deeper
+
+- Want to understand how user types and schemas work? See [User Types](../../identity-concepts#user-types) in Identity Concepts.
+- Want to automatically assign a role to self-registered users? See [Roles](../../identity-concepts#roles) in Identity Concepts.
+- Want to see this use case running against the Wayfinder sample? See [Self Sign-Up — Try It Out](../../try-it-out/self-sign-up).

@@ -16,11 +16,11 @@
  * under the License.
  */
 
-import Editor from '@monaco-editor/react';
 import {Box, Dialog, DialogContent, DialogTitle, IconButton, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {Maximize, X} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useEffect, useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import Editor from '@/lib/MonacoEditor';
 
 // Shared DOM node for Monaco overflow widgets (context menu, suggest, etc.)
 // Appended to <body> so they are never clipped by parent overflow.

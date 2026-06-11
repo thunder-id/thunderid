@@ -109,16 +109,10 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	)
 	assert.NoError(suite.T(), err)
 
-	// Verify that the routes are registered by attempting to get a handler for them.
-	// The pattern includes the method because of CORS middleware wrapping.
+	// Verify that the GET /oauth2/authorize route is registered.
+	// POST /oauth2/auth/callback is now registered by the callback package, not authz.
 	_, pattern := mux.Handler(&http.Request{Method: "GET", URL: &url.URL{Path: "/oauth2/authorize"}})
 	assert.Contains(suite.T(), pattern, "/oauth2/authorize")
-
-	_, pattern = mux.Handler(&http.Request{Method: "POST", URL: &url.URL{Path: "/oauth2/auth/callback"}})
-	assert.Contains(suite.T(), pattern, "/oauth2/auth/callback")
-
-	_, pattern = mux.Handler(&http.Request{Method: "OPTIONS", URL: &url.URL{Path: "/oauth2/auth/callback"}})
-	assert.Contains(suite.T(), pattern, "/oauth2/auth/callback")
 }
 
 func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
@@ -142,18 +136,6 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 			path:          "/oauth2/authorize",
 			expectAllowed: true,
 		},
-		{
-			name:          "POST /oauth2/auth/callback allowed",
-			method:        "POST",
-			path:          "/oauth2/auth/callback",
-			expectAllowed: true,
-		},
-		{
-			name:          "OPTIONS /oauth2/auth/callback returns no content",
-			method:        "OPTIONS",
-			path:          "/oauth2/auth/callback",
-			expectAllowed: true,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -167,55 +149,6 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 				assert.Contains(suite.T(), pattern, tc.path, "Route should be registered")
 				assert.NotNil(suite.T(), handler, "Handler should be registered")
 			}
-		})
-	}
-}
-
-func (suite *InitTestSuite) TestRegisterRoutes_CORSHeaders() {
-	mux := http.NewServeMux()
-
-	_, err := Initialize(
-		mux, suite.mockInboundClient, suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil,
-	)
-	assert.NoError(suite.T(), err)
-
-	testCases := []struct {
-		name                 string
-		method               string
-		path                 string
-		origin               string
-		expectedStatus       int
-		expectedAllowMethods string
-		expectedAllowHeaders string
-	}{
-		{
-			name:                 "OPTIONS /oauth2/auth/callback returns POST method",
-			method:               "OPTIONS",
-			path:                 "/oauth2/auth/callback",
-			origin:               "https://example.com",
-			expectedStatus:       http.StatusNoContent,
-			expectedAllowMethods: "POST",
-			expectedAllowHeaders: "Content-Type, Authorization",
-		},
-	}
-
-	for _, tc := range testCases {
-		suite.Run(tc.name, func() {
-			// Allow-Methods/Allow-Headers are preflight-only response headers
-			// per the Fetch spec; the request must carry
-			// Access-Control-Request-Method to elicit them.
-			req := httptest.NewRequest(tc.method, tc.path, nil)
-			req.Header.Set("Origin", tc.origin)
-			req.Header.Set("Access-Control-Request-Method", "POST")
-			rec := httptest.NewRecorder()
-
-			mux.ServeHTTP(rec, req)
-
-			assert.Equal(suite.T(), tc.expectedStatus, rec.Code)
-			assert.Equal(suite.T(), tc.expectedAllowMethods, rec.Header().Get("Access-Control-Allow-Methods"))
-			assert.Equal(suite.T(), tc.expectedAllowHeaders, rec.Header().Get("Access-Control-Allow-Headers"))
-			assert.Equal(suite.T(), "true", rec.Header().Get("Access-Control-Allow-Credentials"))
 		})
 	}
 }

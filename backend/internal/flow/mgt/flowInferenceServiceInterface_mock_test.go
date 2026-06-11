@@ -5,6 +5,8 @@
 package flowmgt
 
 import (
+	"context"
+
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -36,8 +38,8 @@ func (_m *flowInferenceServiceInterfaceMock) EXPECT() *flowInferenceServiceInter
 }
 
 // InferRegistrationFlow provides a mock function for the type flowInferenceServiceInterfaceMock
-func (_mock *flowInferenceServiceInterfaceMock) InferRegistrationFlow(authFlow *FlowDefinition) (*FlowDefinition, error) {
-	ret := _mock.Called(authFlow)
+func (_mock *flowInferenceServiceInterfaceMock) InferRegistrationFlow(ctx context.Context, authFlow *FlowDefinition) (*FlowDefinition, error) {
+	ret := _mock.Called(ctx, authFlow)
 
 	if len(ret) == 0 {
 		panic("no return value specified for InferRegistrationFlow")
@@ -45,18 +47,18 @@ func (_mock *flowInferenceServiceInterfaceMock) InferRegistrationFlow(authFlow *
 
 	var r0 *FlowDefinition
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(*FlowDefinition) (*FlowDefinition, error)); ok {
-		return returnFunc(authFlow)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *FlowDefinition) (*FlowDefinition, error)); ok {
+		return returnFunc(ctx, authFlow)
 	}
-	if returnFunc, ok := ret.Get(0).(func(*FlowDefinition) *FlowDefinition); ok {
-		r0 = returnFunc(authFlow)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *FlowDefinition) *FlowDefinition); ok {
+		r0 = returnFunc(ctx, authFlow)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*FlowDefinition)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(*FlowDefinition) error); ok {
-		r1 = returnFunc(authFlow)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *FlowDefinition) error); ok {
+		r1 = returnFunc(ctx, authFlow)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -69,19 +71,25 @@ type flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call struct {
 }
 
 // InferRegistrationFlow is a helper method to define mock.On call
+//   - ctx context.Context
 //   - authFlow *FlowDefinition
-func (_e *flowInferenceServiceInterfaceMock_Expecter) InferRegistrationFlow(authFlow interface{}) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
-	return &flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call{Call: _e.mock.On("InferRegistrationFlow", authFlow)}
+func (_e *flowInferenceServiceInterfaceMock_Expecter) InferRegistrationFlow(ctx interface{}, authFlow interface{}) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
+	return &flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call{Call: _e.mock.On("InferRegistrationFlow", ctx, authFlow)}
 }
 
-func (_c *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call) Run(run func(authFlow *FlowDefinition)) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
+func (_c *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call) Run(run func(ctx context.Context, authFlow *FlowDefinition)) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *FlowDefinition
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(*FlowDefinition)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *FlowDefinition
+		if args[1] != nil {
+			arg1 = args[1].(*FlowDefinition)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -92,7 +100,7 @@ func (_c *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call) Return(f
 	return _c
 }
 
-func (_c *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call) RunAndReturn(run func(authFlow *FlowDefinition) (*FlowDefinition, error)) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
+func (_c *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call) RunAndReturn(run func(ctx context.Context, authFlow *FlowDefinition) (*FlowDefinition, error)) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
 	_c.Call.Return(run)
 	return _c
 }

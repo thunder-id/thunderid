@@ -29,6 +29,30 @@ CREATE TABLE "AUTHORIZATION_REQUEST" (
 -- Index for expiry time on AUTHORIZATION_REQUEST (supports cleanup and expiry checks)
 CREATE INDEX idx_authorization_request_expiry_time ON "AUTHORIZATION_REQUEST" (EXPIRY_TIME);
 
+-- Table to store OAuth2 CIBA (Client-Initiated Backchannel Authentication) requests.
+-- USER_ID is NULL at creation and populated at callback once the user authenticates.
+-- EXECUTION_ID is intentionally omitted: it is transient, lives only in the notification
+-- link URL and the FLOW_CONTEXT table, and is never needed for polling or token issuance.
+CREATE TABLE "CIBA_AUTH_REQUEST" (
+    AUTH_REQ_ID        VARCHAR(36)  NOT NULL,
+    DEPLOYMENT_ID      VARCHAR(255) NOT NULL,
+    CLIENT_ID          VARCHAR(255) NOT NULL,
+    USER_ID            VARCHAR(36),
+    STANDARD_SCOPES    TEXT         NOT NULL,
+    STATE              VARCHAR(50)  NOT NULL,
+    AUTHORIZED_SCOPES  TEXT,
+    ATTRIBUTE_CACHE_ID VARCHAR(36),
+    COMPLETED_ACR      VARCHAR(255),
+    AUTH_TIME          TIMESTAMP,
+    LAST_POLLED_AT     TIMESTAMP,
+    EXPIRY_TIME        TIMESTAMP    NOT NULL,
+    CREATED_AT         TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (AUTH_REQ_ID, DEPLOYMENT_ID)
+);
+
+-- Index for expiry time on CIBA_AUTH_REQUEST (supports cleanup and expiry checks)
+CREATE INDEX idx_ciba_auth_request_expiry_time ON "CIBA_AUTH_REQUEST" (EXPIRY_TIME);
+
 -- Table to store flow context
 CREATE TABLE "FLOW_CONTEXT" (
     FLOW_ID VARCHAR(36) NOT NULL,

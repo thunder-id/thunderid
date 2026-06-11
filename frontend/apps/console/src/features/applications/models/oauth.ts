@@ -25,7 +25,13 @@ import type {TokenConfig} from './token';
  *
  * @public
  */
-export type OAuth2GrantType = 'authorization_code' | 'refresh_token' | 'client_credentials' | 'password' | 'implicit';
+export type OAuth2GrantType =
+  | 'authorization_code'
+  | 'refresh_token'
+  | 'client_credentials'
+  | 'password'
+  | 'implicit'
+  | 'urn:openid:params:grant-type:ciba';
 
 /**
  * OAuth2 Grant Type Constants
@@ -52,6 +58,8 @@ export const OAuth2GrantTypes = {
   PASSWORD: 'password',
   /** Implicit Flow - Deprecated, for legacy client-side apps */
   IMPLICIT: 'implicit',
+  /** Client-Initiated Backchannel Authentication (CIBA) - Decoupled authentication flow */
+  CIBA: 'urn:openid:params:grant-type:ciba',
 } as const;
 
 /**
@@ -384,6 +392,13 @@ export interface OAuth2Config {
    * @example { profile: ['name', 'given_name'], email: ['email', 'email_verified'] }
    */
   scopeClaims?: ScopeClaims;
+
+  /**
+   * OAuth client certificate (JWKS or JWKS URI).
+   * Required when tokenEndpointAuthMethod is 'private_key_jwt'.
+   * null means no certificate is configured.
+   */
+  certificate?: {type: string; value?: string} | null;
 }
 
 /**

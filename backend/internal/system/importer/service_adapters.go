@@ -49,7 +49,7 @@ func (s *importService) resolveImportOUHandle(
 ) (string, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ImportService"))
 	if ouID != "" && ouHandle != "" {
-		logger.Warn("Both ou_id and ou_handle provided; ou_handle ignored",
+		logger.Warn(ctx, "Both ou_id and ou_handle provided; ou_handle ignored",
 			log.String("resourceType", resourceType),
 			log.String("resourceID", resourceID),
 			log.String("resourceName", resourceName))
@@ -515,7 +515,8 @@ func (s *importService) importResourceServer(
 }
 
 //nolint:dupl // Theme and layout imports share the same upsert pattern with type-specific services.
-func (s *importService) importTheme(doc parsedDocument, options *ImportOptions, dryRun bool) ImportItemOutcome {
+func (s *importService) importTheme(
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool) ImportItemOutcome {
 	if s.themeService == nil {
 		return unsupportedAdapterOutcome(resourceTypeTheme, "theme")
 	}
@@ -553,7 +554,7 @@ func (s *importService) importTheme(doc parsedDocument, options *ImportOptions, 
 
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.themeService.GetTheme(req.ID)
+			_, svcErr := s.themeService.GetTheme(ctx, req.ID)
 			if svcErr == nil {
 				return successOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate)
 			}
@@ -567,7 +568,7 @@ func (s *importService) importTheme(doc parsedDocument, options *ImportOptions, 
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
-		updated, svcErr := s.themeService.UpdateTheme(req.ID, updateReq)
+		updated, svcErr := s.themeService.UpdateTheme(ctx, req.ID, updateReq)
 		if svcErr == nil {
 			return successOutcome(resourceTypeTheme, updated.ID, updated.DisplayName, operationUpdate)
 		}
@@ -576,7 +577,7 @@ func (s *importService) importTheme(doc parsedDocument, options *ImportOptions, 
 			return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
 
-		created, createErr := s.themeService.CreateTheme(createReq)
+		created, createErr := s.themeService.CreateTheme(ctx, createReq)
 		if createErr != nil {
 			return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationCreate, createErr)
 		}
@@ -584,7 +585,7 @@ func (s *importService) importTheme(doc parsedDocument, options *ImportOptions, 
 		return successOutcome(resourceTypeTheme, created.ID, created.DisplayName, operationCreate)
 	}
 
-	created, svcErr := s.themeService.CreateTheme(createReq)
+	created, svcErr := s.themeService.CreateTheme(ctx, createReq)
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationCreate, svcErr)
 	}
@@ -593,7 +594,8 @@ func (s *importService) importTheme(doc parsedDocument, options *ImportOptions, 
 }
 
 //nolint:dupl // Theme and layout imports share the same upsert pattern with type-specific services.
-func (s *importService) importLayout(doc parsedDocument, options *ImportOptions, dryRun bool) ImportItemOutcome {
+func (s *importService) importLayout(
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool) ImportItemOutcome {
 	if s.layoutService == nil {
 		return unsupportedAdapterOutcome(resourceTypeLayout, "layout")
 	}
@@ -625,18 +627,18 @@ func (s *importService) importLayout(doc parsedDocument, options *ImportOptions,
 
 	return importDesignResource(options.IsUpsertEnabled(), dryRun, req.ID, req.DisplayName,
 		func() *serviceerror.ServiceError {
-			_, svcErr := s.layoutService.GetLayout(req.ID)
+			_, svcErr := s.layoutService.GetLayout(ctx, req.ID)
 			return svcErr
 		},
 		func() (string, string, *serviceerror.ServiceError) {
-			updated, svcErr := s.layoutService.UpdateLayout(req.ID, updateReq)
+			updated, svcErr := s.layoutService.UpdateLayout(ctx, req.ID, updateReq)
 			if svcErr != nil {
 				return "", "", svcErr
 			}
 			return updated.ID, updated.DisplayName, nil
 		},
 		func() (string, string, *serviceerror.ServiceError) {
-			created, svcErr := s.layoutService.CreateLayout(createReq)
+			created, svcErr := s.layoutService.CreateLayout(ctx, createReq)
 			if svcErr != nil {
 				return "", "", svcErr
 			}
@@ -771,7 +773,7 @@ func (s *importService) importUser(
 	return successOutcome(resourceTypeUser, created.ID, "", operationCreate)
 }
 
-func (s *importService) importTranslation(doc parsedDocument, dryRun bool) ImportItemOutcome {
+func (s *importService) importTranslation(ctx context.Context, doc parsedDocument, dryRun bool) ImportItemOutcome {
 	if s.translationService == nil {
 		return unsupportedAdapterOutcome(resourceTypeTranslation, "translation")
 	}
@@ -785,7 +787,7 @@ func (s *importService) importTranslation(doc parsedDocument, dryRun bool) Impor
 		return successOutcome(resourceTypeTranslation, "", req.Language, operationUpdate)
 	}
 
-	_, i18nErr := s.translationService.SetTranslationOverrides(req.Language, req.Translations)
+	_, i18nErr := s.translationService.SetTranslationOverrides(ctx, req.Language, req.Translations)
 	if i18nErr != nil {
 		return ImportItemOutcome{
 			ResourceType: resourceTypeTranslation,
@@ -912,7 +914,7 @@ func (s *importService) importAgent(
 		attributesJSON = raw
 	}
 
-	normalizeAgentOAuthConfigForImport(&req)
+	normalizeAgentOAuthConfigForImport(ctx, &req)
 
 	createReq := &agentmodel.Agent{
 		ID:                 req.ID,
@@ -989,7 +991,7 @@ func getAgentOAuthConfigForImport(req *agentmodel.AgentRequestWithID) *inboundmo
 	return nil
 }
 
-func normalizeAgentOAuthConfigForImport(req *agentmodel.AgentRequestWithID) {
+func normalizeAgentOAuthConfigForImport(ctx context.Context, req *agentmodel.AgentRequestWithID) {
 	oauthConfig := getAgentOAuthConfigForImport(req)
 	if oauthConfig == nil {
 		return
@@ -998,7 +1000,8 @@ func normalizeAgentOAuthConfigForImport(req *agentmodel.AgentRequestWithID) {
 	if oauthConfig.PublicClient &&
 		oauthConfig.TokenEndpointAuthMethod == oauth2const.TokenEndpointAuthMethodNone &&
 		oauthConfig.ClientSecret != "" {
-		log.GetLogger().Debug("Dropping client_secret for public agent import with token endpoint auth method 'none'",
+		log.GetLogger().Debug(ctx,
+			"Dropping client_secret for public agent import with token endpoint auth method 'none'",
 			log.String("agentID", req.ID),
 			log.String("name", req.Name),
 			log.String("clientID", oauthConfig.ClientID))

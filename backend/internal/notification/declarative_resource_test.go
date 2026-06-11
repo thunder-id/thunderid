@@ -145,7 +145,7 @@ func (s *NotificationSenderExporterTestSuite) TestValidateResource_Success() {
 		Properties: []cmodels.Property{*prop},
 	}
 
-	name, err := s.exporter.ValidateResource(sender, "sender1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), sender, "sender1", s.logger)
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Valid Sender", name)
@@ -154,7 +154,7 @@ func (s *NotificationSenderExporterTestSuite) TestValidateResource_Success() {
 func (s *NotificationSenderExporterTestSuite) TestValidateResource_InvalidType() {
 	invalidResource := "not a sender"
 
-	name, err := s.exporter.ValidateResource(invalidResource, "sender1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), invalidResource, "sender1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)
@@ -169,7 +169,7 @@ func (s *NotificationSenderExporterTestSuite) TestValidateResource_EmptyName() {
 		Name: "",
 	}
 
-	name, err := s.exporter.ValidateResource(sender, "sender1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), sender, "sender1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)
@@ -186,7 +186,7 @@ func (s *NotificationSenderExporterTestSuite) TestValidateResource_NoProperties(
 		Properties: []cmodels.Property{},
 	}
 
-	name, err := s.exporter.ValidateResource(sender, "sender1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), sender, "sender1", s.logger)
 
 	// Should still succeed but log a warning
 	assert.Nil(s.T(), err)

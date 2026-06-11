@@ -5,6 +5,8 @@
 package executormock
 
 import (
+	"context"
+
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 )
@@ -37,8 +39,8 @@ func (_m *identifyingExecutorInterfaceMock) EXPECT() *identifyingExecutorInterfa
 }
 
 // IdentifyUser provides a mock function for the type identifyingExecutorInterfaceMock
-func (_mock *identifyingExecutorInterfaceMock) IdentifyUser(filters map[string]interface{}, execResp *common.ExecutorResponse) (*string, error) {
-	ret := _mock.Called(filters, execResp)
+func (_mock *identifyingExecutorInterfaceMock) IdentifyUser(ctx context.Context, filters map[string]interface{}, execResp *common.ExecutorResponse) (*string, error) {
+	ret := _mock.Called(ctx, filters, execResp)
 
 	if len(ret) == 0 {
 		panic("no return value specified for IdentifyUser")
@@ -46,18 +48,18 @@ func (_mock *identifyingExecutorInterfaceMock) IdentifyUser(filters map[string]i
 
 	var r0 *string
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(map[string]interface{}, *common.ExecutorResponse) (*string, error)); ok {
-		return returnFunc(filters, execResp)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, *common.ExecutorResponse) (*string, error)); ok {
+		return returnFunc(ctx, filters, execResp)
 	}
-	if returnFunc, ok := ret.Get(0).(func(map[string]interface{}, *common.ExecutorResponse) *string); ok {
-		r0 = returnFunc(filters, execResp)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, *common.ExecutorResponse) *string); ok {
+		r0 = returnFunc(ctx, filters, execResp)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(map[string]interface{}, *common.ExecutorResponse) error); ok {
-		r1 = returnFunc(filters, execResp)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, map[string]interface{}, *common.ExecutorResponse) error); ok {
+		r1 = returnFunc(ctx, filters, execResp)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -70,25 +72,31 @@ type identifyingExecutorInterfaceMock_IdentifyUser_Call struct {
 }
 
 // IdentifyUser is a helper method to define mock.On call
+//   - ctx context.Context
 //   - filters map[string]interface{}
 //   - execResp *common.ExecutorResponse
-func (_e *identifyingExecutorInterfaceMock_Expecter) IdentifyUser(filters interface{}, execResp interface{}) *identifyingExecutorInterfaceMock_IdentifyUser_Call {
-	return &identifyingExecutorInterfaceMock_IdentifyUser_Call{Call: _e.mock.On("IdentifyUser", filters, execResp)}
+func (_e *identifyingExecutorInterfaceMock_Expecter) IdentifyUser(ctx interface{}, filters interface{}, execResp interface{}) *identifyingExecutorInterfaceMock_IdentifyUser_Call {
+	return &identifyingExecutorInterfaceMock_IdentifyUser_Call{Call: _e.mock.On("IdentifyUser", ctx, filters, execResp)}
 }
 
-func (_c *identifyingExecutorInterfaceMock_IdentifyUser_Call) Run(run func(filters map[string]interface{}, execResp *common.ExecutorResponse)) *identifyingExecutorInterfaceMock_IdentifyUser_Call {
+func (_c *identifyingExecutorInterfaceMock_IdentifyUser_Call) Run(run func(ctx context.Context, filters map[string]interface{}, execResp *common.ExecutorResponse)) *identifyingExecutorInterfaceMock_IdentifyUser_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 map[string]interface{}
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(map[string]interface{})
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 *common.ExecutorResponse
+		var arg1 map[string]interface{}
 		if args[1] != nil {
-			arg1 = args[1].(*common.ExecutorResponse)
+			arg1 = args[1].(map[string]interface{})
+		}
+		var arg2 *common.ExecutorResponse
+		if args[2] != nil {
+			arg2 = args[2].(*common.ExecutorResponse)
 		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -99,7 +107,7 @@ func (_c *identifyingExecutorInterfaceMock_IdentifyUser_Call) Return(s *string, 
 	return _c
 }
 
-func (_c *identifyingExecutorInterfaceMock_IdentifyUser_Call) RunAndReturn(run func(filters map[string]interface{}, execResp *common.ExecutorResponse) (*string, error)) *identifyingExecutorInterfaceMock_IdentifyUser_Call {
+func (_c *identifyingExecutorInterfaceMock_IdentifyUser_Call) RunAndReturn(run func(ctx context.Context, filters map[string]interface{}, execResp *common.ExecutorResponse) (*string, error)) *identifyingExecutorInterfaceMock_IdentifyUser_Call {
 	_c.Call.Return(run)
 	return _c
 }

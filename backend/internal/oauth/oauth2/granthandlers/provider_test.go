@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/authzmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/cibamock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
@@ -47,6 +48,7 @@ type GrantHandlerProviderTestSuite struct {
 	mockRBACAuthzService *rbacauthzmock.AuthorizationServiceInterfaceMock
 	mockEntityProvider   *entityprovidermock.EntityProviderInterfaceMock
 	mockResourceService  *resourcemock.ResourceServiceInterfaceMock
+	mockCIBAService      *cibamock.CIBAServiceInterfaceMock
 }
 
 func TestGrantHandlerProviderSuite(t *testing.T) {
@@ -63,6 +65,7 @@ func (suite *GrantHandlerProviderTestSuite) SetupTest() {
 	suite.mockRBACAuthzService = rbacauthzmock.NewAuthorizationServiceInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	suite.mockCIBAService = cibamock.NewCIBAServiceInterfaceMock(suite.T())
 	suite.provider = newGrantHandlerProvider(
 		suite.mockJWTService,
 		suite.authzService,
@@ -73,6 +76,7 @@ func (suite *GrantHandlerProviderTestSuite) SetupTest() {
 		suite.mockRBACAuthzService,
 		suite.mockEntityProvider,
 		suite.mockResourceService,
+		suite.mockCIBAService,
 	)
 }
 
@@ -87,6 +91,7 @@ func (suite *GrantHandlerProviderTestSuite) TestNewGrantHandlerProvider() {
 		suite.mockRBACAuthzService,
 		suite.mockEntityProvider,
 		suite.mockResourceService,
+		suite.mockCIBAService,
 	)
 	assert.NotNil(suite.T(), provider)
 	assert.Implements(suite.T(), (*GrantHandlerProviderInterface)(nil), provider)
@@ -117,6 +122,14 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_RefreshToken() {
 	assert.Implements(suite.T(), (*RefreshTokenGrantHandlerInterface)(nil), handler)
 }
 
+func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_CIBA() {
+	handler, err := suite.provider.GetGrantHandler(constants.GrantTypeCIBA)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), handler)
+	assert.Implements(suite.T(), (*GrantHandlerInterface)(nil), handler)
+}
+
 func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_UnsupportedGrantType() {
 	unsupportedGrantTypes := []struct {
 		name      string
@@ -142,6 +155,7 @@ func (suite *GrantHandlerProviderTestSuite) TestGetGrantHandler_AllSupportedType
 		constants.GrantTypeClientCredentials,
 		constants.GrantTypeAuthorizationCode,
 		constants.GrantTypeRefreshToken,
+		constants.GrantTypeCIBA,
 	}
 
 	for _, grantType := range supportedTypes {

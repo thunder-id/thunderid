@@ -227,7 +227,7 @@ type fakeThemeService struct {
 	byHandle map[string]*thememgt.Theme
 }
 
-func (f *fakeThemeService) CreateTheme(
+func (f *fakeThemeService) CreateTheme(_ context.Context,
 	theme thememgt.CreateThemeRequestWithID,
 ) (*thememgt.Theme, *serviceerror.ServiceError) {
 	id := theme.ID
@@ -254,7 +254,7 @@ func (f *fakeThemeService) CreateTheme(
 	return created, nil
 }
 
-func (f *fakeThemeService) GetTheme(id string) (*thememgt.Theme, *serviceerror.ServiceError) {
+func (f *fakeThemeService) GetTheme(_ context.Context, id string) (*thememgt.Theme, *serviceerror.ServiceError) {
 	if existing, ok := f.byID[id]; ok {
 		return existing, nil
 	}
@@ -266,7 +266,7 @@ func (f *fakeThemeService) GetTheme(id string) (*thememgt.Theme, *serviceerror.S
 	}
 }
 
-func (f *fakeThemeService) UpdateTheme(
+func (f *fakeThemeService) UpdateTheme(_ context.Context,
 	id string, theme thememgt.UpdateThemeRequest,
 ) (*thememgt.Theme, *serviceerror.ServiceError) {
 	if _, ok := f.byID[id]; !ok {

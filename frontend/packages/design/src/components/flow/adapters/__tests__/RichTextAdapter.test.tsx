@@ -93,6 +93,48 @@ describe('RichTextAdapter', () => {
     expect(getByTestId('rich-text-box')).toHaveAttribute('data-align', 'left');
   });
 
+  describe('anchor target attribute handling', () => {
+    it('preserves target="_blank" on anchor tags', () => {
+      const component: FlowComponent = {
+        id: 'rich-link',
+        type: 'RICH_TEXT',
+        label: 'Read our <a href="https://example.com/terms" target="_blank">Terms</a>.',
+      };
+      const {getByTestId} = renderWithProviders(
+        <RichTextAdapter component={component} resolve={(s: string | undefined) => s} />,
+      );
+      const anchor = getByTestId('rich-text-box').querySelector('a');
+      expect(anchor).not.toBeNull();
+      expect(anchor?.getAttribute('target')).toBe('_blank');
+    });
+
+    it('forces rel="noopener noreferrer" on target="_blank" anchors', () => {
+      const component: FlowComponent = {
+        id: 'rich-link-no-rel',
+        type: 'RICH_TEXT',
+        label: 'Read our <a href="https://example.com/terms" target="_blank">Terms</a>.',
+      };
+      const {getByTestId} = renderWithProviders(
+        <RichTextAdapter component={component} resolve={(s: string | undefined) => s} />,
+      );
+      const anchor = getByTestId('rich-text-box').querySelector('a');
+      expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('overrides author-supplied rel on target="_blank" anchors', () => {
+      const component: FlowComponent = {
+        id: 'rich-link-bad-rel',
+        type: 'RICH_TEXT',
+        label: '<a href="https://example.com" target="_blank" rel="opener">Link</a>',
+      };
+      const {getByTestId} = renderWithProviders(
+        <RichTextAdapter component={component} resolve={(s: string | undefined) => s} />,
+      );
+      const anchor = getByTestId('rich-text-box').querySelector('a');
+      expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+  });
+
   describe('sign-up URL handling', () => {
     const signUpLabel = '<p>Don\'t have an account? <a href="{{meta(application.sign_up_url)}}">Sign up</a></p>';
     const signUpComponent: FlowComponent = {

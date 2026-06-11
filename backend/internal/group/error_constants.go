@@ -186,6 +186,38 @@ var (
 	}
 )
 
+// Declarative mode errors for group management operations.
+var (
+	// ErrorImmutableGroup is the error returned when attempting to modify a declarative group.
+	ErrorImmutableGroup = serviceerror.ServiceError{
+		Type: serviceerror.ClientErrorType,
+		Code: "GRP-1015",
+		Error: core.I18nMessage{
+			Key:          "error.groupservice.cannot_modify_declarative_group",
+			DefaultValue: "Cannot modify declarative group",
+		},
+		ErrorDescription: core.I18nMessage{
+			Key:          "error.groupservice.cannot_modify_declarative_group_description",
+			DefaultValue: "The group is defined in declarative configuration and cannot be modified",
+		},
+	}
+	// ErrorDeclarativeModeGroupCreateNotAllowed is the error returned when attempting to create
+	// a group in declarative-only mode.
+	ErrorDeclarativeModeGroupCreateNotAllowed = serviceerror.ServiceError{
+		Type: serviceerror.ClientErrorType,
+		Code: "GRP-1016",
+		Error: core.I18nMessage{
+			Key:          "error.groupservice.cannot_create_group_in_declarative_only_mode",
+			DefaultValue: "Cannot create group in declarative-only mode",
+		},
+		ErrorDescription: core.I18nMessage{
+			Key: "error.groupservice.cannot_create_group_in_declarative_only_mode_description",
+			DefaultValue: "Group creation is not allowed when running in declarative-only mode. " +
+				"Groups must be defined in declarative configuration files",
+		},
+	}
+)
+
 // Internal error constants for group management operations.
 var (
 	// ErrGroupNotFound is returned when the group is not found in the system.
@@ -193,4 +225,10 @@ var (
 
 	// ErrGroupNameConflict is returned when a group with the same name exists under the same parent.
 	ErrGroupNameConflict = errors.New("a group with the same name exists under the same parent")
+
+	// ErrGroupDataCorrupted is returned when group data in the declarative store is malformed.
+	ErrGroupDataCorrupted = errors.New("group data is corrupted")
+
+	// errResultLimitExceededInCompositeMode is returned when composite store results exceed the configured limit.
+	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 )

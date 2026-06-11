@@ -1469,5 +1469,295 @@
         ]
       }
     }
+  },
+  {
+    "resourceType": "TEMPLATE",
+    "category": "AUTHENTICATION",
+    "type": "MAGIC_LINK",
+    "display": {
+      "label": "Magic Link",
+      "description": "Authenticate users securely with an emailed Magic Link.",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "data": {
+        "__generationMeta__": {
+          "replacers": [
+            {
+              "key": "PROMPT_EMAIL_ID",
+              "type": "ID"
+            },
+            {
+              "key": "GENERATE_LINK_ID",
+              "type": "ID"
+            },
+            {
+              "key": "SEND_EMAIL_ID",
+              "type": "ID"
+            },
+            {
+              "key": "EMAIL_SENT_VIEW_ID",
+              "type": "ID"
+            },
+            {
+              "key": "VERIFY_LINK_ID",
+              "type": "ID"
+            },
+            {
+              "key": "AUTH_ASSERT_ID",
+              "type": "ID"
+            }
+          ]
+        },
+        "steps": [
+          {
+            "id": "start",
+            "type": "START",
+            "size": {
+              "width": 101,
+              "height": 34
+            },
+            "position": {
+              "x": -300,
+              "y": 300
+            }
+          },
+          {
+            "id": "{{PROMPT_EMAIL_ID}}",
+            "type": "VIEW",
+            "size": {
+              "width": 350,
+              "height": 343
+            },
+            "position": {
+              "x": -74,
+              "y": 145
+            },
+            "data": {
+              "components": [
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "variant": "HEADING_3",
+                  "label": "Login with Magic Link"
+                },
+                {
+                  "category": "BLOCK",
+                  "type": "BLOCK",
+                  "id": "{{ID}}",
+                  "components": [
+                    {
+                      "id": "{{ID}}",
+                      "category": "FIELD",
+                      "type": "EMAIL_INPUT",
+                      "inputType": "email",
+                      "hint": "",
+                      "label": "Email",
+                      "required": true,
+                      "placeholder": "Enter your email address",
+                      "ref": "email"
+                    },
+                    {
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "id": "{{ID}}",
+                      "variant": "PRIMARY",
+                      "eventType": "SUBMIT",
+                      "label": "Send Magic Link",
+                      "action": {
+                        "onSuccess": "{{GENERATE_LINK_ID}}",
+                        "type": "NEXT"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "{{GENERATE_LINK_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 100
+            },
+            "position": {
+              "x": 350,
+              "y": 266
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "MagicLinkExecutor",
+                  "mode": "generate"
+                },
+                "onSuccess": "{{SEND_EMAIL_ID}}",
+                "onFailure": "{{PROMPT_EMAIL_ID}}"
+              }
+            }
+          },
+          {
+            "id": "{{SEND_EMAIL_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 100
+            },
+            "position": {
+              "x": 650,
+              "y": 266
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "EmailExecutor",
+                  "mode": "send",
+                  "inputs": [
+                    {
+                      "identifier": "email",
+                      "type": "EMAIL_INPUT",
+                      "required": true
+                    }
+                  ]
+                },
+                "onSuccess": "{{EMAIL_SENT_VIEW_ID}}"
+              },
+              "properties": {
+                "emailTemplate": "MAGIC_LINK"
+              }
+            }
+          },
+          {
+            "id": "{{EMAIL_SENT_VIEW_ID}}",
+            "type": "VIEW",
+            "size": {
+              "width": 350,
+              "height": 400
+            },
+            "position": {
+              "x": 950,
+              "y": 450
+            },
+            "data": {
+              "prompts": [
+                {
+                  "inputs": [
+                    {
+                      "ref": "magic_link_token_input",
+                      "identifier": "magicLinkToken",
+                      "type": "HIDDEN",
+                      "required": true
+                    }
+                  ],
+                  "action": {
+                    "ref": "magic_link_action",
+                    "nextNode": "{{VERIFY_LINK_ID}}"
+                  }
+                }
+              ],
+              "components": [
+                {
+                  "alt": "{{ t(signin:images.app_logo.alt) }}",
+                  "category": "DISPLAY",
+                  "height": "60",
+                  "id": "{{ID}}",
+                  "resourceType": "ELEMENT",
+                  "src": "{{ meta(application.logoUrl) }}",
+                  "type": "IMAGE",
+                  "width": ""
+                },
+                {
+                  "align": "center",
+                  "category": "DISPLAY",
+                  "id": "{{ID}}",
+                  "label": "{{ t(signin:forms.magic_link.email_sent.title) }}",
+                  "resourceType": "ELEMENT",
+                  "type": "TEXT",
+                  "variant": "HEADING_1"
+                },
+                {
+                  "align": "center",
+                  "category": "DISPLAY",
+                  "id": "{{ID}}",
+                  "label": "{{ t(signin:forms.magic_link.email_sent.description) }}",
+                  "resourceType": "ELEMENT",
+                  "type": "TEXT",
+                  "variant": "BODY_1"
+                }
+              ]
+            }
+          },
+          {
+            "id": "{{VERIFY_LINK_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 100
+            },
+            "position": {
+              "x": 950,
+              "y": 266
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "MagicLinkExecutor",
+                  "mode": "verify"
+                },
+                "onSuccess": "{{AUTH_ASSERT_ID}}",
+                "onFailure": "{{PROMPT_EMAIL_ID}}"
+              }
+            }
+          },
+          {
+            "id": "{{AUTH_ASSERT_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 244,
+              "height": 113
+            },
+            "position": {
+              "x": 1250,
+              "y": 260
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "AuthAssertExecutor"
+                },
+                "onSuccess": "END"
+              }
+            }
+          },
+          {
+            "id": "END",
+            "type": "END",
+            "size": {
+              "width": 85,
+              "height": 34
+            },
+            "position": {
+              "x": 1600,
+              "y": 300
+            },
+            "config": {},
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "LoginCompletionExecutor"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
   }
 ]

@@ -16,27 +16,6 @@ Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) bef
 [Add Account Recovery](../../customer-identity#add-account-recovery) covers the requirements story behind this use case.
 :::
 
-## Set Up Account Recovery
-
-1. Recovery emails are delivered through a SMTP server. Configure a SMTP provider and apply the configuration in `repository/conf/deployment.yaml`.
-
-    **Sample SMTP Configuration:**
-
-    ```yaml
-    email:
-      smtp:
-        host: "<smtp-host>"
-        port: <smtp-port>
-        username: "<smtp-username>"
-        password: "<smtp-password>"
-        from_address: "<from-address>"
-        enable_start_tls: true
-        enable_authentication: true
-    ```
-    For the full property reference and provider-specific examples, see [Configure SMTP Server](../../../../guides/guides/smtp-server/smtp-server-configuration).
-
-2. Restart <ProductName /> for the changes to take effect.
-
 ## Pick Your Pattern
 
 <details open>
@@ -49,7 +28,7 @@ In the redirect-based pattern, the consumer app sends the user to <ProductName /
 1. Open <WayFinderSampleUrl /> and select **Sign in**. The browser navigates to <ProductName />.
 2. On the <ProductName /> sign-in page, select **Forgot password?**.
 3. Enter `john.doe` as the username and submit. <ProductName /> runs the recovery flow and sends a recovery email to `john.doe@example.com`.
-4. Open the email in John's inbox and open the link inside.
+4. Open the recovery email from the inbox at <WayFinderMailUrl /> and open the link inside.
 5. <ProductName /> renders a **Set new password** screen. Enter a new password and submit.
 6. <ProductName /> shows a confirmation and returns John to Wayfinder. Select **Sign in** again and sign in with the new password.
 
@@ -73,3 +52,4 @@ Coming soon. See the [App-native pattern](../../solution-patterns#app-native) fo
 
 - Want to understand the steps the recovery flow takes? See [Flows](../../identity-concepts#flows) in the Identity Concepts.
 - Prefer to build the recovery flow manually? See [Build the Account Recovery Flow](../../configure-it-yourself#build-the-account-recovery-flow) in Configure It Yourself.
+- Building account recovery in your own app instead of Wayfinder? See [Account Recovery — Try In Your Own App](../../try-in-your-own-app/account-recovery).

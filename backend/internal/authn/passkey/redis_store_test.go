@@ -80,7 +80,7 @@ func (suite *RedisSessionStoreTestSuite) TestStoreSession_Success() {
 	suite.mockClient.On("Set", context.Background(), suite.redisKey,
 		suite.serializedSessionData(sd), 300*time.Second).Return(statusCmd)
 
-	err := suite.store.storeSession(testSessionKey, sd, 300)
+	err := suite.store.storeSession(context.Background(), testSessionKey, sd, 300)
 	suite.NoError(err)
 }
 
@@ -92,7 +92,7 @@ func (suite *RedisSessionStoreTestSuite) TestStoreSession_SetError() {
 	suite.mockClient.On("Set", context.Background(), suite.redisKey,
 		suite.serializedSessionData(sd), 300*time.Second).Return(statusCmd)
 
-	err := suite.store.storeSession(testSessionKey, sd, 300)
+	err := suite.store.storeSession(context.Background(), testSessionKey, sd, 300)
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to store passkey session in Redis")
 }
@@ -112,7 +112,7 @@ func (suite *RedisSessionStoreTestSuite) TestRetrieveSession_Success() {
 	stringCmd.SetVal(string(data))
 	suite.mockClient.On("Get", context.Background(), suite.redisKey).Return(stringCmd)
 
-	result, err := suite.store.retrieveSession(testSessionKey)
+	result, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 	suite.NoError(err)
 	suite.NotNil(result)
 	suite.Equal("challenge123", result.Challenge)
@@ -120,7 +120,7 @@ func (suite *RedisSessionStoreTestSuite) TestRetrieveSession_Success() {
 }
 
 func (suite *RedisSessionStoreTestSuite) TestRetrieveSession_EmptyKey() {
-	result, err := suite.store.retrieveSession("")
+	result, err := suite.store.retrieveSession(context.Background(), "")
 	suite.NoError(err)
 	suite.Nil(result)
 }
@@ -130,7 +130,7 @@ func (suite *RedisSessionStoreTestSuite) TestRetrieveSession_NotFound() {
 	stringCmd.SetErr(redis.Nil)
 	suite.mockClient.On("Get", context.Background(), suite.redisKey).Return(stringCmd)
 
-	result, err := suite.store.retrieveSession(testSessionKey)
+	result, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 	suite.NoError(err)
 	suite.Nil(result)
 }
@@ -140,7 +140,7 @@ func (suite *RedisSessionStoreTestSuite) TestRetrieveSession_GetError() {
 	stringCmd.SetErr(errors.New("connection refused"))
 	suite.mockClient.On("Get", context.Background(), suite.redisKey).Return(stringCmd)
 
-	result, err := suite.store.retrieveSession(testSessionKey)
+	result, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to get passkey session from Redis")
 	suite.Nil(result)
@@ -151,7 +151,7 @@ func (suite *RedisSessionStoreTestSuite) TestRetrieveSession_UnmarshalError() {
 	stringCmd.SetVal("not valid json{{{")
 	suite.mockClient.On("Get", context.Background(), suite.redisKey).Return(stringCmd)
 
-	result, err := suite.store.retrieveSession(testSessionKey)
+	result, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to unmarshal passkey session")
 	suite.Nil(result)
@@ -164,12 +164,12 @@ func (suite *RedisSessionStoreTestSuite) TestDeleteSession_Success() {
 	intCmd.SetVal(1)
 	suite.mockClient.On("Del", context.Background(), suite.redisKey).Return(intCmd)
 
-	err := suite.store.deleteSession(testSessionKey)
+	err := suite.store.deleteSession(context.Background(), testSessionKey)
 	suite.NoError(err)
 }
 
 func (suite *RedisSessionStoreTestSuite) TestDeleteSession_EmptyKey() {
-	err := suite.store.deleteSession("")
+	err := suite.store.deleteSession(context.Background(), "")
 	suite.NoError(err)
 }
 
@@ -178,7 +178,7 @@ func (suite *RedisSessionStoreTestSuite) TestDeleteSession_DelError() {
 	intCmd.SetErr(errors.New("connection refused"))
 	suite.mockClient.On("Del", context.Background(), suite.redisKey).Return(intCmd)
 
-	err := suite.store.deleteSession(testSessionKey)
+	err := suite.store.deleteSession(context.Background(), testSessionKey)
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to delete passkey session from Redis")
 }

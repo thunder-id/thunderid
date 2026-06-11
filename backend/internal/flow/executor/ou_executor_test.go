@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -299,7 +299,7 @@ func (suite *OUExecutorTestSuite) TestExecute_PrerequisitesFailure() {
 				if _, ok := ctx.UserInputs[prerequisite.Identifier]; !ok {
 					if _, ok := ctx.RuntimeData[prerequisite.Identifier]; !ok {
 						execResp.Status = common.ExecFailure
-						execResp.FailureReason = "Prerequisite not met: " + prerequisite.Identifier
+						execResp.Error = &ErrPrerequisitesFailed
 						return false
 					}
 				}
@@ -335,7 +335,7 @@ func (suite *OUExecutorTestSuite) TestExecute_PrerequisitesFailure() {
 			assert.NoError(suite.T(), err)
 			assert.NotNil(suite.T(), result)
 			assert.Equal(suite.T(), common.ExecFailure, result.Status)
-			assert.Equal(suite.T(), tc.expectedMsg, result.FailureReason)
+			assert.Equal(suite.T(), tc.expectedMsg, result.Error.Error.DefaultValue)
 			mockOUService.AssertNotCalled(suite.T(), "CreateOrganizationUnit", mock.Anything)
 		})
 	}
@@ -400,7 +400,7 @@ func (suite *OUExecutorTestSuite) TestExecute_ErrorScenarios() {
 		{
 			name:            "OU name conflict",
 			serviceError:    ou.ErrorOrganizationUnitNameConflict,
-			expectedFailure: "An organization unit with the same name already exists.",
+			expectedFailure: ErrOUNameConflict.Error.DefaultValue,
 			expectError:     false,
 			expectNilResult: false,
 			userInputs: map[string]string{
@@ -415,7 +415,7 @@ func (suite *OUExecutorTestSuite) TestExecute_ErrorScenarios() {
 		{
 			name:            "OU handle conflict",
 			serviceError:    ou.ErrorOrganizationUnitHandleConflict,
-			expectedFailure: "An organization unit with the same handle already exists.",
+			expectedFailure: ErrOUHandleConflict.Error.DefaultValue,
 			expectError:     false,
 			expectNilResult: false,
 			userInputs: map[string]string{
@@ -435,7 +435,7 @@ func (suite *OUExecutorTestSuite) TestExecute_ErrorScenarios() {
 				Error:            i18ncore.I18nMessage{DefaultValue: "Test Error"},
 				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "Test error description"},
 			},
-			expectedFailure: "Failed to create organization unit: Test error description",
+			expectedFailure: ErrOUCreationFailed.Error.DefaultValue,
 			expectError:     false,
 			expectNilResult: false,
 			userInputs: map[string]string{
@@ -486,7 +486,7 @@ func (suite *OUExecutorTestSuite) TestExecute_ErrorScenarios() {
 			} else {
 				assert.NoError(suite.T(), err)
 				assert.Equal(suite.T(), common.ExecUserInputRequired, result.Status)
-				assert.Equal(suite.T(), tc.expectedFailure, result.FailureReason)
+				assert.Equal(suite.T(), tc.expectedFailure, result.Error.Error.DefaultValue)
 			}
 
 			if tc.expectNilResult {
@@ -745,13 +745,13 @@ func (suite *OUExecutorTestSuite) TestExecute_RetryableOUCreationErrors() {
 		{
 			name:           "OU name conflict",
 			serviceError:   ou.ErrorOrganizationUnitNameConflict,
-			expectedReason: "An organization unit with the same name already exists.",
+			expectedReason: ErrOUNameConflict.Error.DefaultValue,
 			message:        "Should return inputs for retry when OU name already exists",
 		},
 		{
 			name:           "OU handle conflict",
 			serviceError:   ou.ErrorOrganizationUnitHandleConflict,
-			expectedReason: "An organization unit with the same handle already exists.",
+			expectedReason: ErrOUHandleConflict.Error.DefaultValue,
 			message:        "Should return inputs for retry when OU handle already exists",
 		},
 	}
@@ -780,7 +780,7 @@ func (suite *OUExecutorTestSuite) TestExecute_RetryableOUCreationErrors() {
 			assert.NoError(t, err)
 			assert.NotNil(t, resp)
 			assert.Equal(t, common.ExecUserInputRequired, resp.Status)
-			assert.Equal(t, tt.expectedReason, resp.FailureReason, tt.message)
+			assert.Equal(t, tt.expectedReason, resp.Error.Error.DefaultValue, tt.message)
 			assert.NotEmpty(t, resp.Inputs, "Inputs should be re-populated for retry")
 			assert.Len(t, resp.Inputs, 2, "Should include both ouName and ouHandle inputs")
 			suite.mockOUService.AssertExpectations(t)

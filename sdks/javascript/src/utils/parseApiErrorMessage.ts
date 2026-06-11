@@ -22,18 +22,18 @@
  * The backend returns errors in the following form:
  * {"code":"...","message":{"key":"...","defaultValue":"..."},"description":{"key":"...","defaultValue":"..."}}
  *
- * Returns `description.defaultValue` if present, then `message.defaultValue`, and falls back
+ * Returns `message.defaultValue` if present, then `description.defaultValue`, and falls back
  * to the raw `errorText` when the response is not a recognised structured error.
  */
 const parseApiErrorMessage = (errorText: string): string => {
   try {
     const parsed: Record<string, unknown> = JSON.parse(errorText) as Record<string, unknown>;
-    const description: {defaultValue?: string} | undefined = parsed['description'] as
-      | {defaultValue?: string}
-      | undefined;
+    const description: {defaultValue?: string} | undefined = parsed['description'] as {defaultValue?: string} | undefined;
     const message: {defaultValue?: string} | undefined = parsed['message'] as {defaultValue?: string} | undefined;
-    if (description?.defaultValue) return description.defaultValue;
-    if (message?.defaultValue) return message.defaultValue;
+    const descFallback: string | undefined = description?.defaultValue;
+    const msgFallback: string | undefined = message?.defaultValue;
+    if (msgFallback) return msgFallback;
+    if (descFallback) return descFallback;
   } catch {
     // not JSON — fall through to raw text
   }

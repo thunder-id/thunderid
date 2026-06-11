@@ -5,6 +5,8 @@
 package flowmgtmock
 
 import (
+	"context"
+
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/mgt"
 )
@@ -37,8 +39,8 @@ func (_m *flowInferenceServiceInterfaceMock) EXPECT() *flowInferenceServiceInter
 }
 
 // InferRegistrationFlow provides a mock function for the type flowInferenceServiceInterfaceMock
-func (_mock *flowInferenceServiceInterfaceMock) InferRegistrationFlow(authFlow *flowmgt.FlowDefinition) (*flowmgt.FlowDefinition, error) {
-	ret := _mock.Called(authFlow)
+func (_mock *flowInferenceServiceInterfaceMock) InferRegistrationFlow(ctx context.Context, authFlow *flowmgt.FlowDefinition) (*flowmgt.FlowDefinition, error) {
+	ret := _mock.Called(ctx, authFlow)
 
 	if len(ret) == 0 {
 		panic("no return value specified for InferRegistrationFlow")
@@ -46,18 +48,18 @@ func (_mock *flowInferenceServiceInterfaceMock) InferRegistrationFlow(authFlow *
 
 	var r0 *flowmgt.FlowDefinition
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(*flowmgt.FlowDefinition) (*flowmgt.FlowDefinition, error)); ok {
-		return returnFunc(authFlow)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *flowmgt.FlowDefinition) (*flowmgt.FlowDefinition, error)); ok {
+		return returnFunc(ctx, authFlow)
 	}
-	if returnFunc, ok := ret.Get(0).(func(*flowmgt.FlowDefinition) *flowmgt.FlowDefinition); ok {
-		r0 = returnFunc(authFlow)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *flowmgt.FlowDefinition) *flowmgt.FlowDefinition); ok {
+		r0 = returnFunc(ctx, authFlow)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*flowmgt.FlowDefinition)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(*flowmgt.FlowDefinition) error); ok {
-		r1 = returnFunc(authFlow)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *flowmgt.FlowDefinition) error); ok {
+		r1 = returnFunc(ctx, authFlow)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -70,19 +72,25 @@ type flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call struct {
 }
 
 // InferRegistrationFlow is a helper method to define mock.On call
+//   - ctx context.Context
 //   - authFlow *flowmgt.FlowDefinition
-func (_e *flowInferenceServiceInterfaceMock_Expecter) InferRegistrationFlow(authFlow interface{}) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
-	return &flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call{Call: _e.mock.On("InferRegistrationFlow", authFlow)}
+func (_e *flowInferenceServiceInterfaceMock_Expecter) InferRegistrationFlow(ctx interface{}, authFlow interface{}) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
+	return &flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call{Call: _e.mock.On("InferRegistrationFlow", ctx, authFlow)}
 }
 
-func (_c *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call) Run(run func(authFlow *flowmgt.FlowDefinition)) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
+func (_c *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call) Run(run func(ctx context.Context, authFlow *flowmgt.FlowDefinition)) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *flowmgt.FlowDefinition
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(*flowmgt.FlowDefinition)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *flowmgt.FlowDefinition
+		if args[1] != nil {
+			arg1 = args[1].(*flowmgt.FlowDefinition)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -93,7 +101,7 @@ func (_c *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call) Return(f
 	return _c
 }
 
-func (_c *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call) RunAndReturn(run func(authFlow *flowmgt.FlowDefinition) (*flowmgt.FlowDefinition, error)) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
+func (_c *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call) RunAndReturn(run func(ctx context.Context, authFlow *flowmgt.FlowDefinition) (*flowmgt.FlowDefinition, error)) *flowInferenceServiceInterfaceMock_InferRegistrationFlow_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -334,9 +334,9 @@ func (ts *SMSOTPRecoveryFlowTestSuite) TestSMSOTPRecoveryFlow_InvalidOTP() {
 		"Invalid OTP must not complete the recovery flow")
 	ts.Require().NotEqual("COMPLETE", flowStep.FlowStatus)
 
-	// The failure reason must be present.
-	ts.Require().NotEmpty(flowStep.FailureReason,
-		"Expected a failure reason for invalid OTP")
+	// The error must be present.
+	ts.Require().NotNil(flowStep.Error,
+		"Expected an error for invalid OTP")
 
 	// The flow should loop back to username prompt.
 	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "username"),

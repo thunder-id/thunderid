@@ -19,6 +19,7 @@
 package notification
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -54,7 +55,7 @@ func (h *messageNotificationSenderHandler) HandleSenderListRequest(w http.Respon
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationHandler"))
 	senders, svcErr := h.mgtService.ListSenders(ctx)
 	if svcErr != nil {
-		h.handleError(w, svcErr, "")
+		h.handleError(ctx, w, svcErr, "")
 		return
 	}
 
@@ -62,14 +63,19 @@ func (h *messageNotificationSenderHandler) HandleSenderListRequest(w http.Respon
 	for _, sender := range senders {
 		senderResponse, err := getSenderResponseFromDTO(&sender)
 		if err != nil {
-			logger.Error("Failed to convert sender to response", log.String("sender", sender.Name), log.Error(err))
-			h.handleError(w, &serviceerror.InternalServerError, "Failed to convert sender to response: "+err.Error())
+			logger.Error(ctx, "Failed to convert sender to response",
+				log.String("sender", sender.Name), log.Error(err))
+			h.handleError(
+				ctx,
+				w,
+				&serviceerror.InternalServerError,
+				"Failed to convert sender to response: "+err.Error())
 			return
 		}
 		senderResponses = append(senderResponses, senderResponse)
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, senderResponses)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, senderResponses)
 }
 
 // HandleSenderCreateRequest handles the request to create a new message notification sender
@@ -78,14 +84,14 @@ func (h *messageNotificationSenderHandler) HandleSenderCreateRequest(w http.Resp
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationHandler"))
 	sender, err := sysutils.DecodeJSONBody[common.NotificationSenderRequest](r)
 	if err != nil {
-		h.handleError(w, &ErrorInvalidRequestFormat, "Failed to parse request body: "+err.Error())
+		h.handleError(ctx, w, &ErrorInvalidRequestFormat, "Failed to parse request body: "+err.Error())
 		return
 	}
 
 	senderDTO, err := getDTOFromSenderRequest(sender)
 	if err != nil {
-		logger.Error("Failed to process sender request", log.Error(err))
-		h.handleError(w, &serviceerror.InternalServerError, "Failed to process sender request: "+err.Error())
+		logger.Error(ctx, "Failed to process sender request", log.Error(err))
+		h.handleError(ctx, w, &serviceerror.InternalServerError, "Failed to process sender request: "+err.Error())
 		return
 	}
 
@@ -98,22 +104,23 @@ func (h *messageNotificationSenderHandler) HandleSenderCreateRequest(w http.Resp
 				Description: svcErr.ErrorDescription,
 			}
 
-			sysutils.WriteErrorResponse(w, http.StatusConflict, errResp)
+			sysutils.WriteErrorResponse(ctx, w, http.StatusConflict, errResp)
 			return
 		}
 
-		h.handleError(w, svcErr, "")
+		h.handleError(ctx, w, svcErr, "")
 		return
 	}
 
 	senderResponse, err := getSenderResponseFromDTO(createdSender)
 	if err != nil {
-		logger.Error("Failed to convert sender to response", log.String("sender", createdSender.Name), log.Error(err))
-		h.handleError(w, &serviceerror.InternalServerError, "Failed to convert sender to response: "+err.Error())
+		logger.Error(ctx, "Failed to convert sender to response",
+			log.String("sender", createdSender.Name), log.Error(err))
+		h.handleError(ctx, w, &serviceerror.InternalServerError, "Failed to convert sender to response: "+err.Error())
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusCreated, senderResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, senderResponse)
 }
 
 // HandleSenderGetRequest handles the request to get a message notification sender by ID
@@ -121,13 +128,13 @@ func (h *messageNotificationSenderHandler) HandleSenderGetRequest(w http.Respons
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationHandler"))
 	id := r.PathValue("id")
-	if !h.validateSenderID(w, id) {
+	if !h.validateSenderID(ctx, w, id) {
 		return
 	}
 
 	sender, svcErr := h.mgtService.GetSender(ctx, id)
 	if svcErr != nil {
-		h.handleError(w, svcErr, "")
+		h.handleError(ctx, w, svcErr, "")
 		return
 	}
 	if sender == nil {
@@ -136,18 +143,19 @@ func (h *messageNotificationSenderHandler) HandleSenderGetRequest(w http.Respons
 			Message:     ErrorSenderNotFound.Error,
 			Description: ErrorSenderNotFound.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusNotFound, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusNotFound, errResp)
 		return
 	}
 
 	senderResponse, err := getSenderResponseFromDTO(sender)
 	if err != nil {
-		logger.Error("Failed to convert sender to response", log.String("sender", sender.Name), log.Error(err))
-		h.handleError(w, &serviceerror.InternalServerError, "Failed to convert sender to response: "+err.Error())
+		logger.Error(ctx, "Failed to convert sender to response",
+			log.String("sender", sender.Name), log.Error(err))
+		h.handleError(ctx, w, &serviceerror.InternalServerError, "Failed to convert sender to response: "+err.Error())
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, senderResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, senderResponse)
 }
 
 // HandleSenderUpdateRequest handles the request to update a message notification sender
@@ -155,54 +163,55 @@ func (h *messageNotificationSenderHandler) HandleSenderUpdateRequest(w http.Resp
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationHandler"))
 	id := r.PathValue("id")
-	if !h.validateSenderID(w, id) {
+	if !h.validateSenderID(ctx, w, id) {
 		return
 	}
 
 	sender, err := sysutils.DecodeJSONBody[common.NotificationSenderRequest](r)
 	if err != nil {
-		h.handleError(w, &ErrorInvalidRequestFormat, "Failed to parse request body: "+err.Error())
+		h.handleError(ctx, w, &ErrorInvalidRequestFormat, "Failed to parse request body: "+err.Error())
 		return
 	}
 
 	senderDTO, err := getDTOFromSenderRequest(sender)
 	if err != nil {
-		logger.Error("Failed to process sender request", log.Error(err))
-		h.handleError(w, &serviceerror.InternalServerError, "Failed to process sender request: "+err.Error())
+		logger.Error(ctx, "Failed to process sender request", log.Error(err))
+		h.handleError(ctx, w, &serviceerror.InternalServerError, "Failed to process sender request: "+err.Error())
 		return
 	}
 
 	updatedSender, svcErr := h.mgtService.UpdateSender(ctx, id, *senderDTO)
 	if svcErr != nil {
-		h.handleError(w, svcErr, "")
+		h.handleError(ctx, w, svcErr, "")
 		return
 	}
 
 	senderResponse, err := getSenderResponseFromDTO(updatedSender)
 	if err != nil {
-		logger.Error("Failed to convert sender to response", log.String("sender", updatedSender.Name), log.Error(err))
-		h.handleError(w, &serviceerror.InternalServerError, "Failed to convert sender to response: "+err.Error())
+		logger.Error(ctx, "Failed to convert sender to response",
+			log.String("sender", updatedSender.Name), log.Error(err))
+		h.handleError(ctx, w, &serviceerror.InternalServerError, "Failed to convert sender to response: "+err.Error())
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, senderResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, senderResponse)
 }
 
 // HandleSenderDeleteRequest handles the request to delete a message notification sender
 func (h *messageNotificationSenderHandler) HandleSenderDeleteRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id := r.PathValue("id")
-	if !h.validateSenderID(w, id) {
+	if !h.validateSenderID(ctx, w, id) {
 		return
 	}
 
 	svcErr := h.mgtService.DeleteSender(ctx, id)
 	if svcErr != nil {
-		h.handleError(w, svcErr, "")
+		h.handleError(ctx, w, svcErr, "")
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusNoContent, nil)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 }
 
 // HandleOTPSendRequest handles the request to send an OTP.
@@ -210,14 +219,14 @@ func (h *messageNotificationSenderHandler) HandleOTPSendRequest(w http.ResponseW
 	ctx := r.Context()
 	request, err := sysutils.DecodeJSONBody[common.SendOTPRequest](r)
 	if err != nil {
-		h.handleError(w, &ErrorInvalidRequestFormat, "Failed to parse request body: "+err.Error())
+		h.handleError(ctx, w, &ErrorInvalidRequestFormat, "Failed to parse request body: "+err.Error())
 		return
 	}
 
 	otpDTO := common.SendOTPDTO(*request)
 	resultDTO, svcErr := h.otpService.SendOTP(ctx, otpDTO)
 	if svcErr != nil {
-		h.handleError(w, svcErr, "")
+		h.handleError(ctx, w, svcErr, "")
 		return
 	}
 
@@ -226,7 +235,7 @@ func (h *messageNotificationSenderHandler) HandleOTPSendRequest(w http.ResponseW
 		SessionToken: resultDTO.SessionToken,
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, otpResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, otpResponse)
 }
 
 // HandleOTPVerifyRequest handles the request to verify an OTP.
@@ -234,14 +243,14 @@ func (h *messageNotificationSenderHandler) HandleOTPVerifyRequest(w http.Respons
 	ctx := r.Context()
 	request, err := sysutils.DecodeJSONBody[common.VerifyOTPRequest](r)
 	if err != nil {
-		h.handleError(w, &ErrorInvalidRequestFormat, "Failed to parse request body: "+err.Error())
+		h.handleError(ctx, w, &ErrorInvalidRequestFormat, "Failed to parse request body: "+err.Error())
 		return
 	}
 
 	verifyDTO := common.VerifyOTPDTO(*request)
 	resultDTO, svcErr := h.otpService.VerifyOTP(ctx, verifyDTO)
 	if svcErr != nil {
-		h.handleError(w, svcErr, "")
+		h.handleError(ctx, w, svcErr, "")
 		return
 	}
 
@@ -249,11 +258,11 @@ func (h *messageNotificationSenderHandler) HandleOTPVerifyRequest(w http.Respons
 		Status: string(resultDTO.Status),
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, response)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
 }
 
 // handleError handles service errors and returns appropriate HTTP responses.
-func (h *messageNotificationSenderHandler) handleError(w http.ResponseWriter,
+func (h *messageNotificationSenderHandler) handleError(ctx context.Context, w http.ResponseWriter,
 	svcErr *serviceerror.ServiceError, customErrDesc string) {
 	errDesc := svcErr.ErrorDescription
 	if customErrDesc != "" {
@@ -280,13 +289,16 @@ func (h *messageNotificationSenderHandler) handleError(w http.ResponseWriter,
 		}
 	}
 
-	sysutils.WriteErrorResponse(w, statusCode, errResp)
+	sysutils.WriteErrorResponse(ctx, w, statusCode, errResp)
 }
 
 // validateSenderID validates the sender ID and returns true if valid
-func (h *messageNotificationSenderHandler) validateSenderID(w http.ResponseWriter, id string) bool {
+func (
+	h *messageNotificationSenderHandler) validateSenderID(ctx context.Context,
+	w http.ResponseWriter,
+	id string) bool {
 	if strings.TrimSpace(id) == "" {
-		h.handleError(w, &ErrorInvalidSenderID, "Sender ID is required")
+		h.handleError(ctx, w, &ErrorInvalidSenderID, "Sender ID is required")
 		return false
 	}
 	return true

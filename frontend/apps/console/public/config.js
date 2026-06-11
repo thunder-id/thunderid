@@ -19,7 +19,10 @@
 window.__THUNDERID_RUNTIME_CONFIG__ = {
   brand: {
     product_name: 'ThunderID',
-    docs_url: 'https://thunderid.dev/docs/next',
+    documentation: {
+      baseUrl: 'https://thunderid.dev/docs/next',
+      releasesUrl: 'https://thunderid.dev/data/releases.json',
+    },
     favicon: {
       light: 'assets/images/favicon.ico',
       dark: 'assets/images/favicon-inverted.ico',

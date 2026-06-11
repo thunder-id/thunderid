@@ -111,8 +111,8 @@ func (_c *JWEServiceInterfaceMock_Decrypt_Call) RunAndReturn(run func(ctx contex
 }
 
 // Encrypt provides a mock function for the type JWEServiceInterfaceMock
-func (_mock *JWEServiceInterfaceMock) Encrypt(payload []byte, recipientPublicKey crypto.PublicKey, alg jwe.KeyEncAlgorithm, enc jwe.ContentEncAlgorithm, cty string, kid string) (string, *serviceerror.ServiceError) {
-	ret := _mock.Called(payload, recipientPublicKey, alg, enc, cty, kid)
+func (_mock *JWEServiceInterfaceMock) Encrypt(ctx context.Context, payload []byte, recipientPublicKey crypto.PublicKey, alg jwe.KeyEncAlgorithm, enc jwe.ContentEncAlgorithm, cty string, kid string) (string, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, payload, recipientPublicKey, alg, enc, cty, kid)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Encrypt")
@@ -120,16 +120,16 @@ func (_mock *JWEServiceInterfaceMock) Encrypt(payload []byte, recipientPublicKey
 
 	var r0 string
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func([]byte, crypto.PublicKey, jwe.KeyEncAlgorithm, jwe.ContentEncAlgorithm, string, string) (string, *serviceerror.ServiceError)); ok {
-		return returnFunc(payload, recipientPublicKey, alg, enc, cty, kid)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, crypto.PublicKey, jwe.KeyEncAlgorithm, jwe.ContentEncAlgorithm, string, string) (string, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, payload, recipientPublicKey, alg, enc, cty, kid)
 	}
-	if returnFunc, ok := ret.Get(0).(func([]byte, crypto.PublicKey, jwe.KeyEncAlgorithm, jwe.ContentEncAlgorithm, string, string) string); ok {
-		r0 = returnFunc(payload, recipientPublicKey, alg, enc, cty, kid)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []byte, crypto.PublicKey, jwe.KeyEncAlgorithm, jwe.ContentEncAlgorithm, string, string) string); ok {
+		r0 = returnFunc(ctx, payload, recipientPublicKey, alg, enc, cty, kid)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
-	if returnFunc, ok := ret.Get(1).(func([]byte, crypto.PublicKey, jwe.KeyEncAlgorithm, jwe.ContentEncAlgorithm, string, string) *serviceerror.ServiceError); ok {
-		r1 = returnFunc(payload, recipientPublicKey, alg, enc, cty, kid)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []byte, crypto.PublicKey, jwe.KeyEncAlgorithm, jwe.ContentEncAlgorithm, string, string) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, payload, recipientPublicKey, alg, enc, cty, kid)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -144,41 +144,46 @@ type JWEServiceInterfaceMock_Encrypt_Call struct {
 }
 
 // Encrypt is a helper method to define mock.On call
+//   - ctx context.Context
 //   - payload []byte
 //   - recipientPublicKey crypto.PublicKey
 //   - alg jwe.KeyEncAlgorithm
 //   - enc jwe.ContentEncAlgorithm
 //   - cty string
 //   - kid string
-func (_e *JWEServiceInterfaceMock_Expecter) Encrypt(payload interface{}, recipientPublicKey interface{}, alg interface{}, enc interface{}, cty interface{}, kid interface{}) *JWEServiceInterfaceMock_Encrypt_Call {
-	return &JWEServiceInterfaceMock_Encrypt_Call{Call: _e.mock.On("Encrypt", payload, recipientPublicKey, alg, enc, cty, kid)}
+func (_e *JWEServiceInterfaceMock_Expecter) Encrypt(ctx interface{}, payload interface{}, recipientPublicKey interface{}, alg interface{}, enc interface{}, cty interface{}, kid interface{}) *JWEServiceInterfaceMock_Encrypt_Call {
+	return &JWEServiceInterfaceMock_Encrypt_Call{Call: _e.mock.On("Encrypt", ctx, payload, recipientPublicKey, alg, enc, cty, kid)}
 }
 
-func (_c *JWEServiceInterfaceMock_Encrypt_Call) Run(run func(payload []byte, recipientPublicKey crypto.PublicKey, alg jwe.KeyEncAlgorithm, enc jwe.ContentEncAlgorithm, cty string, kid string)) *JWEServiceInterfaceMock_Encrypt_Call {
+func (_c *JWEServiceInterfaceMock_Encrypt_Call) Run(run func(ctx context.Context, payload []byte, recipientPublicKey crypto.PublicKey, alg jwe.KeyEncAlgorithm, enc jwe.ContentEncAlgorithm, cty string, kid string)) *JWEServiceInterfaceMock_Encrypt_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 []byte
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].([]byte)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 crypto.PublicKey
+		var arg1 []byte
 		if args[1] != nil {
-			arg1 = args[1].(crypto.PublicKey)
+			arg1 = args[1].([]byte)
 		}
-		var arg2 jwe.KeyEncAlgorithm
+		var arg2 crypto.PublicKey
 		if args[2] != nil {
-			arg2 = args[2].(jwe.KeyEncAlgorithm)
+			arg2 = args[2].(crypto.PublicKey)
 		}
-		var arg3 jwe.ContentEncAlgorithm
+		var arg3 jwe.KeyEncAlgorithm
 		if args[3] != nil {
-			arg3 = args[3].(jwe.ContentEncAlgorithm)
+			arg3 = args[3].(jwe.KeyEncAlgorithm)
 		}
-		var arg4 string
+		var arg4 jwe.ContentEncAlgorithm
 		if args[4] != nil {
-			arg4 = args[4].(string)
+			arg4 = args[4].(jwe.ContentEncAlgorithm)
 		}
 		var arg5 string
 		if args[5] != nil {
 			arg5 = args[5].(string)
+		}
+		var arg6 string
+		if args[6] != nil {
+			arg6 = args[6].(string)
 		}
 		run(
 			arg0,
@@ -187,6 +192,7 @@ func (_c *JWEServiceInterfaceMock_Encrypt_Call) Run(run func(payload []byte, rec
 			arg3,
 			arg4,
 			arg5,
+			arg6,
 		)
 	})
 	return _c
@@ -197,7 +203,7 @@ func (_c *JWEServiceInterfaceMock_Encrypt_Call) Return(s string, serviceError *s
 	return _c
 }
 
-func (_c *JWEServiceInterfaceMock_Encrypt_Call) RunAndReturn(run func(payload []byte, recipientPublicKey crypto.PublicKey, alg jwe.KeyEncAlgorithm, enc jwe.ContentEncAlgorithm, cty string, kid string) (string, *serviceerror.ServiceError)) *JWEServiceInterfaceMock_Encrypt_Call {
+func (_c *JWEServiceInterfaceMock_Encrypt_Call) RunAndReturn(run func(ctx context.Context, payload []byte, recipientPublicKey crypto.PublicKey, alg jwe.KeyEncAlgorithm, enc jwe.ContentEncAlgorithm, cty string, kid string) (string, *serviceerror.ServiceError)) *JWEServiceInterfaceMock_Encrypt_Call {
 	_c.Call.Return(run)
 	return _c
 }

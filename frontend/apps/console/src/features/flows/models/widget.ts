@@ -44,6 +44,7 @@ export const WidgetTypes = {
   SMSOTP: 'SMS_OTP',
   GoogleFederation: 'GOOGLE_FEDERATION',
   GithubFederation: 'GITHUB_FEDERATION',
+  EUDIWallet: 'EUDI_WALLET',
   PasskeyAuthentication: 'PASSKEY_AUTHENTICATION',
   Provisioning: 'PROVISIONING',
   SelfSignUpLink: 'SELF_SIGN_UP_LINK',

@@ -75,6 +75,7 @@ type RefreshTokenBuildContext struct {
 	ClaimsRequest        *oauth2model.ClaimsRequest
 	ClaimsLocales        string
 	DPoPJkt              string
+	ActorSub             string
 }
 
 // IDTokenBuildContext contains all the information needed to build an ID token (OIDC).
@@ -101,6 +102,7 @@ type RefreshTokenClaims struct {
 	ClaimsRequest    *oauth2model.ClaimsRequest
 	ClaimsLocales    string
 	DPoPJkt          string
+	ActorSub         string
 }
 
 // SubjectTokenClaims represents the validated claims from a subject token (for token exchange).

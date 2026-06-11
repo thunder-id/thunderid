@@ -26,7 +26,7 @@ import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {EmbeddedFlowEventType, Recovery, type EmbeddedFlowComponent} from '@thunderid/react';
 import {TemplateLiteralType} from '@thunderid/utils';
-import {Box, Alert, AlertTitle, CircularProgress} from '@wso2/oxygen-ui';
+import {Box, Alert, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX, ReactNode} from 'react';
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -67,7 +67,19 @@ export default function RecoveryBox(): JSX.Element {
           logger.error('Recovery error:', error);
         }}
         onFlowChange={(response: any) => {
-          setFlowError((response as {failureReason?: string})?.failureReason ?? null);
+          const messageKey: string | undefined = response?.error?.message?.key;
+          if (messageKey) {
+            const translated: string = t(messageKey);
+            if (translated !== messageKey) {
+              setFlowError(translated);
+
+              return;
+            }
+          }
+          const messageDefaultTrimmed: string = response?.error?.message?.defaultValue?.trim() ?? '';
+          const messageDefault: string | undefined = messageDefaultTrimmed !== '' ? messageDefaultTrimmed : undefined;
+          const fallback: string | undefined = messageDefault ?? response?.error?.description?.defaultValue;
+          setFlowError(fallback ?? null);
         }}
       >
         {
@@ -90,7 +102,6 @@ export default function RecoveryBox(): JSX.Element {
               <>
                 {(flowError ?? error) && (
                   <Alert severity="error" sx={{mb: 2}}>
-                    <AlertTitle>{t('recovery:errors.failed.title', 'Recovery failed')}</AlertTitle>
                     {flowError ??
                       error?.message ??
                       t('recovery:errors.failed.description', 'Something went wrong. Please try again.')}

@@ -21,8 +21,8 @@ import {useGetChildOrganizationUnits} from '@thunderid/configure-organization-un
 import {ConfigureOrganizationUnit} from '@thunderid/configure-users';
 import {useLogger} from '@thunderid/logger/react';
 import {useThunderID} from '@thunderid/react';
-import {Alert, Box, Breadcrumbs, Button, IconButton, LinearProgress, Stack, Typography} from '@wso2/oxygen-ui';
-import {ChevronRight, X} from '@wso2/oxygen-ui-icons-react';
+import {Alert, Box, Button, IconButton, LinearProgress, Stack, Typography} from '@wso2/oxygen-ui';
+import {X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useState, useCallback, useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -35,6 +35,7 @@ import ShowClientSecret from '../components/create-agent/ShowClientSecret';
 import useAgentCreate from '../contexts/AgentCreate/useAgentCreate';
 import {DEFAULT_AGENT_TYPE_NAME, type Agent, type AgentInboundAuthConfig} from '../models/agent';
 import {AgentCreateFlowStep} from '../models/agent-create-flow';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 
 export default function AgentCreatePage(): JSX.Element {
   const {t} = useTranslation();
@@ -114,11 +115,7 @@ export default function AgentCreatePage(): JSX.Element {
   const isLastStep = currentStep === activeSteps[activeSteps.length - 1];
 
   const handleClose = (): void => {
-    (async () => {
-      await navigate('/agents', {replace: true});
-    })().catch((_error: unknown) => {
-      logger.error('Failed to navigate to agents page', {error: _error});
-    });
+    void navigate('/agents');
   };
 
   const handleStepReadyChange = useCallback((step: AgentCreateFlowStep, isReady: boolean): void => {
@@ -362,34 +359,13 @@ export default function AgentCreatePage(): JSX.Element {
             >
               <X size={24} />
             </IconButton>
-            <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb">
-              {getBreadcrumbSteps().map((step, index, array) => {
-                const isLast = index === array.length - 1;
-                return isLast ? (
-                  <Typography key={step} variant="h5" color="text.primary">
-                    {steps[step].label}
-                  </Typography>
-                ) : (
-                  <Typography
-                    key={step}
-                    variant="h5"
-                    color="inherit"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setCurrentStep(step)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setCurrentStep(step);
-                      }
-                    }}
-                    sx={{cursor: 'pointer', '&:hover': {textDecoration: 'underline'}}}
-                  >
-                    {steps[step].label}
-                  </Typography>
-                );
-              })}
-            </Breadcrumbs>
+            <AppBreadcrumbs
+              items={getBreadcrumbSteps().map((step, index, array) => ({
+                key: step,
+                label: steps[step].label,
+                onClick: index < array.length - 1 ? () => setCurrentStep(step) : undefined,
+              }))}
+            />
           </Stack>
         </Box>
 

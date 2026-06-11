@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {EmbeddedFlowExecuteRequestPayload, EmbeddedFlowExecuteResponse, EmbeddedFlowType} from '@thunderid/browser';
+import {EmbeddedRecoveryFlowRequestV2, EmbeddedRecoveryFlowResponseV2, EmbeddedFlowType} from '@thunderid/browser';
 import {FC, PropsWithChildren, ReactElement, useCallback} from 'react';
 import BaseRecovery, {BaseRecoveryProps} from './BaseRecovery';
 import useThunderID from '../../../../../contexts/ThunderID/useThunderID';
@@ -70,9 +70,9 @@ const Recovery: FC<RecoveryProps> = ({
 }: RecoveryProps): ReactElement => {
   const {recover, isInitialized, applicationId} = useThunderID();
 
-  const handleInitialize: (payload?: EmbeddedFlowExecuteRequestPayload) => Promise<EmbeddedFlowExecuteResponse> =
+  const handleInitialize: (payload?: EmbeddedRecoveryFlowRequestV2) => Promise<EmbeddedRecoveryFlowResponseV2> =
     useCallback(
-      async (payload?: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse> => {
+      async (payload?: EmbeddedRecoveryFlowRequestV2): Promise<EmbeddedRecoveryFlowResponseV2> => {
         const urlParams: URLSearchParams = new URL(window.location.href).searchParams;
         const applicationIdFromUrl: string | null = urlParams.get('applicationId');
         const effectiveApplicationId: string | null = applicationId ?? applicationIdFromUrl;
@@ -82,34 +82,33 @@ const Recovery: FC<RecoveryProps> = ({
           const tokenValue: string | null = urlParams.get(tokenUrlParam);
 
           if (executionId && tokenValue) {
-            const resumePayload: any = {
+            const resumePayload: EmbeddedRecoveryFlowRequestV2 = {
               executionId,
               inputs: {[tokenUrlParam]: tokenValue},
-              verbose: true,
             };
-            return (await recover(resumePayload)) as EmbeddedFlowExecuteResponse;
+            return (await recover(resumePayload)) as EmbeddedRecoveryFlowResponseV2;
           }
         }
 
-        const initialPayload: any = payload || {
+        const initialPayload: EmbeddedRecoveryFlowRequestV2 = payload ?? {
           flowType: EmbeddedFlowType.Recovery,
           ...(effectiveApplicationId && {applicationId: effectiveApplicationId}),
         };
 
-        return (await recover(initialPayload)) as EmbeddedFlowExecuteResponse;
+        return (await recover(initialPayload)) as EmbeddedRecoveryFlowResponseV2;
       },
       [applicationId, tokenUrlParam, recover],
     );
 
-  const handleOnSubmit: (payload: EmbeddedFlowExecuteRequestPayload) => Promise<EmbeddedFlowExecuteResponse> =
+  const handleOnSubmit: (payload: EmbeddedRecoveryFlowRequestV2) => Promise<EmbeddedRecoveryFlowResponseV2> =
     useCallback(
-      async (payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse> =>
-        (await recover(payload)) as EmbeddedFlowExecuteResponse,
+      async (payload: EmbeddedRecoveryFlowRequestV2): Promise<EmbeddedRecoveryFlowResponseV2> =>
+        (await recover(payload)) as EmbeddedRecoveryFlowResponseV2,
       [recover],
     );
 
-  const handleComplete: (response: EmbeddedFlowExecuteResponse) => void = useCallback(
-    (response: EmbeddedFlowExecuteResponse): void => {
+  const handleComplete: (response: EmbeddedRecoveryFlowResponseV2) => void = useCallback(
+    (response: EmbeddedRecoveryFlowResponseV2): void => {
       onComplete?.(response);
 
       if (afterRecoveryUrl) {

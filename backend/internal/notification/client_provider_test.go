@@ -19,6 +19,7 @@
 package notification
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -112,7 +113,7 @@ func (suite *ClientProviderTestSuite) TestGetClient() {
 
 	for _, tc := range cases {
 		suite.T().Run(tc.name, func(t *testing.T) {
-			client, err := suite.provider.GetClient(tc.sender)
+			client, err := suite.provider.GetClient(context.Background(), tc.sender)
 			suite.Nil(err)
 			suite.NotNil(client)
 			suite.Equal(tc.expected, client.GetName())
@@ -166,7 +167,7 @@ func (suite *ClientProviderTestSuite) TestGetClientWithError() {
 
 	for _, tc := range cases {
 		suite.T().Run(tc.name, func(t *testing.T) {
-			client, err := suite.provider.GetClient(tc.sender)
+			client, err := suite.provider.GetClient(context.Background(), tc.sender)
 			suite.NotNil(err)
 			if err != nil {
 				suite.Equal(serviceerror.InternalServerError.Code, err.Code)
@@ -182,7 +183,7 @@ func (suite *ClientProviderTestSuite) TestGetClient_InvalidProvider() {
 		Provider: "invalid-provider",
 	}
 
-	client, err := suite.provider.GetClient(sender)
+	client, err := suite.provider.GetClient(context.Background(), sender)
 
 	suite.Nil(client)
 	suite.NotNil(err)

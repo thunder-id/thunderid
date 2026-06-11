@@ -42,8 +42,19 @@ describe('OAuth Models', () => {
       expect(OAuth2GrantTypes.IMPLICIT).toBe('implicit');
     });
 
+    it('should have CIBA grant type', () => {
+      expect(OAuth2GrantTypes.CIBA).toBe('urn:openid:params:grant-type:ciba');
+    });
+
     it('should have all expected grant types', () => {
-      const expectedKeys = ['AUTHORIZATION_CODE', 'REFRESH_TOKEN', 'CLIENT_CREDENTIALS', 'PASSWORD', 'IMPLICIT'];
+      const expectedKeys = [
+        'AUTHORIZATION_CODE',
+        'REFRESH_TOKEN',
+        'CLIENT_CREDENTIALS',
+        'PASSWORD',
+        'IMPLICIT',
+        'CIBA',
+      ];
 
       expect(Object.keys(OAuth2GrantTypes)).toEqual(expectedKeys);
     });
@@ -89,6 +100,7 @@ describe('OAuth Models', () => {
         'client_credentials',
         'password',
         'implicit',
+        'urn:openid:params:grant-type:ciba',
       ];
 
       validGrantTypes.forEach((type) => {

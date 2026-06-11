@@ -94,6 +94,10 @@ describe('steps models', () => {
       expect(ExecutionTypes.GithubFederation).toBe('GithubOAuthExecutor');
     });
 
+    it('should have OpenID4VPVerify type', () => {
+      expect(ExecutionTypes.OpenID4VPVerify).toBe('OpenID4VPVerifyExecutor');
+    });
+
     it('should have OAuthExecutor type', () => {
       expect(ExecutionTypes.OAuthExecutor).toBe('OAuthExecutor');
     });
@@ -166,8 +170,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.UserTypeResolver).toBe('UserTypeResolver');
     });
 
-    it('should have exactly 20 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(20);
+    it('should have exactly 21 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(21);
     });
   });
 

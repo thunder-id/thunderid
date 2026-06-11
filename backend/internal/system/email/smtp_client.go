@@ -19,6 +19,7 @@
 package email
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"mime"
@@ -92,7 +93,7 @@ func NewSMTPClientFromConfig() (EmailClientInterface, error) {
 }
 
 // smtpClient implements the EmailClientInterface using SMTP.
-func (c *smtpClient) Send(emailData EmailData) error {
+func (c *smtpClient) Send(ctx context.Context, emailData EmailData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, smtpLoggerComponentName))
 
 	// 1. Validate, sanitize in place, and extract the flat envelope list
@@ -101,7 +102,7 @@ func (c *smtpClient) Send(emailData EmailData) error {
 		return err
 	}
 
-	logger.Debug("Sending email via SMTP",
+	logger.Debug(ctx, "Sending email via SMTP",
 		log.MaskedString("from", c.config.from),
 		log.Int("recipientCount", len(emailData.To)))
 
@@ -111,11 +112,11 @@ func (c *smtpClient) Send(emailData EmailData) error {
 	message := c.buildMessage(emailData)
 
 	// 3. Send via SMTP
-	if err := c.sendViaSMTP(serverAddress, allRecipients, message); err != nil {
+	if err := c.sendViaSMTP(ctx, serverAddress, allRecipients, message); err != nil {
 		return err
 	}
 
-	logger.Debug("Email sent successfully")
+	logger.Debug(ctx, "Email sent successfully")
 	return nil
 }
 
@@ -198,7 +199,7 @@ func (c *smtpClient) buildMessage(emailData EmailData) string {
 
 // sendViaSMTP handles the low-level SMTP communication, connection setup,
 // optional TLS upgrade, authentication, and message transmission
-func (c *smtpClient) sendViaSMTP(serverAddress string, recipients []string, message string) error {
+func (c *smtpClient) sendViaSMTP(ctx context.Context, serverAddress string, recipients []string, message string) error {
 	conn, err := net.DialTimeout("tcp", serverAddress, smtpDialTimeout)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrorSMTPConnection, err)
@@ -256,7 +257,7 @@ func (c *smtpClient) sendViaSMTP(serverAddress string, recipients []string, mess
 
 	if err := client.Quit(); err != nil {
 		log.GetLogger().With(log.String(log.LoggerKeyComponentName, smtpLoggerComponentName)).
-			Error("Failed to gracefully close SMTP client", log.Error(err))
+			Error(ctx, "Failed to gracefully close SMTP client", log.Error(err))
 	}
 
 	return nil

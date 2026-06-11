@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -21,6 +39,19 @@ function ensureSchema(database) {
       travelers INTEGER NOT NULL,
       status TEXT NOT NULL,
       created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS upgrade_requests (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      username TEXT NOT NULL,
+      booking_id TEXT NOT NULL,
+      from_flight_id TEXT NOT NULL,
+      to_flight_id TEXT NOT NULL,
+      price_difference REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
     );
   `);
 
@@ -359,4 +390,138 @@ export function deleteBookingsForUser(username) {
     .run({ username });
 
   return { deleted: result.changes };
+}
+
+export function findBusinessFlightForRoute({ fromCity, toCity, airline }) {
+  const row = getDatabase()
+    .prepare(
+      `SELECT * FROM flights
+       WHERE LOWER(from_city) = LOWER(@fromCity)
+         AND LOWER(to_city) = LOWER(@toCity)
+         AND LOWER(airline) = LOWER(@airline)
+         AND LOWER(cabin) = 'business'
+       LIMIT 1`
+    )
+    .get({ fromCity, toCity, airline });
+
+  return row ? mapFlight(row) : null;
+}
+
+export function findBusinessFlightsForRoute({ fromCity, toCity }) {
+  const rows = getDatabase()
+    .prepare(
+      `SELECT * FROM flights
+       WHERE LOWER(from_city) = LOWER(@fromCity)
+         AND LOWER(to_city) = LOWER(@toCity)
+         AND LOWER(cabin) = 'business'
+       ORDER BY price ASC`
+    )
+    .all({ fromCity, toCity });
+
+  return rows.map(mapFlight);
+}
+
+export function createUpgradeRequest({ id, userId, email, bookingId, fromFlightId, toFlightId, priceDifference, createdAt }) {
+  getDatabase()
+    .prepare(
+      `INSERT INTO upgrade_requests
+         (id, user_id, username, booking_id, from_flight_id, to_flight_id, price_difference, status, created_at, updated_at)
+       VALUES
+         (@id, @userId, @email, @bookingId, @fromFlightId, @toFlightId, @priceDifference, 'pending', @createdAt, @createdAt)`
+    )
+    .run({ id, userId, email: email ?? null, bookingId, fromFlightId, toFlightId, priceDifference, createdAt });
+
+  return { id, userId, email, bookingId, fromFlightId, toFlightId, priceDifference, status: "pending", createdAt };
+}
+
+export function getOnePendingUpgrade() {
+  const db = getDatabase();
+
+  const countRow = db
+    .prepare(`SELECT COUNT(*) AS count FROM upgrade_requests WHERE status = 'pending'`)
+    .get();
+
+  const pendingCount = countRow ? countRow.count : 0;
+
+  if (pendingCount === 0) {
+    return { pendingCount: 0, request: null };
+  }
+
+  const row = db
+    .prepare(
+      `SELECT ur.*,
+              ur.username AS email,
+              f_from.from_city, f_from.to_city, f_from.airline,
+              f_from.price AS from_price, f_from.cabin AS from_cabin,
+              f_to.price AS to_price, f_to.cabin AS to_cabin
+       FROM upgrade_requests ur
+       JOIN flights f_from ON ur.from_flight_id = f_from.id
+       JOIN flights f_to ON ur.to_flight_id = f_to.id
+       WHERE ur.status = 'pending'
+       ORDER BY ur.created_at ASC
+       LIMIT 1`
+    )
+    .get();
+
+  if (!row) {
+    return { pendingCount: 0, request: null };
+  }
+
+  return {
+    pendingCount,
+    request: {
+      id: row.id,
+      userId: row.user_id,
+      email: row.email,
+      bookingId: row.booking_id,
+      fromFlightId: row.from_flight_id,
+      toFlightId: row.to_flight_id,
+      priceDifference: row.price_difference,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      route: { from: row.from_city, to: row.to_city, airline: row.airline },
+      fromCabin: row.from_cabin,
+      toCabin: row.to_cabin
+    }
+  };
+}
+
+export function updateUpgradeStatus({ id, status, updatedAt }) {
+  const result = getDatabase()
+    .prepare(
+      `UPDATE upgrade_requests SET status = @status, updated_at = @updatedAt WHERE id = @id`
+    )
+    .run({ id, status, updatedAt });
+
+  return { updated: result.changes };
+}
+
+export function getUpgradeRequestById(id) {
+  const row = getDatabase()
+    .prepare(`SELECT * FROM upgrade_requests WHERE id = @id`)
+    .get({ id });
+
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    username: row.username,
+    bookingId: row.booking_id,
+    fromFlightId: row.from_flight_id,
+    toFlightId: row.to_flight_id,
+    priceDifference: row.price_difference,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function updateBookingFlight({ bookingId, newFlightId }) {
+  const result = getDatabase()
+    .prepare(`UPDATE bookings SET item_id = @newFlightId WHERE id = @bookingId AND type = 'flight'`)
+    .run({ bookingId, newFlightId });
+
+  return { updated: result.changes };
 }

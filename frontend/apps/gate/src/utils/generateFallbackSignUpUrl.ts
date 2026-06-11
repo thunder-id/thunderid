@@ -45,7 +45,10 @@ export default function generateFallbackSignUpUrl(searchParams: URLSearchParams)
   // Strip the trailing slash so concatenation with the route path works cleanly.
   const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   const signUpPath = `${base}${ROUTES.AUTH.SIGN_UP}`;
-  const currentParams: string = searchParams.toString();
+  const cleanParams = new URLSearchParams(searchParams.toString());
+  cleanParams.delete('authId');
+  cleanParams.delete('executionId');
+  const currentParams: string = cleanParams.toString();
 
   return currentParams ? `${signUpPath}?${currentParams}` : signUpPath;
 }

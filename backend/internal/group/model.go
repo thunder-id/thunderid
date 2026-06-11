@@ -64,6 +64,7 @@ type GroupBasic struct {
 	Description string `json:"description,omitempty"`
 	OUID        string `json:"ouId"`
 	OUHandle    string `json:"ouHandle,omitempty"`
+	IsReadOnly  bool   `json:"isReadOnly"`
 }
 
 // GroupBasicDAO represents a data access object for basic group information,
@@ -72,6 +73,7 @@ type GroupBasicDAO struct {
 	Name        string
 	Description string
 	OUID        string
+	IsReadOnly  bool
 }
 
 // Group represents a complete group with members.
@@ -82,6 +84,7 @@ type Group struct {
 	OUID        string   `json:"ouId"`
 	OUHandle    string   `json:"ouHandle,omitempty"`
 	Members     []Member `json:"members,omitempty"`
+	IsReadOnly  bool     `json:"isReadOnly"`
 }
 
 // GroupDAO represents a data access object for a group, used for database operations.
@@ -91,6 +94,7 @@ type GroupDAO struct {
 	Description string
 	OUID        string
 	Members     []Member
+	IsReadOnly  bool
 }
 
 // MembersRequest represents the request body for adding or removing members from a group.

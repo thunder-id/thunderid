@@ -144,15 +144,19 @@ type resourceServerAdapter interface {
 }
 
 type themeAdapter interface {
-	CreateTheme(theme thememgt.CreateThemeRequestWithID) (*thememgt.Theme, *serviceerror.ServiceError)
-	GetTheme(id string) (*thememgt.Theme, *serviceerror.ServiceError)
-	UpdateTheme(id string, theme thememgt.UpdateThemeRequest) (*thememgt.Theme, *serviceerror.ServiceError)
+	CreateTheme(ctx context.Context,
+		theme thememgt.CreateThemeRequestWithID) (*thememgt.Theme, *serviceerror.ServiceError)
+	GetTheme(ctx context.Context, id string) (*thememgt.Theme, *serviceerror.ServiceError)
+	UpdateTheme(ctx context.Context,
+		id string, theme thememgt.UpdateThemeRequest) (*thememgt.Theme, *serviceerror.ServiceError)
 }
 
 type layoutAdapter interface {
-	CreateLayout(layout layoutmgt.CreateLayoutRequest) (*layoutmgt.Layout, *serviceerror.ServiceError)
-	GetLayout(id string) (*layoutmgt.Layout, *serviceerror.ServiceError)
-	UpdateLayout(id string, layout layoutmgt.UpdateLayoutRequest) (*layoutmgt.Layout, *serviceerror.ServiceError)
+	CreateLayout(ctx context.Context,
+		layout layoutmgt.CreateLayoutRequest) (*layoutmgt.Layout, *serviceerror.ServiceError)
+	GetLayout(ctx context.Context, id string) (*layoutmgt.Layout, *serviceerror.ServiceError)
+	UpdateLayout(ctx context.Context,
+		id string, layout layoutmgt.UpdateLayoutRequest) (*layoutmgt.Layout, *serviceerror.ServiceError)
 }
 
 type userAdapter interface {
@@ -164,7 +168,7 @@ type userAdapter interface {
 }
 
 type translationAdapter interface {
-	SetTranslationOverrides(language string, translations map[string]map[string]string) (
+	SetTranslationOverrides(ctx context.Context, language string, translations map[string]map[string]string) (
 		*i18nmgt.LanguageTranslationsResponse,
 		*serviceerror.ServiceError)
 }
@@ -280,14 +284,14 @@ func (s *importService) ImportResources(
 
 	resolvedContent, err := resolveTemplate(request.Content, request.Variables)
 	if err != nil {
-		log.GetLogger().Warn("Import template resolution failed", log.String("error", err.Error()))
+		log.GetLogger().Warn(ctx, "Import template resolution failed", log.String("error", err.Error()))
 		return nil, serviceerror.CustomServiceError(ErrorTemplateResolutionFailed,
 			core.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
 	}
 
 	docs, err := parseDocuments(resolvedContent)
 	if err != nil {
-		log.GetLogger().Warn("Import YAML parsing failed", log.String("error", err.Error()))
+		log.GetLogger().Warn(ctx, "Import YAML parsing failed", log.String("error", err.Error()))
 		return nil, serviceerror.CustomServiceError(ErrorInvalidYAMLContent,
 			core.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
 	}
@@ -385,13 +389,13 @@ func (s *importService) importDocument(
 	case resourceTypeResourceServer:
 		return s.importResourceServer(ctx, doc, options, dryRun)
 	case resourceTypeTheme:
-		return s.importTheme(doc, options, dryRun)
+		return s.importTheme(ctx, doc, options, dryRun)
 	case resourceTypeLayout:
-		return s.importLayout(doc, options, dryRun)
+		return s.importLayout(ctx, doc, options, dryRun)
 	case resourceTypeUser:
 		return s.importUser(ctx, doc, options, dryRun)
 	case resourceTypeTranslation:
-		return s.importTranslation(doc, dryRun)
+		return s.importTranslation(ctx, doc, dryRun)
 	case resourceTypeAgent:
 		return s.importAgent(ctx, doc, options, dryRun, flowIDAliases)
 	default:
@@ -707,7 +711,7 @@ func (s *importService) importApplication(
 	}
 
 	appDTO := applicationRequestToDTO(&req)
-	normalizeOAuthConfigForImport(appDTO)
+	normalizeOAuthConfigForImport(ctx, appDTO)
 	if dryRun {
 		if options.IsUpsertEnabled() && req.ID != "" {
 			_, svcErr := s.applicationService.GetApplication(ctx, req.ID)
@@ -776,10 +780,11 @@ func (s *importService) importApplication(
 			)
 		}
 
-		log.GetLogger().Warn("Application import create failed", failureLogFields...)
+		log.GetLogger().Warn(ctx, "Application import create failed", failureLogFields...)
 
 		if svcErr.Code == invalidOAuthConfigurationCode {
-			log.GetLogger().Debug("Application import failed due to invalid OAuth configuration", failureLogFields...)
+			log.GetLogger().Debug(ctx,
+				"Application import failed due to invalid OAuth configuration", failureLogFields...)
 		}
 
 		return ImportItemOutcome{
@@ -882,7 +887,7 @@ func getOAuthConfigForImportLog(appDTO *appmodel.ApplicationDTO) *inboundmodel.O
 	return nil
 }
 
-func normalizeOAuthConfigForImport(appDTO *appmodel.ApplicationDTO) {
+func normalizeOAuthConfigForImport(ctx context.Context, appDTO *appmodel.ApplicationDTO) {
 	oauthConfig := getOAuthConfigForImportLog(appDTO)
 	if oauthConfig == nil {
 		return
@@ -891,7 +896,8 @@ func normalizeOAuthConfigForImport(appDTO *appmodel.ApplicationDTO) {
 	if oauthConfig.PublicClient &&
 		oauthConfig.TokenEndpointAuthMethod == oauth2const.TokenEndpointAuthMethodNone &&
 		oauthConfig.ClientSecret != "" {
-		log.GetLogger().Debug("Dropping client_secret for public client import with token endpoint auth method 'none'",
+		log.GetLogger().Debug(ctx,
+			"Dropping client_secret for public client import with token endpoint auth method 'none'",
 			log.String("appID", appDTO.ID),
 			log.String("name", appDTO.Name),
 			log.String("clientID", oauthConfig.ClientID))

@@ -51,8 +51,8 @@ func (dh *discoveryHandler) HandleOAuth2AuthorizationServerMetadata(w http.Respo
 
 	metadata := dh.discoveryService.GetOAuth2AuthorizationServerMetadata(ctx)
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, metadata)
-	logger.Debug("OAuth 2.0 Authorization Server Metadata response sent successfully")
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, metadata)
+	logger.Debug(ctx, "OAuth 2.0 Authorization Server Metadata response sent successfully")
 }
 
 // HandleOIDCDiscovery handles OpenID Connect Discovery requests
@@ -62,10 +62,10 @@ func (dh *discoveryHandler) HandleOIDCDiscovery(w http.ResponseWriter, r *http.R
 
 	metadata, err := dh.discoveryService.GetOIDCMetadata(ctx)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusInternalServerError, apierror.ErrorResponse{})
+		sysutils.WriteErrorResponse(ctx, w, http.StatusInternalServerError, apierror.ErrorResponse{})
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, metadata)
-	logger.Debug("OIDC discovery response sent successfully")
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, metadata)
+	logger.Debug(ctx, "OIDC discovery response sent successfully")
 }

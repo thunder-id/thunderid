@@ -149,7 +149,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoSuccess() {
 	}
 
 	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(config, nil)
-	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", config, accessToken).
+	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, accessToken).
 		Return(userInfo, nil)
 
 	result, err := suite.service.FetchUserInfo(context.Background(), testGithubIDPID, accessToken)
@@ -188,7 +188,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoSuccessWithEmail
 
 	// Mock GetOAuthClientConfig once for FetchUserInfo (config is passed to fetchPrimaryEmail)
 	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(config, nil).Once()
-	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", config, accessToken).Return(userInfo, nil)
+	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, accessToken).Return(userInfo, nil)
 	suite.mockHTTPClient.On("Do", mock.Anything).Return(resp, nil)
 
 	result, err := suite.service.FetchUserInfo(context.Background(), testGithubIDPID, accessToken)
@@ -222,7 +222,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithFailure() {
 				}
 				suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).
 					Return(config, nil).Once()
-				suite.mockOAuthService.On("FetchUserInfoWithClientConfig", config, testAccessToken).
+				suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, testAccessToken).
 					Return(nil, &serviceerror.ServiceError{Code: "FETCH-001"}).Once()
 			},
 			errCode: "FETCH-001",
@@ -264,7 +264,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithEmailFetchFa
 
 				suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).
 					Return(config, nil).Once()
-				suite.mockOAuthService.On("FetchUserInfoWithClientConfig", config, testAccessToken).
+				suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, testAccessToken).
 					Return(userInfo, nil).Once()
 				suite.mockHTTPClient.On("Do", mock.Anything).
 					Return(nil, errors.New("http error")).Once()
@@ -293,7 +293,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithEmailFetchFa
 
 				suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).
 					Return(config, nil).Once()
-				suite.mockOAuthService.On("FetchUserInfoWithClientConfig", config, testAccessToken).
+				suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, testAccessToken).
 					Return(userInfo, nil).Once()
 				suite.mockHTTPClient.On("Do", mock.Anything).Return(resp, nil).Once()
 			},
@@ -321,7 +321,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithEmailFetchFa
 
 				suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).
 					Return(config, nil).Once()
-				suite.mockOAuthService.On("FetchUserInfoWithClientConfig", config, testAccessToken).
+				suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, testAccessToken).
 					Return(userInfo, nil).Once()
 				suite.mockHTTPClient.On("Do", mock.Anything).Return(resp, nil).Once()
 			},
@@ -347,9 +347,9 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestGetInternalUserSuccess() {
 		ID:   "user123",
 		Type: "person",
 	}
-	suite.mockOAuthService.On("GetInternalUser", sub).Return(user, nil)
+	suite.mockOAuthService.On("GetInternalUser", mock.Anything, sub).Return(user, nil)
 
-	result, err := suite.service.GetInternalUser(sub)
+	result, err := suite.service.GetInternalUser(context.Background(), sub)
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal(user.ID, result.ID)
@@ -361,9 +361,9 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestGetInternalUserError() {
 		Code:             "USER_NOT_FOUND",
 		ErrorDescription: core.I18nMessage{Key: "error.test.user_not_found", DefaultValue: "User not found"},
 	}
-	suite.mockOAuthService.On("GetInternalUser", sub).Return(nil, svcErr)
+	suite.mockOAuthService.On("GetInternalUser", mock.Anything, sub).Return(nil, svcErr)
 
-	result, err := suite.service.GetInternalUser(sub)
+	result, err := suite.service.GetInternalUser(context.Background(), sub)
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(svcErr.Code, err.Code)
@@ -420,7 +420,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchPrimaryEmailEdgeCases() 
 	gsvc, ok := suite.service.(*githubOAuthAuthnService)
 	suite.True(ok)
 
-	email, svcErr := gsvc.fetchPrimaryEmail(config, testAccessToken)
+	email, svcErr := gsvc.fetchPrimaryEmail(context.Background(), config, testAccessToken)
 	suite.Nil(svcErr)
 	suite.Equal("", email)
 
@@ -430,7 +430,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchPrimaryEmailEdgeCases() 
 	resp2 := &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(badJSON))}
 
 	suite.mockHTTPClient.On("Do", mock.Anything).Return(resp2, nil).Once()
-	email2, svcErr2 := gsvc.fetchPrimaryEmail(config, testAccessToken)
+	email2, svcErr2 := gsvc.fetchPrimaryEmail(context.Background(), config, testAccessToken)
 	suite.Nil(svcErr2)
 	suite.Equal("", email2)
 }
@@ -471,7 +471,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoNoEmailScope() {
 	}
 
 	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(config, nil)
-	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", config, accessToken).Return(userInfo, nil)
+	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, accessToken).Return(userInfo, nil)
 
 	result, err := suite.service.FetchUserInfo(context.Background(), testGithubIDPID, accessToken)
 	suite.Nil(err)
@@ -495,7 +495,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchPrimaryEmailWithEmptyEnd
 	}
 
 	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(config, nil).Once()
-	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", config, accessToken).Return(userInfo, nil)
+	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, accessToken).Return(userInfo, nil)
 
 	result, err := suite.service.FetchUserInfo(context.Background(), testGithubIDPID, accessToken)
 	suite.NotNil(err)
@@ -532,7 +532,7 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithEmptyPrimary
 	}
 
 	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(config, nil).Once()
-	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", config, accessToken).Return(userInfo, nil)
+	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, accessToken).Return(userInfo, nil)
 	suite.mockHTTPClient.On("Do", mock.Anything).Return(resp, nil)
 
 	result, err := suite.service.FetchUserInfo(context.Background(), testGithubIDPID, accessToken)

@@ -1,0 +1,106 @@
+---
+title: Refresh Token
+sidebar_position: 3
+description: The OAuth 2.1 Refresh Token grant in {{ProductName}} — exchange a refresh token for a new access token, with optional rotation and audience preservation.
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Refresh Token
+
+The **Refresh Token** grant ([RFC 6749 §6](https://datatracker.ietf.org/doc/html/rfc6749#section-6)) lets a client obtain a new access token without prompting the user to sign in again. The client sends its refresh token to the token endpoint and receives a new access token (and optionally a new refresh token) in return.
+
+Refresh tokens are long-lived credentials and must be treated as such — they replace the user's session. <ProductName /> supports rotation so refresh tokens themselves can be short-lived in practice.
+
+## How It Works
+
+The refresh request goes directly to the token endpoint and returns a new token bundle.
+
+```http
+POST /oauth2/token HTTP/1.1
+Host: {{productSlug}}.example.com
+Authorization: Basic <client_id:client_secret>
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=refresh_token
+&refresh_token=<refresh_token>
+&scope=openid%20profile             # optional — narrow only
+&resource=https://api.example.com   # optional — narrow audience
+```
+
+Response (rotation enabled):
+
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "eyJhbGciOi...",
+  "scope": "openid profile"
+}
+```
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Endpoint | `POST /oauth2/token` with `grant_type=refresh_token` |
+| Client authentication | Same methods as the original grant — see [Client Authentication Methods](../client-authentication-methods) |
+| Rotation | Controlled globally by `oauth.refresh_token.renew_on_grant` in `deployment.yaml`. When enabled, every refresh issues a new `refresh_token`; when disabled, the existing one is reused |
+| Old token after rotation | Stateless JWTs with no revocation — a rotated-out token stays valid until it expires. No reuse detection |
+| Audience preservation | Per RFC 8707 §5, the new access token carries the **full original `aud`** when `resource` is not supplied |
+| Audience narrowing | Supply `resource` to receive a new access token whose `aud` is a subset of the original |
+| Scope narrowing | The `scope` parameter may request a subset of the originally granted scopes. Asking for a wider scope returns `invalid_scope` |
+| DPoP binding | A DPoP-bound refresh token continues to require a DPoP proof on refresh; the new access token inherits the `cnf.jkt` binding |
+
+### What Changes Between the Original and Refreshed Token
+
+| Claim | Behavior on refresh |
+|---|---|
+| `sub` | Unchanged |
+| `iss` | Unchanged |
+| `aud` | Preserved by default; narrowed when `resource` is supplied |
+| `scope` | Preserved by default; narrowed when `scope` is supplied |
+| `exp` / `iat` | New values |
+| `cnf.jkt` (DPoP) | Preserved |
+| `auth_time` | Not carried into refreshed tokens |
+
+</details>
+
+## Try It in <ProductName />
+
+<Tabs groupId="client-registration">
+<TabItem value="console" label="Console" default>
+
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
+2. Open the **Advanced Settings** tab.
+3. Under **Grant Types**, add `refresh_token` alongside an existing grant such as `authorization_code`.
+4. Save.
+
+</TabItem>
+<TabItem value="dcr" label="Dynamic Client Registration">
+
+```http
+POST /oauth2/dcr/register
+Content-Type: application/json
+
+{
+  "client_name": "My App",
+  "redirect_uris": ["https://app.example.com/callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"]
+}
+```
+
+</TabItem>
+</Tabs>
+
+Refresh token rotation is a deployment-wide setting, not per client. Enable it by setting `oauth.refresh_token.renew_on_grant: true` in `deployment.yaml`.
+
+## Related Guides
+
+- [Authorization Code](../authorization-code) — the most common source of refresh tokens
+- [Resource Indicators](../resource-indicators) — narrow the audience of the refreshed access token
+- [DPoP](../dpop) — refresh tokens issued under DPoP remain sender-constrained
+- [Token Formats](../token-formats) — token lifetimes, signing and encryption settings

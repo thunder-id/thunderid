@@ -21,6 +21,7 @@ package entitytype
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -106,7 +107,7 @@ func (s *EntityTypeServiceConsentTestSuite) TestExtractAttributeNamesAsMap_Inval
 // ----- wrapConsentServiceError (entitytype) -----
 
 func (s *EntityTypeServiceConsentTestSuite) TestWrapConsentServiceError_Nil() {
-	result := wrapConsentServiceError(nil, nil)
+	result := wrapConsentServiceError(context.Background(), nil, nil)
 
 	s.Nil(result)
 }
@@ -117,7 +118,7 @@ func (s *EntityTypeServiceConsentTestSuite) TestWrapConsentServiceError_ClientEr
 		Code: "CSE-1007",
 	}
 
-	result := wrapConsentServiceError(clientErr, log.GetLogger())
+	result := wrapConsentServiceError(context.Background(), clientErr, log.GetLogger())
 
 	s.NotNil(result)
 	s.Equal(serviceerror.ClientErrorType, result.Type)
@@ -130,7 +131,7 @@ func (s *EntityTypeServiceConsentTestSuite) TestWrapConsentServiceError_ServerEr
 		Code: "CSE-500",
 	}
 
-	result := wrapConsentServiceError(serverErr, log.GetLogger())
+	result := wrapConsentServiceError(context.Background(), serverErr, log.GetLogger())
 
 	s.NotNil(result)
 	s.Equal(serviceerror.ServerErrorType, result.Type)
@@ -616,5 +617,148 @@ func (s *EntityTypeServiceConsentTestSuite) TestDeleteEntityType_ConsentEnabled_
 
 	s.Nil(svcErr)
 	storeMock.AssertCalled(s.T(), "DeleteEntityTypeByID", mock.Anything, mock.Anything, "schema-id")
+	cMock.AssertCalled(s.T(), "ListConsentElements", mock.Anything, "default", consent.NamespaceAttribute, "email")
+}
+
+// TestCreateEntityType_ConsentSyncFails_CompensationDeleteFails verifies that when the
+// compensating schema deletion also fails after a consent sync failure, the failure is logged
+// and the original consent error is still returned.
+func (s *EntityTypeServiceConsentTestSuite) TestCreateEntityType_ConsentSyncFails_CompensationDeleteFails() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(s.T(), err)
+	defer config.ResetServerRuntime()
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	cMock := consentmock.NewConsentServiceInterfaceMock(s.T())
+
+	svc := &entityTypeService{
+		entityTypeStore: storeMock,
+		ouService:       ouMock,
+		transactioner:   &mockTransactioner{},
+		consentService:  cMock,
+	}
+
+	ouMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).Return(true, (*serviceerror.ServiceError)(nil))
+	storeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, "test-schema").
+		Return(EntityType{}, ErrEntityTypeNotFound)
+	storeMock.On("CreateEntityType", mock.Anything, mock.Anything).Return(nil)
+	cMock.On("IsEnabled").Return(true)
+	cMock.On("ValidateConsentElements", mock.Anything, "default", mock.Anything).
+		Return(nil, &serviceerror.InternalServerError)
+	// Compensation deletion itself fails.
+	storeMock.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("delete failed"))
+
+	request := CreateEntityTypeRequestWithID{
+		Name:   "test-schema",
+		OUID:   testOUID1,
+		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+	}
+
+	result, svcErr := svc.CreateEntityType(context.Background(), TypeCategoryUser, request)
+
+	s.Nil(result)
+	s.NotNil(svcErr)
+	storeMock.AssertCalled(s.T(), "DeleteEntityTypeByID", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// TestUpdateEntityType_ConsentSyncFails_CompensationRevertFails verifies that when the
+// compensating schema revert also fails after a consent sync failure, the failure is logged
+// and the original consent error is still returned.
+func (s *EntityTypeServiceConsentTestSuite) TestUpdateEntityType_ConsentSyncFails_CompensationRevertFails() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(s.T(), err)
+	defer config.ResetServerRuntime()
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	cMock := consentmock.NewConsentServiceInterfaceMock(s.T())
+
+	svc := &entityTypeService{
+		entityTypeStore: storeMock,
+		ouService:       ouMock,
+		transactioner:   &mockTransactioner{},
+		consentService:  cMock,
+	}
+
+	existingSchema := EntityType{
+		ID:     "schema-id",
+		Name:   "test-schema",
+		OUID:   testOUID1,
+		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+	}
+
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, "schema-id").Return(false)
+	ouMock.On("IsOrganizationUnitExists", mock.Anything, testOUID1).Return(true, (*serviceerror.ServiceError)(nil))
+	storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, "schema-id").Return(existingSchema, nil)
+	// First call (in-tx update) succeeds; second call (compensation revert) fails.
+	storeMock.On("UpdateEntityTypeByID", mock.Anything, mock.Anything, "schema-id", mock.Anything).
+		Return(nil).Once()
+	storeMock.On("UpdateEntityTypeByID", mock.Anything, mock.Anything, "schema-id", mock.Anything).
+		Return(errors.New("revert failed")).Once()
+	cMock.On("IsEnabled").Return(true)
+	cMock.On("ValidateConsentElements", mock.Anything, "default", mock.Anything).
+		Return(nil, &serviceerror.InternalServerError)
+
+	request := UpdateEntityTypeRequest{
+		Name:   "test-schema",
+		OUID:   testOUID1,
+		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+	}
+
+	result, svcErr := svc.UpdateEntityType(context.Background(), TypeCategoryUser, "schema-id", request)
+
+	s.Nil(result)
+	s.NotNil(svcErr)
+	storeMock.AssertNumberOfCalls(s.T(), "UpdateEntityTypeByID", 2)
+}
+
+// TestDeleteEntityType_ConsentCleanupFails verifies that a failure while deleting consent
+// elements after schema deletion is logged but the overall delete still succeeds.
+func (s *EntityTypeServiceConsentTestSuite) TestDeleteEntityType_ConsentCleanupFails() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(s.T(), err)
+	defer config.ResetServerRuntime()
+
+	storeMock := newEntityTypeStoreInterfaceMock(s.T())
+	cMock := consentmock.NewConsentServiceInterfaceMock(s.T())
+
+	svc := &entityTypeService{
+		entityTypeStore: storeMock,
+		transactioner:   &mockTransactioner{},
+		consentService:  cMock,
+	}
+
+	existingSchema := EntityType{
+		ID:     "schema-id",
+		Name:   "test-schema",
+		OUID:   testOUID1,
+		Schema: json.RawMessage(`{"email":{"type":"string"}}`),
+	}
+
+	storeMock.On("GetEntityTypeByID", mock.Anything, mock.Anything, "schema-id").Return(existingSchema, nil)
+	storeMock.On("IsEntityTypeDeclarative", TypeCategoryUser, "schema-id").Return(false)
+	cMock.On("IsEnabled").Return(true)
+	storeMock.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, "schema-id").Return(nil)
+	// Consent cleanup fails when listing elements for the removed attribute.
+	cMock.On("ListConsentElements", mock.Anything, "default", consent.NamespaceAttribute, "email").
+		Return(nil, &serviceerror.InternalServerError)
+
+	svcErr := svc.DeleteEntityType(context.Background(), TypeCategoryUser, "schema-id")
+
+	s.Nil(svcErr)
 	cMock.AssertCalled(s.T(), "ListConsentElements", mock.Anything, "default", consent.NamespaceAttribute, "email")
 }

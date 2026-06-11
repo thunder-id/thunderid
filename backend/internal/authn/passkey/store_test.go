@@ -19,6 +19,7 @@
 package passkey
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"testing"
@@ -142,7 +143,7 @@ func (suite *SessionStoreTestSuite) TestStoreSession_Success() {
 		testSessionKey, mock.Anything, mock.Anything, "test-deployment-id").
 		Return(int64(1), nil).Once()
 
-	err := suite.store.storeSession(testSessionKey, sessionData, int64(300))
+	err := suite.store.storeSession(context.Background(), testSessionKey, sessionData, int64(300))
 
 	suite.NoError(err)
 	suite.mockDBProvider.AssertExpectations(suite.T())
@@ -156,7 +157,7 @@ func (suite *SessionStoreTestSuite) TestStoreSession_DBClientError() {
 
 	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, assert.AnError).Once()
 
-	err := suite.store.storeSession(testSessionKey, sessionData, int64(300))
+	err := suite.store.storeSession(context.Background(), testSessionKey, sessionData, int64(300))
 
 	suite.Error(err)
 	suite.mockDBProvider.AssertExpectations(suite.T())
@@ -172,7 +173,7 @@ func (suite *SessionStoreTestSuite) TestStoreSession_ExecuteError() {
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(int64(0), assert.AnError).Once()
 
-	err := suite.store.storeSession(testSessionKey, sessionData, int64(300))
+	err := suite.store.storeSession(context.Background(), testSessionKey, sessionData, int64(300))
 
 	suite.Error(err)
 }
@@ -196,7 +197,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_Success() {
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return(results, nil).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.NoError(err)
 	suite.NotNil(sd)
@@ -206,7 +207,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_Success() {
 }
 
 func (suite *SessionStoreTestSuite) TestRetrieveSession_EmptyKey() {
-	sd, err := suite.store.retrieveSession("")
+	sd, err := suite.store.retrieveSession(context.Background(), "")
 
 	suite.NoError(err)
 	suite.Nil(sd)
@@ -218,7 +219,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_NotFound() {
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{}, nil).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.NoError(err)
 	suite.Nil(sd)
@@ -227,7 +228,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_NotFound() {
 func (suite *SessionStoreTestSuite) TestRetrieveSession_DBClientError() {
 	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, assert.AnError).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 	suite.Nil(sd)
@@ -239,7 +240,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_QueryError() {
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return(nil, assert.AnError).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 	suite.Nil(sd)
@@ -263,7 +264,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_SessionDataAsBytes() {
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return(results, nil).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.NoError(err)
 	suite.NotNil(sd)
@@ -276,13 +277,13 @@ func (suite *SessionStoreTestSuite) TestDeleteSession_Success() {
 		testSessionKey, "test-deployment-id").
 		Return(int64(1), nil).Once()
 
-	err := suite.store.deleteSession(testSessionKey)
+	err := suite.store.deleteSession(context.Background(), testSessionKey)
 
 	suite.NoError(err)
 }
 
 func (suite *SessionStoreTestSuite) TestDeleteSession_EmptyKey() {
-	err := suite.store.deleteSession("")
+	err := suite.store.deleteSession(context.Background(), "")
 
 	suite.NoError(err)
 }
@@ -290,7 +291,7 @@ func (suite *SessionStoreTestSuite) TestDeleteSession_EmptyKey() {
 func (suite *SessionStoreTestSuite) TestDeleteSession_DBClientError() {
 	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, assert.AnError).Once()
 
-	err := suite.store.deleteSession(testSessionKey)
+	err := suite.store.deleteSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 }
@@ -301,7 +302,7 @@ func (suite *SessionStoreTestSuite) TestDeleteSession_ExecuteError() {
 		testSessionKey, "test-deployment-id").
 		Return(int64(0), assert.AnError).Once()
 
-	err := suite.store.deleteSession(testSessionKey)
+	err := suite.store.deleteSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 }
@@ -396,7 +397,7 @@ func (suite *SessionStoreTestSuite) TestBuildSessionDataFromResultRow_Success() 
 		dbColumnSessionData: string(jsonBytes),
 	}
 
-	sd, err := suite.store.buildSessionDataFromResultRow(row)
+	sd, err := suite.store.buildSessionDataFromResultRow(context.Background(), row)
 
 	suite.NoError(err)
 	suite.NotNil(sd)
@@ -432,7 +433,7 @@ func (suite *SessionStoreTestSuite) TestBuildSessionDataFromResultRow_WithAllFie
 		dbColumnSessionData: string(jsonBytes),
 	}
 
-	sd, err := suite.store.buildSessionDataFromResultRow(row)
+	sd, err := suite.store.buildSessionDataFromResultRow(context.Background(), row)
 
 	suite.NoError(err)
 	suite.NotNil(sd)
@@ -448,7 +449,7 @@ func (suite *SessionStoreTestSuite) TestBuildSessionDataFromResultRow_MissingSes
 		// Missing dbColumnSessionData
 	}
 
-	sd, err := suite.store.buildSessionDataFromResultRow(row)
+	sd, err := suite.store.buildSessionDataFromResultRow(context.Background(), row)
 
 	suite.Error(err)
 	suite.Nil(sd)
@@ -460,7 +461,7 @@ func (suite *SessionStoreTestSuite) TestBuildSessionDataFromResultRow_InvalidJSO
 		dbColumnSessionData: "invalid json",
 	}
 
-	sd, err := suite.store.buildSessionDataFromResultRow(row)
+	sd, err := suite.store.buildSessionDataFromResultRow(context.Background(), row)
 
 	suite.Error(err)
 	suite.Nil(sd)
@@ -476,7 +477,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_In
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 	suite.Nil(sd)
@@ -493,7 +494,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_Mi
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 	suite.Nil(sd)
@@ -517,7 +518,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_In
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 	suite.Nil(sd)
@@ -542,7 +543,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_In
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 	suite.Nil(sd)
@@ -559,7 +560,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_Wr
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 	suite.Nil(sd)
@@ -576,7 +577,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_Em
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 	suite.Nil(sd)
@@ -593,7 +594,7 @@ func (suite *SessionStoreTestSuite) TestRetrieveSession_BuildSessionDataError_Em
 		testSessionKey, mock.AnythingOfType("time.Time"), "test-deployment-id").
 		Return([]map[string]interface{}{row}, nil).Once()
 
-	sd, err := suite.store.retrieveSession(testSessionKey)
+	sd, err := suite.store.retrieveSession(context.Background(), testSessionKey)
 
 	suite.Error(err)
 	suite.Nil(sd)

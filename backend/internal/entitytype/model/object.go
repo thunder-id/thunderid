@@ -19,6 +19,7 @@
 package model
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -51,10 +52,10 @@ func (p *object) isUnique() bool {
 	return false
 }
 
-func (p *object) validateValue(value interface{}, path string, logger *log.Logger) (bool, error) {
+func (p *object) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	valueMap, ok := value.(map[string]interface{})
 	if !ok {
-		logger.Debug("Expected object but got different type",
+		logger.Debug(ctx, "Expected object but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}
@@ -74,7 +75,7 @@ func (p *object) validateValue(value interface{}, path string, logger *log.Logge
 			continue
 		}
 
-		isValid, err := nestedProp.validateValue(nestedValue, nestedPath, logger)
+		isValid, err := nestedProp.validateValue(ctx, nestedValue, nestedPath, logger)
 		if err != nil {
 			return false, err
 		}
@@ -86,7 +87,7 @@ func (p *object) validateValue(value interface{}, path string, logger *log.Logge
 	// Reject any nested keys not declared in the object schema.
 	for key := range valueMap {
 		if _, declared := p.properties[key]; !declared {
-			logger.Debug("Attribute not defined in schema",
+			logger.Debug(ctx, "Attribute not defined in schema",
 				log.String("attribute", path+"."+key))
 			return false, nil
 		}
@@ -95,7 +96,7 @@ func (p *object) validateValue(value interface{}, path string, logger *log.Logge
 	return true, nil
 }
 
-func (p *object) validateUniqueness(
+func (p *object) validateUniqueness(ctx context.Context,
 	value interface{},
 	path string,
 	exists func(map[string]interface{}) (bool, error),
@@ -103,7 +104,7 @@ func (p *object) validateUniqueness(
 ) (bool, error) {
 	valueMap, ok := value.(map[string]interface{})
 	if !ok {
-		logger.Debug("Expected object but got different type",
+		logger.Debug(ctx, "Expected object but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}
@@ -115,7 +116,7 @@ func (p *object) validateUniqueness(
 		}
 
 		nestedPath := path + "." + nestedName
-		isValid, err := nestedProp.validateUniqueness(nestedValue, nestedPath, exists, logger)
+		isValid, err := nestedProp.validateUniqueness(ctx, nestedValue, nestedPath, exists, logger)
 		if err != nil {
 			return false, err
 		}

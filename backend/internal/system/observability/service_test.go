@@ -19,6 +19,7 @@
 package observability
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -127,7 +128,7 @@ func TestService_PublishEvent(t *testing.T) {
 	evt.WithStatus(event.StatusSuccess)
 
 	// Should not panic
-	svc.PublishEvent(evt)
+	svc.PublishEvent(context.Background(), evt)
 
 	// Give it time to process (async processing)
 	time.Sleep(100 * time.Millisecond)
@@ -145,7 +146,7 @@ func TestService_PublishEventDisabled(t *testing.T) {
 	evt := event.NewEvent("trace-123", string(event.EventTypeTokenIssuanceStarted), "test")
 
 	// Should not panic even when disabled
-	svc.PublishEvent(evt)
+	svc.PublishEvent(context.Background(), evt)
 }
 
 func TestService_PublishNilEvent(t *testing.T) {
@@ -153,7 +154,7 @@ func TestService_PublishNilEvent(t *testing.T) {
 	defer svc.Shutdown()
 
 	// Should not panic
-	svc.PublishEvent(nil)
+	svc.PublishEvent(context.Background(), nil)
 }
 
 func TestService_GetConfig(t *testing.T) {

@@ -39,6 +39,7 @@ const (
 	columnNameTimeCreated          = "time_created"
 	columnNameExpiryTime           = "expiry_time"
 	jsonDataKeyRedirectURI         = "redirect_uri"
+	jsonDataKeyRedirectURIProvided = "redirect_uri_provided"
 	jsonDataKeyAuthorizedUserID    = "authorized_user_id"
 	jsonDataKeyScopes              = "scopes"
 	jsonDataKeyCodeChallenge       = "code_challenge"
@@ -138,6 +139,7 @@ func (acs *authorizationCodeStore) GetAuthorizationCode(
 func (acs *authorizationCodeStore) getJSONDataBytes(authzCode AuthorizationCode) ([]byte, error) {
 	jsonData := map[string]interface{}{
 		jsonDataKeyRedirectURI:         authzCode.RedirectURI,
+		jsonDataKeyRedirectURIProvided: authzCode.RedirectURIProvided,
 		jsonDataKeyAuthorizedUserID:    authzCode.AuthorizedUserID,
 		jsonDataKeyScopes:              authzCode.Scopes,
 		jsonDataKeyCodeChallenge:       authzCode.CodeChallenge,
@@ -242,6 +244,9 @@ func appendAuthzDataJSON(row map[string]interface{}, authzCode *AuthorizationCod
 
 	if redirectURI, ok := authzData[jsonDataKeyRedirectURI].(string); ok {
 		authzCode.RedirectURI = redirectURI
+	}
+	if redirectURIProvided, ok := authzData[jsonDataKeyRedirectURIProvided].(bool); ok {
+		authzCode.RedirectURIProvided = redirectURIProvided
 	}
 	if authorizedUserID, ok := authzData[jsonDataKeyAuthorizedUserID].(string); ok {
 		authzCode.AuthorizedUserID = authorizedUserID

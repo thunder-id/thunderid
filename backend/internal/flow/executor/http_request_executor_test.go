@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -19,6 +19,7 @@
 package executor
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -493,7 +494,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestExecute_ErrorHandling_FailOnError
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
-	assert.Contains(suite.T(), execResp.FailureReason, "HTTP request failed with status 400")
+	assert.Contains(suite.T(), execResp.Error.ErrorDescription.DefaultValue, "HTTP request failed with status 400")
 }
 
 func (suite *HTTPRequestExecutorTestSuite) TestExecute_MissingURL() {
@@ -512,7 +513,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestExecute_MissingURL() {
 	assert.NoError(suite.T(), err)
 	// Configuration errors always fail the flow regardless of failOnError setting
 	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
-	assert.Contains(suite.T(), execResp.FailureReason, "url is required")
+	assert.Equal(suite.T(), ErrHTTPRequestConfigInvalid.Error.DefaultValue, execResp.Error.Error.DefaultValue)
 }
 
 func (suite *HTTPRequestExecutorTestSuite) TestExecute_InvalidHTTPMethod() {
@@ -531,7 +532,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestExecute_InvalidHTTPMethod() {
 	assert.NoError(suite.T(), err)
 	// Configuration errors always fail the flow regardless of failOnError setting
 	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
-	assert.Contains(suite.T(), execResp.FailureReason, "invalid HTTP method")
+	assert.Equal(suite.T(), ErrHTTPRequestConfigInvalid.Error.DefaultValue, execResp.Error.Error.DefaultValue)
 }
 
 func (suite *HTTPRequestExecutorTestSuite) TestParseAndValidateConfig_TimeoutLimits() {
@@ -541,7 +542,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestParseAndValidateConfig_TimeoutLim
 		"timeout": "60", // Exceeds max of 30
 	}
 
-	config, err := suite.executor.parseAndValidateConfig(properties)
+	config, err := suite.executor.parseAndValidateConfig(context.Background(), properties)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), maxHTTPRequestTimeout, config.Timeout, "Timeout should be capped at maximum")
 
@@ -550,7 +551,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestParseAndValidateConfig_TimeoutLim
 		"url": "https://example.com/api/test",
 	}
 
-	config2, err := suite.executor.parseAndValidateConfig(properties2)
+	config2, err := suite.executor.parseAndValidateConfig(context.Background(), properties2)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), defaultHTTPTimeout, config2.Timeout)
 }
@@ -563,7 +564,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestParseAndValidateConfig_RetryLimit
 		"errorHandling": errorHandlingJSON,
 	}
 
-	config, err := suite.executor.parseAndValidateConfig(properties)
+	config, err := suite.executor.parseAndValidateConfig(context.Background(), properties)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), maxHTTPRequestRetryCount, config.ErrorHandling.RetryCount)
 	assert.Equal(suite.T(), maxHTTPRequestRetryDelay, config.ErrorHandling.RetryDelay)

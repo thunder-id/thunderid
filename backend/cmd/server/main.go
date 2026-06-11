@@ -24,6 +24,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -54,21 +55,24 @@ var (
 )
 
 func main() {
+	// Server bootstrap/shutdown logging has no request scope, so context.Background() is used.
+	ctx := context.Background()
 	startupStartedAt := time.Now()
 	logger := log.GetLogger()
 
-	serverHome := getThunderHome(logger)
+	flag.String("resources", "", "Path to declarative resources YAML file")
+	serverHome := getThunderHome(ctx, logger)
 
-	cfg := initThunderConfigurations(logger, serverHome)
+	cfg := initThunderConfigurations(ctx, logger, serverHome)
 	if cfg == nil {
-		logger.Fatal("Failed to initialize configurations")
+		logger.Fatal(ctx, "Failed to initialize configurations")
 	}
 
 	// Install the CORS allowed-origins matcher used by the HTTP middleware.
 	// Compilation errors are already surfaced by config validation; this call
 	// rebuilds the rules and installs them as the cors package singleton.
 	if err := cors.InitializeMatcher(cfg.CORS.AllowedOrigins); err != nil {
-		logger.Fatal("Failed to initialize CORS matcher", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize CORS matcher", log.Error(err))
 	}
 
 	// Initialize the cache manager.
@@ -80,65 +84,66 @@ func main() {
 	// Create a new HTTP multiplexer.
 	mux := http.NewServeMux()
 	if mux == nil {
-		logger.Fatal("Failed to initialize multiplexer")
+		logger.Fatal(ctx, "Failed to initialize multiplexer")
 	}
 
 	// Register the services.
 	jwtService, runtimeCryptoSvc := registerServices(mux, cacheManager)
 
 	// Register static file handlers for frontend applications.
-	registerStaticFileHandlers(logger, mux, serverHome)
+	registerStaticFileHandlers(ctx, logger, mux, serverHome)
 
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	// Create the HTTP server.
-	server := createHTTPServer(logger, cfg, mux, jwtService)
+	server := createHTTPServer(ctx, logger, cfg, mux, jwtService)
 	var ln net.Listener
 	if cfg.Server.HTTPOnly {
-		logger.Info("TLS is not enabled, starting server without TLS")
-		ln = createListener(logger, server)
+		logger.Info(ctx, "TLS is not enabled, starting server without TLS")
+		ln = createListener(ctx, logger, server)
 	} else {
-		tlsConfig := loadCertConfig(logger, runtimeCryptoSvc)
-		ln = createTLSListener(logger, server, tlsConfig)
+		tlsConfig := loadCertConfig(ctx, logger, runtimeCryptoSvc)
+		ln = createTLSListener(ctx, logger, server, tlsConfig)
 	}
 
 	serverURL := config.GetServerURL(&cfg.Server)
 	consoleURL := fmt.Sprintf("%s/console", strings.TrimSuffix(serverURL, "/"))
-	logger.Info("ThunderID Server URL", log.String("url", serverURL))
-	logger.Info("ThunderID Console URL", log.String("url", consoleURL))
+	logger.Info(ctx, "ThunderID Server URL", log.String("url", serverURL))
+	logger.Info(ctx, "ThunderID Console URL", log.String("url", consoleURL))
 
 	// Start server in a goroutine
 	go func() {
 		startupDuration := time.Since(startupStartedAt)
-		logger.Info("ThunderID Server started", log.String("startup_time", startupDuration.String()))
+		logger.Info(ctx, "ThunderID Server started", log.String("startup_time", startupDuration.String()))
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
-			logger.Fatal("Failed to serve requests", log.Error(err))
+			logger.Fatal(ctx, "Failed to serve requests", log.Error(err))
 		}
 	}()
 
 	// Wait for shutdown signal
 	<-sigChan
-	logger.Info("Shutting down server...")
-	gracefulShutdown(logger, server, cacheManager)
+	logger.Info(ctx, "Shutting down server...")
+	gracefulShutdown(ctx, logger, server, cacheManager)
 }
 
 // getThunderHome retrieves and return the home directory.
-func getThunderHome(logger *log.Logger) string {
+func getThunderHome(ctx context.Context, logger *log.Logger) string {
 	// Parse project directory from command line arguments.
 	projectHome := ""
 	projectHomeFlag := flag.String("serverHome", "", "Path to ThunderID home directory")
 	flag.Parse()
 
 	if *projectHomeFlag != "" {
-		logger.Info("Using serverHome from command line argument", log.String("serverHome", *projectHomeFlag))
+		logger.Info(ctx, "Using serverHome from command line argument",
+			log.String("serverHome", *projectHomeFlag))
 		projectHome = *projectHomeFlag
 	} else {
 		// If no command line argument is provided, use the current working directory.
 		dir, dirErr := os.Getwd()
 		if dirErr != nil {
-			logger.Fatal("Failed to get current working directory", log.Error(dirErr))
+			logger.Fatal(ctx, "Failed to get current working directory", log.Error(dirErr))
 		}
 		projectHome = dir
 	}
@@ -147,28 +152,28 @@ func getThunderHome(logger *log.Logger) string {
 }
 
 // initThunderConfigurations initializes the configurations.
-func initThunderConfigurations(logger *log.Logger, serverHome string) *config.Config {
+func initThunderConfigurations(ctx context.Context, logger *log.Logger, serverHome string) *config.Config {
 	// Load the configurations.
 	configFilePath := path.Join(serverHome, "repository/conf/deployment.yaml")
 	defaultConfigPath := path.Join(serverHome, "repository/resources/conf/default.json")
 	cfg, err := config.LoadConfig(configFilePath, defaultConfigPath, serverHome)
 	if err != nil {
-		logger.Fatal("Failed to load configurations", log.Error(err))
+		logger.Fatal(ctx, "Failed to load configurations", log.Error(err))
 	}
 
 	// Initialize runtime configurations.
 	if err := config.InitializeServerRuntime(serverHome, cfg); err != nil {
-		logger.Fatal("Failed to initialize server runtime", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize server runtime", log.Error(err))
 	}
 
 	return cfg
 }
 
 // loadCertConfig loads the TLS material via the runtime crypto provider.
-func loadCertConfig(logger *log.Logger, runtimeSvc kmprovider.RuntimeCryptoProvider) *tls.Config {
-	mat, err := runtimeSvc.GetTLSMaterial(context.Background())
+func loadCertConfig(ctx context.Context, logger *log.Logger, runtimeSvc kmprovider.RuntimeCryptoProvider) *tls.Config {
+	mat, err := runtimeSvc.GetTLSMaterial(ctx)
 	if err != nil {
-		logger.Fatal("Failed to load TLS material", log.Error(err))
+		logger.Fatal(ctx, "Failed to load TLS material", log.Error(err))
 	}
 	// #nosec G402 -- MinVersion is set to TLS 1.2 or higher by GetTLSMaterial
 	return &tls.Config{
@@ -178,9 +183,9 @@ func loadCertConfig(logger *log.Logger, runtimeSvc kmprovider.RuntimeCryptoProvi
 }
 
 // createHTTPServer creates and configures an HTTP server with common settings.
-func createHTTPServer(logger *log.Logger, cfg *config.Config, mux *http.ServeMux,
+func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Config, mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface) *http.Server {
-	securityMiddleware := createSecurityMiddleware(logger, mux, jwtService)
+	securityMiddleware := createSecurityMiddleware(ctx, logger, mux, jwtService)
 
 	// Build the middleware chain with proper execution order.
 	// Request flow: CorrelationID (outermost) -> AccessLog -> Security -> Route Handler (innermost)
@@ -203,46 +208,48 @@ func createHTTPServer(logger *log.Logger, cfg *config.Config, mux *http.ServeMux
 }
 
 // createListener creates and returns a listener for the HTTP server.
-func createListener(logger *log.Logger, server *http.Server) net.Listener {
+func createListener(ctx context.Context, logger *log.Logger, server *http.Server) net.Listener {
 	ln, err := netListen("tcp", server.Addr)
 	if err != nil {
-		logger.Fatal("Failed to start HTTP listener", log.Error(err))
+		logger.Fatal(ctx, "Failed to start HTTP listener", log.Error(err))
 	}
 	return ln
 }
 
 // createTLSListener creates and returns a TLS listener for the HTTPS server.
-func createTLSListener(logger *log.Logger, server *http.Server, tlsConfig *tls.Config) net.Listener {
+func createTLSListener(ctx context.Context, logger *log.Logger, server *http.Server,
+	tlsConfig *tls.Config) net.Listener {
 	ln, err := tlsListen("tcp", server.Addr, tlsConfig)
 	if err != nil {
-		logger.Fatal("Failed to start TLS listener", log.Error(err))
+		logger.Fatal(ctx, "Failed to start TLS listener", log.Error(err))
 	}
 	return ln
 }
 
-func createSecurityMiddleware(logger *log.Logger, mux *http.ServeMux,
+func createSecurityMiddleware(ctx context.Context, logger *log.Logger, mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface) http.Handler {
 	middlewareFunc, err := security.Initialize(jwtService)
 	if err != nil {
-		logger.Fatal("Failed to initialize security middleware", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize security middleware", log.Error(err))
 	}
 	return middlewareFunc(mux)
 }
 
 // gracefulShutdown handles the graceful shutdown of all components.
 func gracefulShutdown(
+	ctx context.Context,
 	logger *log.Logger,
 	server *http.Server,
 	cacheManager cache.CacheManagerInterface,
 ) {
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
 	defer cancel()
 
 	// Shutdown HTTP server
 	if err := server.Shutdown(ctx); err != nil {
-		logger.Error("Error during server shutdown", log.Error(err))
+		logger.Error(ctx, "Error during server shutdown", log.Error(err))
 	} else {
-		logger.Debug("HTTP server shutdown completed")
+		logger.Debug(ctx, "HTTP server shutdown completed")
 	}
 
 	// Shutdown services
@@ -251,39 +258,46 @@ func gracefulShutdown(
 	// Close database connections
 	dbCloser := provider.GetDBProviderCloser()
 	if err := dbCloser.Close(); err != nil {
-		logger.Error("Error closing database connections", log.Error(err))
+		logger.Error(ctx, "Error closing database connections", log.Error(err))
 	} else {
-		logger.Debug("Database connections closed successfully")
+		logger.Debug(ctx, "Database connections closed successfully")
 	}
 
 	if cacheManager != nil {
 		cacheManager.Close()
-		logger.Debug("Cache manager closed successfully")
+		logger.Debug(ctx, "Cache manager closed successfully")
 	}
 
-	logger.Info("Server shutdown completed")
+	logger.Info(ctx, "Server shutdown completed")
 }
 
 // registerStaticFileHandlers registers static file handlers for frontend applications.
-func registerStaticFileHandlers(logger *log.Logger, mux *http.ServeMux, serverHome string) {
+func registerStaticFileHandlers(ctx context.Context, logger *log.Logger, mux *http.ServeMux, serverHome string) {
+	// Override the OS-level MIME mapping so .js/.mjs files are served as
+	// application/javascript. Most proxies (Envoy, NGINX, Cloudflare) only
+	// compress application/javascript in their default allowlists, not
+	// text/javascript, which is Go's default on some systems.
+	_ = mime.AddExtensionType(".js", "application/javascript; charset=utf-8")
+	_ = mime.AddExtensionType(".mjs", "application/javascript; charset=utf-8")
+
 	// Serve gate application from /gate
 	gateDir := path.Join(serverHome, "apps", "gate")
 	if directoryExists(gateDir) {
-		logger.Debug("Registering static file handler for Gate application",
+		logger.Debug(ctx, "Registering static file handler for Gate application",
 			log.String("path", "/gate/"), log.String("directory", gateDir))
 		mux.Handle("/gate/", createStaticFileHandler("/gate/", gateDir, logger))
 	} else {
-		logger.Warn("Gate application directory not found", log.String("directory", gateDir))
+		logger.Warn(ctx, "Gate application directory not found", log.String("directory", gateDir))
 	}
 
 	// Serve console application from /console
 	consoleDir := path.Join(serverHome, "apps", "console")
 	if directoryExists(consoleDir) {
-		logger.Debug("Registering static file handler for Console application",
+		logger.Debug(ctx, "Registering static file handler for Console application",
 			log.String("path", "/console/"), log.String("directory", consoleDir))
 		mux.Handle("/console/", createStaticFileHandler("/console/", consoleDir, logger))
 	} else {
-		logger.Warn("Console application directory not found", log.String("directory", consoleDir))
+		logger.Warn(ctx, "Console application directory not found", log.String("directory", consoleDir))
 	}
 }
 
@@ -316,7 +330,7 @@ func createStaticFileHandler(routePrefix, directory string, logger *log.Logger) 
 			// For SPA routing, serve index.html for non-existent files
 			indexPath := path.Join(directory, "index.html")
 			if fileExists(indexPath) {
-				logger.Debug("Serving index.html for SPA routing",
+				logger.Debug(r.Context(), "Serving index.html for SPA routing",
 					log.String("requested_path", r.URL.Path),
 					log.String("route_prefix", routePrefix))
 				// Set no-cache headers for index.html

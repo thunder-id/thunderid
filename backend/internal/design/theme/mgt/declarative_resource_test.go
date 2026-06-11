@@ -33,6 +33,7 @@ import (
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -88,7 +89,7 @@ func (s *ThemeDeclarativeSuite) TestThemeExporter_GetResourceRules() {
 func (s *ThemeDeclarativeSuite) TestThemeExporter_ValidateResource_InvalidType() {
 	exporter := &themeExporter{}
 
-	name, err := exporter.ValidateResource("not a theme", "theme1", nil)
+	name, err := exporter.ValidateResource(context.Background(), "not a theme", "theme1", nil)
 
 	s.NotNil(err)
 	s.Empty(name)
@@ -106,7 +107,7 @@ func (s *ThemeDeclarativeSuite) TestThemeExporter_GetAllResourceIDs_Success() {
 			{ID: "theme-003", DisplayName: "Theme 3"},
 		},
 	}
-	mockService.EXPECT().GetThemeList(100, 0).Return(themeList, nil).Once()
+	mockService.EXPECT().GetThemeList(mock.Anything, 100, 0).Return(themeList, nil).Once()
 	exporter := &themeExporter{service: mockService}
 
 	// Act
@@ -124,7 +125,7 @@ func (s *ThemeDeclarativeSuite) TestThemeExporter_GetAllResourceIDs_ServiceError
 	// Arrange
 	serviceErr := &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "Database error"}}
 	mockService := NewThemeMgtServiceInterfaceMock(s.T())
-	mockService.EXPECT().GetThemeList(100, 0).Return(&ThemeList{}, serviceErr).Once()
+	mockService.EXPECT().GetThemeList(mock.Anything, 100, 0).Return(&ThemeList{}, serviceErr).Once()
 	exporter := &themeExporter{service: mockService}
 
 	// Act
@@ -139,7 +140,7 @@ func (s *ThemeDeclarativeSuite) TestThemeExporter_GetAllResourceIDs_ServiceError
 func (s *ThemeDeclarativeSuite) TestThemeExporter_GetAllResourceIDs_EmptyList() {
 	// Arrange
 	mockService := NewThemeMgtServiceInterfaceMock(s.T())
-	mockService.EXPECT().GetThemeList(100, 0).Return(&ThemeList{Themes: []Theme{}}, nil).Once()
+	mockService.EXPECT().GetThemeList(mock.Anything, 100, 0).Return(&ThemeList{Themes: []Theme{}}, nil).Once()
 	exporter := &themeExporter{service: mockService}
 
 	// Act
@@ -161,7 +162,7 @@ func (s *ThemeDeclarativeSuite) TestThemeExporter_GetResourceByID_Success() {
 		Description: "A blue theme",
 		Theme:       themeJSON,
 	}
-	mockService.EXPECT().GetTheme("theme-001").Return(theme, nil).Once()
+	mockService.EXPECT().GetTheme(mock.Anything, "theme-001").Return(theme, nil).Once()
 	exporter := &themeExporter{service: mockService}
 
 	// Act
@@ -182,7 +183,7 @@ func (s *ThemeDeclarativeSuite) TestThemeExporter_GetResourceByID_NotFound() {
 	// Arrange
 	serviceErr := &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "Theme not found"}}
 	mockService := NewThemeMgtServiceInterfaceMock(s.T())
-	mockService.EXPECT().GetTheme("non-existent").Return(&Theme{}, serviceErr).Once()
+	mockService.EXPECT().GetTheme(mock.Anything, "non-existent").Return(&Theme{}, serviceErr).Once()
 	exporter := &themeExporter{service: mockService}
 
 	// Act
@@ -347,7 +348,7 @@ func (s *ThemeDeclarativeSuite) TestThemeExporter_ValidateResource_EmptyThemeWar
 	}
 
 	// Even with empty theme, validation should succeed (just logs warning)
-	name, err := exporter.ValidateResource(theme, "theme1", testLogger)
+	name, err := exporter.ValidateResource(context.Background(), theme, "theme1", testLogger)
 
 	// The empty theme should not cause validation error in ValidateResource
 	// (it logs a warning instead)

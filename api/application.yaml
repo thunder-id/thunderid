@@ -139,6 +139,7 @@ paths:
                     publicClient: false
                     requirePushedAuthorizationRequests: false
                     dpopBoundAccessTokens: false
+                    includeActClaim: false
                     scopes:
                       - "openid"
                       - "profile"
@@ -217,6 +218,7 @@ paths:
                       publicClient: false
                       requirePushedAuthorizationRequests: false
                       dpopBoundAccessTokens: false
+                      includeActClaim: false
                       scopes:
                         - "openid"
                         - "profile"
@@ -361,6 +363,7 @@ paths:
                       publicClient: false
                       requirePushedAuthorizationRequests: false
                       dpopBoundAccessTokens: false
+                      includeActClaim: false
                       scopes:
                         - "openid"
                         - "profile"
@@ -493,6 +496,7 @@ paths:
                     pkceRequired: false
                     publicClient: false
                     dpopBoundAccessTokens: false
+                    includeActClaim: false
                     scopes:
                       - "openid"
                       - "profile"
@@ -573,6 +577,7 @@ paths:
                       publicClient: false
                       requirePushedAuthorizationRequests: false
                       dpopBoundAccessTokens: false
+                      includeActClaim: false
                       scopes:
                         - "openid"
                         - "profile"
@@ -1384,6 +1389,13 @@ components:
           description: Whether DPoP-bound access tokens (RFC 9449) are required for this application.
           example: false
           default: false
+        includeActClaim:
+          type: boolean
+          description: >-
+            When true, access tokens issued through this client's authorization_code flow include
+            an implicit on-behalf-of `act` claim identifying the application.
+          example: false
+          default: false
         scopes:
           type: array
           items:
@@ -1481,6 +1493,13 @@ components:
         dpopBoundAccessTokens:
           type: boolean
           description: Whether DPoP-bound access tokens (RFC 9449) are required for this application.
+          example: false
+          default: false
+        includeActClaim:
+          type: boolean
+          description: >-
+            When true, access tokens issued through this client's authorization_code flow include
+            an implicit on-behalf-of `act` claim identifying the application.
           example: false
           default: false
         scopes:

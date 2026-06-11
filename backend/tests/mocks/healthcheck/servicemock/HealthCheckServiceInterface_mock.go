@@ -5,6 +5,8 @@
 package servicemock
 
 import (
+	"context"
+
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/system/healthcheck/model"
 )
@@ -37,16 +39,16 @@ func (_m *HealthCheckServiceInterfaceMock) EXPECT() *HealthCheckServiceInterface
 }
 
 // CheckReadiness provides a mock function for the type HealthCheckServiceInterfaceMock
-func (_mock *HealthCheckServiceInterfaceMock) CheckReadiness() model.ServerStatus {
-	ret := _mock.Called()
+func (_mock *HealthCheckServiceInterfaceMock) CheckReadiness(ctx context.Context) model.ServerStatus {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CheckReadiness")
 	}
 
 	var r0 model.ServerStatus
-	if returnFunc, ok := ret.Get(0).(func() model.ServerStatus); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) model.ServerStatus); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(model.ServerStatus)
 	}
@@ -59,13 +61,20 @@ type HealthCheckServiceInterfaceMock_CheckReadiness_Call struct {
 }
 
 // CheckReadiness is a helper method to define mock.On call
-func (_e *HealthCheckServiceInterfaceMock_Expecter) CheckReadiness() *HealthCheckServiceInterfaceMock_CheckReadiness_Call {
-	return &HealthCheckServiceInterfaceMock_CheckReadiness_Call{Call: _e.mock.On("CheckReadiness")}
+//   - ctx context.Context
+func (_e *HealthCheckServiceInterfaceMock_Expecter) CheckReadiness(ctx interface{}) *HealthCheckServiceInterfaceMock_CheckReadiness_Call {
+	return &HealthCheckServiceInterfaceMock_CheckReadiness_Call{Call: _e.mock.On("CheckReadiness", ctx)}
 }
 
-func (_c *HealthCheckServiceInterfaceMock_CheckReadiness_Call) Run(run func()) *HealthCheckServiceInterfaceMock_CheckReadiness_Call {
+func (_c *HealthCheckServiceInterfaceMock_CheckReadiness_Call) Run(run func(ctx context.Context)) *HealthCheckServiceInterfaceMock_CheckReadiness_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -75,7 +84,7 @@ func (_c *HealthCheckServiceInterfaceMock_CheckReadiness_Call) Return(serverStat
 	return _c
 }
 
-func (_c *HealthCheckServiceInterfaceMock_CheckReadiness_Call) RunAndReturn(run func() model.ServerStatus) *HealthCheckServiceInterfaceMock_CheckReadiness_Call {
+func (_c *HealthCheckServiceInterfaceMock_CheckReadiness_Call) RunAndReturn(run func(ctx context.Context) model.ServerStatus) *HealthCheckServiceInterfaceMock_CheckReadiness_Call {
 	_c.Call.Return(run)
 	return _c
 }

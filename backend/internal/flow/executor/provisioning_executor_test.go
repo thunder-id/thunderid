@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -243,7 +243,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_UserAlreadyExists() {
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "User already exists")
+	assert.Contains(suite.T(), resp.Error.Error.DefaultValue, "User already exists")
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
@@ -287,7 +287,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CreateUserFails() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "Failed to create user")
+	assert.Equal(suite.T(), ErrProvisioningFailed.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
@@ -869,7 +869,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_RegistrationFlow_SkipPro
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), userID, resp.RuntimeData[userAttributeUserID])
-	assert.Empty(suite.T(), resp.FailureReason)
+	assert.Nil(suite.T(), resp.Error)
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "CreateEntity")
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
@@ -892,7 +892,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_MissingInputs_MissingOUI
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Failed to create user", resp.FailureReason)
+	assert.Equal(suite.T(), ErrProvisioningFailed.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "CreateEntity")
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
@@ -928,13 +928,13 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CreateUserFailures() {
 			createdUser: nil,
 			createUserError: entityprovider.NewEntityProviderError(
 				entityprovider.ErrorCodeSystemError, "Database error", ""),
-			expectedFailReason: "Failed to create user",
+			expectedFailReason: ErrProvisioningFailed.Error.DefaultValue,
 		},
 		{
 			name:               "CreatedUserIsNil",
 			createdUser:        nil,
 			createUserError:    nil,
-			expectedFailReason: "Something went wrong while creating the user",
+			expectedFailReason: ErrProvisioningFailed.Error.DefaultValue,
 		},
 		{
 			name: "CreatedUserHasEmptyID",
@@ -945,7 +945,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CreateUserFailures() {
 				Attributes: []byte(`{"username":"newuser"}`),
 			},
 			createUserError:    nil,
-			expectedFailReason: "Something went wrong while creating the user",
+			expectedFailReason: ErrProvisioningFailed.Error.DefaultValue,
 		},
 	}
 
@@ -982,7 +982,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CreateUserFailures() {
 			assert.NoError(suite.T(), err)
 			assert.NotNil(suite.T(), resp)
 			assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-			assert.Equal(suite.T(), tt.expectedFailReason, resp.FailureReason)
+			assert.Equal(suite.T(), tt.expectedFailReason, resp.Error.Error.DefaultValue)
 			suite.mockEntityProvider.AssertExpectations(suite.T())
 		})
 	}
@@ -1150,8 +1150,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Failure_GroupAssignmentF
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "Failed to assign groups and roles")
-	assert.Contains(suite.T(), resp.FailureReason, "group")
+	assert.Contains(suite.T(), resp.Error.Error.DefaultValue, "Failed to assign groups and roles")
+	assert.Contains(suite.T(), resp.Error.Error.DefaultValue, "group")
 
 	// Verify role assignment WAS attempted despite group failure
 	suite.mockRoleService.AssertExpectations(suite.T())
@@ -1211,7 +1211,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Failure_BothGroupAndRole
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Failed to assign groups and roles", resp.FailureReason)
+	assert.Equal(suite.T(), ErrProvisioningAssignmentFailed.Error.DefaultValue, resp.Error.Error.DefaultValue)
 
 	// Verify both services were called (new behavior: try both even if one fails)
 	suite.mockGroupService.AssertExpectations(suite.T())
@@ -1270,8 +1270,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Failure_RoleAssignmentFa
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "Failed to assign groups and roles")
-	assert.Contains(suite.T(), resp.FailureReason, "role")
+	assert.Contains(suite.T(), resp.Error.Error.DefaultValue, "Failed to assign groups and roles")
+	assert.Contains(suite.T(), resp.Error.Error.DefaultValue, "role")
 
 	// Verify both group and role services were called
 	suite.mockGroupService.AssertExpectations(suite.T())
@@ -1534,7 +1534,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_NotEnabled_Fails
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), "User already exists", resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserAlreadyExists.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SameOU_Fails() {
@@ -1570,7 +1570,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SameOU_Fails() {
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), "User already exists in the target organization", resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserAlreadyExistsInTargetOU.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_NoTargetOU_Fails() {
@@ -1600,7 +1600,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_NoTargetOU_Fails
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Target OU is not set for cross-OU provisioning", resp.FailureReason)
+	assert.Equal(suite.T(), ErrCrossOUProvisioningTargetMissing.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestExecute_RetryableProvisioningErrors() {
@@ -1655,7 +1655,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_RetryableProvisioningErr
 			assert.NoError(t, err)
 			assert.NotNil(t, resp)
 			assert.Equal(t, common.ExecUserInputRequired, resp.Status)
-			assert.Equal(t, tt.expectedReason, resp.FailureReason, tt.message)
+			assert.Equal(t, tt.expectedReason, resp.Error.Error.DefaultValue, tt.message)
 			assert.NotEmpty(t, resp.Inputs, "Inputs should be re-populated for retry")
 			suite.mockEntityProvider.AssertExpectations(t)
 		})
@@ -1689,7 +1689,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_NotEnabled_Authn
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status,
 		"Authentication flow should return ExecFailure (not UserInputRequired) when user already exists")
-	assert.Equal(suite.T(), "User already exists", resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserAlreadyExists.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	assert.Empty(suite.T(), resp.Inputs, "Inputs should not be populated for authentication flows")
 }
 
@@ -1733,7 +1733,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_NotEnabled_Regis
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), "User already exists", resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserAlreadyExists.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	assert.NotEmpty(suite.T(), resp.Inputs, "Inputs should be populated so the user can correct their input")
 }
 
@@ -1771,7 +1771,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SameOU_AuthnFlow
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status,
 		"Authentication flow should return ExecFailure (not UserInputRequired) when user exists in target OU")
-	assert.Equal(suite.T(), "User already exists in the target organization", resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserAlreadyExistsInTargetOU.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	assert.Empty(suite.T(), resp.Inputs, "Inputs should not be populated for authentication flows")
 }
 
@@ -1822,7 +1822,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SameOU_Registrat
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), "User already exists in the target organization", resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserAlreadyExistsInTargetOU.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	assert.NotEmpty(suite.T(), resp.Inputs, "Inputs should be populated so the user can correct their input")
 }
 
@@ -2754,7 +2754,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_EmptySchemaAttrs_NoUserA
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "No user attributes provided for provisioning", resp.FailureReason)
+	assert.Equal(suite.T(), ErrProvisioningUserAttrsMissing.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestExecute_IdentifyUser_AmbiguousMatch_ReturnsFailureEarly() {
@@ -2780,7 +2780,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_IdentifyUser_AmbiguousMa
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.NotEqual(suite.T(), failureReasonUserNotFound, resp.FailureReason)
+	assert.NotEqual(suite.T(), ErrUserNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestExecute_UnmarshalAttributesError_ReturnsServerError() {
@@ -3306,7 +3306,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_AmbiguousUser_Ma
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
-	assert.Equal(suite.T(), "User already exists in the target organization", resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserAlreadyExistsInTargetOU.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 // Ambiguous user + cross-OU NOT allowed → fail immediately without searching.
@@ -3333,7 +3333,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_AmbiguousUser_Cr
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), failureReasonAmbiguousUser, resp.FailureReason)
+	assert.Equal(suite.T(), ErrAmbiguousUserIdentity.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 // Ambiguous user + cross-OU allowed + SearchEntities returns error
@@ -3391,6 +3391,6 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_CrossOU_SystemError_NoSe
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), failureReasonFailedToIdentifyUser, resp.FailureReason)
+	assert.Equal(suite.T(), ErrFailedToIdentifyUser.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	suite.mockEntityProvider.AssertNotCalled(suite.T(), "SearchEntities", mock.Anything)
 }

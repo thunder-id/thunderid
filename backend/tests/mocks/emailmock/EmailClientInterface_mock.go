@@ -5,6 +5,8 @@
 package emailmock
 
 import (
+	"context"
+
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/system/email"
 )
@@ -37,16 +39,16 @@ func (_m *EmailClientInterfaceMock) EXPECT() *EmailClientInterfaceMock_Expecter 
 }
 
 // Send provides a mock function for the type EmailClientInterfaceMock
-func (_mock *EmailClientInterfaceMock) Send(emailData email.EmailData) error {
-	ret := _mock.Called(emailData)
+func (_mock *EmailClientInterfaceMock) Send(ctx context.Context, emailData email.EmailData) error {
+	ret := _mock.Called(ctx, emailData)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Send")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(email.EmailData) error); ok {
-		r0 = returnFunc(emailData)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, email.EmailData) error); ok {
+		r0 = returnFunc(ctx, emailData)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -59,19 +61,25 @@ type EmailClientInterfaceMock_Send_Call struct {
 }
 
 // Send is a helper method to define mock.On call
+//   - ctx context.Context
 //   - emailData email.EmailData
-func (_e *EmailClientInterfaceMock_Expecter) Send(emailData interface{}) *EmailClientInterfaceMock_Send_Call {
-	return &EmailClientInterfaceMock_Send_Call{Call: _e.mock.On("Send", emailData)}
+func (_e *EmailClientInterfaceMock_Expecter) Send(ctx interface{}, emailData interface{}) *EmailClientInterfaceMock_Send_Call {
+	return &EmailClientInterfaceMock_Send_Call{Call: _e.mock.On("Send", ctx, emailData)}
 }
 
-func (_c *EmailClientInterfaceMock_Send_Call) Run(run func(emailData email.EmailData)) *EmailClientInterfaceMock_Send_Call {
+func (_c *EmailClientInterfaceMock_Send_Call) Run(run func(ctx context.Context, emailData email.EmailData)) *EmailClientInterfaceMock_Send_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 email.EmailData
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(email.EmailData)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 email.EmailData
+		if args[1] != nil {
+			arg1 = args[1].(email.EmailData)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -82,7 +90,7 @@ func (_c *EmailClientInterfaceMock_Send_Call) Return(err error) *EmailClientInte
 	return _c
 }
 
-func (_c *EmailClientInterfaceMock_Send_Call) RunAndReturn(run func(emailData email.EmailData) error) *EmailClientInterfaceMock_Send_Call {
+func (_c *EmailClientInterfaceMock_Send_Call) RunAndReturn(run func(ctx context.Context, emailData email.EmailData) error) *EmailClientInterfaceMock_Send_Call {
 	_c.Call.Return(run)
 	return _c
 }

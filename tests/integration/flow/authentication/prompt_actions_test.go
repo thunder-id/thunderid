@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -494,7 +494,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestBasicAuthWithMobileUserSMSOTP() 
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful authentication")
-	ts.Require().Empty(completeFlowStep.FailureReason, "Failure reason should be empty for successful authentication")
+	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for successful authentication")
 
 	// Validate JWT assertion fields using common utility
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
@@ -616,8 +616,8 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestBasicAuthWithoutMobileUserSMSOTP
 		ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 		ts.Require().NotEmpty(completeFlowStep.Assertion,
 			"JWT assertion should be returned after successful authentication")
-		ts.Require().Empty(completeFlowStep.FailureReason,
-			"Failure reason should be empty for successful authentication")
+		ts.Require().Nil(completeFlowStep.Error,
+			"Error should be nil for successful authentication")
 
 		// Validate JWT assertion fields using common utility
 		jwtClaims, err := testutils.ValidateJWTAssertionFields(
@@ -726,8 +726,8 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestBasicAuthWithoutMobileUserSMSOTP
 		ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 		ts.Require().NotEmpty(completeFlowStep.Assertion,
 			"JWT assertion should be returned after successful authentication")
-		ts.Require().Empty(completeFlowStep.FailureReason,
-			"Failure reason should be empty for successful authentication")
+		ts.Require().Nil(completeFlowStep.Error,
+			"Error should be nil for successful authentication")
 
 		// Validate JWT assertion fields using common utility
 		jwtClaims, err := testutils.ValidateJWTAssertionFields(
@@ -835,7 +835,7 @@ func (ts *PromptActionsAndMFAFlowTestSuite) TestSMSOTPAuthWithValidMobile() {
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful authentication")
-	ts.Require().Empty(completeFlowStep.FailureReason, "Failure reason should be empty for successful authentication")
+	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for successful authentication")
 
 	// Validate JWT assertion fields using common utility
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(

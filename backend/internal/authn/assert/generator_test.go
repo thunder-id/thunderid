@@ -19,6 +19,7 @@
 package assert
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -128,7 +129,7 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionSingleAuthenticator() {
 				},
 			}
 
-			result, err := suite.generator.GenerateAssertion(authenticators)
+			result, err := suite.generator.GenerateAssertion(context.Background(), authenticators)
 
 			suite.Nil(err)
 			suite.NotNil(result)
@@ -212,7 +213,7 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionMultipleAuthenticators() {
 				}
 			}
 
-			result, err := suite.generator.GenerateAssertion(authenticators)
+			result, err := suite.generator.GenerateAssertion(context.Background(), authenticators)
 
 			suite.Nil(err)
 			suite.NotNil(result)
@@ -238,7 +239,7 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionDuplicateAuthenticators() 
 		},
 	}
 
-	result, err := suite.generator.GenerateAssertion(authenticators)
+	result, err := suite.generator.GenerateAssertion(context.Background(), authenticators)
 
 	suite.Nil(err)
 	suite.NotNil(result)
@@ -247,7 +248,7 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionDuplicateAuthenticators() 
 }
 
 func (suite *GeneratorTestSuite) TestGenerateAssertionEmptyAuthenticators() {
-	result, err := suite.generator.GenerateAssertion([]authncm.AuthenticatorReference{})
+	result, err := suite.generator.GenerateAssertion(context.Background(), []authncm.AuthenticatorReference{})
 
 	suite.Nil(result)
 	suite.NotNil(err)
@@ -255,7 +256,7 @@ func (suite *GeneratorTestSuite) TestGenerateAssertionEmptyAuthenticators() {
 }
 
 func (suite *GeneratorTestSuite) TestGenerateAssertionNilAuthenticators() {
-	result, err := suite.generator.GenerateAssertion(nil)
+	result, err := suite.generator.GenerateAssertion(context.Background(), nil)
 
 	suite.Nil(result)
 	suite.NotNil(err)
@@ -269,7 +270,7 @@ func (suite *GeneratorTestSuite) TestUpdateAssertionWithNilContext() {
 		Timestamp:     time.Now().Unix(),
 	}
 
-	result, err := suite.generator.UpdateAssertion(nil, authenticator)
+	result, err := suite.generator.UpdateAssertion(context.Background(), nil, authenticator)
 
 	suite.Nil(err)
 	suite.NotNil(result)
@@ -296,7 +297,7 @@ func (suite *GeneratorTestSuite) TestUpdateAssertionAddingSecondFactor() {
 		Timestamp:     time.Now().Unix(),
 	}
 
-	result, err := suite.generator.UpdateAssertion(existingContext, newAuthenticator)
+	result, err := suite.generator.UpdateAssertion(context.Background(), existingContext, newAuthenticator)
 
 	suite.Nil(err)
 	suite.NotNil(result)
@@ -324,7 +325,7 @@ func (suite *GeneratorTestSuite) TestUpdateAssertionWithInvalidAuthenticator() {
 		Timestamp:     time.Now().Unix(),
 	}
 
-	result, err := suite.generator.UpdateAssertion(existingContext, newAuthenticator)
+	result, err := suite.generator.UpdateAssertion(context.Background(), existingContext, newAuthenticator)
 
 	suite.Nil(result)
 	suite.NotNil(err)
@@ -332,7 +333,7 @@ func (suite *GeneratorTestSuite) TestUpdateAssertionWithInvalidAuthenticator() {
 }
 
 func (suite *GeneratorTestSuite) TestUpdateAssertionMultipleTimes() {
-	context1, err1 := suite.generator.GenerateAssertion([]authncm.AuthenticatorReference{
+	context1, err1 := suite.generator.GenerateAssertion(context.Background(), []authncm.AuthenticatorReference{
 		{
 			Authenticator: authncm.AuthenticatorCredentials,
 			Step:          1,
@@ -342,20 +343,22 @@ func (suite *GeneratorTestSuite) TestUpdateAssertionMultipleTimes() {
 	suite.Nil(err1)
 	suite.Equal(AALLevel1, context1.Context.AAL)
 
-	context2, err2 := suite.generator.UpdateAssertion(context1.Context, authncm.AuthenticatorReference{
-		Authenticator: authncm.AuthenticatorSMSOTP,
-		Step:          2,
-		Timestamp:     time.Now().Unix(),
-	})
+	context2, err2 := suite.generator.UpdateAssertion(context.Background(),
+		context1.Context, authncm.AuthenticatorReference{
+			Authenticator: authncm.AuthenticatorSMSOTP,
+			Step:          2,
+			Timestamp:     time.Now().Unix(),
+		})
 	suite.Nil(err2)
 	suite.Equal(AALLevel2, context2.Context.AAL)
 	suite.Len(context2.Context.Authenticators, 2)
 
-	context3, err3 := suite.generator.UpdateAssertion(context2.Context, authncm.AuthenticatorReference{
-		Authenticator: authncm.AuthenticatorGoogle,
-		Step:          3,
-		Timestamp:     time.Now().Unix(),
-	})
+	context3, err3 := suite.generator.UpdateAssertion(context.Background(),
+		context2.Context, authncm.AuthenticatorReference{
+			Authenticator: authncm.AuthenticatorGoogle,
+			Step:          3,
+			Timestamp:     time.Now().Unix(),
+		})
 	suite.Nil(err3)
 	// Adding Google (knowledge factor) to existing Credentials (knowledge) + SMS OTP (possession)
 	// still has 2 factors (knowledge + possession), so AAL2
@@ -466,7 +469,7 @@ func (suite *GeneratorTestSuite) TestVerifyAssurance() {
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			context := &AssuranceContext{
+			assuranceCtx := &AssuranceContext{
 				AAL: tc.contextAAL,
 				IAL: tc.contextIAL,
 				Authenticators: []authncm.AuthenticatorReference{
@@ -478,7 +481,11 @@ func (suite *GeneratorTestSuite) TestVerifyAssurance() {
 				},
 			}
 
-			verified, err := suite.generator.VerifyAssurance(context, tc.requiredAAL, tc.requiredIAL)
+			verified, err := suite.generator.VerifyAssurance(
+				context.Background(),
+				assuranceCtx,
+				tc.requiredAAL,
+				tc.requiredIAL)
 
 			suite.Equal(tc.expectSuccess, verified)
 			if tc.expectedError != nil {
@@ -492,7 +499,7 @@ func (suite *GeneratorTestSuite) TestVerifyAssurance() {
 }
 
 func (suite *GeneratorTestSuite) TestVerifyAssuranceNilContext() {
-	verified, err := suite.generator.VerifyAssurance(nil, AALLevel1, IALLevel1)
+	verified, err := suite.generator.VerifyAssurance(context.Background(), nil, AALLevel1, IALLevel1)
 	suite.False(verified)
 	suite.NotNil(err)
 	suite.Equal(ErrorNilAssuranceContext.Code, err.Code)
@@ -554,7 +561,7 @@ func (suite *GeneratorTestSuite) TestExtractUniqueFactors() {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GeneratorTestSuite"))
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			authMap, factorSet := generator.extractUniqueAuthenticators(tc.authenticators, logger)
+			authMap, factorSet := generator.extractUniqueAuthenticators(context.Background(), tc.authenticators, logger)
 
 			suite.Equal(tc.expectedUniqueAuthCount, len(authMap))
 			suite.Equal(tc.expectedUniqueFactors, len(factorSet))
@@ -627,8 +634,8 @@ func (suite *GeneratorTestSuite) TestCalculateAAL() {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "GeneratorTestSuite"))
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			_, factorSet := generator.extractUniqueAuthenticators(tc.authenticators, logger)
-			result := generator.calculateAAL(factorSet, logger)
+			_, factorSet := generator.extractUniqueAuthenticators(context.Background(), tc.authenticators, logger)
+			result := generator.calculateAAL(context.Background(), factorSet, logger)
 			suite.Equal(tc.expectedAAL, result)
 		})
 	}

@@ -193,7 +193,7 @@ func (st *store) GetInboundClientByEntityID(ctx context.Context, entityID string
 	if len(results) == 0 {
 		return nil, ErrInboundClientNotFound
 	}
-	return buildInboundClientFromRow(results[0])
+	return buildInboundClientFromRow(ctx, results[0])
 }
 
 // GetOAuthProfileByEntityID retrieves an OAuth profile by entity ID.
@@ -227,7 +227,7 @@ func (st *store) GetInboundClientList(ctx context.Context, limit int) ([]inbound
 
 	clients := make([]inboundmodel.InboundClient, 0, len(results))
 	for _, row := range results {
-		c, err := buildInboundClientFromRow(row)
+		c, err := buildInboundClientFromRow(ctx, row)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build inbound client from result row: %w", err)
 		}
@@ -371,7 +371,7 @@ func (st *store) IsDeclarative(_ context.Context, _ string) bool {
 // --- Helper functions ---
 
 // buildInboundClientFromRow constructs an InboundClient from a database result row.
-func buildInboundClientFromRow(row map[string]interface{}) (*inboundmodel.InboundClient, error) {
+func buildInboundClientFromRow(ctx context.Context, row map[string]interface{}) (*inboundmodel.InboundClient, error) {
 	entityID, ok := row["entity_id"].(string)
 	if !ok {
 		return nil, fmt.Errorf("failed to parse entity_id as string")
@@ -407,7 +407,7 @@ func buildInboundClientFromRow(row map[string]interface{}) (*inboundmodel.Inboun
 	if blobStr := parseJSONColumnString(row, "properties"); blobStr != "" {
 		var blob inboundClientJSONBlob
 		if err := json.Unmarshal([]byte(blobStr), &blob); err != nil {
-			log.GetLogger().Debug("Failed to unmarshal properties", log.Error(err))
+			log.GetLogger().Debug(ctx, "Failed to unmarshal properties", log.Error(err))
 		} else {
 			client.Assertion = blob.Assertion
 			client.LoginConsent = blob.LoginConsent

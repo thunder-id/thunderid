@@ -273,7 +273,7 @@ func (ts *InputValidationFlowTestSuite) TestInvalidInputReturnsFieldErrors() {
 	ts.Equal("INCOMPLETE", resp.FlowStatus, "Expected INCOMPLETE on validation failure")
 	ts.Equal("VIEW", resp.Type, "Expected VIEW for reprompt")
 	ts.Empty(resp.Assertion, "No assertion on validation failure")
-	ts.Empty(resp.FailureReason, "FailureReason should not be set for input validation failures")
+	ts.Nil(resp.Error, "Error should not be set for input validation failures")
 
 	ts.Require().NotEmpty(resp.Data.FieldErrors, "fieldErrors should be populated")
 	usernameErrors := filterFieldErrors(resp.Data.FieldErrors, "username")

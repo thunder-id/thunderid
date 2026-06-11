@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -495,8 +495,8 @@ func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlow() {
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful registration")
-	ts.Require().Empty(completeFlowStep.FailureReason,
-		"Failure reason should be empty for successful registration")
+	ts.Require().Nil(completeFlowStep.Error,
+		"Error should be nil for successful registration")
 
 	// Decode and validate JWT claims
 	jwtClaims, err := testutils.DecodeJWT(completeFlowStep.Assertion)
@@ -574,9 +574,9 @@ func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlowInvalidOTP() {
 	// Verify registration is incomplete (invalid OTP triggers retry)
 	ts.Require().Equal("INCOMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be INCOMPLETE for invalid OTP")
 	ts.Require().Empty(completeFlowStep.Assertion, "No JWT assertion should be returned for failed OTP")
-	ts.Require().NotEmpty(completeFlowStep.FailureReason, "Failure reason should be provided for invalid OTP")
-	ts.Equal("invalid OTP provided", completeFlowStep.FailureReason,
-		"Expected failure reason to indicate invalid OTP")
+	ts.Require().NotNil(completeFlowStep.Error, "Error should be provided for invalid OTP")
+	ts.Equal("Invalid OTP provided", completeFlowStep.Error.Message.DefaultValue,
+		"Expected error message to indicate invalid OTP")
 }
 
 func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlowSingleRequestWithMobileNumber() {
@@ -657,8 +657,8 @@ func (ts *SMSRegistrationFlowTestSuite) TestSMSRegistrationFlowSingleRequestWith
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful registration")
-	ts.Require().Empty(completeFlowStep.FailureReason,
-		"Failure reason should be empty for successful registration")
+	ts.Require().Nil(completeFlowStep.Error,
+		"Error should be nil for successful registration")
 
 	// Decode and validate JWT claims
 	jwtClaims, err := testutils.DecodeJWT(completeFlowStep.Assertion)

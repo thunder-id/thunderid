@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -115,11 +115,18 @@ export default function SignUpBox(): JSX.Element {
       <SignUp
         afterSignUpUrl={afterSignUpUrl}
         onFlowChange={(response: any) => {
-          if (response?.failureReason) {
-            setFlowError(response.failureReason as string);
-          } else {
-            setFlowError(null);
+          const messageKey: string | undefined = response?.error?.message?.key;
+          if (messageKey) {
+            const translated: string = t(messageKey);
+            if (translated !== messageKey) {
+              setFlowError(translated);
+
+              return;
+            }
           }
+          const fallback: string | undefined =
+            response?.error?.message?.defaultValue ?? response?.error?.description?.defaultValue;
+          setFlowError(fallback ?? null);
         }}
       >
         {({values, fieldErrors, error, touched, handleInputChange, handleSubmit, isLoading, components}: any) => (

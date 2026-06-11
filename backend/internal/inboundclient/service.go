@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/consent"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
+	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
@@ -146,7 +147,7 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 		}
 	}
 	applyInboundDefaults(client, oauthProfile)
-	oauthClientID := s.resolveClientID(client.ID)
+	oauthClientID := s.resolveClientID(ctx, client.ID)
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if _, vErr, opErr := s.createCertificate(
 			txCtx, cert.CertificateReferenceTypeApplication, client.ID, appCert,
@@ -220,7 +221,7 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 	}
 	applyInboundDefaults(client, oauthProfile)
 	// Capture existing OAuth client_id before the caller updates entity system attributes.
-	oldOAuthClientID := s.resolveClientID(client.ID)
+	oldOAuthClientID := s.resolveClientID(ctx, client.ID)
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if _, vErr, opErr := s.syncCertificate(
 			txCtx, cert.CertificateReferenceTypeApplication, client.ID, appCert,
@@ -321,21 +322,21 @@ func (s *inboundClientService) ResolveInboundAuthProfileHandles(
 }
 
 // resolveClientID returns the OAuth client_id from an entity's system attributes, or "" if absent.
-func (s *inboundClientService) resolveClientID(entityID string) string {
+func (s *inboundClientService) resolveClientID(ctx context.Context, entityID string) string {
 	if s.entityProvider == nil {
 		return ""
 	}
-	entity, epErr := s.entityProvider.GetEntity(entityID)
+	e, epErr := s.entityProvider.GetEntity(entityID)
 	if epErr != nil {
-		s.logger.Warn("Failed to resolve OAuth client_id from entity provider",
+		s.logger.Warn(ctx, "Failed to resolve OAuth client_id from entity provider",
 			log.String("entityID", entityID), log.Error(epErr))
 		return ""
 	}
-	if entity == nil {
+	if e == nil {
 		return ""
 	}
 	var attrs map[string]interface{}
-	if err := json.Unmarshal(entity.SystemAttributes, &attrs); err != nil || attrs == nil {
+	if err := json.Unmarshal(e.SystemAttributes, &attrs); err != nil || attrs == nil {
 		return ""
 	}
 	clientID, _ := attrs["clientId"].(string)
@@ -348,7 +349,7 @@ func (s *inboundClientService) DeleteInboundClient(ctx context.Context, entityID
 		return ErrCannotModifyDeclarative
 	}
 	// Capture OAuth client_id before the caller deletes the entity itself.
-	oauthClientID := s.resolveClientID(entityID)
+	oauthClientID := s.resolveClientID(ctx, entityID)
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if s.consentService != nil && s.consentService.IsEnabled() {
 			if err := s.syncConsentOnDelete(txCtx, entityID); err != nil {
@@ -422,14 +423,14 @@ func (s *inboundClientService) GetOAuthClientByClientID(ctx context.Context, cli
 		return nil, nil
 	}
 	entityID := *entityIDPtr
-	entity, epErr := s.entityProvider.GetEntity(entityID)
+	e, epErr := s.entityProvider.GetEntity(entityID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to load entity for client_id: %w", epErr)
 	}
-	ouID := entity.OUID
+	ouID := e.OUID
 
 	oauthProfile, err := s.store.GetOAuthProfileByEntityID(ctx, entityID)
 	if err != nil && !errors.Is(err, ErrInboundClientNotFound) {
@@ -439,7 +440,7 @@ func (s *inboundClientService) GetOAuthClientByClientID(ctx context.Context, cli
 		return nil, nil
 	}
 
-	client := BuildOAuthClient(entityID, clientID, ouID, oauthProfile)
+	client := BuildOAuthClient(entityID, clientID, ouID, entity.EntityCategory(e.Category), oauthProfile)
 
 	certificate, opErr := s.GetCertificate(ctx, cert.CertificateReferenceTypeOAuthApp, clientID)
 	if opErr != nil {
@@ -451,17 +452,21 @@ func (s *inboundClientService) GetOAuthClientByClientID(ctx context.Context, cli
 }
 
 // BuildOAuthClient assembles an OAuthClient from a stored OAuthProfile and entity context.
-func BuildOAuthClient(entityID, clientID, ouID string, p *inboundmodel.OAuthProfile) *inboundmodel.OAuthClient {
+func BuildOAuthClient(
+	entityID, clientID, ouID string, entityCategory entity.EntityCategory, p *inboundmodel.OAuthProfile,
+) *inboundmodel.OAuthClient {
 	client := &inboundmodel.OAuthClient{
 		ID:                                 entityID,
 		OUID:                               ouID,
 		ClientID:                           clientID,
+		EntityCategory:                     entityCategory,
 		RedirectURIs:                       p.RedirectURIs,
 		TokenEndpointAuthMethod:            oauth2const.TokenEndpointAuthMethod(p.TokenEndpointAuthMethod),
 		PKCERequired:                       p.PKCERequired,
 		PublicClient:                       p.PublicClient,
 		RequirePushedAuthorizationRequests: p.RequirePushedAuthorizationRequests,
 		DPoPBoundAccessTokens:              p.DPoPBoundAccessTokens,
+		IncludeActClaim:                    p.IncludeActClaim,
 		Scopes:                             p.Scopes,
 		ScopeClaims:                        p.ScopeClaims,
 		Token:                              p.Token,
@@ -952,10 +957,10 @@ func (s *inboundClientService) validateFKs(ctx context.Context, c *inboundmodel.
 	if err := s.validateRecoveryFlowID(ctx, c.RecoveryFlowID); err != nil {
 		return err
 	}
-	if err := s.validateThemeID(c.ThemeID); err != nil {
+	if err := s.validateThemeID(ctx, c.ThemeID); err != nil {
 		return err
 	}
-	if err := s.validateLayoutID(c.LayoutID); err != nil {
+	if err := s.validateLayoutID(ctx, c.LayoutID); err != nil {
 		return err
 	}
 	if err := s.validateAllowedUserTypes(ctx, c.AllowedUserTypes); err != nil {
@@ -1010,11 +1015,11 @@ func (s *inboundClientService) validateRecoveryFlowID(ctx context.Context, flowI
 }
 
 // validateThemeID validates that the theme ID exists.
-func (s *inboundClientService) validateThemeID(themeID string) error {
+func (s *inboundClientService) validateThemeID(ctx context.Context, themeID string) error {
 	if themeID == "" || s.themeMgt == nil {
 		return nil
 	}
-	exists, svcErr := s.themeMgt.IsThemeExist(themeID)
+	exists, svcErr := s.themeMgt.IsThemeExist(ctx, themeID)
 	if svcErr != nil || !exists {
 		return ErrFKThemeNotFound
 	}
@@ -1022,11 +1027,11 @@ func (s *inboundClientService) validateThemeID(themeID string) error {
 }
 
 // validateLayoutID validates that the layout ID exists.
-func (s *inboundClientService) validateLayoutID(layoutID string) error {
+func (s *inboundClientService) validateLayoutID(ctx context.Context, layoutID string) error {
 	if layoutID == "" || s.layoutMgt == nil {
 		return nil
 	}
-	exists, svcErr := s.layoutMgt.IsLayoutExist(layoutID)
+	exists, svcErr := s.layoutMgt.IsLayoutExist(ctx, layoutID)
 	if svcErr != nil || !exists {
 		return ErrFKLayoutNotFound
 	}
@@ -1048,7 +1053,7 @@ func (s *inboundClientService) validateAllowedUserTypes(
 		entityTypeList, svcErr := s.entityType.GetEntityTypeList(
 			security.WithRuntimeContext(ctx), entitytype.TypeCategoryUser, limit, offset, false)
 		if svcErr != nil {
-			s.logger.Error("Failed to retrieve user type list for validation",
+			s.logger.Error(ctx, "Failed to retrieve user type list for validation",
 				log.String("error", svcErr.Error.DefaultValue), log.String("code", svcErr.Code))
 			return ErrUserSchemaLookupFailed
 		}
@@ -1367,11 +1372,13 @@ func (s *inboundClientService) syncConsentOnUpdate(ctx context.Context,
 			return err
 		}
 	}
+
 	allPurposes, err := s.consentService.ListConsentPurposes(ctx, ouID, entityID)
 	if err != nil {
 		return s.wrapConsentServiceError(err)
 	}
 	existing := consent.FilterAttributePurposes(allPurposes)
+
 	if len(existing) == 0 {
 		if len(newAttrs) > 0 {
 			purpose := consent.ConsentPurposeInput{
@@ -1387,12 +1394,13 @@ func (s *inboundClientService) syncConsentOnUpdate(ctx context.Context,
 		}
 		return nil
 	}
+
 	if len(newAttrs) == 0 {
 		// No attributes requested; remove only the attribute purpose. The permission purpose, if any,
 		// is left alone — it has an independent lifecycle bound to the resource service.
 		if delErr := s.consentService.DeleteConsentPurpose(ctx, ouID, existing[0].ID); delErr != nil {
 			if delErr.Code == consent.ErrorDeletingConsentPurposeWithAssociatedRecords.Code {
-				s.logger.Warn("Cannot delete attribute consent purpose due to existing consents",
+				s.logger.Warn(ctx, "Cannot delete attribute consent purpose due to existing consents",
 					log.String("entityID", entityID))
 				return nil
 			}
@@ -1400,6 +1408,11 @@ func (s *inboundClientService) syncConsentOnUpdate(ctx context.Context,
 		}
 		return nil
 	}
+
+	if isConsentAttributesUnchanged(existing[0].Elements, newAttrs) {
+		return nil
+	}
+
 	updated := consent.ConsentPurposeInput{
 		Name:        consent.AttributesPurposeName(entityID),
 		Description: "Consent purpose for application " + entityName,
@@ -1410,7 +1423,22 @@ func (s *inboundClientService) syncConsentOnUpdate(ctx context.Context,
 	if _, updateErr := s.consentService.UpdateConsentPurpose(ctx, ouID, existing[0].ID, &updated); updateErr != nil {
 		return s.wrapConsentServiceError(updateErr)
 	}
+
 	return nil
+}
+
+// isConsentAttributesUnchanged reports whether the elements on an existing attribute consent
+// purpose are the same set as the requested attributes (i.e. nothing to sync).
+func isConsentAttributesUnchanged(existing []consent.PurposeElement, requested map[string]bool) bool {
+	if len(existing) != len(requested) {
+		return false
+	}
+	for _, el := range existing {
+		if !requested[el.Name] {
+			return false
+		}
+	}
+	return true
 }
 
 // syncConsentOnDelete removes every consent purpose (attribute and permission) owned by the
@@ -1426,7 +1454,7 @@ func (s *inboundClientService) syncConsentOnDelete(ctx context.Context, entityID
 	for _, p := range purposes {
 		if delErr := s.consentService.DeleteConsentPurpose(ctx, ouID, p.ID); delErr != nil {
 			if delErr.Code == consent.ErrorDeletingConsentPurposeWithAssociatedRecords.Code {
-				s.logger.Warn("Cannot delete consent purpose due to existing consents",
+				s.logger.Warn(ctx, "Cannot delete consent purpose due to existing consents",
 					log.String("entityID", entityID), log.String("purposeID", p.ID),
 					log.String("purposeNamespace", string(p.Namespace)))
 				continue

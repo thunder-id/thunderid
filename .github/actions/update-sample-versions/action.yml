@@ -22,37 +22,15 @@ runs:
 
         echo "📝 Setting sample apps version to $SAMPLE_VERSION"
 
-        # Update react-vanilla sample
-        echo "Updating react-vanilla-sample..."
-        cd samples/apps/react-vanilla-sample
-        npm version "$SAMPLE_VERSION" --no-git-tag-version --allow-same-version
+        for sample in react-vanilla-sample react-sdk-sample react-api-based-sample wayfinder-sample; do
+          echo "Updating $sample..."
+          cd "$GITHUB_WORKSPACE/samples/apps/$sample"
+          pnpm version "$SAMPLE_VERSION" --no-git-tag-version --no-git-checks --allow-same-version
+        done
 
-        # Update server package.json
         echo "Updating react-vanilla-sample/server..."
-        cd server
+        cd "$GITHUB_WORKSPACE/samples/apps/react-vanilla-sample/server"
         npm version "$SAMPLE_VERSION" --no-git-tag-version --allow-same-version
 
         cd "$GITHUB_WORKSPACE"
-
-        # Update react-sdk sample
-        echo "Updating react-sdk-sample..."
-        cd samples/apps/react-sdk-sample
-        pnpm version "$SAMPLE_VERSION" --no-git-tag-version --allow-same-version
-
-        cd "$GITHUB_WORKSPACE"
-
-        # Update react-api-based sample
-        echo "Updating react-api-based-sample..."
-        cd samples/apps/react-api-based-sample
-        pnpm version "$SAMPLE_VERSION" --no-git-tag-version --allow-same-version
-
-        cd "$GITHUB_WORKSPACE"
-
-        # Update agent-id sample
-        echo "Updating wayfinder-sample..."
-        cd samples/apps/wayfinder-sample
-        npm version "$SAMPLE_VERSION" --no-git-tag-version --allow-same-version
-
-        cd "$GITHUB_WORKSPACE"
-
         echo "✅ Updated all sample apps to version $SAMPLE_VERSION"

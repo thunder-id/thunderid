@@ -495,7 +495,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestFetchUserInfoWithClientConfigSucces
 
 	suite.mockHTTPClient.On("Do", mock.Anything).Return(resp, nil)
 
-	userInfo, err := suite.service.FetchUserInfoWithClientConfig(config, accessToken)
+	userInfo, err := suite.service.FetchUserInfoWithClientConfig(context.Background(), config, accessToken)
 	suite.Nil(err)
 	suite.NotNil(userInfo)
 	suite.Equal("user_sub_123", userInfo["sub"])
@@ -510,7 +510,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestFetchUserInfoWithClientConfigEmptyA
 		},
 	}
 
-	userInfo, err := suite.service.FetchUserInfoWithClientConfig(config, "")
+	userInfo, err := suite.service.FetchUserInfoWithClientConfig(context.Background(), config, "")
 	suite.Nil(userInfo)
 	suite.NotNil(err)
 	suite.Equal(ErrorEmptyAccessToken.Code, err.Code)
@@ -531,14 +531,14 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserSuccess() {
 	).Return(&userID, nil)
 	suite.mockEntityProvider.On("GetEntity", userID).Return(user, nil)
 
-	result, err := suite.service.GetInternalUser(testSub)
+	result, err := suite.service.GetInternalUser(context.Background(), testSub)
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal(userID, result.ID)
 }
 
 func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithError_EmptySub() {
-	result, err := suite.service.GetInternalUser("")
+	result, err := suite.service.GetInternalUser(context.Background(), "")
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorEmptySubClaim.Code, err.Code)
@@ -548,7 +548,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithError_UserNotFou
 	upErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound}
 	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil, upErr)
 
-	result, err := suite.service.GetInternalUser(testSub)
+	result, err := suite.service.GetInternalUser(context.Background(), testSub)
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(common.ErrorUserNotFound.Code, err.Code)
@@ -604,7 +604,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithServiceError() {
 				tc.mockSetup(freshUserMock)
 			}
 
-			result, err := suite.service.GetInternalUser(testSub)
+			result, err := suite.service.GetInternalUser(context.Background(), testSub)
 			suite.Nil(result)
 			suite.NotNil(err)
 			suite.Equal(tc.expectedErrCode, err.Code)
@@ -619,7 +619,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestValidateTokenResponseSuccess() {
 		ExpiresIn:   3600,
 	}
 
-	err := suite.service.ValidateTokenResponse(testIDPID, tokenResp)
+	err := suite.service.ValidateTokenResponse(context.Background(), testIDPID, tokenResp)
 	suite.Nil(err)
 }
 
@@ -643,7 +643,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestValidateTokenResponseWithError() {
 
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
-			err := suite.service.ValidateTokenResponse(testIDPID, tc.resp)
+			err := suite.service.ValidateTokenResponse(context.Background(), testIDPID, tc.resp)
 			suite.NotNil(err)
 			suite.Equal(ErrorInvalidTokenResponse.Code, err.Code)
 		})
@@ -729,7 +729,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestFetchUserInfoWithClientConfigMissin
 		},
 	}
 
-	userInfo, err := suite.service.FetchUserInfoWithClientConfig(config, "access_token")
+	userInfo, err := suite.service.FetchUserInfoWithClientConfig(context.Background(), config, "access_token")
 	suite.Nil(userInfo)
 	suite.NotNil(err)
 	suite.Equal(serviceerror.InternalServerError.Code, err.Code)

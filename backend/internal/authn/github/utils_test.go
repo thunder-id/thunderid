@@ -20,6 +20,7 @@ package github
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -53,7 +54,7 @@ func (suite *GithubUtilsTestSuite) TestBuildUserEmailRequest() {
 	endpoint := "https://api.github.com/user/emails"
 	accessToken := "test_token"
 
-	req, err := buildUserEmailRequest(endpoint, accessToken, suite.logger)
+	req, err := buildUserEmailRequest(context.Background(), endpoint, accessToken, suite.logger)
 	suite.Nil(err)
 	suite.NotNil(req)
 
@@ -201,7 +202,7 @@ func (suite *GithubUtilsTestSuite) TestSendUserEmailRequestDoReturnsRespAndError
 func (suite *GithubUtilsTestSuite) TestBuildUserEmailRequestError() {
 	// Use an invalid URL containing a control character to force NewRequest to fail.
 	endpoint := "http://\x00"
-	req, err := buildUserEmailRequest(endpoint, "token", suite.logger)
+	req, err := buildUserEmailRequest(context.Background(), endpoint, "token", suite.logger)
 	suite.Nil(req)
 	suite.NotNil(err)
 }

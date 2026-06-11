@@ -292,7 +292,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutor() {
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(nil)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.NotNil(graph)
 	s.Nil(err)
@@ -326,7 +326,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_ExecutorNotRegistered() {
 
 	s.mockExecutorRegistry.EXPECT().IsRegistered("unknown-executor").Return(false)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.Nil(graph)
 	s.NotNil(err)
@@ -401,7 +401,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithOnFailure() {
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(nil)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.NotNil(graph)
 	s.Nil(err)
@@ -436,7 +436,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureNotPromptNode() {
 	// Validation fails during configureNodeNavigation, before SetInputs is called
 	// END node is not created because task node processing fails first
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.Nil(graph)
 	s.NotNil(err)
@@ -470,7 +470,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureTargetNotFound() {
 
 	// Validation fails during configureNodeNavigation, before SetInputs is called
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.Nil(graph)
 	s.NotNil(err)
@@ -529,7 +529,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithInputs() {
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(nil)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.NotNil(graph)
 	s.Nil(err)
@@ -613,7 +613,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithActions() {
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(nil)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.NotNil(graph)
 	s.Nil(err)
@@ -665,7 +665,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithMeta() {
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(nil)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.NotNil(graph)
 	s.Nil(err)
@@ -711,7 +711,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_VariantExplicitlySet() {
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(nil)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.NotNil(graph)
 	s.Nil(err)
@@ -778,7 +778,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithCondition() {
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(nil)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.NotNil(graph)
 	s.Nil(err)
@@ -817,7 +817,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_NoStartNode() {
 	mockTaskNode.EXPECT().GetType().Return(common.NodeTypeTaskExecution)
 	mockEndNode.EXPECT().GetType().Return(common.NodeTypeEnd)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.Nil(graph)
 	s.NotNil(err)
@@ -847,7 +847,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_AddNodeError() {
 
 	mockGraph.EXPECT().AddNode(mockStartNode).Return(errors.New("duplicate node"))
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.Nil(graph)
 	s.NotNil(err)
@@ -884,7 +884,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_AddEdgeError() {
 	mockGraph.EXPECT().AddNode(mockEndNode).Return(nil)
 	mockGraph.EXPECT().AddEdge("start", "end").Return(errors.New("edge creation error"))
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.Nil(graph)
 	s.NotNil(err)
@@ -918,7 +918,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_SetStartNodeError() {
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(errors.New("start node already set"))
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.Nil(graph)
 	s.NotNil(err)
@@ -969,7 +969,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithProperties() {
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(nil)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.NotNil(graph)
 	s.Nil(err)
@@ -1044,7 +1044,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutorMode() {
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(nil)
 
-	graph, err := s.builder.buildGraph(flow)
+	graph, err := s.builder.buildGraph(context.Background(), flow)
 
 	s.NotNil(graph)
 	s.Nil(err)
@@ -1059,7 +1059,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_NilExecutor() {
 
 	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
 
-	err := s.builder.configureNodeExecutor(nodeDef, mockTaskNode)
+	err := s.builder.configureNodeExecutor(context.Background(), nodeDef, mockTaskNode)
 
 	s.Nil(err)
 	// No mock expectations should be called
@@ -1077,7 +1077,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_EmptyExecutorName() {
 
 	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
 
-	err := s.builder.configureNodeExecutor(nodeDef, mockTaskNode)
+	err := s.builder.configureNodeExecutor(context.Background(), nodeDef, mockTaskNode)
 
 	s.Nil(err)
 	// No mock expectations should be called since name is empty
@@ -1096,7 +1096,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_NodeDoesNotSupportExec
 	mockPromptNode := coremock.NewNodeInterfaceMock(s.T())
 
 	// Should silently skip executor configuration for non-executor nodes
-	err := s.builder.configureNodeExecutor(nodeDef, mockPromptNode)
+	err := s.builder.configureNodeExecutor(context.Background(), nodeDef, mockPromptNode)
 	s.Nil(err)
 }
 
@@ -1113,7 +1113,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_ExecutorNameValidation
 
 	s.mockExecutorRegistry.EXPECT().IsRegistered("unregistered-executor").Return(false)
 
-	err := s.builder.configureNodeExecutor(nodeDef, mockTaskNode)
+	err := s.builder.configureNodeExecutor(context.Background(), nodeDef, mockTaskNode)
 
 	s.NotNil(err)
 	s.Contains(err.Error(), "error while validating executor")
@@ -1136,7 +1136,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_WithModeSuccess() {
 	mockTaskNode.EXPECT().SetExecutorName("test-executor")
 	mockTaskNode.EXPECT().SetMode("verify")
 
-	err := s.builder.configureNodeExecutor(nodeDef, mockTaskNode)
+	err := s.builder.configureNodeExecutor(context.Background(), nodeDef, mockTaskNode)
 
 	s.Nil(err)
 }
@@ -1157,7 +1157,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_WithoutModeSuccess() {
 	mockTaskNode.EXPECT().SetExecutorName("test-executor")
 	// SetMode should NOT be called when mode is empty
 
-	err := s.builder.configureNodeExecutor(nodeDef, mockTaskNode)
+	err := s.builder.configureNodeExecutor(context.Background(), nodeDef, mockTaskNode)
 
 	s.Nil(err)
 }
@@ -1184,7 +1184,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_NoNextNodeDef
 
 	edges := map[string][]string{}
 
-	err := s.builder.configureDisplayOnlyProperties(nodeDef, mockPromptNode, edges, nil)
+	err := s.builder.configureDisplayOnlyProperties(context.Background(), nodeDef, mockPromptNode, edges, nil)
 
 	s.Nil(err)
 	// SetNextNode should not be called
@@ -1203,7 +1203,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithNextNode(
 
 	edges := map[string][]string{}
 
-	err := s.builder.configureDisplayOnlyProperties(nodeDef, mockPromptNode, edges, nil)
+	err := s.builder.configureDisplayOnlyProperties(context.Background(), nodeDef, mockPromptNode, edges, nil)
 
 	s.Nil(err)
 	// Verify edge is added
@@ -1226,7 +1226,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithMessage()
 
 	edges := map[string][]string{}
 
-	err := s.builder.configureDisplayOnlyProperties(nodeDef, mockPromptNode, edges, nil)
+	err := s.builder.configureDisplayOnlyProperties(context.Background(), nodeDef, mockPromptNode, edges, nil)
 
 	s.Nil(err)
 	s.Len(edges["prompt-1"], 1)
@@ -1245,7 +1245,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_OnNonPromptNo
 
 	edges := map[string][]string{}
 
-	err := s.builder.configureDisplayOnlyProperties(nodeDef, mockTaskNode, edges, nil)
+	err := s.builder.configureDisplayOnlyProperties(context.Background(), nodeDef, mockTaskNode, edges, nil)
 
 	s.NotNil(err)
 	s.Contains(err.Error(), "'next' field is only valid on PROMPT nodes")
@@ -1270,7 +1270,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithPromptsCo
 
 	edges := map[string][]string{}
 
-	err := s.builder.configureDisplayOnlyProperties(nodeDef, mockPromptNode, edges, nil)
+	err := s.builder.configureDisplayOnlyProperties(context.Background(), nodeDef, mockPromptNode, edges, nil)
 
 	s.NotNil(err)
 	s.Contains(err.Error(), "has both 'prompts' and 'next'; these are mutually exclusive")
@@ -1301,7 +1301,7 @@ func (s *GraphBuilderTestSuite) TestProcessNode_IsFinalNode_WithNextField() {
 	allNodes := []NodeDefinition{*nodeDef}
 	edges := map[string][]string{}
 
-	err := s.builder.processNode(nodeDef, allNodes, mockGraph, edges, nil)
+	err := s.builder.processNode(context.Background(), nodeDef, allNodes, mockGraph, edges, nil)
 
 	s.Nil(err)
 }
@@ -1339,7 +1339,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_IncludesActionType() {
 
 	edges := map[string][]string{}
 
-	err := s.builder.configureNodePrompts(nodeDef, mockPromptNode, edges)
+	err := s.builder.configureNodePrompts(context.Background(), nodeDef, mockPromptNode, edges)
 
 	s.Nil(err)
 }
@@ -1379,7 +1379,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_WithMultipleActionsWith
 
 	edges := map[string][]string{}
 
-	err := s.builder.configureNodePrompts(nodeDef, mockPromptNode, edges)
+	err := s.builder.configureNodePrompts(context.Background(), nodeDef, mockPromptNode, edges)
 
 	s.Nil(err)
 }
@@ -1397,7 +1397,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_RecordsBounda
 	edges := map[string][]string{}
 	boundaries := make([]segmentBoundary, 0)
 
-	err := s.builder.configureDisplayOnlyProperties(nodeDef, mockPromptNode, edges, &boundaries)
+	err := s.builder.configureDisplayOnlyProperties(context.Background(), nodeDef, mockPromptNode, edges, &boundaries)
 
 	s.Nil(err)
 	s.Len(boundaries, 1)
@@ -1417,7 +1417,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_RecordsMultip
 		nodeDef := &NodeDefinition{ID: tc.id, Type: "PROMPT", Next: tc.next}
 		mockPN := coremock.NewPromptNodeInterfaceMock(t)
 		mockPN.EXPECT().SetNextNode(tc.next)
-		err := s.builder.configureDisplayOnlyProperties(nodeDef, mockPN, edges, &boundaries)
+		err := s.builder.configureDisplayOnlyProperties(context.Background(), nodeDef, mockPN, edges, &boundaries)
 		s.Nil(err)
 	}
 
@@ -1435,7 +1435,7 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_NilBoundaries
 	edges := map[string][]string{}
 
 	// nil boundaries must not panic
-	err := s.builder.configureDisplayOnlyProperties(nodeDef, mockPromptNode, edges, nil)
+	err := s.builder.configureDisplayOnlyProperties(context.Background(), nodeDef, mockPromptNode, edges, nil)
 	s.Nil(err)
 }
 
@@ -1521,7 +1521,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_ValidationRulesCompiled
 		return rule.Type == common.ValidationTypeRegex && rule.CompiledRegex != nil
 	}))
 
-	err := s.builder.configureNodePrompts(nodeDef, mockPromptNode, map[string][]string{})
+	err := s.builder.configureNodePrompts(context.Background(), nodeDef, mockPromptNode, map[string][]string{})
 	s.Nil(err)
 }
 
@@ -1548,7 +1548,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_InvalidRegexFailsBuild(
 	mockPromptNode := coremock.NewPromptNodeInterfaceMock(s.T())
 	// SetPrompts must NOT be called.
 
-	err := s.builder.configureNodePrompts(nodeDef, mockPromptNode, map[string][]string{})
+	err := s.builder.configureNodePrompts(context.Background(), nodeDef, mockPromptNode, map[string][]string{})
 	s.NotNil(err)
 	s.Contains(err.Error(), "prompt-1")
 	s.Contains(err.Error(), "password")

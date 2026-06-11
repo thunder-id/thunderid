@@ -63,9 +63,9 @@ export default function EditAdvancedSettings({
         disabled={agent.isReadOnly}
       />
       <CertificateSection
-        agent={agent}
-        editedAgent={editedAgent}
-        onFieldChange={onFieldChange}
+        certificate={oauth2Config?.certificate}
+        onCertificateChange={(cert) => handleOAuth2ConfigChange({certificate: cert})}
+        required={oauth2Config?.tokenEndpointAuthMethod === 'private_key_jwt'}
         disabled={agent.isReadOnly}
       />
     </Stack>

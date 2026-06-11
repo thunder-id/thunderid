@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -17,9 +17,9 @@
  */
 
 import {
-  EmbeddedFlowExecuteRequestPayload,
-  EmbeddedFlowExecuteResponse,
-  EmbeddedFlowResponseType,
+  EmbeddedSignUpFlowRequestV2,
+  EmbeddedSignUpFlowResponseV2,
+  EmbeddedSignUpFlowTypeV2,
   EmbeddedFlowType,
 } from '@thunderid/browser';
 import {FC, ReactElement, ReactNode} from 'react';
@@ -61,65 +61,75 @@ const SignUp: FC<SignUpProps> = ({
   /**
    * Initialize the sign-up flow.
    */
-  const handleInitialize = async (
-    payload?: EmbeddedFlowExecuteRequestPayload,
-  ): Promise<EmbeddedFlowExecuteResponse> => {
+  const handleInitialize = async (payload?: EmbeddedSignUpFlowRequestV2): Promise<EmbeddedSignUpFlowResponseV2> => {
     const urlParams: URLSearchParams = new URL(window.location.href).searchParams;
+    const executionIdFromUrl: string = urlParams.get('executionId') || '';
     const applicationIdFromUrl: string = urlParams.get('applicationId') ?? '';
 
-    // Priority order: applicationId from context > applicationId from URL
-    const effectiveApplicationId: any = applicationId || applicationIdFromUrl;
+    const effectiveApplicationId: any = applicationId ?? applicationIdFromUrl;
 
-    const initialPayload: any = payload || {
-      flowType: EmbeddedFlowType.Registration,
-      ...(effectiveApplicationId && {applicationId: effectiveApplicationId}),
-      ...(scopes && {scopes}),
-    };
+    const challengeToken: string | undefined = (payload as any)?.challengeToken;
 
-    return (await signUp(initialPayload)) as EmbeddedFlowExecuteResponse;
+    let initialPayload: EmbeddedSignUpFlowRequestV2 | any;
+    if (executionIdFromUrl) {
+      initialPayload = {
+        executionId: executionIdFromUrl,
+        ...(challengeToken ? {challengeToken} : {}),
+      };
+    } else if (!payload || !('flowType' in payload)) {
+      initialPayload = {
+        ...(payload || {}),
+        flowType: EmbeddedFlowType.Registration,
+        ...(effectiveApplicationId && {applicationId: effectiveApplicationId}),
+        ...(scopes && {scopes}),
+      };
+    } else {
+      initialPayload = payload;
+    }
+
+    return (await signUp(initialPayload)) as EmbeddedSignUpFlowResponseV2;
   };
 
   /**
    * Handle sign-up steps.
    */
-  const handleOnSubmit = async (payload: EmbeddedFlowExecuteRequestPayload): Promise<EmbeddedFlowExecuteResponse> =>
-    (await signUp(payload)) as EmbeddedFlowExecuteResponse;
+  const handleOnSubmit = async (payload: EmbeddedSignUpFlowRequestV2): Promise<EmbeddedSignUpFlowResponseV2> =>
+    (await signUp(payload)) as EmbeddedSignUpFlowResponseV2;
 
   /**
    * Handle successful sign-up and redirect.
    */
-  const handleComplete = (response: EmbeddedFlowExecuteResponse): any => {
+  const handleComplete = (response: EmbeddedSignUpFlowResponseV2): any => {
     onComplete?.(response);
 
-    // Check if OAuth flow completed and we have a redirect URL with authorization code
-    // This happens when registration completes with assertion and OAuth authorize succeeds
+    if (!shouldRedirectAfterSignUp) {
+      return;
+    }
+
+    const redirectURL: string | undefined = (response?.data as Record<string, unknown>)?.['redirectURL'] as
+      | string
+      | undefined;
+
+    if (
+      response?.type === EmbeddedSignUpFlowTypeV2.Redirection &&
+      redirectURL &&
+      !redirectURL.includes('oauth') && // Not a social provider redirect
+      !redirectURL.includes('auth') // Not an auth provider redirect
+    ) {
+      window.location.href = redirectURL;
+      return;
+    }
+
     const oauthRedirectUrl: any = (response as any)?.redirectUrl;
-    if (shouldRedirectAfterSignUp && oauthRedirectUrl) {
+    if (oauthRedirectUrl) {
       window.location.href = oauthRedirectUrl;
       return;
     }
 
     // For non-redirection responses (regular sign-up completion), handle redirect if configured.
     // Skip when assertion is present — the SDK stored the session and the caller handled navigation.
-    if (
-      shouldRedirectAfterSignUp &&
-      response?.type !== EmbeddedFlowResponseType.Redirection &&
-      afterSignUpUrl &&
-      !(response as any)?.assertion
-    ) {
+    if (response?.type !== EmbeddedSignUpFlowTypeV2.Redirection && afterSignUpUrl && !(response as any)?.assertion) {
       window.location.href = afterSignUpUrl;
-    }
-
-    // For redirection responses (social sign-up), they are handled by BaseSignUp's popup mechanism
-    // and we only redirect after the OAuth flow is complete if shouldRedirectAfterSignUp is true
-    if (
-      shouldRedirectAfterSignUp &&
-      response?.type === EmbeddedFlowResponseType.Redirection &&
-      response?.data?.redirectURL &&
-      !response.data.redirectURL.includes('oauth') && // Not a social provider redirect
-      !response.data.redirectURL.includes('auth') // Not an auth provider redirect
-    ) {
-      window.location.href = response.data.redirectURL;
     }
   };
 

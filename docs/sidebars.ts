@@ -203,24 +203,6 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
-          label: 'Protocols',
-          collapsed: true,
-          collapsible: true,
-          items: [
-            {
-              type: 'doc',
-              id: 'guides/guides/protocols/oauth2',
-              label: 'OAuth 2.0 Configuration',
-            },
-            {
-              type: 'doc',
-              id: 'guides/guides/protocols/dynamic-client-registration',
-              label: 'Dynamic Client Registration',
-            },
-          ],
-        },
-        {
-          type: 'category',
           label: 'Users',
           collapsed: true,
           collapsible: true,
@@ -433,6 +415,121 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
+        {
+          type: 'category',
+          label: 'Protocols & Standards',
+          collapsed: true,
+          collapsible: true,
+          link: {
+            type: 'doc',
+            id: 'guides/guides/protocols/index',
+          },
+          items: [
+            {
+              type: 'category',
+              label: 'OAuth & OIDC',
+              collapsed: true,
+              collapsible: true,
+              link: {
+                type: 'doc',
+                id: 'guides/guides/protocols/oauth-oidc/index',
+              },
+              items: [
+                {
+                  type: 'category',
+                  label: 'Grant Types',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/authorization-code', label: 'Authorization Code'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/client-credentials', label: 'Client Credentials'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/refresh-token', label: 'Refresh Token'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/token-exchange', label: 'Token Exchange'},
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Client Authentication',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {
+                      type: 'doc',
+                      id: 'guides/guides/protocols/oauth-oidc/client-authentication-methods',
+                      label: 'Client Authentication Methods',
+                    },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Security Extensions',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/pkce', label: 'PKCE'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/par', label: 'Pushed Authorization Requests'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/dpop', label: 'DPoP — Sender-Constrained Tokens'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/issuer-identification', label: 'Issuer Identification'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/resource-indicators', label: 'Resource Indicators'},
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Token Operations',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/token-introspection', label: 'Token Introspection'},
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Discovery & Registration',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/server-metadata', label: 'Server Metadata'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/jwks', label: 'JWKS'},
+                    {
+                      type: 'doc',
+                      id: 'guides/guides/protocols/oauth-oidc/dynamic-client-registration',
+                      label: 'Dynamic Client Registration',
+                    },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'OIDC',
+                  collapsed: true,
+                  collapsible: true,
+                  items: [
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/openid-connect', label: 'OpenID Connect'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/userinfo', label: 'UserInfo'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/claims-and-scopes', label: 'Claims & Scopes'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/token-formats', label: 'Token Formats'},
+                  ],
+                },
+              ],
+            },
+            {
+              type: 'category',
+              label: 'Verifiable Credentials',
+              collapsed: true,
+              collapsible: true,
+              link: {
+                type: 'doc',
+                id: 'guides/guides/protocols/openid4vc/index',
+              },
+              items: [
+                {
+                  type: 'doc',
+                  id: 'guides/guides/protocols/openid4vc/openid4vp',
+                  label: 'OpenID for Verifiable Presentations',
+                },
+              ],
+            },
+          ],
+        },
       ],
     },
 
@@ -494,6 +591,25 @@ const sidebars: SidebarsConfig = {
                     {type: 'doc', id: 'use-cases/b2c/identity-concepts', label: 'Identity Concepts', key: 'b2c-identity-concepts'},
                     {type: 'doc', id: 'use-cases/b2c/configure-it-yourself', label: 'Configure It Yourself', key: 'b2c-configure-it-yourself'},
                   ],
+                },
+              ],
+            },
+            {
+              type: 'category',
+              label: 'Try In Your Own App',
+              collapsible: true,
+              collapsed: true,
+              link: {type: 'doc', id: 'use-cases/b2c/try-in-your-own-app'},
+              items: [
+                {type: 'doc', id: 'use-cases/b2c/try-in-your-own-app/add-login', label: 'Login', key: 'own-app-login'},
+                {type: 'doc', id: 'use-cases/b2c/try-in-your-own-app/self-sign-up', label: 'Self Sign-Up', key: 'own-app-self-sign-up'},
+                {type: 'doc', id: 'use-cases/b2c/try-in-your-own-app/profile-section', label: 'View Profile', key: 'own-app-profile-section'},
+                {type: 'doc', id: 'use-cases/b2c/try-in-your-own-app/account-recovery', label: 'Account Recovery', key: 'own-app-account-recovery'},
+                {
+                  type: 'doc',
+                  id: 'use-cases/b2c/try-in-your-own-app/onboard-internal-users',
+                  label: 'Onboard Internal Users',
+                  key: 'own-app-onboard-internal-users',
                 },
               ],
             },
@@ -606,6 +722,15 @@ const sidebars: SidebarsConfig = {
             },
           ],
         },
+        {
+          type: 'category',
+          label: 'Secure Token Service (STS)',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            {type: 'doc', id: 'use-cases/sts/krakend', label: 'Protect APIs on KrakenD'},
+          ],
+        },
       ],
     },
 
@@ -630,9 +755,22 @@ const sidebars: SidebarsConfig = {
           collapsed: true,
           items: [
             {
-              type: 'doc',
-              id: 'guides/key-concepts/authentication/passwordless/passkeys',
-              label: 'Passkeys',
+              type: 'category',
+              label: 'Passwordless',
+              collapsible: true,
+              collapsed: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'guides/key-concepts/authentication/passwordless/passkeys',
+                  label: 'Passkeys',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/key-concepts/authentication/passwordless/magiclink',
+                  label: 'Magic Link',
+                },
+              ],
             },
             {
               type: 'doc',
@@ -680,9 +818,21 @@ const sidebars: SidebarsConfig = {
           collapsed: true,
           items: [
             {
-              type: 'doc',
-              id: 'guides/deployment-patterns/docker',
+              type: 'category',
               label: 'Docker',
+              collapsible: true,
+              collapsed: false,
+              link: {
+                type: 'doc',
+                id: 'guides/deployment-patterns/docker',
+              },
+              items: [
+                {
+                  type: 'doc',
+                  id: 'guides/deployment-patterns/docker-production',
+                  label: 'Production Recommendations',
+                },
+              ],
             },
             {
               type: 'doc',

@@ -3292,6 +3292,172 @@ func TestResolveUserOUHandle_NilOUService(t *testing.T) {
 	require.Equal(t, serviceerror.InternalServerError.Code, svcErr.Code)
 }
 
+// TestUserService_GetUser_DisplayOUHandleError verifies that GetUser falls back gracefully
+// when resolving the OU handle for display fails.
+func TestUserService_GetUser_DisplayOUHandleError(t *testing.T) {
+	userID := svcTestUserID1
+	expectedEntity := &entitypkg.Entity{
+		Category:   entitypkg.EntityCategoryUser,
+		ID:         userID,
+		OUID:       testOrgID,
+		Type:       "employee",
+		Attributes: json.RawMessage(`{"email":"alice@example.com"}`),
+	}
+
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntity", mock.Anything, userID).Return(expectedEntity, nil).Once()
+
+	mockSchema := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	mockSchema.On("GetDisplayAttributesByNames", mock.Anything, mock.Anything, []string{"employee"}).
+		Return(map[string]string{"employee": "email"}, (*serviceerror.ServiceError)(nil)).Once()
+
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testOrgID}).
+		Return(map[string]string(nil), &serviceerror.InternalServerError).Once()
+
+	service := &userService{
+		entityService:     storeMock,
+		authzService:      newAllowAllAuthz(t),
+		entityTypeService: mockSchema,
+		ouService:         ouServiceMock,
+	}
+
+	user, err := service.GetUser(context.Background(), userID, true)
+	require.Nil(t, err)
+	require.Equal(t, "alice@example.com", user.Display)
+	require.Empty(t, user.OUHandle)
+}
+
+// TestUserService_GetUserGroups_GroupsStoreError verifies that an error from GetEntityGroups
+// surfaces as an internal server error.
+func TestUserService_GetUserGroups_GroupsStoreError(t *testing.T) {
+	userID := svcTestUserID123
+	limit, offset := 10, 0
+
+	mockStore := entitymock.NewEntityServiceInterfaceMock(t)
+	mockStore.On("GetEntity", mock.Anything, userID).
+		Return(&entitypkg.Entity{
+			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+		}, nil).Once()
+	mockStore.On("GetGroupCountForEntity", mock.Anything, userID).Return(5, nil).Once()
+	mockStore.On("GetEntityGroups", mock.Anything, userID, limit, offset).
+		Return(([]entitypkg.EntityGroup)(nil), errors.New("db error")).Once()
+
+	service := &userService{
+		entityService: mockStore,
+		authzService:  newAllowAllAuthz(t),
+	}
+
+	_, err := service.GetUserGroups(context.Background(), userID, limit, offset)
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+// TestUserService_DeleteUser_NotFoundOnDelete verifies that a not-found error from the
+// delete call is mapped to the user-not-found error.
+func TestUserService_DeleteUser_NotFoundOnDelete(t *testing.T) {
+	userID := svcTestUserID1
+
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
+	storeMock.On("GetEntity", mock.Anything, userID).
+		Return(&entitypkg.Entity{
+			Category: entitypkg.EntityCategoryUser, ID: userID, OUID: testOrgID,
+		}, nil).Once()
+	storeMock.On("DeleteEntity", mock.Anything, userID).Return(entitypkg.ErrEntityNotFound).Once()
+
+	service := &userService{
+		entityService: storeMock,
+		authzService:  newAllowAllAuthz(t),
+	}
+
+	err := service.DeleteUser(context.Background(), userID)
+	require.NotNil(t, err)
+	require.Equal(t, ErrorUserNotFound.Code, err.Code)
+}
+
+// TestPopulateOUHandles_HandleResolutionError verifies that populateOUHandles returns early
+// without setting handles when the OU service fails.
+func TestPopulateOUHandles_HandleResolutionError(t *testing.T) {
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testOrgID}).
+		Return(map[string]string(nil), &serviceerror.InternalServerError).Once()
+
+	service := &userService{ouService: ouServiceMock}
+	users := []User{{ID: "user-1", OUID: testOrgID}}
+
+	service.populateOUHandles(context.Background(), users, log.GetLogger())
+	require.Empty(t, users[0].OUHandle)
+}
+
+// TestValidateOrganizationUnitForUserType_NilEntityTypeService verifies that a missing entity
+// type service yields an internal server error after the OU existence check passes.
+func TestValidateOrganizationUnitForUserType_NilEntityTypeService(t *testing.T) {
+	ouID := "2b4f9c1e-2222-4c19-9a94-5866df9b6bf5"
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, ouID).
+		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+
+	service := &userService{ouService: ouServiceMock, entityTypeService: nil}
+
+	err := service.validateOrganizationUnitForUserType(context.Background(), testUserType, ouID, log.GetLogger())
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+// TestValidateOrganizationUnitForUserType_EntityTypeLookupError verifies that an unexpected
+// entity type service error yields an internal server error.
+func TestValidateOrganizationUnitForUserType_EntityTypeLookupError(t *testing.T) {
+	ouID := "3c5fa02d-3333-4ea0-a317-3d8579346d86"
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, ouID).
+		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+		Return((*entitytype.EntityType)(nil), &serviceerror.InternalServerError).Once()
+
+	service := &userService{ouService: ouServiceMock, entityTypeService: entityTypeMock}
+
+	err := service.validateOrganizationUnitForUserType(context.Background(), testUserType, ouID, log.GetLogger())
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+// TestValidateOrganizationUnitForUserType_NilEntityType verifies that a nil entity type
+// response yields an internal server error.
+func TestValidateOrganizationUnitForUserType_NilEntityType(t *testing.T) {
+	ouID := "4d60b13e-4444-4ea0-a317-3d8579346d86"
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("IsOrganizationUnitExists", mock.Anything, ouID).
+		Return(true, (*serviceerror.ServiceError)(nil)).Once()
+
+	entityTypeMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	entityTypeMock.On("GetEntityTypeByName", mock.Anything, mock.Anything, testUserType).
+		Return((*entitytype.EntityType)(nil), (*serviceerror.ServiceError)(nil)).Once()
+
+	service := &userService{ouService: ouServiceMock, entityTypeService: entityTypeMock}
+
+	err := service.validateOrganizationUnitForUserType(context.Background(), testUserType, ouID, log.GetLogger())
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+// TestMapOUServiceError_UnmappedClientError verifies that an unmapped client-type OU error is
+// logged and mapped to an internal server error.
+func TestMapOUServiceError_UnmappedClientError(t *testing.T) {
+	clientErr := &serviceerror.ServiceError{
+		Type: serviceerror.ClientErrorType,
+		Code: "OU-UNMAPPED-1",
+	}
+
+	result := mapOUServiceError(context.Background(), clientErr, log.GetLogger(),
+		"performing an operation", map[string]*serviceerror.ServiceError{})
+
+	require.NotNil(t, result)
+	require.Equal(t, serviceerror.InternalServerError.Code, result.Code)
+}
+
 // TestUserDeclarativeYAML_OUHandleParsed verifies that ou_handle is parsed off the YAML
 // document into the user declarative resource.
 func TestUserDeclarativeYAML_OUHandleParsed(t *testing.T) {

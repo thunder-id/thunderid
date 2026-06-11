@@ -199,7 +199,7 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentials() {
 				suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything,
 					mock.Anything, mock.Anything).
 					Return(authnprovidermgr.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil).Once()
-				suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything).Return(
+				suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).Return(
 					&assert.AssertionResult{
 						Context: &assert.AssuranceContext{
 							AAL: assert.AALLevel1,
@@ -235,7 +235,7 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentials() {
 					mock.Anything, mock.Anything).
 					Return(authnprovidermgr.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil).Once()
 				suite.mockJWTService.On("VerifyJWT", mock.Anything, mock.Anything, "", mock.Anything).Return(nil).Once()
-				suite.mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything).Return(
+				suite.mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything, mock.Anything).Return(
 					&assert.AssertionResult{
 						Context: &assert.AssuranceContext{
 							AAL: assert.AALLevel2,
@@ -311,7 +311,7 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsJWTG
 		}, nil)
 	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
-	suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything).Return(
+	suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).Return(
 		&assert.AssertionResult{
 			Context: &assert.AssuranceContext{
 				AAL: assert.AALLevel1,
@@ -508,7 +508,7 @@ func (suite *AuthenticationServiceTestSuite) TestVerifyOTP() {
 				suite.mockAuthnProvider.On("AuthenticateUser",
 					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return(authnprovidermgr.AuthUser{}, testAuthnResult, nil).Once()
-				suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything).Return(
+				suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).Return(
 					&assert.AssertionResult{
 						Context: &assert.AssuranceContext{
 							AAL: assert.AALLevel1,
@@ -538,7 +538,7 @@ func (suite *AuthenticationServiceTestSuite) TestVerifyOTP() {
 					Return(authnprovidermgr.AuthUser{}, testAuthnResult, nil).Once()
 				suite.mockJWTService.
 					On("VerifyJWT", mock.Anything, existingAssertion, "", mock.Anything).Return(nil).Once()
-				suite.mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything).Return(
+				suite.mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything, mock.Anything).Return(
 					&assert.AssertionResult{
 						Context: &assert.AssuranceContext{
 							AAL: assert.AALLevel2,
@@ -850,7 +850,7 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationWithAsse
 						OUID:           testOrgUnit,
 						IsExistingUser: true,
 					}, nil).Once()
-				suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything).Return(
+				suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).Return(
 					&assert.AssertionResult{
 						Context: &assert.AssuranceContext{
 							AAL: assert.AALLevel1,
@@ -887,7 +887,7 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationWithAsse
 						OUID:           testOrgUnit,
 						IsExistingUser: true,
 					}, nil).Once()
-				suite.mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything).Return(
+				suite.mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything, mock.Anything).Return(
 					&assert.AssertionResult{
 						Context: &assert.AssuranceContext{
 							AAL: assert.AALLevel2,
@@ -1017,26 +1017,26 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationProvider
 }
 
 func (suite *AuthenticationServiceTestSuite) TestValidateIDPTypeExactMatch() {
-	err := suite.service.validateIDPType(idp.IDPTypeOAuth, idp.IDPTypeOAuth, nil)
+	err := suite.service.validateIDPType(context.Background(), idp.IDPTypeOAuth, idp.IDPTypeOAuth, nil)
 	suite.Nil(err)
 }
 
 func (suite *AuthenticationServiceTestSuite) TestValidateIDPTypeEmptyRequested() {
-	err := suite.service.validateIDPType("", idp.IDPTypeOAuth, nil)
+	err := suite.service.validateIDPType(context.Background(), "", idp.IDPTypeOAuth, nil)
 	suite.Nil(err)
 }
 
 func (suite *AuthenticationServiceTestSuite) TestValidateIDPTypeCrossAllowed() {
-	err := suite.service.validateIDPType(idp.IDPTypeOAuth, idp.IDPTypeOIDC, nil)
+	err := suite.service.validateIDPType(context.Background(), idp.IDPTypeOAuth, idp.IDPTypeOIDC, nil)
 	suite.Nil(err)
 
-	err = suite.service.validateIDPType(idp.IDPTypeOIDC, idp.IDPTypeOAuth, nil)
+	err = suite.service.validateIDPType(context.Background(), idp.IDPTypeOIDC, idp.IDPTypeOAuth, nil)
 	suite.Nil(err)
 }
 
 func (suite *AuthenticationServiceTestSuite) TestValidateIDPTypeMismatch() {
 	logger := log.GetLogger()
-	err := suite.service.validateIDPType(idp.IDPTypeGoogle, idp.IDPTypeGitHub, logger)
+	err := suite.service.validateIDPType(context.Background(), idp.IDPTypeGoogle, idp.IDPTypeGitHub, logger)
 	suite.NotNil(err)
 	suite.Equal(common.ErrorInvalidIDPType.Code, err.Code)
 }
@@ -1053,7 +1053,7 @@ func (suite *AuthenticationServiceTestSuite) TestHandleIDPServiceErrorServerErro
 	}
 	logger := log.GetLogger()
 
-	result := suite.service.handleIDPServiceError(idpID, svcErr, logger)
+	result := suite.service.handleIDPServiceError(context.Background(), idpID, svcErr, logger)
 
 	suite.NotNil(result)
 	suite.Equal(serviceerror.InternalServerError.Code, result.Code)
@@ -1234,7 +1234,7 @@ func (suite *AuthenticationServiceTestSuite) TestValidateAndAppendAuthAssertionS
 	}
 	logger := log.GetLogger()
 
-	suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything).Return(
+	suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).Return(
 		&assert.AssertionResult{
 			Context: &assert.AssuranceContext{
 				AAL: assert.AALLevel1,
@@ -1432,7 +1432,7 @@ func (suite *AuthenticationServiceTestSuite) TestVerifyOTPJWTGenerationError() {
 	suite.mockAuthnProvider.On("AuthenticateUser",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(authnprovidermgr.AuthUser{}, testAuthnResult, nil)
-	suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything).Return(
+	suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).Return(
 		&assert.AssertionResult{
 			Context: &assert.AssuranceContext{
 				AAL: assert.AALLevel1,
@@ -1517,7 +1517,7 @@ func (suite *AuthenticationServiceTestSuite) TestValidateAndAppendAuthAssertionG
 
 	// Create a service with a mock assertion generator that returns an error
 	mockAssertGenerator := assertmock.NewAuthAssertGeneratorInterfaceMock(suite.T())
-	mockAssertGenerator.On("GenerateAssertion", mock.Anything).
+	mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).
 		Return(nil, &serviceerror.ServiceError{
 			Type: serviceerror.ServerErrorType,
 			Code: "ASSERTION_ERROR",
@@ -1559,7 +1559,7 @@ func (suite *AuthenticationServiceTestSuite) TestValidateAndAppendAuthAssertionU
 
 	// Create a service with a mock assertion generator that returns an error on update
 	mockAssertGenerator := assertmock.NewAuthAssertGeneratorInterfaceMock(suite.T())
-	mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything).
+	mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, &serviceerror.ServiceError{
 			Type: serviceerror.ServerErrorType,
 			Code: "UPDATE_ERROR",
@@ -1799,9 +1799,12 @@ func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_Suc
 			},
 		},
 	}
-	suite.mockAssertGenerator.On("GenerateAssertion", mock.MatchedBy(func(refs []common.AuthenticatorReference) bool {
-		return len(refs) == 1 && refs[0].Authenticator == common.AuthenticatorPasskey
-	})).Return(mockAssertionResult, nil).Once()
+	suite.mockAssertGenerator.On(
+		"GenerateAssertion",
+		mock.Anything,
+		mock.MatchedBy(func(refs []common.AuthenticatorReference) bool {
+			return len(refs) == 1 && refs[0].Authenticator == common.AuthenticatorPasskey
+		})).Return(mockAssertionResult, nil).Once()
 
 	suite.mockJWTService.On("GenerateJWT", mock.Anything, testUserID, mock.Anything, mock.Anything,
 		mock.MatchedBy(func(claims map[string]interface{}) bool {
@@ -1882,7 +1885,7 @@ func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_Wit
 			},
 		},
 	}
-	suite.mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything).
+	suite.mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything, mock.Anything).
 		Return(mockUpdatedResult, nil).Once()
 
 	suite.mockJWTService.On("GenerateJWT", mock.Anything, testUserID, mock.Anything, mock.Anything,
@@ -1927,6 +1930,180 @@ func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_Ser
 	suite.Nil(result)
 	suite.Equal(serviceError, err)
 	suite.mockPasskeyService.AssertExpectations(suite.T())
+}
+
+func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsNilBasicResult() {
+	identifiers := map[string]interface{}{
+		"username": "testuser",
+	}
+	authnCredentials := map[string]interface{}{
+		"password": "testpass",
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, identifiers,
+		authnCredentials, mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil), nil).Once()
+
+	result, err := suite.service.AuthenticateWithCredentials(context.Background(), identifiers,
+		authnCredentials, true, "")
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsMarshalError() {
+	identifiers := map[string]interface{}{
+		"username": "testuser",
+	}
+	authnCredentials := map[string]interface{}{
+		"password": "testpass",
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, identifiers,
+		authnCredentials, mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
+			UserID:   testUserID,
+			UserType: testUserType,
+			OUID:     testOrgUnit,
+		}, nil).Once()
+	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.AttributesResponse{
+			Attributes: map[string]*authnprovidercm.AttributeResponse{
+				"bad": {Value: make(chan int)},
+			},
+		}, nil).Once()
+
+	result, err := suite.service.AuthenticateWithCredentials(context.Background(), identifiers,
+		authnCredentials, false, "")
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsGetAttributesDefaultError() {
+	identifiers := map[string]interface{}{
+		"username": "testuser",
+	}
+	authnCredentials := map[string]interface{}{
+		"password": "testpass",
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, identifiers,
+		authnCredentials, mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
+			UserID:   testUserID,
+			UserType: testUserType,
+			OUID:     testOrgUnit,
+		}, nil).Once()
+	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (*authnprovidercm.AttributesResponse)(nil),
+			&serviceerror.ServiceError{
+				Type:             serviceerror.ServerErrorType,
+				Code:             "UNMATCHED_ATTR_ERROR",
+				Error:            core.I18nMessage{Key: "error.test.attr", DefaultValue: "attr error"},
+				ErrorDescription: core.I18nMessage{Key: "error.test.attr_desc", DefaultValue: "attr desc"},
+			}).Once()
+
+	result, err := suite.service.AuthenticateWithCredentials(context.Background(), identifiers,
+		authnCredentials, false, "")
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestMapCredentialsAuthnErrorDefault() {
+	logger := log.GetLogger()
+	svcErr := &serviceerror.ServiceError{
+		Type:             serviceerror.ServerErrorType,
+		Code:             "UNMATCHED_CREDENTIALS_ERROR",
+		Error:            core.I18nMessage{Key: "error.test.cred", DefaultValue: "cred error"},
+		ErrorDescription: core.I18nMessage{Key: "error.test.cred_desc", DefaultValue: "cred desc"},
+	}
+
+	result := suite.service.mapCredentialsAuthnError(context.Background(), svcErr, logger)
+
+	suite.NotNil(result)
+	suite.Equal(serviceerror.InternalServerError.Code, result.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestStartIDPAuthenticationUnsupportedType() {
+	idpID := testIDPID
+	identityProvider := &idp.IDPDTO{
+		ID:   idpID,
+		Type: idp.IDPType("UNSUPPORTED"),
+	}
+
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, idpID).Return(identityProvider, nil)
+
+	result, err := suite.service.StartIDPAuthentication(context.Background(), "", idpID)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationNilBasicResult() {
+	sessionToken := suite.createSessionToken(idp.IDPTypeOAuth)
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, sessionToken, "auth-svc", mock.Anything).Return(nil)
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(creds map[string]interface{}) bool {
+			_, ok := creds["federated"]
+			return ok
+		}), mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil), nil).Once()
+
+	result, err := suite.service.FinishIDPAuthentication(
+		context.Background(), idp.IDPTypeOAuth, sessionToken, true, "", testAuthCode)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationAuthenticatorNameError() {
+	sessionToken := suite.createSessionToken("")
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, sessionToken, "auth-svc", mock.Anything).Return(nil)
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(creds map[string]interface{}) bool {
+			_, ok := creds["federated"]
+			return ok
+		}), mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
+			UserID:         testUserID,
+			UserType:       "person",
+			OUID:           testOrgUnit,
+			IsExistingUser: true,
+		}, nil).Once()
+
+	result, err := suite.service.FinishIDPAuthentication(
+		context.Background(), "", sessionToken, false, "", testAuthCode)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestVerifyAndDecodeSessionTokenUnmarshalError() {
+	logger := log.GetLogger()
+	payload := map[string]interface{}{
+		"auth_data": "not-an-object",
+	}
+	payloadBytes, _ := json.Marshal(payload)
+	encoded := base64.RawURLEncoding.EncodeToString(payloadBytes)
+	token := "header." + encoded + ".signature"
+
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "auth-svc", mock.Anything).Return(nil)
+
+	result, err := suite.service.verifyAndDecodeSessionToken(context.Background(), token, logger)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(common.ErrorInvalidSessionToken.Code, err.Code)
 }
 
 func (suite *AuthenticationServiceTestSuite) createTestAssertion(subject string) string {

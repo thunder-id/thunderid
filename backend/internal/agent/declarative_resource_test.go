@@ -163,14 +163,14 @@ func (s *AgentExporterTestSuite) TestGetResourceByID_Error() {
 func (s *AgentExporterTestSuite) TestValidateResource_Success() {
 	a := &model.AgentGetResponse{ID: "agent1", Name: "Valid Agent"}
 
-	name, err := s.exporter.ValidateResource(a, "agent1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), a, "agent1", s.logger)
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Valid Agent", name)
 }
 
 func (s *AgentExporterTestSuite) TestValidateResource_InvalidType() {
-	name, err := s.exporter.ValidateResource("not-an-agent", "agent1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), "not-an-agent", "agent1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)
@@ -182,7 +182,7 @@ func (s *AgentExporterTestSuite) TestValidateResource_InvalidType() {
 func (s *AgentExporterTestSuite) TestValidateResource_EmptyName() {
 	a := &model.AgentGetResponse{ID: "agent1", Name: ""}
 
-	name, err := s.exporter.ValidateResource(a, "agent1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), a, "agent1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)

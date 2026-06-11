@@ -1,11 +1,18 @@
 {
   "name": "@thunderid/wayfinder-sample",
   "private": true,
-  "version": "0.41.0",
+  "version": "0.43.0",
   "description": "Wayfinder travel sample demonstrating an AI agent with its own ThunderID-managed identity.",
+  "workspaces": [
+    "backend",
+    "smtp-server",
+    "ai-agent",
+    "frontend"
+  ],
   "scripts": {
-    "install:all": "npm --prefix backend install && npm --prefix ai-agent install && npm --prefix frontend install",
-    "build:all": "npm --prefix frontend run build",
-    "start:all": "bash start.sh"
+    "dev": "concurrently \"npm --workspace backend run dev\" \"npm --workspace smtp-server run dev\" \"npm --workspace ai-agent run dev\" \"npm --workspace frontend run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "10.0.3"
   }
 }

@@ -143,6 +143,12 @@ const (
 	DataRootOUID = "rootOuId"
 	// DataPromptMessage is the key used to pass a message to be displayed in the prompt node.
 	DataPromptMessage = "message"
+	// DataOpenID4VPClientID is the verifier client_id for the wallet QR / deep link.
+	DataOpenID4VPClientID = "openid4vpClientId"
+	// DataOpenID4VPRequestURI is the signed request URI the wallet fetches.
+	DataOpenID4VPRequestURI = "openid4vpRequestUri"
+	// DataOpenID4VPWalletURI is the openid4vp:// authorization URI for the wallet.
+	DataOpenID4VPWalletURI = "openid4vpWalletUri"
 )
 
 // DefaultHTTPTimeout defines the default timeout duration for HTTP requests.
@@ -231,12 +237,25 @@ const (
 	RuntimeKeyMagicLinkUsedJti = "magicLinkUsedJti"
 	// RuntimeKeyOAuthState holds the generated OAuth state parameter for CSRF validation.
 	RuntimeKeyOAuthState = "oauthState"
+	// RuntimeKeyOpenID4VPState holds the OpenID4VP request state across poll steps.
+	RuntimeKeyOpenID4VPState = "openid4vpVerificationState"
 	// RuntimeKeyRequestedAuthClasses holds the space-separated ACR values from acr_values.
 	RuntimeKeyRequestedAuthClasses = "requested_auth_classes"
 	// RuntimeKeySelectedAuthClass holds the ACR value of the chosen authentication method.
 	RuntimeKeySelectedAuthClass = "selected_auth_class"
 	// RuntimeKeyAllowedLoginOptions holds the space-separated action refs allowed on a LOGIN_OPTIONS node.
 	RuntimeKeyAllowedLoginOptions = "allowed_login_options"
+	// RuntimeKeyCIBAAuthReqID holds the CIBA auth_req_id bound to the current flow execution, if applicable.
+	RuntimeKeyCIBAAuthReqID = "cibaAuthReqId"
+	// RuntimeKeyBindingMessage holds the human-readable binding message displayed to the user
+	// on both the consumption device and the authentication device to correlate the CIBA request.
+	RuntimeKeyBindingMessage = "bindingMessage"
+)
+
+// User input key constants for well-known keys used in UserInputs across flow executors.
+const (
+	// UserInputKeyLoginHint is the UserInputs key for the CIBA login_hint value.
+	UserInputKeyLoginHint = "login_hint"
 )
 
 // TODO: Define a go type for InputType when formalizing input types

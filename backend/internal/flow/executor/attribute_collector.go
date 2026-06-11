@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -73,7 +73,7 @@ func newAttributeCollector(
 // Execute executes the attribute collection logic.
 func (a *attributeCollector) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Executing attribute collect executor")
+	logger.Debug(ctx.Context, "Executing attribute collect executor")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -81,39 +81,39 @@ func (a *attributeCollector) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 	}
 
 	if ctx.FlowType == common.FlowTypeRegistration {
-		logger.Debug("Flow type is registration, skipping attribute collection")
+		logger.Debug(ctx.Context, "Flow type is registration, skipping attribute collection")
 		execResp.Status = common.ExecComplete
 		return execResp, nil
 	}
 
 	if !ctx.AuthenticatedUser.IsAuthenticated {
-		logger.Debug("User is not authenticated, cannot collect attributes")
+		logger.Debug(ctx.Context, "User is not authenticated, cannot collect attributes")
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = failureReasonUserNotAuthenticated
+		execResp.Error = &ErrUserNotAuthenticated
 		return execResp, nil
 	}
 
 	if !a.ValidatePrerequisites(ctx, execResp) {
-		logger.Debug("Prerequisites validation failed for attribute collector")
+		logger.Debug(ctx.Context, "Prerequisites validation failed for attribute collector")
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Prerequisites validation failed for attribute collector"
+		execResp.Error = &ErrPrerequisitesFailed
 		return execResp, nil
 	}
 
 	if !a.HasRequiredInputs(ctx, execResp) {
-		logger.Debug("Required inputs for attribute collector is not provided")
+		logger.Debug(ctx.Context, "Required inputs for attribute collector is not provided")
 		execResp.Status = common.ExecUserInputRequired
 		return execResp, nil
 	}
 
 	if err := a.updateUserInStore(ctx); err != nil {
-		logger.Error("Failed to update user attributes", log.Error(err))
+		logger.Error(ctx.Context, "Failed to update user attributes", log.Error(err))
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Failed to update user attributes"
+		execResp.Error = &ErrAttributeCollectFailed
 		return execResp, nil
 	}
 
-	logger.Debug("User attributes updated successfully")
+	logger.Debug(ctx.Context, "User attributes updated successfully")
 	execResp.Status = common.ExecComplete
 	return execResp, nil
 }
@@ -123,7 +123,7 @@ func (a *attributeCollector) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 	execResp *common.ExecutorResponse) bool {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Checking inputs for the attribute collector")
+	logger.Debug(ctx.Context, "Checking inputs for the attribute collector")
 
 	if a.ExecutorInterface.HasRequiredInputs(ctx, execResp) {
 		return true
@@ -135,7 +135,8 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 	// Update the executor response with the required inputs retrieved from authenticated user attributes.
 	authnUserAttrs := ctx.AuthenticatedUser.Attributes
 	if len(authnUserAttrs) > 0 {
-		logger.Debug("Authenticated user attributes found, updating executor response required inputs")
+		logger.Debug(ctx.Context,
+			"Authenticated user attributes found, updating executor response required inputs")
 
 		// Clear the required data in the executor response to avoid duplicates.
 		missingAttributes := execResp.Inputs
@@ -154,19 +155,21 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 
 				attributeStr, ok := attribute.(string)
 				if ok {
-					logger.Debug("Input exists in authenticated user attributes, adding to runtime data",
+					logger.Debug(ctx.Context,
+						"Input exists in authenticated user attributes, adding to runtime data",
 						log.String("attributeName", input.Identifier))
 					execResp.RuntimeData[input.Identifier] = attributeStr
 				}
 			} else {
-				logger.Debug("Input does not exist in authenticated user attributes, adding to required inputs",
+				logger.Debug(ctx.Context,
+					"Input does not exist in authenticated user attributes, adding to required inputs",
 					log.String("attributeName", input.Identifier))
 				execResp.Inputs = append(execResp.Inputs, input)
 			}
 		}
 
 		if len(execResp.Inputs) == 0 {
-			logger.Debug("All required inputs are available in authenticated user attributes, " +
+			logger.Debug(ctx.Context, "All required inputs are available in authenticated user attributes, "+
 				"no further action needed")
 			return true
 		}
@@ -176,11 +179,12 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 	userAttributes, err := a.getUserAttributes(ctx)
 	if err != nil {
 		// Silently log the error and proceed with prompting for required inputs.
-		logger.Error("Failed to retrieve user attributes", log.Error(err))
+		logger.Error(ctx.Context, "Failed to retrieve user attributes", log.Error(err))
 		return false
 	}
 	if userAttributes == nil {
-		logger.Debug("No user attributes found in the user profile, proceeding with required inputs")
+		logger.Debug(ctx.Context,
+			"No user attributes found in the user profile, proceeding with required inputs")
 		return false
 	}
 
@@ -198,7 +202,7 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 			if input.Identifier == userAttributePassword {
 				continue
 			}
-			logger.Debug("Input exists in user profile, adding to runtime data",
+			logger.Debug(ctx.Context, "Input exists in user profile, adding to runtime data",
 				log.String("attributeName", input.Identifier))
 
 			// TODO: This conversion should be modified according to the storage mechanism of the
@@ -209,14 +213,15 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 				execResp.RuntimeData[input.Identifier] = fmt.Sprintf("%v", attribute)
 			}
 		} else {
-			logger.Debug("Input does not exist in user profile, adding to required inputs",
+			logger.Debug(ctx.Context, "Input does not exist in user profile, adding to required inputs",
 				log.String("attributeName", input.Identifier))
 			execResp.Inputs = append(execResp.Inputs, input)
 		}
 	}
 
 	if len(execResp.Inputs) == 0 {
-		logger.Debug("All required inputs are available in the user profile, no further action needed")
+		logger.Debug(ctx.Context,
+			"All required inputs are available in the user profile, no further action needed")
 		return true
 	}
 
@@ -226,7 +231,7 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 // getUserAttributes retrieves the user attributes from the user profile.
 func (a *attributeCollector) getUserAttributes(ctx *core.NodeContext) (map[string]interface{}, error) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Retrieving user attributes from the user profile")
+	logger.Debug(ctx.Context, "Retrieving user attributes from the user profile")
 
 	user, err := a.getUserFromStore(ctx)
 	if err != nil {
@@ -245,7 +250,7 @@ func (a *attributeCollector) getUserAttributes(ctx *core.NodeContext) (map[strin
 	} else {
 		userAttributes = make(map[string]interface{})
 	}
-	logger.Debug("User attributes retrieved successfully")
+	logger.Debug(ctx.Context, "User attributes retrieved successfully")
 
 	return userAttributes, nil
 }
@@ -253,7 +258,7 @@ func (a *attributeCollector) getUserAttributes(ctx *core.NodeContext) (map[strin
 // updateUserInStore updates the user profile with the collected attributes.
 func (a *attributeCollector) updateUserInStore(ctx *core.NodeContext) error {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Updating user attributes")
+	logger.Debug(ctx.Context, "Updating user attributes")
 
 	user, err := a.getUserFromStore(ctx)
 	if err != nil {
@@ -269,7 +274,7 @@ func (a *attributeCollector) updateUserInStore(ctx *core.NodeContext) error {
 		return fmt.Errorf("failed to get updated user object: %w", err)
 	}
 	if !updateRequired {
-		logger.Debug("No updates required for user attributes, skipping update")
+		logger.Debug(ctx.Context, "No updates required for user attributes, skipping update")
 		return nil
 	}
 	if updatedUser == nil {
@@ -279,7 +284,8 @@ func (a *attributeCollector) updateUserInStore(ctx *core.NodeContext) error {
 	if err := a.entityProvider.UpdateAttributes(userID, updatedUser.Attributes); err != nil {
 		return fmt.Errorf("failed to update user attributes: %s", err.Message)
 	}
-	logger.Debug("User attributes updated successfully", log.MaskedString(log.LoggerKeyUserID, userID))
+	logger.Debug(ctx.Context, "User attributes updated successfully",
+		log.MaskedString(log.LoggerKeyUserID, userID))
 
 	return nil
 }
@@ -325,7 +331,7 @@ func (a *attributeCollector) getUpdatedUserObject(ctx *core.NodeContext,
 	// Get new attributes from input
 	newAttrs := a.getInputAttributes(ctx)
 	if len(newAttrs) == 0 {
-		logger.Debug("No new attributes provided, returning existing user")
+		logger.Debug(ctx.Context, "No new attributes provided, returning existing user")
 		return false, userData, nil
 	}
 

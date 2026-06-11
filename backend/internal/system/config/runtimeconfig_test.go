@@ -123,7 +123,7 @@ func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntime_InvalidLoginPat
 	// Setup a config with an intentionally broken LoginPath
 	config := &Config{}
 	config.GateClient.Scheme = schemeHTTPS
-	config.GateClient.Hostname = "localhost"
+	config.GateClient.Hostname = localhost
 	config.GateClient.Port = 8443
 	config.GateClient.LoginPath = "/login%ZZ"
 
@@ -137,4 +137,24 @@ func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntime_InvalidLoginPat
 
 	assert.Equal(suite.T(), "/signin", runtime.GateClientLoginURL.Path)
 	assert.Equal(suite.T(), "https://localhost:8443/signin", runtime.GateClientLoginURL.String())
+}
+
+func (suite *RuntimeConfigTestSuite) TestInitializeServerRuntime_InvalidCallbackPathFallback() {
+	// Setup a config with an intentionally broken CallbackPath
+	config := &Config{}
+	config.GateClient.Scheme = schemeHTTPS
+	config.GateClient.Hostname = localhost
+	config.GateClient.Port = 8443
+	config.GateClient.CallbackPath = "/callback%ZZ"
+
+	err := InitializeServerRuntime("/test/thunderid/home", config)
+
+	assert.NoError(suite.T(), err)
+
+	runtime := GetServerRuntime()
+	assert.NotNil(suite.T(), runtime)
+	assert.NotNil(suite.T(), runtime.GateClientCallbackURL)
+
+	assert.Equal(suite.T(), "/callback", runtime.GateClientCallbackURL.Path)
+	assert.Equal(suite.T(), "https://localhost:8443/callback", runtime.GateClientCallbackURL.String())
 }

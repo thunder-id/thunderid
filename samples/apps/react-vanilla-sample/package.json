@@ -1,17 +1,14 @@
 {
   "name": "@thunderid/react-vanilla-sample",
   "private": true,
-  "version": "0.41.0",
+  "version": "0.43.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && npm run build:server",
-    "start": "tsc -b && vite build && vite preview",
+    "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "copy:app": "rm -rf server/app && mkdir -p server/app && cp -r dist/* server/app",
-    "copy:certs": "cp -r server.key server.cert server ",
-    "build:server": "npm run copy:app && npm run copy:certs && cd server && npm install"
+    "start": "npm run dev"
   },
   "dependencies": {
     "@emotion/react": "11.11.0",
@@ -19,29 +16,27 @@
     "@mui/icons-material": "7.1.0",
     "@mui/material": "7.1.0",
     "@mui/system": "7.1.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-router-dom": "7.12.0"
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router-dom": "7.15.0"
   },
   "devDependencies": {
     "@eslint/js": "9.27.0",
-    "@types/node": "22.15.29",
-    "@types/react": "19.2.7",
-    "@types/react-dom": "19.2.3",
-    "@types/react-router-dom": "5",
-    "@vitejs/plugin-react": "4.4.1",
-    "eslint": "9.27.0",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "eslint": "catalog:",
     "eslint-plugin-react-hooks": "5.2.0",
     "eslint-plugin-react-refresh": "0.4.19",
-    "globals": "16.0.0",
-    "typescript": "5.8.3",
-    "typescript-eslint": "8.57.2",
-    "vite": "6.4.2"
+    "globals": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vite": "catalog:"
   },
   "overrides": {
     "postcss": "8.5.10",
     "flatted": ">=3.4.2",
-    "rollup": ">=4.59.0",
     "picomatch": ">=4.0.4"
   }
 }

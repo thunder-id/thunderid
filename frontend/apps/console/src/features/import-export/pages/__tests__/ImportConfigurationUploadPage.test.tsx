@@ -82,13 +82,13 @@ describe('ImportConfigurationUploadPage', () => {
     expect(screen.getByRole('button', {name: 'common:actions.continue'})).toBeDisabled();
   });
 
-  it('navigates to /welcome on cancel', async () => {
+  it('navigates to /home on cancel', async () => {
     const user = userEvent.setup();
     render(<ImportConfigurationUploadPage />);
 
     await user.click(screen.getByRole('button', {name: 'common:actions.cancel'}));
 
-    expect(mockNavigate).toHaveBeenCalledWith('/welcome');
+    expect(mockNavigate).toHaveBeenCalledWith('/home');
   });
 
   it('navigates to /home on close', async () => {
@@ -221,5 +221,20 @@ describe('ImportConfigurationUploadPage', () => {
       },
       {timeout: 5000},
     );
+  });
+
+  it('shows error when file.text() throws during continue', async () => {
+    const user = userEvent.setup();
+    render(<ImportConfigurationUploadPage />);
+
+    const yamlFile = new File(['key: value'], 'config.yaml', {type: 'text/yaml'});
+    Object.defineProperty(yamlFile, 'text', {value: () => Promise.reject(new Error('read error'))});
+
+    await user.upload(document.getElementById('file-upload') as HTMLInputElement, yamlFile);
+    await user.click(screen.getByRole('button', {name: 'common:actions.continue'}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
   });
 });

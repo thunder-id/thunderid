@@ -144,7 +144,7 @@ func (s *IDPExporterTestSuite) TestValidateResource_Success() {
 		Properties: []cmodels.Property{*prop},
 	}
 
-	name, err := s.exporter.ValidateResource(idpDTO, "idp1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), idpDTO, "idp1", s.logger)
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Valid IDP", name)
@@ -153,7 +153,7 @@ func (s *IDPExporterTestSuite) TestValidateResource_Success() {
 func (s *IDPExporterTestSuite) TestValidateResource_InvalidType() {
 	invalidResource := "not an IDP"
 
-	name, err := s.exporter.ValidateResource(invalidResource, "idp1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), invalidResource, "idp1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)
@@ -168,7 +168,7 @@ func (s *IDPExporterTestSuite) TestValidateResource_EmptyName() {
 		Name: "",
 	}
 
-	name, err := s.exporter.ValidateResource(idpDTO, "idp1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), idpDTO, "idp1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)
@@ -185,7 +185,7 @@ func (s *IDPExporterTestSuite) TestValidateResource_NoProperties() {
 		Properties: []cmodels.Property{},
 	}
 
-	name, err := s.exporter.ValidateResource(idpDTO, "idp1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), idpDTO, "idp1", s.logger)
 
 	// Should still succeed but log a warning
 	assert.Nil(s.T(), err)

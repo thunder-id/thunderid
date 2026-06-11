@@ -154,8 +154,8 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_APP_Success() {
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
 	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, common.DesignResolveTypeAPP, appID).
 		Return(mockDesign, nil)
-	suite.mockI18nService.On("ResolveTranslations", language, namespace).Return(mockTranslations, nil)
-	suite.mockI18nService.On("ListLanguages").Return([]string{"en", "es"}, nil)
+	suite.mockI18nService.On("ResolveTranslations", mock.Anything, language, namespace).Return(mockTranslations, nil)
+	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en", "es"}, nil)
 
 	// Act
 	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, metaType, appID, &language, &namespace)
@@ -203,8 +203,8 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_OU_Success() {
 
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
 	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, common.DesignResolveTypeOU, ouID).Return(mockDesign, nil)
-	suite.mockI18nService.On("ResolveTranslations", "en-US", "").Return(mockTranslations, nil)
-	suite.mockI18nService.On("ListLanguages").Return([]string{"en"}, nil)
+	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").Return(mockTranslations, nil)
+	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en"}, nil)
 
 	// Act
 	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, metaType, ouID, nil, nil)
@@ -292,13 +292,13 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_DesignResolveError_Co
 	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, ouID).Return(mockOU, nil)
 	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, common.DesignResolveTypeAPP, appID).
 		Return(nil, &serviceerror.InternalServerError)
-	suite.mockI18nService.On("ResolveTranslations", "en-US", "").
+	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").
 		Return(&i18nmgt.LanguageTranslationsResponse{
 			Language:     "en-US",
 			TotalResults: 0,
 			Translations: map[string]map[string]string{},
 		}, nil)
-	suite.mockI18nService.On("ListLanguages").Return([]string{"en"}, nil)
+	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en"}, nil)
 
 	// Act
 	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, metaType, appID, nil, nil)
@@ -327,9 +327,9 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_I18nError_ContinuesWi
 			Theme:  json.RawMessage(`{}`),
 			Layout: json.RawMessage(`{}`),
 		}, nil)
-	suite.mockI18nService.On("ResolveTranslations", "en-US", "").
+	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").
 		Return(nil, &serviceerror.ServiceError{Code: "I18N-5000", Type: serviceerror.ServerErrorType})
-	suite.mockI18nService.On("ListLanguages").Return([]string{"en"}, nil)
+	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en"}, nil)
 
 	// Act
 	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, metaType, ouID, nil, nil)
@@ -351,8 +351,8 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_SystemFlow_NoTypeOrID
 		},
 	}
 
-	suite.mockI18nService.On("ResolveTranslations", "en-US", "").Return(mockTranslations, nil)
-	suite.mockI18nService.On("ListLanguages").Return([]string{"en-US"}, nil)
+	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").Return(mockTranslations, nil)
+	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en-US"}, nil)
 
 	// Act
 	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, MetaType(""), "", nil, nil)

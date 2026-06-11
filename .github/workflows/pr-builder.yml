@@ -281,26 +281,29 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: 🔍 Detect non-docs file changes
         id: filter
-        env:
-          BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
+        # TODO: Temporarily always treat as code changes to unblock docs-only PRs hanging on the
+        # codecov/patch status check. Revisit once the workflow_run-based fix is in place.
+        # env:
+        #   BASE_SHA: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
         run: |
-          git fetch --depth=1 origin "$BASE_SHA"
-          CHANGED=$(git diff --name-only "$BASE_SHA" HEAD)
-          echo "Changed files:"
-          echo "$CHANGED"
-          NON_DOCS=$(echo "$CHANGED" | grep -v '^docs/' | grep -v -i 'readme\.md' | grep -c . || true)
-          echo "Non-docs changed file count: $NON_DOCS"
-          if [ "$NON_DOCS" -gt 0 ]; then
-            echo "code=true" >> $GITHUB_OUTPUT
-          else
-            echo "code=false" >> $GITHUB_OUTPUT
-          fi
-      - name: ✅ Code changes detected
-        if: steps.filter.outputs.code == 'true'
-        run: echo "Non-documentation files changed - frontend and E2E tests will run"
-      - name: ⏭️ Docs-only changes
-        if: steps.filter.outputs.code != 'true'
-        run: echo "Only documentation changes detected - skipping frontend and E2E tests"
+          # git fetch --depth=1 origin "$BASE_SHA"
+          # CHANGED=$(git diff --name-only "$BASE_SHA" HEAD)
+          # echo "Changed files:"
+          # echo "$CHANGED"
+          # NON_DOCS=$(echo "$CHANGED" | grep -v '^docs/' | grep -v -i 'readme\.md' | grep -c . || true)
+          # echo "Non-docs changed file count: $NON_DOCS"
+          # if [ "$NON_DOCS" -gt 0 ]; then
+          #   echo "code=true" >> $GITHUB_OUTPUT
+          # else
+          #   echo "code=false" >> $GITHUB_OUTPUT
+          # fi
+          echo "code=true" >> $GITHUB_OUTPUT
+      # - name: ✅ Code changes detected
+      #   if: steps.filter.outputs.code == 'true'
+      #   run: echo "Non-documentation files changed - frontend and E2E tests will run"
+      # - name: ⏭️ Docs-only changes
+      #   if: steps.filter.outputs.code != 'true'
+      #   run: echo "Only documentation changes detected - skipping frontend and E2E tests"
 
   test-frontend-packages:
     name: 🧪 Frontend Packages Tests
@@ -853,11 +856,18 @@ jobs:
             rmdir "$EXTRACTED_DIR"
           fi
           
-          # Make start script executable
-          chmod +x start.sh
+          echo "Installing dependencies..."
+          npm install
+
+          echo "Generating SSL certificates..."
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+              -keyout server.key \
+              -out server.cert \
+              -subj "/O=WSO2/OU=${{ env.PRODUCT_NAME }}/CN=localhost" \
+              > /dev/null 2>&1
 
           echo "Starting Sample App..."
-          ./start.sh &
+          npm run dev &
           
           # Wait for sample app to be ready
           echo "Waiting for sample app to be ready on https://localhost:3000..."

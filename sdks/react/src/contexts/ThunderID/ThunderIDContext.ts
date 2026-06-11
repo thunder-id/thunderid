@@ -213,8 +213,7 @@ export type ThunderIDContextProps = {
 
   user: any;
   platform?: Platform;
-} & Pick<ThunderIDReactConfig, 'storage'> &
-  Pick<ThunderIDReactClient, 'clearSession' | 'switchOrganization'>;
+} & Pick<ThunderIDReactClient, 'clearSession' | 'switchOrganization'>;
 
 /**
  * Context object for managing the Authentication flow builder core context.
@@ -256,7 +255,6 @@ const ThunderIDContext: Context<ThunderIDContextProps | null> = createContext<nu
   signOut: () => Promise.resolve({} as any),
   signUp: () => Promise.resolve({} as any),
   signUpUrl: undefined,
-  storage: 'sessionStorage',
   switchOrganization: null as unknown as ThunderIDContextProps['switchOrganization'],
   user: null,
 });

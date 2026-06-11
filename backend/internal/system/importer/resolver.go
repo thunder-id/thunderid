@@ -29,7 +29,7 @@ import (
 )
 
 var templateExpressionRegexp = regexp.MustCompile(`\{\{[-\s]*([^{}]+?)[-\s]*\}\}`)
-var identifierOrCallRegexp = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(\([^{}]*\))?$`)
+var identifierOrCallRegexp = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_.]*(\([^{}]*\))?$`)
 
 func resolveTemplate(content string, variables map[string]interface{}) (string, error) {
 	protectedContent, protectedExpressions := protectLiteralTemplateExpressions(content)

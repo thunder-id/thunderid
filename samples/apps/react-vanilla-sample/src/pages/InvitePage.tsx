@@ -54,9 +54,20 @@ interface ActionPrompt {
     label?: string;
 }
 
+interface FlowErrorMessage {
+    key?: string;
+    defaultValue?: string;
+}
+
+interface FlowError {
+    code?: string;
+    message?: FlowErrorMessage;
+    description?: FlowErrorMessage;
+}
+
 interface FlowResponse {
     flowStatus?: string;
-    failureReason?: string;
+    error?: FlowError;
     type?: string;
     executionId?: string;
     challengeToken?: string;
@@ -66,6 +77,10 @@ interface FlowResponse {
         redirectURL?: string;
     };
 }
+
+const getFlowErrorMessage = (error?: FlowError, fallback?: string): string => {
+    return error?.message?.defaultValue ?? error?.description?.defaultValue ?? fallback ?? 'An error occurred.';
+};
 
 const isConnectionFailure = (error: Error) => {
     const message = error.message?.toLowerCase() || '';
@@ -101,7 +116,7 @@ const InvitePage = () => {
 
         if (data.flowStatus === 'ERROR') {
             setStep('error');
-            setErrorMessage(data.failureReason || 'Invite flow failed. Please request a new invite link.');
+            setErrorMessage(getFlowErrorMessage(data.error, 'Invite flow failed. Please request a new invite link.'));
             setLoading(false);
             return;
         }

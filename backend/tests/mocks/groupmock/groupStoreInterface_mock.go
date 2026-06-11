@@ -1053,6 +1053,72 @@ func (_c *groupStoreInterfaceMock_GetGroupsByOrganizationUnitCount_Call) RunAndR
 	return _c
 }
 
+// IsGroupDeclarative provides a mock function for the type groupStoreInterfaceMock
+func (_mock *groupStoreInterfaceMock) IsGroupDeclarative(ctx context.Context, id string) (bool, error) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsGroupDeclarative")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// groupStoreInterfaceMock_IsGroupDeclarative_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsGroupDeclarative'
+type groupStoreInterfaceMock_IsGroupDeclarative_Call struct {
+	*mock.Call
+}
+
+// IsGroupDeclarative is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+func (_e *groupStoreInterfaceMock_Expecter) IsGroupDeclarative(ctx interface{}, id interface{}) *groupStoreInterfaceMock_IsGroupDeclarative_Call {
+	return &groupStoreInterfaceMock_IsGroupDeclarative_Call{Call: _e.mock.On("IsGroupDeclarative", ctx, id)}
+}
+
+func (_c *groupStoreInterfaceMock_IsGroupDeclarative_Call) Run(run func(ctx context.Context, id string)) *groupStoreInterfaceMock_IsGroupDeclarative_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_IsGroupDeclarative_Call) Return(b bool, err error) *groupStoreInterfaceMock_IsGroupDeclarative_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *groupStoreInterfaceMock_IsGroupDeclarative_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, error)) *groupStoreInterfaceMock_IsGroupDeclarative_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RemoveGroupMembers provides a mock function for the type groupStoreInterfaceMock
 func (_mock *groupStoreInterfaceMock) RemoveGroupMembers(ctx context.Context, groupID string, members []group.Member) error {
 	ret := _mock.Called(ctx, groupID, members)

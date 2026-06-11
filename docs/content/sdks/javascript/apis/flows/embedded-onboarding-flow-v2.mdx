@@ -57,7 +57,7 @@ const step2 = await executeEmbeddedUserOnboardingFlowV2({
 | `flowStatus` | `EmbeddedSignUpFlowStatusV2` | Current flow status |
 | `type` | `string` | `View` or `Redirection` |
 | `data` | `EmbeddedFlowResponseDataV2` | Component tree for the current step |
-| `failureReason` | `string` | Present when `flowStatus` is `Error` |
+| `error` | `FlowError` | Present when `flowStatus` is `Error` or `Incomplete`. Contains `code`, `message`, and `description` |
 
 ## V2 Component Model
 

@@ -31,6 +31,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 
 	"gopkg.in/yaml.v3"
 )
@@ -97,7 +98,7 @@ func (e *applicationExporter) GetResourceByID(ctx context.Context, id string) (
 }
 
 // ValidateResource validates an application resource.
-func (e *applicationExporter) ValidateResource(
+func (e *applicationExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	app, ok := resource.(*model.Application)
@@ -105,7 +106,7 @@ func (e *applicationExporter) ValidateResource(
 		return "", declarativeresource.CreateTypeError(resourceTypeApplication, id)
 	}
 
-	if err := declarativeresource.ValidateResourceName(
+	if err := declarativeresource.ValidateResourceName(ctx,
 		app.Name, resourceTypeApplication, id, "APP_VALIDATION_ERROR", logger); err != nil {
 		return "", err
 	}
@@ -135,7 +136,8 @@ func makeAppInboundParser(appService ApplicationServiceInterface) func([]byte) (
 		if err != nil {
 			return nil, err
 		}
-		validatedApp, _, svcErr := appService.ValidateApplication(context.Background(), appDTO)
+		validatedApp, _, svcErr := appService.ValidateApplication(
+			security.WithRuntimeContext(context.Background()), appDTO)
 		if svcErr != nil {
 			return nil, fmt.Errorf("error validating application '%s': %v", appDTO.Name, svcErr)
 		}
@@ -214,6 +216,7 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 					PublicClient:                       config.OAuthConfig.PublicClient,
 					RequirePushedAuthorizationRequests: config.OAuthConfig.RequirePushedAuthorizationRequests,
 					DPoPBoundAccessTokens:              config.OAuthConfig.DPoPBoundAccessTokens,
+					IncludeActClaim:                    config.OAuthConfig.IncludeActClaim,
 					Token:                              config.OAuthConfig.Token,
 					Scopes:                             config.OAuthConfig.Scopes,
 					UserInfo:                           config.OAuthConfig.UserInfo,
@@ -290,7 +293,8 @@ func makeAppEntityParser(
 			return nil, nil, nil, fmt.Errorf("failed to parse application YAML: %w", err)
 		}
 
-		_, inboundAuthConfig, svcErr := appService.ValidateApplication(context.Background(), appDTO)
+		_, inboundAuthConfig, svcErr := appService.ValidateApplication(
+			security.WithRuntimeContext(context.Background()), appDTO)
 		if svcErr != nil {
 			return nil, nil, nil, fmt.Errorf("error validating application '%s': %v", appDTO.Name, svcErr)
 		}

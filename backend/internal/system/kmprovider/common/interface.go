@@ -59,11 +59,12 @@ type PublicKeyFilter struct {
 
 // PublicKeyInfo describes a public key returned by GetPublicKeys.
 type PublicKeyInfo struct {
-	KeyID          string
-	Algorithm      cryptolib.Algorithm
-	PublicKey      gocrypto.PublicKey
-	Thumbprint     string
-	CertificateDER []byte // raw DER-encoded X.509 certificate; nil if not certificate-backed
+	KeyID               string
+	Algorithm           cryptolib.Algorithm
+	PublicKey           gocrypto.PublicKey
+	Thumbprint          string
+	CertificateDER      []byte
+	CertificateChainDER [][]byte // leaf first, then intermediates; nil if not certificate-backed
 }
 
 // TLSMaterial holds the TLS certificate material for a key reference.

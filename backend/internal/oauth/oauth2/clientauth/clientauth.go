@@ -110,10 +110,10 @@ func authenticate(
 
 	case constants.TokenEndpointAuthMethodPrivateKeyJWT:
 		if clientAssertionType != constants.SupportedClientAssertionType {
-			logger.Debug("Invalid client assertion: unsupported client assertion type")
+			logger.Debug(ctx, "Invalid client assertion: unsupported client assertion type")
 			return nil, errInvalidClientAssertion
 		}
-		extracted, err := extractClientIDFromAssertion(clientAssertion)
+		extracted, err := extractClientIDFromAssertion(ctx, clientAssertion)
 		if err != nil {
 			return nil, err
 		}
@@ -132,7 +132,8 @@ func authenticate(
 
 	oauthApp, err := inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil {
-		logger.Error("Failed to retrieve OAuth client", log.Error(err), log.MaskedString("clientID", clientID))
+		logger.Error(ctx, "Failed to retrieve OAuth client",
+			log.Error(err), log.MaskedString("clientID", clientID))
 		return nil, errInvalidClientCredentials
 	}
 	if oauthApp == nil {
@@ -147,9 +148,9 @@ func authenticate(
 	switch detectedMethod {
 	// TODO: Move this to authnProvider.Authenticate
 	case constants.TokenEndpointAuthMethodPrivateKeyJWT:
-		if err := validateClientAssertion(oauthApp, jwtService, endpointURL, clientID,
+		if err := validateClientAssertion(ctx, oauthApp, jwtService, endpointURL, clientID,
 			clientAssertion); err != nil {
-			logger.Debug("Invalid client assertion: " + err.Error())
+			logger.Debug(ctx, "Invalid client assertion: "+err.Error())
 			return nil, errInvalidClientAssertion
 		}
 	case constants.TokenEndpointAuthMethodClientSecretBasic,
@@ -159,7 +160,7 @@ func authenticate(
 			map[string]interface{}{"clientSecret": clientSecret},
 			nil, nil, authnprovidermgr.AuthUser{})
 		if authnErr != nil {
-			logger.Debug("Client secret authentication failed",
+			logger.Debug(ctx, "Client secret authentication failed",
 				log.MaskedString("clientID", clientID))
 			return nil, errInvalidClientCredentials
 		}
@@ -211,19 +212,19 @@ func extractBasicAuthCredentials(r *http.Request) (string, string, *authError) {
 
 // extractClientIDFromAssertion extracts the client_id from the JWT assertion's 'sub' claim.
 // This parses the JWT WITHOUT signature verification to extract the subject.
-func extractClientIDFromAssertion(assertion string) (string, *authError) {
+func extractClientIDFromAssertion(ctx context.Context, assertion string) (string, *authError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ClientAuthMiddleware"))
 
 	payload, err := jwt.DecodeJWTPayload(assertion)
 	if err != nil {
-		logger.Debug("Invalid client assertion: failed to decode jwt")
+		logger.Debug(ctx, "Invalid client assertion: failed to decode jwt")
 		return "", errInvalidClientAssertion
 	}
 
 	subject, ok := payload["sub"].(string)
 
 	if !ok || subject == "" {
-		logger.Debug("Invalid client assertion: missing 'sub' claim or 'sub' claim is not a string")
+		logger.Debug(ctx, "Invalid client assertion: missing 'sub' claim or 'sub' claim is not a string")
 		return "", errInvalidClientAssertion
 	}
 
@@ -232,7 +233,7 @@ func extractClientIDFromAssertion(assertion string) (string, *authError) {
 
 // validateClientAssertion validates the provided client assertion JWT using the configured certificate and JWT service.
 // The endpointURL is used as the expected audience for JWT validation.
-func validateClientAssertion(
+func validateClientAssertion(ctx context.Context,
 	oauthApp *inboundmodel.OAuthClient,
 	jwtService jwt.JWTServiceInterface,
 	endpointURL string,
@@ -242,7 +243,7 @@ func validateClientAssertion(
 	}
 
 	if oauthApp.Certificate.Type == cert.CertificateTypeJWKSURI {
-		if err := jwtService.VerifyJWTWithJWKS(clientAssertion, oauthApp.Certificate.Value, endpointURL,
+		if err := jwtService.VerifyJWTWithJWKS(ctx, clientAssertion, oauthApp.Certificate.Value, endpointURL,
 			clientID); err != nil {
 			return fmt.Errorf("client assertion verification with JWKS URI failed: %v", err.Error)
 		}
@@ -281,7 +282,7 @@ func validateClientAssertion(
 		return fmt.Errorf("failed to convert JWK to public key: %w", err)
 	}
 
-	if err := jwtService.VerifyJWTWithPublicKey(clientAssertion, pubKey, endpointURL, clientID); err != nil {
+	if err := jwtService.VerifyJWTWithPublicKey(ctx, clientAssertion, pubKey, endpointURL, clientID); err != nil {
 		return fmt.Errorf("client assertion verification failed: %v", err.Error)
 	}
 

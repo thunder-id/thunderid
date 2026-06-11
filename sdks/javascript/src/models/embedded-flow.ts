@@ -104,17 +104,12 @@ export interface EmbeddedFlowExecuteRequestConfig<T = any> extends Partial<Reque
  * Error response structure for ThunderIDV1 embedded flow operations.
  *
  * This interface defines the structure of error responses returned by ThunderIDV1 APIs
- * when flow operations (such as sign-up or sign-in) fail. This format is distinct from
- * ThunderIDV2's error format which uses `failureReason` instead of `code`/`description`.
+ * when flow operations (such as sign-up or sign-in) fail.
  *
  * **Key Characteristics:**
  * - Uses structured error codes (e.g., "FEE-60005") for programmatic error handling
  * - Provides both a brief `message` and detailed `description` for context
  * - Includes `flowType` to identify which flow operation failed
- *
- * **Comparison with ThunderIDV2:**
- * - **ThunderIDV1**: Uses `code`, `message`, `description` fields
- * - **ThunderIDV2**: Uses `flowStatus: "ERROR"` with `failureReason` field
  *
  * **Error Handling:**
  * This error response format is automatically detected and processed by the

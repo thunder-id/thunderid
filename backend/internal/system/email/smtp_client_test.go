@@ -20,6 +20,7 @@ package email
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -167,7 +168,7 @@ func (suite *SMTPClientTestSuite) TestSendEmail_PlainText_Success() {
 		IsHTML:  false,
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Require().NoError(err)
 	suite.waitForDone(done)
@@ -193,7 +194,7 @@ func (suite *SMTPClientTestSuite) TestSendEmail_HTML_Success() {
 		IsHTML:  true,
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Require().NoError(err)
 	suite.waitForDone(done)
@@ -221,7 +222,7 @@ func (suite *SMTPClientTestSuite) TestSendEmail_MultipleRecipients_Success() {
 		IsHTML:  false,
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Require().NoError(err)
 	suite.waitForDone(done)
@@ -249,7 +250,7 @@ func (suite *SMTPClientTestSuite) TestSendEmail_EmptyToWithCC_Success() {
 		IsHTML:  false,
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Require().NoError(err)
 	suite.waitForDone(done)
@@ -266,7 +267,7 @@ func (suite *SMTPClientTestSuite) TestSendEmail_EmptyRecipients_Error() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorInvalidRecipient))
@@ -283,7 +284,7 @@ func (suite *SMTPClientTestSuite) TestSendEmail_EmptyRecipientString_Error() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorInvalidRecipient))
@@ -309,7 +310,7 @@ func (suite *SMTPClientTestSuite) TestSendEmail_ConnectionError() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorSMTPConnection))
@@ -326,7 +327,7 @@ func (suite *SMTPClientTestSuite) TestSendEmail_CRLFInjection_Error() {
 		Subject: "Test",
 		Body:    "Test body",
 	}
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorInvalidRecipient))
 
@@ -336,7 +337,7 @@ func (suite *SMTPClientTestSuite) TestSendEmail_CRLFInjection_Error() {
 		Subject: "Test\r\nBcc: evil@example.com",
 		Body:    "Test body",
 	}
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 	suite.Error(err)
 	suite.Contains(err.Error(), "invalid characters")
 	suite.True(errors.Is(err, ErrorInvalidSubject))
@@ -490,7 +491,7 @@ func (suite *SMTPClientTestSuite) TestSendViaSMTP_InvalidGreeting_Error() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorSMTPConnection))
@@ -518,7 +519,7 @@ func (suite *SMTPClientTestSuite) TestSendViaSMTP_TLSNotSupported_Error() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorSMTPConnection))
@@ -546,7 +547,7 @@ func (suite *SMTPClientTestSuite) TestSendViaSMTP_TLSError() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorSMTPConnection))
@@ -573,7 +574,7 @@ func (suite *SMTPClientTestSuite) TestSendViaSMTP_AuthError() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorSMTPAuth))
@@ -600,7 +601,7 @@ func (suite *SMTPClientTestSuite) TestSendViaSMTP_MailFromError() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorEmailSendFailed))
@@ -627,7 +628,7 @@ func (suite *SMTPClientTestSuite) TestSendViaSMTP_RcptToError() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorEmailSendFailed))
@@ -654,7 +655,7 @@ func (suite *SMTPClientTestSuite) TestSendViaSMTP_DataError() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorEmailSendFailed))
@@ -686,7 +687,7 @@ func (suite *SMTPClientTestSuite) TestSendViaSMTP_WriteError() {
 		Body:    largeBody,
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	// On Windows, this is often reported as a connection failure (SYS-EMAIL-5001)
@@ -716,7 +717,7 @@ func (suite *SMTPClientTestSuite) TestSendViaSMTP_DataTerminationError() {
 		Body:    "Test body",
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Error(err)
 	suite.True(errors.Is(err, ErrorEmailSendFailed))
@@ -848,7 +849,7 @@ func (suite *SMTPClientTestSuite) TestSendEmail_NoAuth_Success() {
 		IsHTML:  false,
 	}
 
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 
 	suite.Require().NoError(err)
 	suite.waitForDone(done)
@@ -878,7 +879,7 @@ func (suite *SMTPClientTestSuite) TestSendViaSMTP_QuitError_Ignored() {
 	}
 
 	// QUIT errors should be ignored since the message was already accepted.
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 	suite.NoError(err)
 	suite.waitForDone(done)
 }
@@ -1310,7 +1311,7 @@ func (suite *SMTPClientTestSuite) TestSendLiveEmail() {
 		IsHTML: true,
 	}
 	fmt.Printf("Sending test email to %s...\n", emailData.To[0])
-	err = client.Send(emailData)
+	err = client.Send(context.Background(), emailData)
 	suite.NoError(err, "Failed to send email")
 	fmt.Println("Email sent successfully!")
 }

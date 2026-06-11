@@ -85,7 +85,7 @@ func (e *flowGraphExporter) GetResourceByID(ctx context.Context, id string) (
 }
 
 // ValidateResource validates a flow graph resource.
-func (e *flowGraphExporter) ValidateResource(
+func (e *flowGraphExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	flow, ok := resource.(*CompleteFlowDefinition)
@@ -93,7 +93,7 @@ func (e *flowGraphExporter) ValidateResource(
 		return "", declarativeresource.CreateTypeError(resourceTypeFlow, id)
 	}
 
-	if err := declarativeresource.ValidateResourceName(
+	if err := declarativeresource.ValidateResourceName(ctx,
 		flow.Name, resourceTypeFlow, id, "FLOW_VALIDATION_ERROR", logger); err != nil {
 		return "", err
 	}

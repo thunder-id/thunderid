@@ -19,6 +19,7 @@
 package subscriber
 
 import (
+	"context"
 	"sync"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -57,7 +58,8 @@ func RegisterSubscriberFactory(name string, factory SubscriberFactory) {
 
 	if _, exists := factoryRegistry[name]; exists {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SubscriberRegistry"))
-		logger.Warn("Subscriber factory already registered, replacing",
+		// Factory registration runs during package init, outside any request.
+		logger.Warn(context.Background(), "Subscriber factory already registered, replacing",
 			log.String("subscriberType", name))
 	}
 

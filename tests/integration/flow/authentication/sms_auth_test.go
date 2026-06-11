@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -504,7 +504,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithMobileNumber() {
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful authentication")
-	ts.Require().Empty(completeFlowStep.FailureReason, "Failure reason should be empty for successful authentication")
+	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for successful authentication")
 
 	// Validate JWT assertion fields using common utility
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
@@ -607,7 +607,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowWithUsername() {
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful authentication")
-	ts.Require().Empty(completeFlowStep.FailureReason, "Failure reason should be empty for successful authentication")
+	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for successful authentication")
 
 	// Validate JWT assertion fields using common utility
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
@@ -668,7 +668,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowInvalidOTP() {
 		"Expected flow status to be INCOMPLETE for invalid OTP")
 	ts.Require().Equal("VIEW", completeFlowStep.Type, "Expected type to be VIEW for prompt re-display")
 	ts.Require().Empty(completeFlowStep.Assertion, "No JWT assertion should be returned for failed authentication")
-	ts.Require().NotEmpty(completeFlowStep.FailureReason, "Failure reason should be provided for invalid OTP")
+	ts.Require().NotNil(completeFlowStep.Error, "Error should be provided for invalid OTP")
 
 	// Verify OTP input is re-prompted
 	ts.Require().NotEmpty(completeFlowStep.Data, "Flow data should not be empty after re-prompt")
@@ -727,7 +727,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowRetryAfterInvalidOTP() {
 
 	// Verify we get INCOMPLETE (retryable) not ERROR
 	ts.Require().Equal("INCOMPLETE", retryFlowStep.FlowStatus, "Expected INCOMPLETE after invalid OTP")
-	ts.Require().NotEmpty(retryFlowStep.FailureReason, "Failure reason should be present for invalid OTP")
+	ts.Require().NotNil(retryFlowStep.Error, "Error should be present for invalid OTP")
 
 	// Verify OTP input is re-prompted
 	ts.Require().NotEmpty(retryFlowStep.Data, "Flow data should not be empty after re-prompt")
@@ -749,7 +749,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowRetryAfterInvalidOTP() {
 	ts.Require().Equal("COMPLETE", successFlowStep.FlowStatus,
 		"Expected COMPLETE after retry with valid OTP")
 	ts.Require().NotEmpty(successFlowStep.Assertion, "JWT assertion should be returned on successful retry")
-	ts.Require().Empty(successFlowStep.FailureReason, "No failure reason on success")
+	ts.Require().Nil(successFlowStep.Error, "No error on success")
 }
 
 func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowSingleRequestWithMobileNumber() {
@@ -798,7 +798,7 @@ func (ts *SMSAuthFlowTestSuite) TestSMSAuthFlowSingleRequestWithMobileNumber() {
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful authentication")
-	ts.Require().Empty(completeFlowStep.FailureReason, "Failure reason should be empty for successful authentication")
+	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for successful authentication")
 
 	// Validate JWT assertion fields using common utility
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(

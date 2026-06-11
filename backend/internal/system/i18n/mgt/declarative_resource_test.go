@@ -116,7 +116,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateResource() {
 		},
 	}
 
-	name, err := s.exporter.ValidateResource(trans, "en-US", nil)
+	name, err := s.exporter.ValidateResource(context.Background(), trans, "en-US", nil)
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "en-US", name)
 }
@@ -124,7 +124,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateResource() {
 func (s *DeclarativeResourceTestSuite) TestValidateResourceInvalidType() {
 	invalidResource := "not a translation"
 
-	name, err := s.exporter.ValidateResource(invalidResource, "en-US", nil)
+	name, err := s.exporter.ValidateResource(context.Background(), invalidResource, "en-US", nil)
 	assert.NotNil(s.T(), err)
 	assert.Empty(s.T(), name)
 	assert.Equal(s.T(), "INVALID_TYPE", err.Code)
@@ -137,7 +137,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateResourceMissingLanguage() {
 		},
 	}
 
-	name, err := s.exporter.ValidateResource(trans, "en-US", nil)
+	name, err := s.exporter.ValidateResource(context.Background(), trans, "en-US", nil)
 	assert.NotNil(s.T(), err)
 	assert.Empty(s.T(), name)
 	assert.Equal(s.T(), "INVALID_TRANSLATION", err.Code)
@@ -148,7 +148,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateResourceMissingTranslations()
 		Language: "en-US",
 	}
 
-	name, err := s.exporter.ValidateResource(trans, "en-US", nil)
+	name, err := s.exporter.ValidateResource(context.Background(), trans, "en-US", nil)
 	assert.NotNil(s.T(), err)
 	assert.Empty(s.T(), name)
 	assert.Equal(s.T(), "INVALID_TRANSLATION", err.Code)

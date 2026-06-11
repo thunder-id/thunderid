@@ -20,6 +20,7 @@ package export
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -62,7 +63,7 @@ func newParameterizer(rules templatingRules) *parameterizer {
 
 // ToParameterizedYAML converts an object directly to parameterized YAML.
 // It returns the template string and a map of variable names to their original values.
-func (p *parameterizer) ToParameterizedYAML(obj interface{},
+func (p *parameterizer) ToParameterizedYAML(ctx context.Context, obj interface{},
 	resourceType string, resourceName string,
 	rules *declarativeresource.ResourceRules) (string, map[string]string, error) {
 	// Convert imported type to local type for compatibility
@@ -98,7 +99,7 @@ func (p *parameterizer) ToParameterizedYAML(obj interface{},
 	}
 
 	// Convert struct field paths to YAML field paths
-	rulesWithYAMLPaths := p.convertStructPathsToYAMLPaths(obj, localRules)
+	rulesWithYAMLPaths := p.convertStructPathsToYAMLPaths(ctx, obj, localRules)
 
 	// Capture original values before parameterization replaces them.
 	// Dynamic property values must be extracted from the original struct here because
@@ -1028,7 +1029,8 @@ func (p *parameterizer) convertFieldToInterface(v reflect.Value) interface{} {
 
 // convertStructPathsToYAMLPaths converts Go struct field paths to YAML field paths
 // e.g., "InboundAuthConfig[].OAuthConfig.ClientID" -> "inbound_auth_config[].config.client_id"
-func (p *parameterizer) convertStructPathsToYAMLPaths(obj interface{}, rules *resourceRules) *resourceRules {
+func (p *parameterizer) convertStructPathsToYAMLPaths(
+	ctx context.Context, obj interface{}, rules *resourceRules) *resourceRules {
 	logger := log.GetLogger().With(log.String("component", "Parameterizer"))
 
 	converted := &resourceRules{
@@ -1045,7 +1047,7 @@ func (p *parameterizer) convertStructPathsToYAMLPaths(obj interface{}, rules *re
 		yamlPath := p.convertPathToYAMLPath(objType, path)
 		converted.Variables[i] = yamlPath
 		// Debug log to help troubleshoot path resolution
-		logger.Debug("Converted variable path",
+		logger.Debug(ctx, "Converted variable path",
 			log.String("original", path),
 			log.String("yaml", yamlPath))
 	}
@@ -1054,7 +1056,7 @@ func (p *parameterizer) convertStructPathsToYAMLPaths(obj interface{}, rules *re
 		yamlPath := p.convertPathToYAMLPath(objType, path)
 		converted.ArrayVariables[i] = yamlPath
 		// Debug log to help troubleshoot path resolution
-		logger.Debug("Converted array variable path",
+		logger.Debug(ctx, "Converted array variable path",
 			log.String("original", path),
 			log.String("yaml", yamlPath))
 	}

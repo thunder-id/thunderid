@@ -19,6 +19,8 @@
 package subscriber
 
 import (
+	"context"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/adapter"
@@ -79,9 +81,12 @@ func (cs *ConsoleSubscriber) Initialize() error {
 
 	cs.logger = log.GetLogger().With(log.String(log.LoggerKeyComponentName, consoleSubscriberComponentName))
 
+	// Subscriber initialization runs during application startup, outside any request.
+	ctx := context.Background()
+
 	id, err := utils.GenerateUUIDv7()
 	if err != nil {
-		cs.logger.Error("failed to generate UUID for console subscriber", log.Error(err))
+		cs.logger.Error(ctx, "failed to generate UUID for console subscriber", log.Error(err))
 		return err
 	}
 	cs.id = id
@@ -89,7 +94,7 @@ func (cs *ConsoleSubscriber) Initialize() error {
 	cs.formatter = fmtr
 	cs.adapter = adptr
 
-	cs.logger.Debug("Console subscriber initialized",
+	cs.logger.Debug(ctx, "Console subscriber initialized",
 		log.String("format", consoleConfig.Format),
 		log.Int("categories", len(cs.categories)))
 
@@ -117,20 +122,23 @@ func (cs *ConsoleSubscriber) OnEvent(evt *event.Event) error {
 
 // Close closes the subscriber and releases resources.
 func (cs *ConsoleSubscriber) Close() error {
-	cs.logger.Info("Closing console subscriber", log.String("subscriberID", cs.id))
+	// Subscriber shutdown runs during application teardown, outside any request.
+	ctx := context.Background()
+
+	cs.logger.Info(ctx, "Closing console subscriber", log.String("subscriberID", cs.id))
 
 	// Flush and close adapter
 	if cs.adapter != nil {
 		if err := cs.adapter.Flush(); err != nil {
-			cs.logger.Error("Failed to flush console adapter", log.Error(err))
+			cs.logger.Error(ctx, "Failed to flush console adapter", log.Error(err))
 		}
 
 		if err := cs.adapter.Close(); err != nil {
-			cs.logger.Error("Failed to close console adapter", log.Error(err))
+			cs.logger.Error(ctx, "Failed to close console adapter", log.Error(err))
 			return err
 		}
 	}
 
-	cs.logger.Info("Console subscriber closed", log.String("subscriberID", cs.id))
+	cs.logger.Info(ctx, "Console subscriber closed", log.String("subscriberID", cs.id))
 	return nil
 }

@@ -123,7 +123,7 @@ func (suite *CredentialSetterTestSuite) TestExecute_MissingUserID() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "User ID not found in flow context", resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserIDMissingInContext.Code, resp.Error.Code)
 }
 
 func (suite *CredentialSetterTestSuite) TestExecute_EmptyPassword() {
@@ -150,7 +150,7 @@ func (suite *CredentialSetterTestSuite) TestExecute_EmptyPassword() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Credential value cannot be empty", resp.FailureReason)
+	assert.Equal(suite.T(), ErrCredentialValueEmpty.Code, resp.Error.Code)
 }
 
 func (suite *CredentialSetterTestSuite) TestExecute_ServiceError() {
@@ -181,7 +181,7 @@ func (suite *CredentialSetterTestSuite) TestExecute_ServiceError() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Failed to set credentials", resp.FailureReason)
+	assert.Equal(suite.T(), ErrCredentialSetFailed.Code, resp.Error.Code)
 }
 
 func (suite *CredentialSetterTestSuite) TestExecute_CustomAttribute() {
@@ -244,7 +244,7 @@ func (suite *CredentialSetterTestSuite) TestExecute_NoRequiredInputs() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "No credential input configured")
+	assert.Equal(suite.T(), ErrCredentialInputMissing.Code, resp.Error.Code)
 }
 
 func (suite *CredentialSetterTestSuite) TestExecute_EmptyInputIdentifier() {
@@ -274,7 +274,7 @@ func (suite *CredentialSetterTestSuite) TestExecute_EmptyInputIdentifier() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "Invalid credential input configuration")
+	assert.Equal(suite.T(), ErrCredentialInputInvalid.Code, resp.Error.Code)
 }
 
 func TestCredentialSetterSuite(t *testing.T) {

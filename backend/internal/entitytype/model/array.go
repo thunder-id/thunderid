@@ -20,6 +20,7 @@
 package model
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -52,16 +53,16 @@ func (p *array) isUnique() bool {
 	return false
 }
 
-func (p *array) validateValue(value interface{}, path string, logger *log.Logger) (bool, error) {
+func (p *array) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	arrayValue, ok := value.([]interface{})
 	if !ok {
-		logger.Debug("Expected array but got different type",
+		logger.Debug(ctx, "Expected array but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}
 
 	if p.required && len(arrayValue) == 0 {
-		logger.Debug("Array property is required but empty", log.String("property", path))
+		logger.Debug(ctx, "Array property is required but empty", log.String("property", path))
 		return false, nil
 	}
 
@@ -71,7 +72,7 @@ func (p *array) validateValue(value interface{}, path string, logger *log.Logger
 
 	for index, item := range arrayValue {
 		itemPath := fmt.Sprintf("%s[%d]", path, index)
-		isValid, err := p.items.validateValue(item, itemPath, logger)
+		isValid, err := p.items.validateValue(ctx, item, itemPath, logger)
 		if err != nil {
 			return false, err
 		}
@@ -83,7 +84,7 @@ func (p *array) validateValue(value interface{}, path string, logger *log.Logger
 	return true, nil
 }
 
-func (p *array) validateUniqueness(
+func (p *array) validateUniqueness(ctx context.Context,
 	value interface{},
 	path string,
 	exists func(map[string]interface{}) (bool, error),

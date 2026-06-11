@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -50,8 +50,12 @@ import {UseTranslation} from '../../hooks/useTranslation';
  * Generic flow error response interface that covers common error structure
  */
 export interface FlowErrorResponse {
+  error?: {
+    code: string;
+    description: {key: string; defaultValue?: string};
+    message: {key: string; defaultValue?: string};
+  };
   executionId: string;
-  failureReason?: string;
   flowStatus: 'ERROR';
 }
 
@@ -231,30 +235,52 @@ export const transformComponents = (
 
 /**
  * Extract error message from flow error response.
- * Supports any flow error response that follows the standard structure.
- * Prioritizes failureReason if present, otherwise falls back to translated generic message.
  *
- * @param error - The error response object
- * @param t - Translation function for fallback messages
- * @param defaultErrorKey - Default translation key for generic errors
- * @returns Extracted error message or fallback
+ * Resolution order:
+ * 1. Structured `error` object: try i18n lookup via `t(error.message.key)`.
+ * 2. Fallback to `defaultValue` from `message`, then `description`.
+ * 3. Standard `Error.message`.
+ * 4. Generic translated fallback via `defaultErrorKey`.
  */
 export const extractErrorMessage = (
   error: FlowErrorResponse | any,
   t: UseTranslation['t'],
   defaultErrorKey = 'errors.flow.generic',
 ): string => {
-  // Check for failureReason in the error object
+  if (error && typeof error === 'object' && error.error) {
+    const flowError: FlowErrorResponse['error'] = error.error;
+
+    // 1. Try i18n lookup on message.key first (preferred for user-facing errors)
+    if (flowError?.message?.key) {
+      const translated: string = t(flowError.message.key);
+      if (translated && translated !== flowError.message.key) {
+        return translated;
+      }
+
+      // If the key resolved to itself, retry under the 'system:' namespace
+      const systemKey = `system.${flowError.message.key}`;
+      const systemTranslated: string = t(systemKey);
+      if (systemTranslated && systemTranslated !== systemKey) {
+        return systemTranslated;
+      }
+    }
+
+    // 2. Fall back to defaultValue from message, then description
+    const fallback: string | undefined = flowError?.message?.defaultValue ?? flowError?.description?.defaultValue;
+    if (fallback) {
+      return fallback;
+    }
+  }
+
+  // Legacy backward compatibility
   if (error && typeof error === 'object' && error.failureReason) {
     return error.failureReason;
   }
 
-  // Check if error is a standard Error object with a message
   if (error instanceof Error && error.message) {
     return error.message;
   }
 
-  // Fallback to a generic error message
   return t(defaultErrorKey);
 };
 

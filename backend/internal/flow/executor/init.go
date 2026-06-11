@@ -37,6 +37,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/openid4vp"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/email"
@@ -72,6 +73,7 @@ func Initialize(
 	oidcSvc oidc.OIDCAuthnServiceInterface,
 	githubSvc github.GithubOAuthAuthnServiceInterface,
 	googleSvc google.GoogleOIDCAuthnServiceInterface,
+	openid4vpVerifierSvc openid4vp.OpenID4VPServiceInterface,
 ) ExecutorRegistryInterface {
 	reg := newExecutorRegistry()
 	reg.RegisterExecutor(ExecutorNameBasicAuth, newBasicAuthExecutor(
@@ -80,7 +82,7 @@ func Initialize(
 		flowFactory, otpService, authnProvider, entityProvider))
 	reg.RegisterExecutor(ExecutorNamePasskeyAuth, newPasskeyAuthExecutor(
 		flowFactory, passkeyService, authnProvider, entityProvider))
-	reg.RegisterExecutor(ExecutorNameMagicLinkAuth, newMagicLinkAuthExecutor(
+	reg.RegisterExecutor(ExecutorNameMagicLink, newMagicLinkExecutor(
 		flowFactory, magicLinkService, authnProvider, entityProvider))
 	reg.RegisterExecutor(ExecutorNameOAuth, newOAuthExecutor(
 		"", []common.Input{}, []common.Input{}, flowFactory, idpService, entityTypeService,
@@ -92,6 +94,9 @@ func Initialize(
 		flowFactory, idpService, entityTypeService, githubSvc, authnProvider))
 	reg.RegisterExecutor(ExecutorNameGoogleAuth, newGoogleOIDCAuthExecutor(
 		flowFactory, idpService, entityTypeService, googleSvc, authnProvider))
+
+	reg.RegisterExecutor(ExecutorNameOpenID4VPVerify,
+		newOpenID4VPVerifier(flowFactory, openid4vpVerifierSvc, entityTypeService, entityProvider))
 
 	reg.RegisterExecutor(ExecutorNameProvisioning, newProvisioningExecutor(flowFactory,
 		groupService, roleService, roleAssignmentService, entityProvider, entityTypeService))
@@ -116,7 +121,8 @@ func Initialize(
 	reg.RegisterExecutor(ExecutorNameOUResolver, newOUResolverExecutor(flowFactory, ouService))
 	reg.RegisterExecutor(ExecutorNameAttributeUniquenessValidator, newAttributeUniquenessValidator(
 		flowFactory, entityTypeService, entityProvider))
-	reg.RegisterExecutor(ExecutorNameSMSExecutor, newSMSExecutor(flowFactory, notifSenderSvc, templateService))
+	reg.RegisterExecutor(ExecutorNameSMSExecutor,
+		newSMSExecutor(flowFactory, notifSenderSvc, templateService, entityProvider))
 	reg.RegisterExecutor(ExecutorNameFederatedAuthResolver, newFederatedAuthResolverExecutor(flowFactory))
 
 	return reg

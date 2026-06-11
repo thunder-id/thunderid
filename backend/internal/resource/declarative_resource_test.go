@@ -204,7 +204,7 @@ func (s *ResourceServerExporterTestSuite) TestValidateResource_Success() {
 		OUID:        "ou1",
 	}
 
-	name, err := s.exporter.ValidateResource(dto, "rs1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), dto, "rs1", s.logger)
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Test Server", name)
@@ -213,7 +213,7 @@ func (s *ResourceServerExporterTestSuite) TestValidateResource_Success() {
 func (s *ResourceServerExporterTestSuite) TestValidateResource_InvalidType() {
 	invalidData := "not a resource server dto"
 
-	name, err := s.exporter.ValidateResource(invalidData, "rs1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), invalidData, "rs1", s.logger)
 
 	assert.Equal(s.T(), "", name)
 	assert.NotNil(s.T(), err)
@@ -226,7 +226,7 @@ func (s *ResourceServerExporterTestSuite) TestValidateResource_EmptyName() {
 		OUID: "ou1",
 	}
 
-	name, err := s.exporter.ValidateResource(dto, "rs1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), dto, "rs1", s.logger)
 
 	assert.Equal(s.T(), "", name)
 	assert.NotNil(s.T(), err)
@@ -293,6 +293,85 @@ ou_id: "ou1"
 	assert.Error(t, err)
 	assert.Nil(t, dto)
 	assert.Contains(t, err.Error(), "name cannot be empty")
+}
+
+func TestParseToResourceServer_TypeMCP(t *testing.T) {
+	yamlData := []byte(`
+id: "rs1"
+name: "Test Server"
+type: "MCP"
+ou_id: "ou1"
+`)
+
+	dto, err := parseToResourceServer(yamlData)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, dto)
+	assert.Equal(t, ResourceServerTypeMCP, dto.Type)
+}
+
+func TestParseToResourceServer_TypeDefaultsToCustom(t *testing.T) {
+	yamlData := []byte(`
+id: "rs1"
+name: "Test Server"
+ou_id: "ou1"
+`)
+
+	dto, err := parseToResourceServer(yamlData)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, dto)
+	assert.Equal(t, ResourceServerTypeCustom, dto.Type)
+}
+
+func TestParseToResourceServer_InvalidType(t *testing.T) {
+	yamlData := []byte(`
+id: "rs1"
+name: "Test Server"
+type: "BOGUS"
+ou_id: "ou1"
+`)
+
+	dto, err := parseToResourceServer(yamlData)
+
+	assert.Error(t, err)
+	assert.Nil(t, dto)
+	assert.Contains(t, err.Error(), "invalid type")
+}
+
+func TestParseAndValidateResourceServerWrapper_TypeMCP(t *testing.T) {
+	yamlData := []byte(`
+id: "rs1"
+name: "Test Server"
+handle: "test-api"
+type: "MCP"
+ou_id: "ou1"
+`)
+
+	parser := parseAndValidateResourceServerWrapper(nil)
+	result, err := parser(yamlData)
+
+	assert.NoError(t, err)
+	rs, ok := result.(*ResourceServer)
+	assert.True(t, ok)
+	assert.Equal(t, ResourceServerTypeMCP, rs.Type)
+}
+
+func TestParseAndValidateResourceServerWrapper_InvalidType(t *testing.T) {
+	yamlData := []byte(`
+id: "rs1"
+name: "Test Server"
+handle: "test-api"
+type: "BOGUS"
+ou_id: "ou1"
+`)
+
+	parser := parseAndValidateResourceServerWrapper(nil)
+	result, err := parser(yamlData)
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "invalid type")
 }
 
 func TestBuildPermissionString(t *testing.T) {

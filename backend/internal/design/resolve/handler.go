@@ -19,6 +19,7 @@
 package resolve
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -54,19 +55,22 @@ func (rh *designResolveHandler) HandleResolveRequest(w http.ResponseWriter, r *h
 
 	designResponse, svcErr := rh.resolveService.ResolveDesign(ctx, resolveType, id)
 	if svcErr != nil {
-		rh.handleError(w, svcErr)
+		rh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	utils.WriteSuccessResponse(w, http.StatusOK, designResponse)
+	utils.WriteSuccessResponse(ctx, w, http.StatusOK, designResponse)
 
-	rh.logger.Debug("Successfully resolved design configuration",
+	rh.logger.Debug(ctx, "Successfully resolved design configuration",
 		log.String("type", string(resolveType)),
 		log.String("id", id))
 }
 
 // handleError handles service errors and returns appropriate HTTP responses.
-func (rh *designResolveHandler) handleError(w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func (
+	rh *designResolveHandler) handleError(ctx context.Context,
+	w http.ResponseWriter,
+	svcErr *serviceerror.ServiceError) {
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == serviceerror.ClientErrorType {
 		switch svcErr.Code {
@@ -88,5 +92,5 @@ func (rh *designResolveHandler) handleError(w http.ResponseWriter, svcErr *servi
 		Description: svcErr.ErrorDescription,
 	}
 
-	utils.WriteErrorResponse(w, statusCode, errResp)
+	utils.WriteErrorResponse(ctx, w, statusCode, errResp)
 }

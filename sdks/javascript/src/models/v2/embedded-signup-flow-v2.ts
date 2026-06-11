@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {FlowExecutionError} from './embedded-flow-v2';
 import {
   EmbeddedFlowResponseType as EmbeddedFlowResponseTypeV1,
   EmbeddedFlowType as EmbeddedFlowTypeV1,
@@ -38,9 +39,9 @@ import {
  *     // Registration successful - handle completion
  *     break;
  *   case EmbeddedSignUpFlowStatus.Error:
- *     // Registration failed - show detailed error message
+ *     // Registration failed - show error details
  *     const errorResponse = response as EmbeddedSignUpFlowErrorResponse;
- *     showError(errorResponse.failureReason);
+ *     showError(errorResponse.error.description.defaultValue);
  *     break;
  * }
  * ```
@@ -176,10 +177,10 @@ export interface EmbeddedSignUpFlowResponse extends ExtendedEmbeddedSignUpFlowRe
   executionId: string;
 
   /**
-   * Optional reason for flow failure in case of an error.
-   * Provides additional context when flowStatus is set to ERROR.
+   * Structured error details when flowStatus is ERROR.
+   * Contains an error code and i18n-ready message/description fields.
    */
-  failureReason?: string;
+  error?: FlowExecutionError;
 
   /**
    * Current status of the sign-up flow.
@@ -227,35 +228,23 @@ export interface EmbeddedSignUpFlowRequest extends Partial<EmbeddedSignUpFlowIni
 }
 
 /**
- * Error response structure for the new ThunderID embedded sign-up flow.
+ * Error response structure for the ThunderID embedded sign-up flow.
  *
- * This interface defines the structure of error responses returned by ThunderID APIs
- * when sign-up operations fail. Unlike ThunderIDV1 which uses generic error codes and
- * descriptions, ThunderID provides more specific failure reasons within the flow context.
- *
- * **Key Differences from ThunderIDV1:**
- * - Uses `failureReason` instead of `message`/`description` for error details
- * - Maintains flow context with `executionId` for tracking failed operations
- * - Uses structured `flowStatus` enum instead of generic error codes
- * - Provides empty `data` object for consistency with success responses
- *
- * **Error Handling:**
- * This error response format is automatically detected and processed by the
- * `extractErrorMessage()` and `checkForErrorResponse()` functions in the transformer
- * to extract meaningful error messages for display to users.
+ * Returned when sign-up operations fail. Contains a structured `error` object
+ * with i18n-ready message and description fields.
  *
  * @example
  * ```typescript
- * // Typical ThunderID error response
  * const errorResponse: EmbeddedSignUpFlowErrorResponse = {
  *   executionId: "0ccfeaf9-18b3-43a5-bcc1-07d863dcb2c0",
  *   flowStatus: EmbeddedSignUpFlowStatus.Error,
  *   data: {},
- *   failureReason: "User already exists with the provided username."
+ *   error: {
+ *     code: "FEE-60005",
+ *     message: { key: "flows.errors.user_exists", defaultValue: "User already exists." },
+ *     description: { key: "flows.errors.user_exists_desc", defaultValue: "User already exists with the provided username." }
+ *   }
  * };
- *
- * // This will be automatically transformed to a user-friendly error message:
- * // "User already exists with the provided username."
  * ```
  *
  * @experimental This is part of the new ThunderID API and may change in future versions
@@ -263,38 +252,11 @@ export interface EmbeddedSignUpFlowRequest extends Partial<EmbeddedSignUpFlowIni
  * @see {@link EmbeddedSignUpFlowResponse} for the corresponding success response structure
  */
 export interface EmbeddedSignUpFlowErrorResponse {
-  /**
-   * Additional response data, typically empty for error responses.
-   * Maintained for structural consistency with successful flow responses
-   * which contain components, actions, and other flow data.
-   */
   data: Record<string, any>;
 
-  /**
-   * Human-readable explanation of why the sign-up operation failed.
-   *
-   * This field contains specific error details that can be directly displayed
-   * to users, such as:
-   * - "User already exists with the provided username."
-   * - "Invalid email address format."
-   * - "Password does not meet complexity requirements."
-   *
-   * Unlike generic error codes, this provides contextual information
-   * that helps users understand and resolve the issue.
-   */
-  /**
-   * Unique identifier for the sign-up flow instance.
-   * This ID is used to track the flow state and correlate error responses
-   * with the specific sign-up attempt that failed.
-   */
+  error: FlowExecutionError;
+
   executionId: string;
 
-  failureReason: string;
-
-  /**
-   * Status of the sign-up flow, which will be `EmbeddedSignUpFlowStatus.Error`
-   * for error responses. This field is used by error detection logic to
-   * identify failed flow responses.
-   */
   flowStatus: EmbeddedSignUpFlowStatus;
 }

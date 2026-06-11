@@ -19,6 +19,7 @@
 package model
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -55,30 +56,32 @@ func (p *str) getDisplayName() string {
 	return p.displayName
 }
 
-func (p *str) validateValue(value interface{}, path string, logger *log.Logger) (bool, error) {
+func (p *str) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	strValue, ok := value.(string)
 	if !ok {
-		logger.Debug("Expected string but got different type",
+		logger.Debug(ctx, "Expected string but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}
 
 	if p.enum != nil {
 		if _, exists := p.enum[strValue]; !exists {
-			logger.Debug("Value not in enum", log.String("property", path), log.String("value", strValue))
+			logger.Debug(ctx, "Value not in enum",
+				log.String("property", path), log.String("value", strValue))
 			return false, nil
 		}
 	}
 
 	if p.pattern != nil && !p.pattern.MatchString(strValue) {
-		logger.Debug("Regex pattern mismatch", log.String("property", path), log.String("value", strValue))
+		logger.Debug(ctx, "Regex pattern mismatch",
+			log.String("property", path), log.String("value", strValue))
 		return false, nil
 	}
 
 	return true, nil
 }
 
-func (p *str) validateUniqueness(
+func (p *str) validateUniqueness(ctx context.Context,
 	value interface{},
 	path string,
 	exists func(map[string]interface{}) (bool, error),

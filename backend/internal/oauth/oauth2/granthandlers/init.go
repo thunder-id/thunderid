@@ -19,27 +19,23 @@
 package granthandlers
 
 import (
-	"net/http"
-
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/authz"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
-	"github.com/thunder-id/thunderid/internal/flow/flowexec"
-	"github.com/thunder-id/thunderid/internal/inboundclient"
 	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 )
 
-// Initialize initializes the grant handler provider with the given services.
+// Initialize initializes the grant handler provider. oauth2AuthzService is created by the
+// caller (oauth/init.go) so it can also be passed to the callback dispatcher without
+// granthandlers needing to own authz initialization or expose it.
 func Initialize(
-	mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface,
-	inboundClient inboundclient.InboundClientServiceInterface,
-	flowExecService flowexec.FlowExecServiceInterface,
+	oauth2AuthzService oauth2authz.AuthorizeServiceInterface,
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	attrCacheService attributecache.AttributeCacheServiceInterface,
@@ -47,17 +43,11 @@ func Initialize(
 	authzService authz.AuthorizationServiceInterface,
 	entityProv entityprovider.EntityProviderInterface,
 	resourceService resource.ResourceServiceInterface,
-	parService par.PARServiceInterface,
-) (GrantHandlerProviderInterface, error) {
-	oauthAuthzService, err := oauth2authz.Initialize(
-		mux, inboundClient, resourceService, jwtService, flowExecService, parService,
-	)
-	if err != nil {
-		return nil, err
-	}
-	grantHandlerProvider := newGrantHandlerProvider(
+	cibaService ciba.CIBAServiceInterface,
+) GrantHandlerProviderInterface {
+	return newGrantHandlerProvider(
 		jwtService,
-		oauthAuthzService,
+		oauth2AuthzService,
 		tokenBuilder,
 		tokenValidator,
 		attrCacheService,
@@ -65,6 +55,6 @@ func Initialize(
 		authzService,
 		entityProv,
 		resourceService,
+		cibaService,
 	)
-	return grantHandlerProvider, nil
 }

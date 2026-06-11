@@ -37,6 +37,14 @@ const APPLICATION_URL_META_KEY = 'application.url';
 
 const REGISTRATION_ENABLED_META_KEY = 'isRegistrationFlowEnabled';
 
+if (typeof window !== 'undefined') {
+  DOMPurify.removeHooks('afterSanitizeAttributes');
+  DOMPurify.addHook('afterSanitizeAttributes', (node: globalThis.Element) => {
+    if (node.tagName === 'A' && node.getAttribute('target') === '_blank') {
+      node.setAttribute('rel', 'noopener noreferrer');
+    }
+  });
+}
 const RECOVERY_ENABLED_META_KEY = 'isRecoveryFlowEnabled';
 
 interface RichTextAdapterProps {
@@ -94,7 +102,7 @@ export default function RichTextAdapter({
         className={cn('Flow--richText')}
         sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
         // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(resolvedLabel)}}
+        dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(resolvedLabel, {ADD_ATTR: ['target']})}}
       />
     );
   }
@@ -176,7 +184,7 @@ export default function RichTextAdapter({
       sx={{mb: 1, textAlign: isDesignEnabled ? 'center' : 'left'}}
       // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{
-        __html: DOMPurify.sanitize(resolvedLabel ?? rawLabel ?? ''),
+        __html: DOMPurify.sanitize(resolvedLabel ?? rawLabel ?? '', {ADD_ATTR: ['target']}),
       }}
     />
   );

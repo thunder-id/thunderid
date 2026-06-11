@@ -24,7 +24,11 @@
 // InitializeMatcher.
 package cors
 
-import "github.com/thunder-id/thunderid/internal/system/log"
+import (
+	"context"
+
+	"github.com/thunder-id/thunderid/internal/system/log"
+)
 
 // instance holds the process-wide compiled CORS matcher. It is populated once
 // at server start by InitializeMatcher (called from the server bootstrap
@@ -60,7 +64,9 @@ func InitializeMatcher(entries OriginEntries) error {
 		}
 		if !isRegexAnchored(rx.Pattern) {
 			logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CORS"))
-			logger.Warn("cors.allowed_origins regex is not fully anchored; partial matches are likely",
+			// CORS matcher is initialized at startup, outside any request.
+			logger.Warn(context.Background(),
+				"cors.allowed_origins regex is not fully anchored; partial matches are likely",
 				log.Int("index", i),
 				log.String("pattern", rx.Pattern))
 		}

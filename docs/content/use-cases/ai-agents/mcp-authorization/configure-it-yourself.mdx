@@ -30,7 +30,7 @@ See [Manage Applications](/docs/next/guides/guides/applications/manage-applicati
 The walkthrough relies on the consent screen at sign-in to narrow what the external client gets. `john.doe` keeps his existing `Booking User` role unchanged, and picks which `booking:*` permissions to release the first time he signs in through Inspector.
 
 :::info[Alternative: Dynamic Client Registration]
-If you don't want to register every MCP client up-front, <ProductName /> also supports [Dynamic Client Registration](/docs/next/guides/guides/protocols/dynamic-client-registration). An MCP client that supports DCR can discover <ProductName /> through the MCP server's protected-resource metadata and register itself, after which it uses its issued credentials for the same authorization-code flow. The tryout uses static registration for predictability — DCR is the right choice when you can't enumerate every client in advance.
+If you don't want to register every MCP client up-front, <ProductName /> also supports [Dynamic Client Registration](/docs/next/guides/guides/protocols/oauth-oidc/dynamic-client-registration). An MCP client that supports DCR can discover <ProductName /> through the MCP server's protected-resource metadata and register itself, after which it uses its issued credentials for the same authorization-code flow. The tryout uses static registration for predictability — DCR is the right choice when you can't enumerate every client in advance.
 :::
 
 ## Start the Sample

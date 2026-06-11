@@ -56,6 +56,9 @@ type securityService struct {
 //   - error: An error if any of the provided path patterns are invalid and cannot be compiled.
 func newSecurityService(authenticators []AuthenticatorInterface, publicPaths []string,
 	apiPermissions []apiPermissionEntry) (*securityService, error) {
+	// Security service is constructed at startup, outside any request,
+	// so context.Background() is used (no request trace ID to propagate).
+	ctx := context.Background()
 	compiledPaths, err := compilePathPatterns(publicPaths)
 	if err != nil {
 		return nil, err
@@ -72,14 +75,14 @@ func newSecurityService(authenticators []AuthenticatorInterface, publicPaths []s
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	if skipSecurity {
-		logger.Warn("============================================================")
-		logger.Warn("|       WARNING: SECURITY ENFORCEMENT DISABLED             |")
-		logger.Warn("|                                                          |")
-		logger.Warn("|        SKIP_SECURITY is set to 'true'            |")
-		logger.Warn("|  This is NOT RECOMMENDED for production environments!    |")
-		logger.Warn("| Endpoints accessible without auth, but tokens processed  |")
-		logger.Warn("|                                                          |")
-		logger.Warn("============================================================")
+		logger.Warn(ctx, "============================================================")
+		logger.Warn(ctx, "|       WARNING: SECURITY ENFORCEMENT DISABLED             |")
+		logger.Warn(ctx, "|                                                          |")
+		logger.Warn(ctx, "|        SKIP_SECURITY is set to 'true'            |")
+		logger.Warn(ctx, "|  This is NOT RECOMMENDED for production environments!    |")
+		logger.Warn(ctx, "| Endpoints accessible without auth, but tokens processed  |")
+		logger.Warn(ctx, "|                                                          |")
+		logger.Warn(ctx, "============================================================")
 	}
 
 	return &securityService{
@@ -94,7 +97,7 @@ func newSecurityService(authenticators []AuthenticatorInterface, publicPaths []s
 // Process handles the complete security flow: authentication and authorization.
 // Returns an enriched context on success, or an error if authentication or authorization fails.
 func (s *securityService) Process(r *http.Request) (context.Context, error) {
-	isPublic := s.isPublicPath(r.URL.Path)
+	isPublic := s.isPublicPath(r.Context(), r.URL.Path)
 
 	// Check if the request is options (CORS preflight)
 	if r.Method == http.MethodOptions {
@@ -170,9 +173,9 @@ func (s *securityService) getRequiredPermissionForAPI(method, path string) strin
 }
 
 // isPublicPath checks if the given request path matches any of the configured public path patterns.
-func (s *securityService) isPublicPath(requestPath string) bool {
+func (s *securityService) isPublicPath(ctx context.Context, requestPath string) bool {
 	if len(requestPath) > maxPublicPathLength {
-		s.logger.Warn("Path length exceeds maximum allowed length",
+		s.logger.Warn(ctx, "Path length exceeds maximum allowed length",
 			log.Int("limit", maxPublicPathLength),
 			log.Int("length", len(requestPath)))
 		return false
@@ -202,7 +205,7 @@ func (s *securityService) handleAuthError(
 	}
 
 	if skipSecurity {
-		s.logger.Debug(
+		s.logger.Debug(ctx,
 			"Proceeding without authentication/authorization enforcement as skipSecurity is enabled",
 			log.Error(err),
 			log.String("path", path))

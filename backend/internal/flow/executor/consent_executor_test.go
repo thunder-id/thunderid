@@ -159,7 +159,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_PrerequisitesFailure() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "Prerequisites validation failed")
+	assert.Equal(suite.T(), ErrConsentPrereqFailed.Code, resp.Error.Code)
 }
 
 // ----- Execute: checkConsent (no inputs provided) -----
@@ -289,7 +289,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_ResolveConsent_Clien
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "consent config not found")
+	assert.Equal(suite.T(), ErrConsentResolutionFailed.Code, resp.Error.Code)
 }
 
 func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_ResolveConsent_ServerError() {
@@ -559,7 +559,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_EmptyDecisions() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "missing or empty")
+	assert.Equal(suite.T(), ErrConsentDecisionsMissing.Code, resp.Error.Code)
 }
 
 func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_MissingDecisionsKey() {
@@ -575,7 +575,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_MissingDecisionsKey
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "missing or empty")
+	assert.Equal(suite.T(), ErrConsentDecisionsMissing.Code, resp.Error.Code)
 }
 
 func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_InvalidJSON() {
@@ -592,7 +592,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_InvalidJSON() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "Failed to parse consent decisions")
+	assert.Equal(suite.T(), ErrConsentDecisionsParseFail.Code, resp.Error.Code)
 }
 
 func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_ConsentTimeout_Expired() {
@@ -620,7 +620,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_ConsentTimeout_Expi
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "timed out")
+	assert.Equal(suite.T(), ErrConsentPromptTimedOut.Code, resp.Error.Code)
 }
 
 func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_ConsentTimeout_NotExpired() {
@@ -690,7 +690,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_EssentialDenied() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), failureReasonConsentDenied, resp.FailureReason)
+	assert.Equal(suite.T(), ErrConsentDenied.Code, resp.Error.Code)
 }
 
 func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_RecordConsent_ClientError() {
@@ -723,7 +723,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_RecordConsent_Clien
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "invalid consent data")
+	assert.Equal(suite.T(), ErrConsentRecordFailed.Code, resp.Error.Code)
 }
 
 func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_RecordConsent_ServerError() {

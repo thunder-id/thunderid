@@ -22,6 +22,7 @@ package adapter
 import (
 	"bufio"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -143,15 +144,17 @@ func NewFileAdapterWithConfig(config *Config) (*FileAdapter, error) {
 	go fa.periodicFlush()
 
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	// Adapter construction runs during subscriber initialization, outside any request.
+	ctx := context.Background()
 	if fa.isRotationEnabled() {
-		logger.Info("File adapter initialized with rotation",
+		logger.Info(ctx, "File adapter initialized with rotation",
 			log.String("filePath", config.Path),
 			log.Int("maxFileSizeMB", config.MaxFileSizeMB),
 			log.Int("maxBackups", config.MaxBackups),
 			log.Int("maxAgeDays", config.MaxAgeDays),
 			log.Bool("compress", config.Compress))
 	} else {
-		logger.Info("File adapter initialized",
+		logger.Info(ctx, "File adapter initialized",
 			log.String("filePath", config.Path))
 	}
 
@@ -179,7 +182,9 @@ func (fa *FileAdapter) Write(data []byte) error {
 		if fa.currentSize+dataSize > maxSize {
 			if err := fa.rotate(); err != nil {
 				logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-				logger.Error("Failed to rotate file", log.Error(err))
+				// The file adapter is infrastructure with no request-scoped context.
+				ctx := context.Background()
+				logger.Error(ctx, "Failed to rotate file", log.Error(err))
 				// Continue writing to current file even if rotation fails
 			}
 		}
@@ -205,13 +210,15 @@ func (fa *FileAdapter) Write(data []byte) error {
 // rotate rotates the log file (must be called with lock held).
 func (fa *FileAdapter) rotate() error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	// File rotation is internal infrastructure work, outside any request.
+	ctx := context.Background()
 
 	// Flush and close current writer and file
 	if err := fa.writer.Flush(); err != nil {
-		logger.Error("Failed to flush before rotation", log.Error(err))
+		logger.Error(ctx, "Failed to flush before rotation", log.Error(err))
 	}
 	if err := fa.file.Close(); err != nil {
-		logger.Error("Failed to close file during rotation", log.Error(err))
+		logger.Error(ctx, "Failed to close file during rotation", log.Error(err))
 	}
 
 	// Generate rotated filename with timestamp
@@ -220,7 +227,7 @@ func (fa *FileAdapter) rotate() error {
 
 	// Rename current file
 	if err := os.Rename(fa.config.Path, rotatedPath); err != nil {
-		logger.Error("Failed to rename file during rotation", log.Error(err))
+		logger.Error(ctx, "Failed to rename file during rotation", log.Error(err))
 		// Try to reopen original file
 		file, err := os.OpenFile(fa.config.Path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, filePermissions)
 		if err != nil {
@@ -247,7 +254,7 @@ func (fa *FileAdapter) rotate() error {
 	fa.writer = bufio.NewWriterSize(file, defaultBufferSize)
 	fa.currentSize = 0
 
-	logger.Info("File rotated successfully", log.String("rotatedFile", rotatedPath))
+	logger.Info(ctx, "File rotated successfully", log.String("rotatedFile", rotatedPath))
 
 	// Clean up old files
 	go fa.cleanup()
@@ -258,16 +265,19 @@ func (fa *FileAdapter) rotate() error {
 // compressFile compresses a log file using gzip.
 func (fa *FileAdapter) compressFile(filePath string) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	// Compression runs in a detached goroutine with no request-scoped context.
+	ctx := context.Background()
 
 	// Open source file
 	src, err := os.Open(filePath) // #nosec G304 -- File path is controlled internally by rotation logic
 	if err != nil {
-		logger.Error("Failed to open file for compression", log.String("filePath", filePath), log.Error(err))
+		logger.Error(ctx, "Failed to open file for compression",
+			log.String("filePath", filePath), log.Error(err))
 		return
 	}
 	defer func() {
 		if closeErr := src.Close(); closeErr != nil {
-			logger.Error("Failed to close source file", log.Error(closeErr))
+			logger.Error(ctx, "Failed to close source file", log.Error(closeErr))
 		}
 	}()
 
@@ -275,12 +285,13 @@ func (fa *FileAdapter) compressFile(filePath string) {
 	compressedPath := filePath + ".gz"
 	dst, err := os.Create(compressedPath) // #nosec G304 -- File path is derived from controlled internal path
 	if err != nil {
-		logger.Error("Failed to create compressed file", log.String("compressedPath", compressedPath), log.Error(err))
+		logger.Error(ctx, "Failed to create compressed file",
+			log.String("compressedPath", compressedPath), log.Error(err))
 		return
 	}
 	defer func() {
 		if closeErr := dst.Close(); closeErr != nil {
-			logger.Error("Failed to close destination file", log.Error(closeErr))
+			logger.Error(ctx, "Failed to close destination file", log.Error(closeErr))
 		}
 	}()
 
@@ -288,35 +299,37 @@ func (fa *FileAdapter) compressFile(filePath string) {
 	gzWriter := gzip.NewWriter(dst)
 	defer func() {
 		if closeErr := gzWriter.Close(); closeErr != nil {
-			logger.Error("Failed to close gzip writer", log.Error(closeErr))
+			logger.Error(ctx, "Failed to close gzip writer", log.Error(closeErr))
 		}
 	}()
 
 	// Copy and compress
 	if _, err := io.Copy(gzWriter, src); err != nil {
-		logger.Error("Failed to compress file", log.String("filePath", filePath), log.Error(err))
+		logger.Error(ctx, "Failed to compress file", log.String("filePath", filePath), log.Error(err))
 		return
 	}
 
 	// Close gzip writer to flush
 	if err := gzWriter.Close(); err != nil {
-		logger.Error("Failed to close gzip writer", log.Error(err))
+		logger.Error(ctx, "Failed to close gzip writer", log.Error(err))
 		return
 	}
 
 	// Remove original file
 	if err := os.Remove(filePath); err != nil {
-		logger.Error("Failed to remove original file after compression",
+		logger.Error(ctx, "Failed to remove original file after compression",
 			log.String("filePath", filePath), log.Error(err))
 		return
 	}
 
-	logger.Info("File compressed successfully", log.String("compressedPath", compressedPath))
+	logger.Info(ctx, "File compressed successfully", log.String("compressedPath", compressedPath))
 }
 
 // cleanup removes old log files based on maxBackups and maxAge.
 func (fa *FileAdapter) cleanup() {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	// Cleanup runs in a detached goroutine with no request-scoped context.
+	ctx := context.Background()
 
 	dir := filepath.Dir(fa.config.Path)
 	baseName := filepath.Base(fa.config.Path)
@@ -324,7 +337,7 @@ func (fa *FileAdapter) cleanup() {
 	// Find all rotated log files
 	files, err := filepath.Glob(filepath.Join(dir, baseName+".*"))
 	if err != nil {
-		logger.Error("Failed to list rotated files", log.Error(err))
+		logger.Error(ctx, "Failed to list rotated files", log.Error(err))
 		return
 	}
 
@@ -367,7 +380,8 @@ func (fa *FileAdapter) cleanup() {
 
 		if shouldRemove {
 			if err := os.Remove(file); err != nil {
-				logger.Error("Failed to remove old log file", log.String("filePath", file), log.Error(err))
+				logger.Error(ctx, "Failed to remove old log file",
+					log.String("filePath", file), log.Error(err))
 			} else {
 				removed++
 			}
@@ -375,7 +389,7 @@ func (fa *FileAdapter) cleanup() {
 	}
 
 	if removed > 0 {
-		logger.Info("Cleaned up old log files", log.Int("removedCount", removed))
+		logger.Info(ctx, "Cleaned up old log files", log.Int("removedCount", removed))
 	}
 }
 
@@ -404,12 +418,14 @@ func (fa *FileAdapter) periodicFlush() {
 	defer fa.wg.Done()
 
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	// Periodic flushing runs in a background goroutine with no request-scoped context.
+	ctx := context.Background()
 
 	for {
 		select {
 		case <-fa.flushTicker.C:
 			if err := fa.Flush(); err != nil {
-				logger.Error("Failed to flush file", log.Error(err))
+				logger.Error(ctx, "Failed to flush file", log.Error(err))
 			}
 		case <-fa.stopFlush:
 			return
@@ -428,7 +444,9 @@ func (fa *FileAdapter) Close() error {
 	fa.mu.Unlock()
 
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.Info("Closing file adapter", log.String("filePath", fa.config.Path))
+	// Adapter shutdown runs during application teardown, outside any request.
+	ctx := context.Background()
+	logger.Info(ctx, "Closing file adapter", log.String("filePath", fa.config.Path))
 
 	// Stop periodic flushing
 	fa.flushTicker.Stop()
@@ -437,7 +455,7 @@ func (fa *FileAdapter) Close() error {
 
 	// Final flush
 	if err := fa.Flush(); err != nil {
-		logger.Error("Failed to perform final flush", log.Error(err))
+		logger.Error(ctx, "Failed to perform final flush", log.Error(err))
 	}
 
 	// Close file
@@ -445,7 +463,7 @@ func (fa *FileAdapter) Close() error {
 		return fmt.Errorf("failed to close file: %w", err)
 	}
 
-	logger.Info("File adapter closed")
+	logger.Info(ctx, "File adapter closed")
 	return nil
 }
 

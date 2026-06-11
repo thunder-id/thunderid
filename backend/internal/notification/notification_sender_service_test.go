@@ -88,8 +88,8 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_Success() {
 
 	mm := messagemock.NewNotificationClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
-	mm.EXPECT().Send(common.ChannelTypeSMS, mock.Anything).Return(nil).Once()
-	suite.mockClientProvider.EXPECT().GetClient(mock.Anything).Return(mm, nil).Once()
+	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(nil).Once()
+	suite.mockClientProvider.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 
 	err := suite.service.Send(context.Background(), common.ChannelTypeSMS, "sender-001",
 		common.NotificationData{Recipient: "+94714627887", Body: "Test message"})
@@ -122,7 +122,7 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_WrongSenderType() {
 func (suite *NotificationSenderServiceTestSuite) TestSendSMS_GetClientError() {
 	sender := suite.getValidSender()
 	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "sender-001").Return(sender, nil).Once()
-	suite.mockClientProvider.EXPECT().GetClient(mock.Anything).
+	suite.mockClientProvider.EXPECT().GetClient(mock.Anything, mock.Anything).
 		Return(nil, &serviceerror.InternalServerError).Once()
 
 	err := suite.service.Send(context.Background(), common.ChannelTypeSMS, "sender-001",
@@ -137,7 +137,7 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_UnsupportedChannel(
 
 	mm := messagemock.NewNotificationClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelType("email")).Return(false).Once()
-	suite.mockClientProvider.EXPECT().GetClient(mock.Anything).Return(mm, nil).Once()
+	suite.mockClientProvider.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 
 	err := suite.service.Send(context.Background(), common.ChannelType("email"), "sender-001",
 		common.NotificationData{Recipient: "user@example.com", Body: "Test message"})
@@ -151,8 +151,8 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_ClientSendError() {
 
 	mm := messagemock.NewNotificationClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
-	mm.EXPECT().Send(common.ChannelTypeSMS, mock.Anything).Return(errors.New("network error")).Once()
-	suite.mockClientProvider.EXPECT().GetClient(mock.Anything).Return(mm, nil).Once()
+	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(errors.New("network error")).Once()
+	suite.mockClientProvider.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 
 	err := suite.service.Send(context.Background(), common.ChannelTypeSMS, "sender-001",
 		common.NotificationData{Recipient: "+94714627887", Body: "Test message"})

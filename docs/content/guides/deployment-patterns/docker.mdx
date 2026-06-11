@@ -2,14 +2,14 @@
 title: Docker
 sidebar_position: 1
 persona: iam
-description: Deploy using Docker or Docker Compose, from a quick single-container run to a production setup with an external PostgreSQL database.
+description: Deploy using Docker — a portable, self-contained setup with full configuration control and no cluster infrastructure required.
 ---
 
 import {NextSteps, NextStepsCard} from '../../../src/components/NextSteps';
 
 # Deploy <ProductName /> with Docker
 
-This guide walks you through deploying <ProductName /> using Docker. You can run <ProductName /> as a single container for development or pair it with an external PostgreSQL database for production use.
+This guide walks you through deploying <ProductName /> using Docker. Run it as a single container with SQLite, or connect it to an external PostgreSQL database for a more durable setup — all without any cluster infrastructure.
 
 ## Prerequisites
 
@@ -34,13 +34,15 @@ docker run hello-world
 
 ### Step 1: Pull the Image
 
+Pin to a specific release tag for reproducible deployments:
+
 ```bash
 docker pull ghcr.io/thunder-id/thunderid:latest
 ```
 
 ### Step 2: Set Up the Server
 
-Run the one-time setup script before starting <ProductName /> for the first time. The setup initializes the configuration and database:
+Run the one-time setup script before starting <ProductName /> for the first time. It initializes the configuration and database:
 
 ```bash
 docker run -it --rm \
@@ -48,38 +50,130 @@ docker run -it --rm \
   ./setup.sh
 ```
 
-The container exits after setup completes. If you are using SQLite as the database, mount a volume to persist the database file so the setup data is available when you start the server.
+If you are using SQLite, mount a named volume so the initialized database is available when the server starts:
+
+```bash
+docker run -it --rm \
+  -v thunderid-data:/opt/thunder/repository/database \
+  ghcr.io/thunder-id/thunderid:latest \
+  ./setup.sh
+```
+
+The container exits after setup completes.
 
 ### Step 3: Start the Server
 
+Run <ProductName /> in the background with a restart policy so it recovers from host reboots and unexpected exits:
+
 ```bash
-docker run --rm \
+docker run -d \
+  --name thunderid \
+  --restart unless-stopped \
   -p 8090:8090 \
+  -v thunderid-data:/opt/thunder/repository/database \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
 <ProductName /> is now running at `https://localhost:8090`.
+
+To follow the logs:
+
+```bash
+docker logs -f thunderid
+```
 
 ### Customize the Configuration
 
 To override the default server configuration, mount a custom `deployment.yaml` file. Create a `deployment.yaml` based on the <RepoLink path="/blob/main/backend/cmd/server/repository/conf/deployment.yaml">default configuration</RepoLink> and pass it to the container:
 
 ```bash
-docker run --rm \
+docker run -d \
+  --name thunderid \
+  --restart unless-stopped \
   -p 8090:8090 \
   -v $(pwd)/deployment.yaml:/opt/thunder/repository/conf/deployment.yaml \
+  -v thunderid-data:/opt/thunder/repository/database \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
 To also use custom TLS certificates, mount them alongside the configuration:
 
 ```bash
-docker run --rm \
+docker run -d \
+  --name thunderid \
+  --restart unless-stopped \
   -p 8090:8090 \
   -v $(pwd)/deployment.yaml:/opt/thunder/repository/conf/deployment.yaml \
   -v $(pwd)/certs/server.cert:/opt/thunder/repository/resources/security/server.cert \
   -v $(pwd)/certs/server.key:/opt/thunder/repository/resources/security/server.key \
+  -v thunderid-data:/opt/thunder/repository/database \
   ghcr.io/thunder-id/thunderid:latest
+```
+
+## Run with Docker Compose
+
+Docker Compose is the recommended way to run <ProductName /> alongside a PostgreSQL database. Create a `docker-compose.yml` in your working directory:
+
+```yaml
+services:
+  thunderid:
+    image: ghcr.io/thunder-id/thunderid:latest
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./deployment.yaml:/opt/thunder/repository/conf/deployment.yaml
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: thunderid_user
+      POSTGRES_DB: configdb
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thunderid_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+```
+
+Create a `.env` file alongside `docker-compose.yml` to keep credentials out of version control:
+
+```bash
+POSTGRES_PASSWORD=<your-database-password>
+```
+
+Start the stack:
+
+```bash
+docker compose up -d
+```
+
+View logs:
+
+```bash
+docker compose logs -f
+```
+
+Stop the stack:
+
+```bash
+docker compose down
+```
+
+Stop and remove all data volumes:
+
+```bash
+docker compose down -v
 ```
 
 ## Access <ProductName />
@@ -96,11 +190,17 @@ Once the container is running, access <ProductName /> at the following endpoints
 
 ### Embedded SQLite (Default)
 
-<ProductName /> uses SQLite by default. No additional setup is required for development or local testing.
+<ProductName /> uses SQLite by default. No additional setup is required — it works out of the box with no external dependencies.
+
+Mount a named volume to persist the database across container restarts:
+
+```bash
+-v thunderid-data:/opt/thunder/repository/database
+```
 
 ### External PostgreSQL
 
-For production deployments, use an external PostgreSQL database. <ProductName /> ships with a Docker Compose file for running a local PostgreSQL instance.
+For a more durable setup, connect <ProductName /> to an external PostgreSQL database. <ProductName /> ships with a Docker Compose file to spin up a PostgreSQL instance alongside the server.
 
 1. Navigate to the `install/local-development` directory:
 
@@ -135,6 +235,12 @@ For production deployments, use an external PostgreSQL database. <ProductName />
 ## Next Steps
 
 <NextSteps>
+  <NextStepsCard
+    title="Docker Production Recommendations"
+    description="Harden your Docker deployment: configure a reverse proxy, set resource limits, add health checks, and manage secrets securely."
+    href="../docker-production"
+    cta="Go to Docker production guide"
+  />
   <NextStepsCard
     title="Deploy on Kubernetes"
     description="Run ThunderID on your own cluster with full control over infrastructure, scaling, and configuration."

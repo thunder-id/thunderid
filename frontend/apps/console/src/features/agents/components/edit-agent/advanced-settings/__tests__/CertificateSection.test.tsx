@@ -20,7 +20,6 @@ import {render, screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import CertificateTypes from '../../../../../applications/constants/certificate-types';
-import type {Agent} from '../../../../models/agent';
 import CertificateSection from '../CertificateSection';
 
 vi.mock('react-i18next', () => ({
@@ -30,36 +29,28 @@ vi.mock('react-i18next', () => ({
 }));
 
 describe('CertificateSection (agent)', () => {
-  const mockAgent: Agent = {
-    id: 'agent-1',
-    ouId: 'ou-1',
-    type: 'default',
-    name: 'Test Agent',
-    certificate: {type: CertificateTypes.NONE, value: ''},
-  };
-
-  const mockOnFieldChange = vi.fn();
+  const mockOnCertificateChange = vi.fn();
 
   beforeEach(() => {
-    mockOnFieldChange.mockClear();
+    mockOnCertificateChange.mockClear();
   });
 
   describe('Rendering', () => {
     it('renders the certificate section', () => {
-      render(<CertificateSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+      render(<CertificateSection onCertificateChange={mockOnCertificateChange} />);
 
       expect(screen.getByText('applications:edit.advanced.labels.certificate')).toBeInTheDocument();
       expect(screen.getByText('applications:edit.advanced.certificate.intro')).toBeInTheDocument();
     });
 
     it('renders the certificate type dropdown', () => {
-      render(<CertificateSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+      render(<CertificateSection onCertificateChange={mockOnCertificateChange} />);
 
       expect(screen.getByLabelText('applications:edit.advanced.labels.certificateType')).toBeInTheDocument();
     });
 
-    it('does not render the value field when type is NONE', () => {
-      render(<CertificateSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+    it('does not render the value field when certificate is null', () => {
+      render(<CertificateSection certificate={null} onCertificateChange={mockOnCertificateChange} />);
 
       expect(
         screen.queryByPlaceholderText('applications:edit.advanced.certificate.placeholder.jwks'),
@@ -67,8 +58,12 @@ describe('CertificateSection (agent)', () => {
     });
 
     it('renders the JWKS value field when type is JWKS', () => {
-      const agent = {...mockAgent, certificate: {type: CertificateTypes.JWKS, value: ''}};
-      render(<CertificateSection agent={agent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+      render(
+        <CertificateSection
+          certificate={{type: CertificateTypes.JWKS, value: ''}}
+          onCertificateChange={mockOnCertificateChange}
+        />,
+      );
 
       expect(
         screen.getByPlaceholderText('applications:edit.advanced.certificate.placeholder.jwks'),
@@ -76,8 +71,12 @@ describe('CertificateSection (agent)', () => {
     });
 
     it('renders the JWKS URI value field when type is JWKS_URI', () => {
-      const agent = {...mockAgent, certificate: {type: CertificateTypes.JWKS_URI, value: ''}};
-      render(<CertificateSection agent={agent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+      render(
+        <CertificateSection
+          certificate={{type: CertificateTypes.JWKS_URI, value: ''}}
+          onCertificateChange={mockOnCertificateChange}
+        />,
+      );
 
       expect(
         screen.getByPlaceholderText('applications:edit.advanced.certificate.placeholder.jwksUri'),
@@ -86,37 +85,42 @@ describe('CertificateSection (agent)', () => {
   });
 
   describe('Certificate Type Selection', () => {
-    it('reflects the certificate type from the agent', () => {
-      const agent = {...mockAgent, certificate: {type: CertificateTypes.JWKS, value: ''}};
-      render(<CertificateSection agent={agent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
-
-      expect(screen.getByRole('combobox')).toHaveValue('applications:edit.advanced.certificate.type.jwks');
-    });
-
-    it('prioritizes editedAgent.certificate.type over agent.certificate.type', () => {
-      const agent = {...mockAgent, certificate: {type: CertificateTypes.NONE, value: ''}};
+    it('reflects the certificate type from the certificate prop', () => {
       render(
         <CertificateSection
-          agent={agent}
-          editedAgent={{certificate: {type: CertificateTypes.JWKS, value: ''}}}
-          onFieldChange={mockOnFieldChange}
+          certificate={{type: CertificateTypes.JWKS, value: ''}}
+          onCertificateChange={mockOnCertificateChange}
         />,
       );
 
       expect(screen.getByRole('combobox')).toHaveValue('applications:edit.advanced.certificate.type.jwks');
     });
 
-    it('calls onFieldChange when the certificate type changes', async () => {
+    it('calls onCertificateChange with null when NONE is selected', async () => {
       const user = userEvent.setup();
-      render(<CertificateSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+      render(
+        <CertificateSection
+          certificate={{type: CertificateTypes.JWKS, value: ''}}
+          onCertificateChange={mockOnCertificateChange}
+        />,
+      );
 
-      const autocomplete = screen.getByRole('combobox');
-      await user.click(autocomplete);
+      await user.click(screen.getByRole('combobox'));
+      const listbox = screen.getByRole('listbox');
+      await user.click(within(listbox).getByText('applications:edit.advanced.certificate.type.none'));
 
+      expect(mockOnCertificateChange).toHaveBeenCalledWith(null);
+    });
+
+    it('calls onCertificateChange with certificate when JWKS is selected', async () => {
+      const user = userEvent.setup();
+      render(<CertificateSection certificate={null} onCertificateChange={mockOnCertificateChange} />);
+
+      await user.click(screen.getByRole('combobox'));
       const listbox = screen.getByRole('listbox');
       await user.click(within(listbox).getByText('applications:edit.advanced.certificate.type.jwks'));
 
-      expect(mockOnFieldChange).toHaveBeenCalledWith('certificate', {
+      expect(mockOnCertificateChange).toHaveBeenCalledWith({
         type: CertificateTypes.JWKS,
         value: '',
       });
@@ -124,14 +128,18 @@ describe('CertificateSection (agent)', () => {
 
     it('preserves certificate value when type changes', async () => {
       const user = userEvent.setup();
-      const agent = {...mockAgent, certificate: {type: CertificateTypes.JWKS, value: 'existing'}};
-      render(<CertificateSection agent={agent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+      render(
+        <CertificateSection
+          certificate={{type: CertificateTypes.JWKS, value: 'existing'}}
+          onCertificateChange={mockOnCertificateChange}
+        />,
+      );
 
       await user.click(screen.getByRole('combobox'));
       const listbox = screen.getByRole('listbox');
       await user.click(within(listbox).getByText('applications:edit.advanced.certificate.type.jwksUri'));
 
-      expect(mockOnFieldChange).toHaveBeenCalledWith('certificate', {
+      expect(mockOnCertificateChange).toHaveBeenCalledWith({
         type: CertificateTypes.JWKS_URI,
         value: 'existing',
       });
@@ -139,56 +147,49 @@ describe('CertificateSection (agent)', () => {
   });
 
   describe('Certificate Value Input', () => {
-    it('reflects certificate value from the agent', () => {
-      const agent = {...mockAgent, certificate: {type: CertificateTypes.JWKS, value: 'jwks-value'}};
-      render(<CertificateSection agent={agent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+    it('reflects certificate value from the certificate prop', () => {
+      render(
+        <CertificateSection
+          certificate={{type: CertificateTypes.JWKS, value: 'jwks-value'}}
+          onCertificateChange={mockOnCertificateChange}
+        />,
+      );
 
       expect(screen.getByPlaceholderText('applications:edit.advanced.certificate.placeholder.jwks')).toHaveValue(
         'jwks-value',
       );
     });
 
-    it('prioritizes editedAgent.certificate.value over agent value', () => {
-      const agent = {...mockAgent, certificate: {type: CertificateTypes.JWKS, value: 'old'}};
+    it('calls onCertificateChange when the value changes', async () => {
+      const user = userEvent.setup({delay: null});
       render(
         <CertificateSection
-          agent={agent}
-          editedAgent={{certificate: {type: CertificateTypes.JWKS, value: 'new'}}}
-          onFieldChange={mockOnFieldChange}
+          certificate={{type: CertificateTypes.JWKS, value: ''}}
+          onCertificateChange={mockOnCertificateChange}
         />,
       );
-
-      expect(screen.getByPlaceholderText('applications:edit.advanced.certificate.placeholder.jwks')).toHaveValue('new');
-    });
-
-    it('calls onFieldChange when the value changes', async () => {
-      const user = userEvent.setup({delay: null});
-      const agent = {...mockAgent, certificate: {type: CertificateTypes.JWKS, value: ''}};
-      render(<CertificateSection agent={agent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
       const valueInput = screen.getByPlaceholderText('applications:edit.advanced.certificate.placeholder.jwks');
       await user.type(valueInput, 'X');
 
-      expect(mockOnFieldChange).toHaveBeenCalledWith(
-        'certificate',
-        expect.objectContaining({type: CertificateTypes.JWKS}),
-      );
+      expect(mockOnCertificateChange).toHaveBeenCalledWith(expect.objectContaining({type: CertificateTypes.JWKS}));
     });
   });
 
   describe('Edge Cases', () => {
-    it('handles missing certificate on the agent', () => {
-      const agent = {...mockAgent};
-      delete (agent as Partial<Agent>).certificate;
-
-      render(<CertificateSection agent={agent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+    it('defaults to NONE when no certificate prop is provided', () => {
+      render(<CertificateSection onCertificateChange={mockOnCertificateChange} />);
 
       expect(screen.getByRole('combobox')).toHaveValue('applications:edit.advanced.certificate.type.none');
     });
 
     it('renders the JWKS value input as a multiline textarea with 3 rows', () => {
-      const agent = {...mockAgent, certificate: {type: CertificateTypes.JWKS, value: ''}};
-      render(<CertificateSection agent={agent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+      render(
+        <CertificateSection
+          certificate={{type: CertificateTypes.JWKS, value: ''}}
+          onCertificateChange={mockOnCertificateChange}
+        />,
+      );
 
       expect(screen.getByPlaceholderText('applications:edit.advanced.certificate.placeholder.jwks')).toHaveAttribute(
         'rows',

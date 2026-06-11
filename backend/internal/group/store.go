@@ -53,6 +53,7 @@ type groupStoreInterface interface {
 	AddGroupMembers(ctx context.Context, groupID string, members []Member) error
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) error
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error)
+	IsGroupDeclarative(ctx context.Context, id string) (bool, error)
 }
 
 // groupStore is the default implementation of groupStoreInterface.
@@ -348,7 +349,7 @@ func (s *groupStore) DeleteGroup(ctx context.Context, id string) error {
 	}
 
 	if result == 0 {
-		logger.Debug("Group not found with id: " + id)
+		logger.Debug(ctx, "Group not found with id: "+id)
 	}
 
 	return nil
@@ -550,6 +551,11 @@ func (s *groupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]G
 	}
 
 	return groups, nil
+}
+
+// IsGroupDeclarative returns false for the database store — database groups are never declarative.
+func (s *groupStore) IsGroupDeclarative(ctx context.Context, id string) (bool, error) {
+	return false, nil
 }
 
 // buildGroupFromResultRow constructs a GroupDAO from a database result row.

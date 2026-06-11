@@ -19,8 +19,10 @@
 package subscriber
 
 import (
+	"context"
 	"fmt"
 
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/observability/formatter"
@@ -60,10 +62,14 @@ func processEvent(
 		return fmt.Errorf("event is nil")
 	}
 
+	// Subscribers run in detached goroutines after the request context may be
+	// cancelled, so derive a logging context from the event's trace ID.
+	ctx := sysContext.WithTraceID(context.Background(), evt.TraceID)
+
 	// Format the event
 	formattedData, err := fmtr.Format(evt)
 	if err != nil {
-		logger.Error("Failed to format event",
+		logger.Error(ctx, "Failed to format event",
 			log.String("eventType", evt.Type),
 			log.String("eventID", evt.EventID),
 			log.Error(err))
@@ -72,14 +78,14 @@ func processEvent(
 
 	// Write using adapter
 	if err := adapter.Write(formattedData); err != nil {
-		logger.Error(fmt.Sprintf("Failed to write event to %s", outputType),
+		logger.Error(ctx, fmt.Sprintf("Failed to write event to %s", outputType),
 			log.String("eventType", evt.Type),
 			log.String("eventID", evt.EventID),
 			log.Error(err))
 		return fmt.Errorf("failed to write to %s: %w", outputType, err)
 	}
 
-	logger.Debug(fmt.Sprintf("Event processed successfully to %s", outputType),
+	logger.Debug(ctx, fmt.Sprintf("Event processed successfully to %s", outputType),
 		log.String("eventType", evt.Type),
 		log.String("eventID", evt.EventID),
 		log.String("traceID", evt.TraceID))

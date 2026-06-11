@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -119,11 +119,12 @@ const executeEmbeddedSignInFlowV2 = async ({
         const oauth2ErrorText: string = await oauth2Response.text();
 
         throw new ThunderIDAPIError(
-          `OAuth2 authorization failed: ${oauth2ErrorText}`,
+          oauth2ErrorText,
           'executeEmbeddedSignInFlow-OAuth2Error-002',
           'javascript',
           oauth2Response.status,
           oauth2Response.statusText,
+          'OAuth2 authorization failed',
         );
       }
 
@@ -134,12 +135,17 @@ const executeEmbeddedSignInFlowV2 = async ({
         redirectUrl: oauth2Result['redirect_uri'],
       } as any;
     } catch (authError) {
+      if (authError instanceof ThunderIDAPIError) {
+        throw authError;
+      }
+
       throw new ThunderIDAPIError(
-        `OAuth2 authorization failed: ${authError instanceof Error ? authError.message : 'Unknown error'}`,
+        authError instanceof Error ? authError.message : 'Unknown error',
         'executeEmbeddedSignInFlow-OAuth2Error-001',
         'javascript',
         500,
         'Failed to complete OAuth2 authorization after successful embedded sign-in flow.',
+        'OAuth2 authorization failed',
       );
     }
   }

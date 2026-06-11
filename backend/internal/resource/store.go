@@ -114,6 +114,7 @@ func (s *resourceStore) CreateResourceServer(ctx context.Context, id string, rs 
 			rs.Description,
 			resolveNullableString(rs.Handle),
 			resolveNullableString(rs.Identifier),
+			resolveNullableString(string(rs.Type)),
 			buildPropertiesJSON(rs),
 			s.deploymentID,
 		)
@@ -196,6 +197,7 @@ func (s *resourceStore) UpdateResourceServer(ctx context.Context, id string, rs 
 			rs.Description,
 			resolveNullableString(rs.Handle),
 			resolveNullableString(rs.Identifier),
+			resolveNullableString(string(rs.Type)),
 			buildPropertiesJSON(rs),
 			id,
 			s.deploymentID,
@@ -1025,6 +1027,10 @@ func buildResourceServerFromResultRow(row map[string]interface{}) (ResourceServe
 
 	if identifier, ok := row["identifier"].(string); ok {
 		rs.Identifier = identifier
+	}
+
+	if rsType, ok := row["type"].(string); ok {
+		rs.Type = ResourceServerType(rsType)
 	}
 
 	resolveProperties(row, &rs)

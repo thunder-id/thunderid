@@ -19,6 +19,7 @@
 package declarativeresource
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -115,7 +116,8 @@ func TestValidateResourceName(t *testing.T) {
 			// Create a logger for testing
 			logger := log.GetLogger()
 
-			got := ValidateResourceName(tt.resourceName, tt.resourceType, tt.resourceID, tt.errorCode, logger)
+			got := ValidateResourceName(
+				context.Background(), tt.resourceName, tt.resourceType, tt.resourceID, tt.errorCode, logger)
 			assert.Equal(t, tt.wantError, got)
 		})
 	}

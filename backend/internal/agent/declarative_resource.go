@@ -34,6 +34,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 const (
@@ -115,7 +116,7 @@ func (e *agentExporter) GetResourceByID(
 }
 
 // ValidateResource validates an agent resource prior to export.
-func (e *agentExporter) ValidateResource(
+func (e *agentExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	a, ok := resource.(*model.AgentGetResponse)
@@ -123,7 +124,7 @@ func (e *agentExporter) ValidateResource(
 		return "", declarativeresource.CreateTypeError(resourceTypeAgent, id)
 	}
 
-	if err := declarativeresource.ValidateResourceName(
+	if err := declarativeresource.ValidateResourceName(ctx,
 		a.Name, resourceTypeAgent, id, "AGT_VALIDATION_ERROR", logger); err != nil {
 		return "", err
 	}
@@ -223,7 +224,8 @@ func makeAgentEntityParser(
 			InboundAuthProfile: req.InboundAuthProfile,
 			InboundAuthConfig:  req.InboundAuthConfig,
 		}
-		clientID, clientSecret, _, svcErr := agentSvc.ValidateAgent(context.Background(), agent, req.ID)
+		clientID, clientSecret, _, svcErr := agentSvc.ValidateAgent(
+			security.WithRuntimeContext(context.Background()), agent, req.ID)
 		if svcErr != nil {
 			return nil, nil, nil, fmt.Errorf("failed to validate agent '%s': %v", req.ID, svcErr)
 		}
@@ -275,7 +277,8 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 			InboundAuthProfile: req.InboundAuthProfile,
 			InboundAuthConfig:  req.InboundAuthConfig,
 		}
-		_, _, resolvedClient, svcErr := agentSvc.ValidateAgent(context.Background(), agent, req.ID)
+		_, _, resolvedClient, svcErr := agentSvc.ValidateAgent(
+			security.WithRuntimeContext(context.Background()), agent, req.ID)
 		if svcErr != nil {
 			return nil, fmt.Errorf("failed to validate agent '%s': %v", req.ID, svcErr)
 		}

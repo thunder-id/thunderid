@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -212,7 +212,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowSuccess() {
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful registration")
-	ts.Require().Empty(completeFlowStep.FailureReason, "Failure reason should be empty for successful registration")
+	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for successful registration")
 
 	// Decode and validate JWT claims
 	jwtClaims, err := testutils.DecodeJWT(completeFlowStep.Assertion)
@@ -279,9 +279,9 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowDuplicateUser
 	// Step 3: Verify registration failure due to duplicate username
 	ts.Require().Equal("ERROR", completeFlowStep.FlowStatus, "Expected flow status to be ERROR")
 	ts.Require().Empty(completeFlowStep.Assertion, "No JWT assertion should be returned for failed registration")
-	ts.Require().NotEmpty(completeFlowStep.FailureReason, "Failure reason should be provided for duplicate user")
-	ts.Equal("User already exists with the provided attributes.", completeFlowStep.FailureReason,
-		"Failure reason should indicate duplicate username")
+	ts.Require().NotNil(completeFlowStep.Error, "Error should be provided for duplicate user")
+	ts.Equal("User already exists", completeFlowStep.Error.Message.DefaultValue,
+		"Error message should indicate duplicate username")
 }
 
 func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowInitialInvalidInput() {
@@ -304,7 +304,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowInitialInvali
 	// Step 3: Verify flow prompt for username again
 	ts.Require().Equal("INCOMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be INCOMPLETE")
 	ts.Require().Empty(completeFlowStep.Assertion, "No JWT assertion should be returned for incomplete registration")
-	ts.Require().Empty(completeFlowStep.FailureReason, "Failure reason should be empty for incomplete registration")
+	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for incomplete registration")
 	ts.Require().True(common.HasInput(completeFlowStep.Data.Inputs, "password"),
 		"Flow should prompt for password after invalid input")
 
@@ -342,7 +342,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowInitialInvali
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful registration")
-	ts.Require().Empty(completeFlowStep.FailureReason, "Failure reason should be empty for successful registration")
+	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for successful registration")
 
 	// Decode and validate JWT claims
 	jwtClaims, err := testutils.DecodeJWT(completeFlowStep.Assertion)
@@ -390,7 +390,7 @@ func (ts *BasicRegistrationFlowTestSuite) TestBasicRegistrationFlowSingleRequest
 	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(flowStep.Assertion,
 		"JWT assertion should be returned after successful registration")
-	ts.Require().Empty(flowStep.FailureReason, "Failure reason should be empty for successful registration")
+	ts.Require().Nil(flowStep.Error, "Error should be nil for successful registration")
 
 	// Decode and validate JWT claims
 	jwtClaims, err := testutils.DecodeJWT(flowStep.Assertion)

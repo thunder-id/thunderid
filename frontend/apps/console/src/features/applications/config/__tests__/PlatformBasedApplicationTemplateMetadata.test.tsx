@@ -27,8 +27,8 @@ describe('PlatformBasedApplicationTemplateMetadata', () => {
       expect(Array.isArray(PlatformBasedApplicationTemplateMetadata)).toBe(true);
     });
 
-    it('should have exactly 4 platform templates', () => {
-      expect(PlatformBasedApplicationTemplateMetadata).toHaveLength(4);
+    it('should have exactly 5 platform templates', () => {
+      expect(PlatformBasedApplicationTemplateMetadata).toHaveLength(5);
     });
 
     it('should have all required properties for each template', () => {
@@ -38,6 +38,9 @@ describe('PlatformBasedApplicationTemplateMetadata', () => {
         expect(metadata).toHaveProperty('titleKey');
         expect(metadata).toHaveProperty('descriptionKey');
         expect(metadata).toHaveProperty('template');
+        expect(metadata).toHaveProperty('categories');
+        expect(Array.isArray(metadata.categories)).toBe(true);
+        expect(metadata.categories.length).toBeGreaterThan(0);
       });
     });
   });
@@ -174,6 +177,43 @@ describe('PlatformBasedApplicationTemplateMetadata', () => {
     });
   });
 
+  describe('Custom Platform', () => {
+    const customMetadata = PlatformBasedApplicationTemplateMetadata.find(
+      (m) => m.value === PlatformApplicationTemplate.CUSTOM,
+    );
+
+    it('should exist', () => {
+      expect(customMetadata).toBeDefined();
+    });
+
+    it('should have correct value', () => {
+      expect(customMetadata?.value).toBe(PlatformApplicationTemplate.CUSTOM);
+    });
+
+    it('should have icon component', () => {
+      expect(customMetadata?.icon).toBeDefined();
+      const {container} = render(<div>{customMetadata?.icon}</div>);
+      expect(container.querySelector('svg')).toBeInTheDocument();
+    });
+
+    it('should have correct i18n keys', () => {
+      expect(customMetadata?.titleKey).toBe('applications:onboarding.configure.stack.platform.custom.title');
+      expect(customMetadata?.descriptionKey).toBe(
+        'applications:onboarding.configure.stack.platform.custom.description',
+      );
+    });
+
+    it('should have a template with name and creationFlow', () => {
+      expect(customMetadata?.template).toBeDefined();
+      expect(customMetadata?.template.defaults?.name).toBe('My Application');
+      expect(customMetadata?.template.creationFlow?.steps).toEqual(['NAME', 'ORGANIZATION_UNIT', 'COMPLETE']);
+    });
+
+    it('should have no field constraints', () => {
+      expect(customMetadata?.template.fieldConstraints).toBeUndefined();
+    });
+  });
+
   describe('Templates', () => {
     it('should have unique values', () => {
       const values = PlatformBasedApplicationTemplateMetadata.map((m) => m.value);
@@ -205,6 +245,40 @@ describe('PlatformBasedApplicationTemplateMetadata', () => {
       enumValues.forEach((enumValue) => {
         expect(configuredValues).toContain(enumValue);
       });
+    });
+
+    it('should assign web category to Browser and Full-Stack', () => {
+      [PlatformApplicationTemplate.BROWSER, PlatformApplicationTemplate.FULL_STACK].forEach((value) => {
+        const meta = PlatformBasedApplicationTemplateMetadata.find((m) => m.value === value);
+        expect(meta?.categories).toContain('web');
+      });
+    });
+
+    it('should assign web and backend categories to Full-Stack', () => {
+      const meta = PlatformBasedApplicationTemplateMetadata.find(
+        (m) => m.value === PlatformApplicationTemplate.FULL_STACK,
+      );
+      expect(meta?.categories).toContain('web');
+      expect(meta?.categories).toContain('backend');
+    });
+
+    it('should assign mobile category to Mobile', () => {
+      const meta = PlatformBasedApplicationTemplateMetadata.find((m) => m.value === PlatformApplicationTemplate.MOBILE);
+      expect(meta?.categories).toEqual(['mobile']);
+    });
+
+    it('should assign backend category to Backend', () => {
+      const meta = PlatformBasedApplicationTemplateMetadata.find(
+        (m) => m.value === PlatformApplicationTemplate.BACKEND,
+      );
+      expect(meta?.categories).toEqual(['backend']);
+    });
+
+    it('should assign web, backend, and mobile categories to Custom', () => {
+      const meta = PlatformBasedApplicationTemplateMetadata.find((m) => m.value === PlatformApplicationTemplate.CUSTOM);
+      expect(meta?.categories).toContain('web');
+      expect(meta?.categories).toContain('backend');
+      expect(meta?.categories).toContain('mobile');
     });
   });
 

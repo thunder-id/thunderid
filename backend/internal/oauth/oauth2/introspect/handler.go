@@ -44,7 +44,7 @@ func newTokenIntrospectionHandler(introspectionService TokenIntrospectionService
 func (h *tokenIntrospectionHandler) HandleIntrospect(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if err := r.ParseForm(); err != nil {
-		sysutils.WriteJSONError(w, constants.ErrorInvalidRequest, "Failed to decode request body",
+		sysutils.WriteJSONError(ctx, w, constants.ErrorInvalidRequest, "Failed to decode request body",
 			http.StatusBadRequest, nil)
 		return
 	}
@@ -52,7 +52,7 @@ func (h *tokenIntrospectionHandler) HandleIntrospect(w http.ResponseWriter, r *h
 	// Extract request parameters
 	token := r.FormValue(constants.RequestParamToken)
 	if token == "" {
-		sysutils.WriteJSONError(w, constants.ErrorInvalidRequest, "Token parameter is required",
+		sysutils.WriteJSONError(ctx, w, constants.ErrorInvalidRequest, "Token parameter is required",
 			http.StatusBadRequest, nil)
 		return
 	}
@@ -61,12 +61,12 @@ func (h *tokenIntrospectionHandler) HandleIntrospect(w http.ResponseWriter, r *h
 
 	response, err := h.service.IntrospectToken(ctx, token, tokenTypeHint)
 	if err != nil {
-		h.logger.Error("Failed to introspect token", log.Error(err))
-		sysutils.WriteJSONError(w, constants.ErrorServerError,
+		h.logger.Error(ctx, "Failed to introspect token", log.Error(err))
+		sysutils.WriteJSONError(ctx, w, constants.ErrorServerError,
 			"An unexpected error occurred while processing the request",
 			http.StatusInternalServerError, nil)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, response)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
 }

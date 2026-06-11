@@ -85,7 +85,7 @@ func (e *inviteExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRespons
 // executeGenerate generates the invite token and link.
 func (e *inviteExecutor) executeGenerate(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Executing invite executor in generate mode")
+	logger.Debug(ctx.Context, "Executing invite executor in generate mode")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -95,8 +95,9 @@ func (e *inviteExecutor) executeGenerate(ctx *core.NodeContext) (*common.Executo
 
 	inviteToken, err := e.getOrGenerateToken(ctx)
 	if err != nil {
-		logger.Debug("Failed to get or generate invite token", log.Error(err))
+		logger.Debug(ctx.Context, "Failed to get or generate invite token", log.Error(err))
 		execResp.Status = common.ExecFailure
+		execResp.Error = &ErrInviteTokenGenerationFailed
 		return execResp, nil
 	}
 
@@ -121,7 +122,7 @@ func (e *inviteExecutor) executeGenerate(ctx *core.NodeContext) (*common.Executo
 // executeVerify validates the user-provided invite token against the stored token.
 func (e *inviteExecutor) executeVerify(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Executing invite executor in verify mode")
+	logger.Debug(ctx.Context, "Executing invite executor in verify mode")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -139,20 +140,21 @@ func (e *inviteExecutor) executeVerify(ctx *core.NodeContext) (*common.ExecutorR
 	storedToken, hasStoredToken := ctx.RuntimeData[common.RuntimeKeyStoredInviteToken]
 
 	if !hasStoredToken {
-		logger.Debug("No invite token found in runtime data")
+		logger.Debug(ctx.Context, "No invite token found in runtime data")
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Invalid invite token"
+		execResp.Error = &ErrInvalidInviteToken
 		return execResp, nil
 	}
 
 	if inviteTokenInput != storedToken {
-		logger.Debug("Invite token mismatch", log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+		logger.Debug(ctx.Context, "Invite token mismatch",
+			log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Invalid invite token"
+		execResp.Error = &ErrInvalidInviteToken
 		return execResp, nil
 	}
 
-	logger.Debug("Invite token validated successfully")
+	logger.Debug(ctx.Context, "Invite token validated successfully")
 	execResp.Status = common.ExecComplete
 	return execResp, nil
 }
@@ -176,6 +178,9 @@ func (e *inviteExecutor) generateInviteLink(ctx *core.NodeContext, inviteToken s
 
 	if ctx.EntityID != "" {
 		queryParams.Set(oauth2const.AppID, ctx.EntityID)
+	}
+	if authReqID, ok := ctx.RuntimeData[common.RuntimeKeyCIBAAuthReqID]; ok && authReqID != "" {
+		queryParams.Set(oauth2const.RequestParamAuthReqID, authReqID)
 	}
 
 	if baseURL, ok := ctx.NodeProperties[propertyKeyInviteBaseURL].(string); ok && baseURL != "" {

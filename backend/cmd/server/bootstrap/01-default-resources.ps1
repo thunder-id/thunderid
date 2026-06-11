@@ -52,6 +52,7 @@ $ErrorActionPreference = 'Stop'
 Log-Info "Creating default $PRODUCT_NAME resources..."
 Write-Host ""
 
+$SystemRsIdentifier = "https://localhost:8090/mcp"
 
 # ============================================================================
 # Create Default Organization Unit
@@ -215,7 +216,7 @@ $agentTypeData = ([ordered]@{
             type = "string"
             displayName = "Model"
             required = $false
-            enum = @("GPT-5", "Claude", "Gemini", "Llama", "Mistral", "Other")
+            enum = @("claude-opus-4.7", "claude-opus-4.6", "claude-sonnet-4.6", "claude-sonnet-4.5", "claude-haiku-4.5", "openai-gpt-5.4", "openai-gpt-5.3", "gemini-3.5", "gemini-3.1", "gemini-3", "other")
         }
         department = @{
             type = "string"
@@ -340,7 +341,7 @@ if (-not $DEFAULT_OU_ID) {
 $resourceServerData = @{
     name = "System"
     description = "System resource server"
-    identifier = "system"
+    identifier = $SystemRsIdentifier
     ouId = $DEFAULT_OU_ID
 } | ConvertTo-Json -Depth 10
 
@@ -400,7 +401,7 @@ Write-Host ""
 # ============================================================================
 #
 # Permission auto-derivation:
-#   Resource Server identifier "system"
+#   Resource Server identifier ($SystemRsIdentifier)
 #   └── Resource handle "system"           → permission "system"
 #       └── Resource handle "ou"           → permission "system:ou"
 #           └── Action handle "view"       → permission "system:ou:view"

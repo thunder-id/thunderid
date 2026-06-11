@@ -45,23 +45,23 @@ class SPAUtils {
   }
 
   /**
-   * Retrieves a PKCE verifier from sessionStorage.
+   * Retrieves a PKCE verifier from storage.
    *
    * @param pkceKey - The storage key for the PKCE verifier.
    * @returns The stored verifier string, or an empty string if not found.
    */
   public static getPKCE(pkceKey: string): string {
-    return sessionStorage.getItem(pkceKey) ?? '';
+    return localStorage.getItem(pkceKey) ?? '';
   }
 
   /**
-   * Persists a PKCE verifier in sessionStorage.
+   * Persists a PKCE verifier in storage.
    *
    * @param pkceKey - The storage key.
    * @param pkce - The PKCE verifier value.
    */
   public static setPKCE(pkceKey: string, pkce: string): void {
-    sessionStorage.setItem(pkceKey, pkce);
+    localStorage.setItem(pkceKey, pkce);
   }
 
   /**
@@ -94,12 +94,12 @@ class SPAUtils {
   }
 
   /**
-   * Removes a PKCE verifier from sessionStorage.
+   * Removes a PKCE verifier from storage.
    *
    * @param pkceKey - The storage key to remove.
    */
   public static removePKCE(pkceKey: string): void {
-    sessionStorage.removeItem(pkceKey);
+    localStorage.removeItem(pkceKey);
   }
 
   /**

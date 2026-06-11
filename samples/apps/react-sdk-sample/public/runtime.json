@@ -1,4 +1,5 @@
 {
-  "clientId": "REACT_SDK_SAMPLE",
-  "baseUrl": "https://localhost:8090"
+    "clientId": "REACT_SDK_SAMPLE",
+    "baseUrl": "https://localhost:8090",
+    "scopes": ["openid", "profile"]
 }

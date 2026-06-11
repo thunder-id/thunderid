@@ -86,12 +86,12 @@ func (ds *dcrService) RegisterClient(ctx context.Context, request *DCRRegistrati
 	if request.OUID == "" {
 		rootOUs, svcErr := ds.ouService.GetOrganizationUnitList(ctx, 1, 0, nil)
 		if svcErr != nil {
-			logger.Error("Failed to retrieve root organization units for DCR",
+			logger.Error(ctx, "Failed to retrieve root organization units for DCR",
 				log.String("error", svcErr.Error.DefaultValue))
 			return nil, &ErrorServerError
 		}
 		if rootOUs == nil || rootOUs.TotalResults == 0 || len(rootOUs.OrganizationUnits) == 0 {
-			logger.Error("No root organization unit available for DCR registration")
+			logger.Error(ctx, "No root organization unit available for DCR registration")
 			return nil, &ErrorServerError
 		}
 		request.OUID = rootOUs.OrganizationUnits[0].ID
@@ -99,7 +99,8 @@ func (ds *dcrService) RegisterClient(ctx context.Context, request *DCRRegistrati
 
 	appDTO, svcErr := ds.convertDCRToApplication(request)
 	if svcErr != nil {
-		logger.Error("Failed to convert DCR request to application DTO", log.String("error", svcErr.Error.DefaultValue))
+		logger.Error(ctx, "Failed to convert DCR request to application DTO",
+			log.String("error", svcErr.Error.DefaultValue))
 		return nil, &ErrorServerError
 	}
 
@@ -111,12 +112,12 @@ func (ds *dcrService) RegisterClient(ctx context.Context, request *DCRRegistrati
 		createdApp, svcErr := ds.appService.CreateApplication(txCtx, appDTO)
 		if svcErr != nil {
 			if svcErr.Type == serviceerror.ServerErrorType {
-				logger.Error("Failed to create application via Application service",
+				logger.Error(ctx, "Failed to create application via Application service",
 					log.String("error_code", svcErr.Code))
 				capturedErr = &ErrorServerError
 				return errors.New("failed to create application")
 			}
-			logger.Debug("Failed to create application via Application service",
+			logger.Debug(ctx, "Failed to create application via Application service",
 				log.String("error_code", svcErr.Code))
 			capturedErr = ds.mapApplicationErrorToDCRError(svcErr)
 			return errors.New("failed to create application")
@@ -127,7 +128,7 @@ func (ds *dcrService) RegisterClient(ctx context.Context, request *DCRRegistrati
 		var convErr *serviceerror.ServiceError
 		response, convErr = ds.convertApplicationToDCRResponse(createdApp, request.ClientName)
 		if convErr != nil {
-			logger.Error("Failed to convert application to DCR response",
+			logger.Error(ctx, "Failed to convert application to DCR response",
 				log.String("error", convErr.Error.DefaultValue))
 			capturedErr = convErr
 			return errors.New("conversion failed")
@@ -151,7 +152,7 @@ func (ds *dcrService) RegisterClient(ctx context.Context, request *DCRRegistrati
 	// If the compensation DeleteApplication also fails, the app record is left without localized
 	// metadata — an accepted gap that can be cleaned up manually or via a future sweep.
 	if writeErr := ds.writeLocalizedVariants(ctx, createdAppID, request); writeErr != nil {
-		logger.Error("Failed to write localized variants for DCR client; compensating by deleting app",
+		logger.Error(ctx, "Failed to write localized variants for DCR client; compensating by deleting app",
 			log.String("appID", createdAppID), log.String("error", writeErr.Error.DefaultValue))
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cleanupCancel()
@@ -159,12 +160,13 @@ func (ds *dcrService) RegisterClient(ctx context.Context, request *DCRRegistrati
 			if cleanErr := ds.i18nService.DeleteTranslationsByKey(
 				cleanupCtx, application.AppI18nNamespace(), application.AppI18nKey(createdAppID, field),
 			); cleanErr != nil {
-				logger.Error("Failed to clean up partial i18n row after write failure",
+				logger.Error(ctx, "Failed to clean up partial i18n row after write failure",
 					log.String("appID", createdAppID), log.String("field", field))
 			}
 		}
 		if delSvcErr := ds.appService.DeleteApplication(cleanupCtx, createdAppID); delSvcErr != nil {
-			logger.Error("Compensation delete failed after i18n write failure; app record may be orphaned",
+			logger.Error(ctx,
+				"Compensation delete failed after i18n write failure; app record may be orphaned",
 				log.String("appID", createdAppID))
 		}
 		return nil, writeErr
@@ -401,7 +403,7 @@ func (ds *dcrService) writeLocalizedVariants(
 	ctx context.Context, appID string, request *DCRRegistrationRequest) *serviceerror.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DCRService"))
 	if ds.i18nService == nil {
-		logger.Debug("i18n service not configured, skipping localized variant writes")
+		logger.Debug(ctx, "i18n service not configured, skipping localized variant writes")
 		return nil
 	}
 	ns := application.AppI18nNamespace()
@@ -446,13 +448,13 @@ func (ds *dcrService) writeLocalizedVariants(
 	}
 	if svcErr := ds.i18nService.SetTranslationOverridesForNamespace(ctx, ns, entries); svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
-			logger.Debug("Invalid client metadata in localized variants",
+			logger.Debug(ctx, "Invalid client metadata in localized variants",
 				log.String("appID", appID),
 				log.String("errorCode", svcErr.Code),
 				log.String("error", svcErr.Error.DefaultValue))
 			return &ErrorServerError
 		}
-		logger.Error("Failed to write localized variants",
+		logger.Error(ctx, "Failed to write localized variants",
 			log.String("appID", appID),
 			log.String("errorCode", svcErr.Code),
 			log.String("error", svcErr.Error.DefaultValue))

@@ -364,35 +364,28 @@ jobs:
             Remove-Item -Path $extractedDir.FullName -Recurse -Force
           }
 
-      - name: 📦 Install serve globally
-        shell: bash
-        run: npm install -g serve
-
       - name: 📱 Start Sample App
         shell: bash
         run: |
           cd tests/e2e/sample-app
 
-          echo "Starting Sample App..."
-          dist_path="$(pwd)/dist"
-          cert_file="$dist_path/server.cert"
-          key_file="$dist_path/server.key"
+          echo "Installing dependencies..."
+          npm install
 
-          if [ -f "$cert_file" ] && [ -f "$key_file" ]; then
-            echo "Using HTTPS with SSL certificates"
-            serve -s "$dist_path" -l 3000 --ssl-cert "$cert_file" --ssl-key "$key_file" > sample-app.log 2>&1 &
-            protocol="https"
-          else
-            echo "No SSL certificates found, using HTTP"
-            serve -s "$dist_path" -l 3000 > sample-app.log 2>&1 &
-            protocol="http"
-          fi
-          sleep 5
+          echo "Generating SSL certificates..."
+          openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+              -keyout server.key \
+              -out server.cert \
+              -subj "/O=WSO2/OU=${{ env.PRODUCT_NAME }}/CN=localhost" \
+              > /dev/null 2>&1
+
+          echo "Starting Sample App..."
+          npm run dev > sample-app.log 2>&1 &
 
           # Wait for sample app to be ready
-          echo "Waiting for sample app to be ready on ${protocol}://localhost:3000..."
+          echo "Waiting for sample app to be ready on https://localhost:3000..."
           for i in $(seq 1 60); do
-            if curl -sk "${protocol}://localhost:3000" > /dev/null 2>&1; then
+            if curl -sk https://localhost:3000 > /dev/null 2>&1; then
               echo "Sample App is UP!"
               break
             fi
@@ -401,7 +394,7 @@ jobs:
           done
 
           # Verify sample app is running
-          if ! curl -sk "${protocol}://localhost:3000" > /dev/null 2>&1; then
+          if ! curl -sk https://localhost:3000 > /dev/null 2>&1; then
             echo "❌ Sample app failed to start within 2 minutes"
             cat sample-app.log || true
             exit 1

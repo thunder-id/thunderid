@@ -25,6 +25,7 @@ type OAuthParameters struct {
 	State               string
 	ClientID            string
 	RedirectURI         string
+	RedirectURIProvided bool
 	ResponseType        string
 	StandardScopes      []string
 	PermissionScopes    []string

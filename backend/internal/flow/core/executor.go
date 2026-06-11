@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -20,6 +20,8 @@ package core
 
 import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -95,7 +97,7 @@ func (e *executor) HasRequiredInputs(ctx *NodeContext, execResp *common.Executor
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "Executor"),
 		log.String(log.LoggerKeyExecutorName, e.GetName()),
 		log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Checking inputs for the executor")
+	logger.Debug(ctx.Context, "Checking inputs for the executor")
 
 	requiredData := e.GetRequiredInputs(ctx)
 
@@ -138,18 +140,27 @@ func (e *executor) ValidatePrerequisites(ctx *NodeContext, execResp *common.Exec
 		if _, ok := ctx.UserInputs[prerequisite.Identifier]; !ok {
 			if _, ok := ctx.RuntimeData[prerequisite.Identifier]; !ok {
 				if value, ok := ctx.ForwardedData[prerequisite.Identifier]; !ok {
-					logger.Debug("Prerequisite not met for the executor",
+					logger.Debug(ctx.Context, "Prerequisite not met for the executor",
 						log.String("identifier", prerequisite.Identifier))
 					execResp.Status = common.ExecFailure
-					execResp.FailureReason = "Prerequisite not met: " + prerequisite.Identifier
+					execResp.Error = serviceerror.CustomServiceError(ErrExecutorPrerequisiteNotMet,
+						i18ncore.I18nMessage{
+							Key:          ErrExecutorPrerequisiteNotMet.ErrorDescription.Key,
+							DefaultValue: "Prerequisite not met: " + prerequisite.Identifier,
+						})
 					return false
 				} else {
 					// ForwardedData found but verify it's a string value
 					if _, isString := value.(string); !isString {
-						logger.Debug("Prerequisite not met for the executor (non-string in ForwardedData)",
+						logger.Debug(ctx.Context,
+							"Prerequisite not met for the executor (non-string in ForwardedData)",
 							log.String("identifier", prerequisite.Identifier))
 						execResp.Status = common.ExecFailure
-						execResp.FailureReason = "Prerequisite not met: " + prerequisite.Identifier
+						execResp.Error = serviceerror.CustomServiceError(ErrExecutorPrerequisiteNotMet,
+							i18ncore.I18nMessage{
+								Key:          ErrExecutorPrerequisiteNotMet.ErrorDescription.Key,
+								DefaultValue: "Prerequisite not met: " + prerequisite.Identifier,
+							})
 						return false
 					}
 				}

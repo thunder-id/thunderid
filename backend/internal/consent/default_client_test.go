@@ -950,7 +950,7 @@ func (s *DefaultClientTestSuite) TestCheckStatus_2xxReturnsNil() {
 
 	for _, code := range []int{200, 201, 204} {
 		resp := buildHTTPResponse(s.T(), code, nil)
-		s.Nil(c.checkStatus(resp), "expected nil for status %d", code)
+		s.Nil(c.checkStatus(context.Background(), resp), "expected nil for status %d", code)
 	}
 }
 
@@ -959,7 +959,7 @@ func (s *DefaultClientTestSuite) TestCheckStatus_401ReturnsUnauthorized() {
 	c := newTestClient(s.T(), httpMock)
 
 	resp := buildHTTPResponse(s.T(), http.StatusUnauthorized, nil)
-	svcErr := c.checkStatus(resp)
+	svcErr := c.checkStatus(context.Background(), resp)
 
 	s.Equal(&ErrorConsentServiceReturnedUnauthorized, svcErr)
 }
@@ -969,7 +969,7 @@ func (s *DefaultClientTestSuite) TestCheckStatus_403ReturnsForbidden() {
 	c := newTestClient(s.T(), httpMock)
 
 	resp := buildHTTPResponse(s.T(), http.StatusForbidden, nil)
-	svcErr := c.checkStatus(resp)
+	svcErr := c.checkStatus(context.Background(), resp)
 
 	s.Equal(&ErrorConsentServiceReturnedForbidden, svcErr)
 }
@@ -980,7 +980,7 @@ func (s *DefaultClientTestSuite) TestCheckStatus_5xxReturnsInternalServerError()
 
 	errBody := consentBackendErrorDTO{Code: "CE-500"}
 	resp := buildHTTPResponse(s.T(), http.StatusInternalServerError, errBody)
-	svcErr := c.checkStatus(resp)
+	svcErr := c.checkStatus(context.Background(), resp)
 
 	s.Equal(&serviceerror.InternalServerError, svcErr)
 }
@@ -995,7 +995,7 @@ func (s *DefaultClientTestSuite) TestCheckStatus_5xxWithCE5009ReturnsElementAsso
 		Description: "The element is currently linked to a purpose",
 	}
 	resp := buildHTTPResponse(s.T(), http.StatusInternalServerError, specialErrBody)
-	svcErr := c.checkStatus(resp)
+	svcErr := c.checkStatus(context.Background(), resp)
 
 	s.Equal(&ErrorDeletingConsentElementWithAssociatedPurpose, svcErr)
 }
@@ -1006,7 +1006,7 @@ func (s *DefaultClientTestSuite) TestCheckStatus_OtherError4xxReturnsInvalidCons
 
 	errBody := consentBackendErrorDTO{Code: "UNKNOWN"}
 	resp := buildHTTPResponse(s.T(), http.StatusUnprocessableEntity, errBody)
-	svcErr := c.checkStatus(resp)
+	svcErr := c.checkStatus(context.Background(), resp)
 
 	s.Equal(&ErrorInvalidConsentRequest, svcErr)
 }
@@ -1028,7 +1028,7 @@ func (s *DefaultClientTestSuite) TestBuildConsentSearchURL_AllFilters() {
 		Offset:          5,
 	}
 
-	u, svcErr := c.buildConsentSearchURL(filter)
+	u, svcErr := c.buildConsentSearchURL(context.Background(), filter)
 
 	s.Nil(svcErr)
 	// Ensure the "?" query separator is not escaped to "%3F" in the URL path.
@@ -1048,7 +1048,7 @@ func (s *DefaultClientTestSuite) TestBuildConsentSearchURL_EmptyFilter() {
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newDefaultClient(httpMock).(*defaultClient)
 
-	u, svcErr := c.buildConsentSearchURL(&ConsentSearchFilter{})
+	u, svcErr := c.buildConsentSearchURL(context.Background(), &ConsentSearchFilter{})
 
 	s.Nil(svcErr)
 	s.Contains(u, testBaseURL)
@@ -1063,7 +1063,7 @@ func (s *DefaultClientTestSuite) TestBuildConsentSearchURL_NilFilter() {
 	c := newDefaultClient(httpMock).(*defaultClient)
 
 	// A nil filter should not panic and should return the bare endpoint URL.
-	u, svcErr := c.buildConsentSearchURL(nil)
+	u, svcErr := c.buildConsentSearchURL(context.Background(), nil)
 
 	s.Nil(svcErr)
 	s.Contains(u, testBaseURL)
@@ -1645,8 +1645,8 @@ func (s *DefaultClientTestSuite) TestCloseBody_NilResponse_DoesNotPanic() {
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newTestClient(s.T(), httpMock)
 
-	s.NotPanics(func() { c.closeBody(nil) })
-	s.NotPanics(func() { c.closeBody(&http.Response{}) })
+	s.NotPanics(func() { c.closeBody(context.Background(), nil) })
+	s.NotPanics(func() { c.closeBody(context.Background(), &http.Response{}) })
 }
 
 // ----- handleClientError with undecodable body -----
@@ -1690,7 +1690,7 @@ func (s *DefaultClientTestSuite) TestBuildConsentSearchURL_NilFilter_ReturnsBase
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newDefaultClient(httpMock).(*defaultClient)
 
-	u, svcErr := c.buildConsentSearchURL(nil)
+	u, svcErr := c.buildConsentSearchURL(context.Background(), nil)
 
 	s.Nil(svcErr)
 	s.Contains(u, testBaseURL)

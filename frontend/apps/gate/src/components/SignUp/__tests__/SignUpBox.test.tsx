@@ -194,7 +194,7 @@ describe('SignUpBox', () => {
     expect(screen.getByText(/Already have an account/)).toBeInTheDocument();
   });
 
-  it('shows flowError alert when onFlowChange reports failureReason', () => {
+  it('shows flowError alert when onFlowChange reports error', () => {
     mockSignUpRenderProps = createMockSignUpRenderProps({
       components: [{id: 'block', type: 'BLOCK', components: []}],
     });
@@ -204,7 +204,17 @@ describe('SignUpBox', () => {
 
     act(() => {
       capturedOnFlowChange!({
-        failureReason: 'A user with this email already exists. Please use a different value.',
+        error: {
+          code: 'FEE-60005',
+          message: {
+            key: 'flows.errors.user_exists',
+            defaultValue: 'A user with this email already exists. Please use a different value.',
+          },
+          description: {
+            key: 'flows.errors.user_exists_desc',
+            defaultValue: 'A user with this email already exists. Please use a different value.',
+          },
+        },
         data: {additionalData: {}},
       });
     });
@@ -238,7 +248,17 @@ describe('SignUpBox', () => {
 
     act(() => {
       capturedOnFlowChange!({
-        failureReason: 'A user with this email already exists. Please use a different value.',
+        error: {
+          code: 'FEE-60005',
+          message: {
+            key: 'flows.errors.user_exists',
+            defaultValue: 'A user with this email already exists. Please use a different value.',
+          },
+          description: {
+            key: 'flows.errors.user_exists_desc',
+            defaultValue: 'A user with this email already exists. Please use a different value.',
+          },
+        },
         data: {additionalData: {}},
       });
     });

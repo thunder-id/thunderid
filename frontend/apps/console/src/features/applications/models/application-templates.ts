@@ -49,6 +49,7 @@ export const PlatformApplicationTemplate = {
   BROWSER: 'BROWSER',
   MOBILE: 'MOBILE',
   FULL_STACK: 'FULL_STACK',
+  CUSTOM: 'CUSTOM',
 } as const;
 
 /**
@@ -205,12 +206,20 @@ export interface ApplicationTemplate {
   integrationGuides?: IntegrationGuides;
 }
 
+/**
+ * Template category used for filtering in the unified template gallery.
+ *
+ * @public
+ */
+export type TemplateCategory = 'web' | 'backend' | 'mobile';
+
 export interface ApplicationTemplateMetadata<T = TechnologyApplicationTemplate | PlatformApplicationTemplate> {
   value: T;
   icon: JSX.Element;
   titleKey: string;
   descriptionKey: string;
   template: ApplicationTemplate;
+  categories: TemplateCategory[];
   disabled?: boolean;
 }
 

@@ -83,7 +83,7 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 		return
 	}
 	if len(origins) > 1 {
-		logger().Debug("CORS: multiple Origin headers; refusing to evaluate")
+		logger().Debug(r.Context(), "CORS: multiple Origin headers; refusing to evaluate")
 		w.Header().Add("Vary", "Origin")
 		return
 	}
@@ -103,14 +103,14 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 
 	parsed, err := cors.ParseOrigin(requestOrigin)
 	if err != nil {
-		logger().Debug("CORS origin rejected by parser",
+		logger().Debug(r.Context(), "CORS origin rejected by parser",
 			log.String("origin", requestOrigin), log.Error(err))
 		return
 	}
 
 	allow, echo := matcher.Match(parsed)
 	if !allow {
-		logger().Debug("CORS origin rejected by matcher",
+		logger().Debug(r.Context(), "CORS origin rejected by matcher",
 			log.String("origin", requestOrigin))
 		return
 	}

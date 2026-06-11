@@ -85,14 +85,17 @@ func (p *defaultAuthnProvider) Authenticate(
 			return nil, newClientError(authnprovidercm.ErrorCodeUserNotFound,
 				"User not found", "The specified user does not exist")
 		}
-		return nil, p.logAndReturnServerError("Failed to get entity after authentication",
+		return nil, p.logAndReturnServerError(ctx, "Failed to get entity after authentication",
 			log.String("error", getErr.Error()))
 	}
 
 	var attributes map[string]interface{}
 	if len(entityResult.Attributes) > 0 {
 		if err := json.Unmarshal(entityResult.Attributes, &attributes); err != nil {
-			return nil, p.logAndReturnServerError("Failed to get allowed attributes", log.String("error", err.Error()))
+			return nil, p.logAndReturnServerError(
+				ctx,
+				"Failed to get allowed attributes",
+				log.String("error", err.Error()))
 		}
 	}
 
@@ -185,7 +188,7 @@ func (p *defaultAuthnProvider) authenticateWithOTP(
 			return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
 				authErr.Error.DefaultValue, authErr.ErrorDescription.DefaultValue)
 		}
-		return nil, p.logAndReturnServerError("OTP authentication failed with server error",
+		return nil, p.logAndReturnServerError(ctx, "OTP authentication failed with server error",
 			log.String("error", authErr.Error.DefaultValue),
 			log.String("errorDescription", authErr.ErrorDescription.DefaultValue))
 	}
@@ -228,7 +231,7 @@ func (p *defaultAuthnProvider) authenticateWithFederated(
 			return nil, newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,
 				authErr.Error.DefaultValue, authErr.ErrorDescription.DefaultValue)
 		}
-		return nil, p.logAndReturnServerError("Federated authentication failed with server error",
+		return nil, p.logAndReturnServerError(ctx, "Federated authentication failed with server error",
 			log.String("error", authErr.Error.DefaultValue),
 			log.String("errorDescription", authErr.ErrorDescription.DefaultValue))
 	}
@@ -272,7 +275,7 @@ func (p *defaultAuthnProvider) authenticateWithMagicLink(
 			return nil, newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,
 				authErr.Error.DefaultValue, authErr.ErrorDescription.DefaultValue)
 		}
-		return nil, p.logAndReturnServerError("Magic link authentication failed with server error",
+		return nil, p.logAndReturnServerError(ctx, "Magic link authentication failed with server error",
 			log.String("error", authErr.Error.DefaultValue),
 			log.String("errorDescription", authErr.ErrorDescription.DefaultValue))
 	}
@@ -298,7 +301,7 @@ func (p *defaultAuthnProvider) authenticateByUserID(
 	}
 	authResult, authErr := p.entitySvc.AuthenticateEntityByID(ctx, userIDStr, credentials)
 	if authErr != nil {
-		return nil, p.handleEntityAuthError(authErr, "Basic authentication by ID failed with server error")
+		return nil, p.handleEntityAuthError(ctx, authErr, "Basic authentication by ID failed with server error")
 	}
 	return &credentialOutcome{entityID: authResult.EntityID}, nil
 }
@@ -308,12 +311,13 @@ func (p *defaultAuthnProvider) authenticateByIdentifiers(
 ) (*credentialOutcome, *serviceerror.ServiceError) {
 	authResult, authErr := p.entitySvc.AuthenticateEntity(ctx, identifiers, credentials)
 	if authErr != nil {
-		return nil, p.handleEntityAuthError(authErr, "Basic authentication failed with server error")
+		return nil, p.handleEntityAuthError(ctx, authErr, "Basic authentication failed with server error")
 	}
 	return &credentialOutcome{entityID: authResult.EntityID}, nil
 }
 
-func (p *defaultAuthnProvider) handleEntityAuthError(err error, serverMsg string) *serviceerror.ServiceError {
+func (p *defaultAuthnProvider) handleEntityAuthError(
+	ctx context.Context, err error, serverMsg string) *serviceerror.ServiceError {
 	if errors.Is(err, entity.ErrEntityNotFound) {
 		return newClientError(authnprovidercm.ErrorCodeUserNotFound,
 			"User not found", "The specified user does not exist")
@@ -322,7 +326,7 @@ func (p *defaultAuthnProvider) handleEntityAuthError(err error, serverMsg string
 		return newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,
 			"Authentication failed", "Invalid credentials provided")
 	}
-	return p.logAndReturnServerError(serverMsg, log.String("error", err.Error()))
+	return p.logAndReturnServerError(ctx, serverMsg, log.String("error", err.Error()))
 }
 
 // GetAttributes retrieves the user attributes using the internal entity service.
@@ -340,14 +344,14 @@ func (p *defaultAuthnProvider) GetAttributes(
 			return nil, newClientError(authnprovidercm.ErrorCodeInvalidToken,
 				"Invalid token", "The specified token is invalid")
 		}
-		return nil, p.logAndReturnServerError("Failed to get entity attributes",
+		return nil, p.logAndReturnServerError(ctx, "Failed to get entity attributes",
 			log.String("error", getErr.Error()))
 	}
 
 	var allAttributes map[string]interface{}
 	if len(entityResult.Attributes) > 0 {
 		if err := json.Unmarshal(entityResult.Attributes, &allAttributes); err != nil {
-			return nil, p.logAndReturnServerError("Failed to unmarshal entity attributes",
+			return nil, p.logAndReturnServerError(ctx, "Failed to unmarshal entity attributes",
 				log.String("error", err.Error()))
 		}
 	}
@@ -423,8 +427,9 @@ func newClientError(code, msg, desc string) *serviceerror.ServiceError {
 	}
 }
 
-func (p *defaultAuthnProvider) logAndReturnServerError(msg string, fields ...log.Field) *serviceerror.ServiceError {
-	p.logger.Error(msg, fields...)
+func (p *defaultAuthnProvider) logAndReturnServerError(
+	ctx context.Context, msg string, fields ...log.Field) *serviceerror.ServiceError {
+	p.logger.Error(ctx, msg, fields...)
 	err := serviceerror.InternalServerError
 	return &err
 }

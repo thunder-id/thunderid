@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -41,6 +41,19 @@ import (
 	"strings"
 	"time"
 )
+
+// getFlowStepErrorMessage extracts a human-readable error message from a FlowStep.
+func getFlowStepErrorMessage(step *FlowStep) string {
+	if step.Error != nil {
+		if step.Error.Message.DefaultValue != "" {
+			return step.Error.Message.DefaultValue
+		}
+		if step.Error.Description.DefaultValue != "" {
+			return step.Error.Description.DefaultValue
+		}
+	}
+	return ""
+}
 
 // InitiateAuthorizationFlow starts the OAuth2 authorization flow
 func InitiateAuthorizationFlow(clientID, redirectURI, responseType, scope, state string) (*http.Response, error) {
@@ -473,8 +486,8 @@ func ObtainAccessTokenWithPassword(clientID, redirectURI, scope, username, passw
 
 	if flowStep.FlowStatus != "COMPLETE" {
 		stepJSON, _ := json.Marshal(flowStep)
-		return nil, fmt.Errorf("authentication flow not complete: status=%s, failureReason=%s, step=%s",
-			flowStep.FlowStatus, flowStep.FailureReason, string(stepJSON))
+		return nil, fmt.Errorf("authentication flow not complete: status=%s, error=%s, step=%s",
+			flowStep.FlowStatus, getFlowStepErrorMessage(flowStep), string(stepJSON))
 	}
 
 	if flowStep.Assertion == "" {
@@ -596,8 +609,8 @@ func ObtainAccessTokenWithPAR(clientID, redirectURI, scope, username, password s
 
 	if flowStep.FlowStatus != "COMPLETE" {
 		stepJSON, _ := json.Marshal(flowStep)
-		return nil, fmt.Errorf("authentication flow not complete: status=%s, failureReason=%s, step=%s",
-			flowStep.FlowStatus, flowStep.FailureReason, string(stepJSON))
+		return nil, fmt.Errorf("authentication flow not complete: status=%s, error=%s, step=%s",
+			flowStep.FlowStatus, getFlowStepErrorMessage(flowStep), string(stepJSON))
 	}
 
 	if flowStep.Assertion == "" {

@@ -336,6 +336,37 @@ describe('CreateGroupPage', () => {
     expect(mockNavigate).not.toHaveBeenCalledWith('/groups');
   });
 
+  it('shows and closes validation snackbar when no OU is available', async () => {
+    mockUseHasMultipleOUs.mockReturnValue({
+      hasMultipleOUs: false,
+      isLoading: false,
+      ouList: [],
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+
+    const nameInput = screen.getByPlaceholderText('Enter group name');
+    await user.type(nameInput, 'Test Group');
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: 'Continue'})).not.toBeDisabled();
+    });
+
+    await user.click(screen.getByRole('button', {name: 'Continue'}));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    const closeButtons = screen.getAllByRole('button', {name: /close/i});
+    await user.click(closeButtons[closeButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
+
   it('should disable continue button while OUs are loading', () => {
     mockUseHasMultipleOUs.mockReturnValue({
       hasMultipleOUs: false,

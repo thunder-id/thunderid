@@ -1,0 +1,129 @@
+---
+title: UserInfo
+sidebar_position: 2
+description: The OpenID Connect UserInfo endpoint in {{ProductName}} — returns claims about the authenticated user, in JSON, JWS, JWE, or NESTED_JWT.
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import { UserInfoDiagram } from '../../../../../src/components/OAuthFlowDiagrams';
+
+# UserInfo
+
+The **UserInfo** endpoint ([OIDC Core §5.3](https://openid.net/specs/openid-connect-core-1_0.html#UserInfo)) returns claims about the user whose access token authorizes the call. It is the canonical way for an OIDC client to get fresh user attributes without re-authenticating.
+
+The endpoint is OIDC-specific: the access token must have been issued with the `openid` scope. Which claims come back depends on the **scopes** the token carries — see [Claims & Scopes](../claims-and-scopes).
+
+## How It Works
+
+<UserInfoDiagram />
+
+The client presents the access token as a Bearer (or DPoP) credential. <ProductName /> resolves the user, applies scope-based filtering, and returns the claims in the configured response format.
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Endpoint | `GET /oauth2/userinfo` |
+| Authentication | The access token must include the `openid` scope |
+| Token type | Accepts `Bearer`; also accepts `DPoP` when the token is sender-constrained |
+| Response formats | `JSON` (default), `JWS` (signed), `JWE` (encrypted), `NESTED_JWT` (signed then encrypted) |
+| Format selection | Configured per application on `userInfo.responseType` |
+| Claims returned | Filtered by the scopes the access token carries — see [Claims & Scopes](../claims-and-scopes) |
+| Custom attributes | Configurable per application via `userInfo.userAttributes` |
+| Invalid or expired token | `401 Unauthorized` |
+| Token missing the `openid` scope | `403 Forbidden` with `insufficient_scope` |
+
+### Response Formats
+
+| Format | Content-Type | When to use |
+|---|---|---|
+| `JSON` | `application/json` | Default. Plain JSON object. |
+| `JWS` | `application/jwt` | When the client must verify integrity of the response cryptographically. |
+| `JWE` | `application/jwt` | When the response must be confidential end-to-end (e.g. crosses an intermediary). Requires a certificate on the application. |
+| `NESTED_JWT` | `application/jwt` | Sign-then-encrypt — both properties. Requires a certificate on the application. |
+
+The signing and encryption algorithm tables live on the [Token Formats](../token-formats) page.
+
+</details>
+
+## Try It in <ProductName />
+
+UserInfo is always available for tokens that carry the `openid` scope. To customize *which* claims it returns and *what format* they come back in:
+
+<Tabs groupId="client-registration">
+<TabItem value="console" label="Console" default>
+
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
+2. Open the **Token** tab and find the **UserInfo** section.
+3. Pick the **Response Type** (`JSON` / `JWS` / `JWE` / `NESTED_JWT`).
+4. For signed or encrypted responses, configure the signing algorithm, encryption algorithms, and certificate.
+5. Choose the **User Attributes** to return — typically these mirror the ID Token attributes.
+6. Save.
+
+</TabItem>
+<TabItem value="dcr" label="Dynamic Client Registration">
+
+```http
+POST /oauth2/dcr/register
+Content-Type: application/json
+
+{
+  "client_name": "My App",
+  "redirect_uris": ["https://app.example.com/callback"],
+  "grant_types": ["authorization_code"],
+  "response_types": ["code"],
+  "userinfo_signed_response_alg": "RS256"
+}
+```
+
+For encryption, add `userinfo_encrypted_response_alg` and `userinfo_encrypted_response_enc`. See [Token Formats](../token-formats) for the full algorithm tables.
+
+</TabItem>
+</Tabs>
+
+### Call the Endpoint
+
+```bash
+curl https://{{productSlug}}.example.com/oauth2/userinfo \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+JSON response:
+
+```json
+{
+  "sub": "user-456",
+  "name": "Ada Lovelace",
+  "given_name": "Ada",
+  "family_name": "Lovelace",
+  "email": "ada@example.com",
+  "email_verified": true
+}
+```
+
+Signed (JWS) response — the body is a JWT, not JSON:
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/jwt
+
+eyJhbGciOiJSUzI1NiIs...
+```
+
+### DPoP-Bound Tokens
+
+If the access token is DPoP-bound, send a fresh DPoP proof on the UserInfo request:
+
+```bash
+curl https://{{productSlug}}.example.com/oauth2/userinfo \
+  -H "Authorization: DPoP $ACCESS_TOKEN" \
+  -H "DPoP: $DPOP_PROOF_JWT"
+```
+
+## Related Guides
+
+- [OpenID Connect](../openid-connect) — the protocol that defines UserInfo
+- [Claims & Scopes](../claims-and-scopes) — how the returned claim set is determined
+- [Token Formats](../token-formats) — JWS, JWE, NESTED_JWT details
+- [DPoP](../dpop) — when the access token is sender-constrained

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -436,9 +436,9 @@ func (ts *AttributeCollectFlowTestSuite) TestInvalidCredentials() {
 
 	errorResp, err := common.CompleteFlow(flowStep.ExecutionID, invalidCredentials, "", flowStep.ChallengeToken)
 	ts.Require().NoError(err, "Expected error response for invalid credentials")
-	ts.Require().NotEmpty(errorResp.FailureReason, "Expected failure reason for invalid credentials")
-	ts.Require().Contains(errorResp.FailureReason, "User not found",
-		"Expected failure reason to indicate user not found")
+	ts.Require().NotNil(errorResp.Error, "Expected error for invalid credentials")
+	ts.Require().Contains(errorResp.Error.Message.DefaultValue, "User not found",
+		"Expected error message to indicate user not found")
 }
 
 func (ts *AttributeCollectFlowTestSuite) validateRequiredInputs(actualInputs []common.Inputs,

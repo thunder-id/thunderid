@@ -19,6 +19,7 @@
 package provider
 
 import (
+	"context"
 	"time"
 
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
@@ -67,7 +68,8 @@ func initializeRestAuthnProvider() AuthnProviderInterface {
 	apiKey := authnProviderConfig.Rest.Security.APIKey
 	timeout := time.Duration(authnProviderConfig.Rest.Timeout) * time.Second
 	if baseURL == "" {
-		log.GetLogger().Fatal("AuthnProvider Rest BaseURL is required but found empty")
+		// Provider initialization runs during application startup, outside any request.
+		log.GetLogger().Fatal(context.Background(), "AuthnProvider Rest BaseURL is required but found empty")
 	}
 	if timeout == 0 {
 		timeout = 10 * time.Second

@@ -60,7 +60,8 @@ func (s *redisSessionStore) sessionKey(key string) string {
 }
 
 // storeSession serializes the WebAuthn session data and stores it in Redis with a TTL.
-func (s *redisSessionStore) storeSession(sessionKey string, session *sessionData, expirySeconds int64) error {
+func (s *redisSessionStore) storeSession(
+	_ context.Context, sessionKey string, session *sessionData, expirySeconds int64) error {
 	data, err := json.Marshal(session)
 	if err != nil {
 		return fmt.Errorf("failed to marshal passkey session: %w", err)
@@ -75,7 +76,7 @@ func (s *redisSessionStore) storeSession(sessionKey string, session *sessionData
 }
 
 // retrieveSession retrieves the WebAuthn session data from Redis.
-func (s *redisSessionStore) retrieveSession(sessionKey string) (*sessionData, error) {
+func (s *redisSessionStore) retrieveSession(_ context.Context, sessionKey string) (*sessionData, error) {
 	if sessionKey == "" {
 		return nil, nil
 	}
@@ -97,7 +98,7 @@ func (s *redisSessionStore) retrieveSession(sessionKey string) (*sessionData, er
 }
 
 // deleteSession removes the passkey session from Redis.
-func (s *redisSessionStore) deleteSession(sessionKey string) error {
+func (s *redisSessionStore) deleteSession(_ context.Context, sessionKey string) error {
 	if sessionKey == "" {
 		return nil
 	}

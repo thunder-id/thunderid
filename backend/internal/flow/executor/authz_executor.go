@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -71,21 +71,22 @@ func newAuthorizationExecutor(
 // calling the authorization service, and storing authorized permissions in runtime data.
 func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Executing authorization executor")
+	logger.Debug(ctx.Context, "Executing authorization executor")
 
 	execResp := &common.ExecutorResponse{
 		RuntimeData: make(map[string]string),
 	}
 
 	if !ctx.AuthenticatedUser.IsAuthenticated && ctx.FlowType == common.FlowTypeRegistration {
-		logger.Debug("Sending executor complete response for unauthenticated user in registration flow")
+		logger.Debug(ctx.Context,
+			"Sending executor complete response for unauthenticated user in registration flow")
 		execResp.Status = common.ExecComplete
 		return execResp, nil
 	}
 
 	if !ctx.AuthenticatedUser.IsAuthenticated {
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = failureReasonUserNotAuthenticated
+		execResp.Error = &ErrUserNotAuthenticated
 		return execResp, nil
 	}
 
@@ -93,12 +94,12 @@ func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.Executor
 	requestedPerms := extractRequestedPermissions(ctx)
 
 	if len(requestedPerms) == 0 {
-		logger.Debug("No permissions to check, returning empty permissions")
+		logger.Debug(ctx.Context, "No permissions to check, returning empty permissions")
 		execResp.Status = common.ExecComplete
 		return execResp, nil
 	}
 
-	logger.Debug("Determined required permissions", log.Int("count", len(requestedPerms)))
+	logger.Debug(ctx.Context, "Determined required permissions", log.Int("count", len(requestedPerms)))
 
 	// Extract user ID and group IDs
 	userID := ctx.AuthenticatedUser.UserID
@@ -107,7 +108,7 @@ func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.Executor
 		return nil, errors.Join(errors.New("Failed to extract group IDs"), err)
 	}
 
-	logger.Debug("Calling authorization service",
+	logger.Debug(ctx.Context, "Calling authorization service",
 		log.MaskedString(log.LoggerKeyUserID, userID),
 		log.Int("groupCount", len(groupIDs)),
 		log.Int("permissionCount", len(requestedPerms)))
@@ -121,14 +122,15 @@ func (a *authorizationExecutor) Execute(ctx *core.NodeContext) (*common.Executor
 
 	authzResp, svcErr := a.authzService.GetAuthorizedPermissions(ctx.Context, authzReq)
 	if svcErr != nil {
-		logger.Error("Authorization service call failed", log.String("error", svcErr.Error.DefaultValue))
+		logger.Error(ctx.Context, "Authorization service call failed",
+			log.String("error", svcErr.Error.DefaultValue))
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Authorization validation failure"
+		execResp.Error = &ErrAuthorizationFailed
 		return execResp, nil
 	}
 
 	setAuthorizedPermissions(execResp, authzResp.AuthorizedPermissions)
-	logger.Debug("Authorization completed successfully",
+	logger.Debug(ctx.Context, "Authorization completed successfully",
 		log.Int("authorizedCount", len(authzResp.AuthorizedPermissions)))
 
 	execResp.Status = common.ExecComplete
@@ -183,7 +185,8 @@ func (a *authorizationExecutor) extractGroupIDs(ctx *core.NodeContext) ([]string
 
 	// If no groups found in context, fetch transitive groups from entity provider
 	if a.entityProvider != nil && ctx.AuthenticatedUser.UserID != "" {
-		a.logger.Debug("Groups not found in context, fetching transitive groups from entity provider",
+		a.logger.Debug(ctx.Context,
+			"Groups not found in context, fetching transitive groups from entity provider",
 			log.MaskedString(log.LoggerKeyUserID, ctx.AuthenticatedUser.UserID))
 
 		groups, err := a.entityProvider.GetTransitiveEntityGroups(ctx.AuthenticatedUser.UserID)

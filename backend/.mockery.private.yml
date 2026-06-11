@@ -69,6 +69,14 @@ packages:
       pkgname: authz
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba:
+    config:
+      all: true
+      dir: internal/oauth/oauth2/ciba
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: ciba
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/authn:
     config:
       all: true

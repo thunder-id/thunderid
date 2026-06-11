@@ -69,14 +69,14 @@ func (is *idpService) CreateIdentityProvider(
 		return nil, &declarativeresource.ErrorDeclarativeResourceCreateOperation
 	}
 
-	if svcErr := validateIDP(idp, logger); svcErr != nil {
+	if svcErr := validateIDP(ctx, idp, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
 	if idp.ID == "" {
 		id, genErr := is.uuidGenerator()
 		if genErr != nil {
-			logger.Error("failed to generate ID for identity provider", log.Error(genErr))
+			logger.Error(ctx, "failed to generate ID for identity provider", log.Error(genErr))
 			return nil, &serviceerror.InternalServerError
 		}
 		idp.ID = id
@@ -109,7 +109,8 @@ func (is *idpService) CreateIdentityProvider(
 		return nil, svcErr
 	}
 	if err != nil {
-		logger.Error("Failed to create identity provider", log.Error(err), log.String("idpName", idp.Name))
+		logger.Error(ctx, "Failed to create identity provider",
+			log.Error(err), log.String("idpName", idp.Name))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -124,7 +125,7 @@ func (is *idpService) GetIdentityProviderList(ctx context.Context) ([]BasicIDPDT
 		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
 			return nil, &ErrorResultLimitExceededInCompositeMode
 		}
-		logger.Error("Failed to get identity provider list", log.Error(err))
+		logger.Error(ctx, "Failed to get identity provider list", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -143,7 +144,7 @@ func (is *idpService) GetIdentityProvider(ctx context.Context, idpID string) (*I
 		if errors.Is(err, ErrIDPNotFound) {
 			return nil, &ErrorIDPNotFound
 		}
-		logger.Error("Failed to get identity provider", log.String("idpID", idpID), log.Error(err))
+		logger.Error(ctx, "Failed to get identity provider", log.String("idpID", idpID), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -163,7 +164,8 @@ func (is *idpService) GetIdentityProviderByName(ctx context.Context,
 		if errors.Is(err, ErrIDPNotFound) {
 			return nil, &ErrorIDPNotFound
 		}
-		logger.Error("Failed to get identity provider by name", log.String("idpName", idpName), log.Error(err))
+		logger.Error(ctx, "Failed to get identity provider by name",
+			log.String("idpName", idpName), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -183,7 +185,7 @@ func (is *idpService) GetIdentityProvidersByProperty(ctx context.Context,
 		if errors.Is(err, ErrIDPNotFound) {
 			return nil, &ErrorIDPNotFound
 		}
-		logger.Error("Failed to get identity providers by property",
+		logger.Error(ctx, "Failed to get identity providers by property",
 			log.String("propertyKey", propertyKey),
 			log.Error(err))
 		return nil, &serviceerror.InternalServerError
@@ -205,7 +207,7 @@ func (is *idpService) UpdateIdentityProvider(ctx context.Context, idpID string, 
 	if strings.TrimSpace(idpID) == "" {
 		return nil, &ErrorInvalidIDPID
 	}
-	if svcErr := validateIDP(idp, logger); svcErr != nil {
+	if svcErr := validateIDP(ctx, idp, logger); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -250,7 +252,7 @@ func (is *idpService) UpdateIdentityProvider(ctx context.Context, idpID string, 
 		return nil, svcErr
 	}
 	if err != nil {
-		logger.Error("Failed to update identity provider", log.Error(err), log.String("idpID", idpID))
+		logger.Error(ctx, "Failed to update identity provider", log.Error(err), log.String("idpID", idpID))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -297,7 +299,7 @@ func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) 
 		return svcErr
 	}
 	if err != nil {
-		logger.Error("Failed to delete identity provider", log.Error(err), log.String("idpID", idpID))
+		logger.Error(ctx, "Failed to delete identity provider", log.Error(err), log.String("idpID", idpID))
 		return &serviceerror.InternalServerError
 	}
 

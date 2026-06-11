@@ -60,7 +60,7 @@ const (
 
 // parameterizerInterface defines the interface for template parameterization.
 type parameterizerInterface interface {
-	ToParameterizedYAML(obj interface{},
+	ToParameterizedYAML(ctx context.Context, obj interface{},
 		resourceType string, resourceName string,
 		rules *declarativeresource.ResourceRules) (string, map[string]string, error)
 }
@@ -152,7 +152,7 @@ func (es *exportService) ExportResources(
 
 		exporter, exists := es.registry.Get(resourceType)
 		if !exists {
-			log.GetLogger().Warn("No exporter registered for resource type",
+			log.GetLogger().Warn(ctx, "No exporter registered for resource type",
 				log.String("resourceType", resourceType))
 			continue
 		}
@@ -263,7 +263,7 @@ func (es *exportService) exportResourcesWithExporter(
 		// Export all resources
 		ids, err := exporter.GetAllResourceIDs(ctx)
 		if err != nil {
-			logger.Warn("Failed to get all resources",
+			logger.Warn(ctx, "Failed to get all resources",
 				log.String("resourceType", resourceType), log.Any("error", err))
 			return []ExportFile{}, variableValues, []declarativeresource.ExportError{}
 		}
@@ -276,7 +276,7 @@ func (es *exportService) exportResourcesWithExporter(
 		// Get the resource
 		resource, _, svcErr := exporter.GetResourceByID(ctx, resourceID)
 		if svcErr != nil {
-			logger.Warn("Failed to get resource for export",
+			logger.Warn(ctx, "Failed to get resource for export",
 				log.String("resourceType", resourceType),
 				log.String("resourceID", resourceID),
 				log.String("error", svcErr.Error.DefaultValue))
@@ -290,7 +290,7 @@ func (es *exportService) exportResourcesWithExporter(
 		}
 
 		// Validate resource
-		validatedName, exportErr := exporter.ValidateResource(resource, resourceID, logger)
+		validatedName, exportErr := exporter.ValidateResource(ctx, resource, resourceID, logger)
 		if exportErr != nil {
 			exportErrors = append(exportErrors, *exportErr)
 			continue
@@ -302,14 +302,14 @@ func (es *exportService) exportResourcesWithExporter(
 
 		if options.Format == formatJSON {
 			// Convert to JSON format (could be implemented later)
-			logger.Warn("JSON format not yet implemented, falling back to YAML")
+			logger.Warn(ctx, "JSON format not yet implemented, falling back to YAML")
 			options.Format = formatYAML
 		}
 
-		templateContent, vars, err := es.generateTemplateFromStruct(
+		templateContent, vars, err := es.generateTemplateFromStruct(ctx,
 			resource, exporter.GetParameterizerType(), validatedName, exporter)
 		if err != nil {
-			logger.Warn("Failed to generate template from struct",
+			logger.Warn(ctx, "Failed to generate template from struct",
 				log.String("resourceType", resourceType),
 				log.String("resourceID", resourceID),
 				log.String("error", err.Error()))
@@ -344,7 +344,7 @@ func (es *exportService) exportResourcesWithExporter(
 	return exportFiles, variableValues, exportErrors
 }
 
-func (es *exportService) generateTemplateFromStruct(data interface{},
+func (es *exportService) generateTemplateFromStruct(ctx context.Context, data interface{},
 	paramResourceType string, resourceName string,
 	exporter declarativeresource.ResourceExporter) (string, map[string]string, error) {
 	var rules *declarativeresource.ResourceRules
@@ -353,7 +353,7 @@ func (es *exportService) generateTemplateFromStruct(data interface{},
 	} else {
 		rules = exporter.GetResourceRules()
 	}
-	template, vars, err := es.parameterizer.ToParameterizedYAML(
+	template, vars, err := es.parameterizer.ToParameterizedYAML(ctx,
 		data, paramResourceType, resourceName, rules)
 	if err != nil {
 		return "", nil, err

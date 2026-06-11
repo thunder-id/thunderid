@@ -260,6 +260,55 @@ func pkcs7Unpad(data []byte) ([]byte, error) {
 	return data[:len(data)-padding], nil
 }
 
+// jwkToECPublicKey converts a JWK to an ECDH public key for key agreement (e.g. ECDH-ES).
+func jwkToECPublicKey(jwk map[string]interface{}) (*ecdh.PublicKey, error) {
+	crv, crvOK := jwk["crv"].(string)
+	xStr, xOK := jwk["x"].(string)
+	yStr, yOK := jwk["y"].(string)
+	if !crvOK || !xOK || !yOK {
+		return nil, errors.New("JWK missing EC parameters")
+	}
+
+	curve, expectedKeySize, err := getECCurveInfo(crv)
+	if err != nil {
+		return nil, err
+	}
+
+	xBytes, err := base64.RawURLEncoding.DecodeString(xStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode EC x: %w", err)
+	}
+	yBytes, err := base64.RawURLEncoding.DecodeString(yStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode EC y: %w", err)
+	}
+
+	if len(xBytes) != expectedKeySize || len(yBytes) != expectedKeySize {
+		return nil, errors.New("invalid EC coordinate length")
+	}
+
+	uncompressed := make([]byte, 1+len(xBytes)+len(yBytes))
+	uncompressed[0] = 0x04
+	copy(uncompressed[1:], xBytes)
+	copy(uncompressed[1+len(xBytes):], yBytes)
+
+	return curve.NewPublicKey(uncompressed)
+}
+
+// getECCurveInfo returns the ECDH curve and expected coordinate byte size for a given curve name.
+func getECCurveInfo(crv string) (ecdh.Curve, int, error) {
+	switch crv {
+	case jws.P256:
+		return ecdh.P256(), 32, nil
+	case jws.P384:
+		return ecdh.P384(), 48, nil
+	case jws.P521:
+		return ecdh.P521(), 66, nil
+	default:
+		return nil, 0, fmt.Errorf("unsupported EC curve: %s", crv)
+	}
+}
+
 // extractEPKFromHeader parses the "epk" field from the JWE protected header and returns
 // the ephemeral public key as *ecdh.PublicKey required by cryptolib.
 func extractEPKFromHeader(header map[string]interface{}) (crypto.PublicKey, error) {
@@ -267,11 +316,25 @@ func extractEPKFromHeader(header map[string]interface{}) (crypto.PublicKey, erro
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid epk in JWE header")
 	}
-	ecdhPub, err := jws.JWKToECPublicKey(epkMap)
+	ecdhPub, err := jwkToECPublicKey(epkMap)
 	if err != nil {
 		return nil, fmt.Errorf("invalid epk in header: %w", err)
 	}
 	return ecdhPub, nil
+}
+
+// decodeAPUAPV extracts and base64url-decodes the apu or apv field from the JWE
+// protected header. Returns nil when the field is absent or not a string.
+func decodeAPUAPV(header map[string]interface{}, key string) []byte {
+	v, ok := header[key].(string)
+	if !ok || v == "" {
+		return nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(v)
+	if err != nil {
+		return nil
+	}
+	return decoded
 }
 
 // DecodeJWE decodes a JWE compact serialization into its five parts.

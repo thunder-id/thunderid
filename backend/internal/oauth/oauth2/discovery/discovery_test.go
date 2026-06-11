@@ -124,6 +124,16 @@ func (suite *DiscoveryTestSuite) TestOAuth2AuthorizationServerMetadata() {
 	assert.True(suite.T(), metadata.AuthorizationResponseIssParameterSupported)
 }
 
+func (suite *DiscoveryTestSuite) TestCIBAMetadataAdvertised() {
+	metadata := suite.discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background())
+
+	assert.Contains(suite.T(), metadata.GrantTypesSupported, string(constants.GrantTypeCIBA))
+	assert.NotEmpty(suite.T(), metadata.BackchannelAuthenticationEndpoint)
+	assert.Contains(suite.T(), metadata.BackchannelAuthenticationEndpoint, constants.OAuth2BackchannelAuthEndpoint)
+	assert.Equal(suite.T(), []string{"poll"}, metadata.BackchannelTokenDeliveryModesSupported)
+	assert.False(suite.T(), metadata.BackchannelUserCodeParameterSupported)
+}
+
 func (suite *DiscoveryTestSuite) TestOIDCDiscovery() {
 	suite.cryptoMock.EXPECT().GetPublicKeys(mock.Anything, kmprovider.PublicKeyFilter{}).
 		Return([]kmprovider.PublicKeyInfo{{KeyID: "k1", Algorithm: cryptolib.AlgorithmRS256}}, nil)
@@ -252,11 +262,12 @@ func TestGetSupportedGrantTypes(t *testing.T) {
 	supported := constants.GetSupportedGrantTypes()
 
 	assert.NotNil(t, supported)
-	assert.Equal(t, 4, len(supported))
+	assert.Equal(t, 5, len(supported))
 	assert.Contains(t, supported, "authorization_code")
 	assert.Contains(t, supported, "client_credentials")
 	assert.Contains(t, supported, "refresh_token")
 	assert.Contains(t, supported, "urn:ietf:params:oauth:grant-type:token-exchange")
+	assert.Contains(t, supported, "urn:openid:params:grant-type:ciba")
 	assert.NotContains(t, supported, "password")
 	assert.NotContains(t, supported, "implicit")
 }

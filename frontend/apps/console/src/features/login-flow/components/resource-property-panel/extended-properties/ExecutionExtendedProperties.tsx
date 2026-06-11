@@ -26,6 +26,7 @@ import FederationProperties from './execution-properties/FederationProperties';
 import HttpRequestProperties from './execution-properties/HttpRequestProperties';
 import IdentifyingProperties from './execution-properties/IdentifyingProperties';
 import InviteProperties from './execution-properties/InviteProperties';
+import MagicLinkProperties from './execution-properties/MagicLinkProperties';
 import NoConfigProperties from './execution-properties/NoConfigProperties';
 import OUExecutorProperties from './execution-properties/OUExecutorProperties';
 import OUResolverProperties from './execution-properties/OUResolverProperties';
@@ -118,9 +119,11 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.HTTPRequestExecutor:
       executorSpecificProperties = <HttpRequestProperties resource={resource} onChange={onChange} />;
       break;
+    case ExecutionTypes.MagicLinkExecutor:
+      executorSpecificProperties = <MagicLinkProperties resource={resource} onChange={onChange} />;
+      break;
     case ExecutionTypes.CredentialSetter:
     case ExecutionTypes.AttributeUniquenessValidator:
-    case ExecutionTypes.MagicLinkExecutor:
       executorSpecificProperties = <NoConfigProperties />;
       break;
     default:

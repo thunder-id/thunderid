@@ -31,7 +31,7 @@ import (
 
 // HealthCheckServiceInterface defines the interface for the health check service.
 type HealthCheckServiceInterface interface {
-	CheckReadiness() model.ServerStatus
+	CheckReadiness(ctx context.Context) model.ServerStatus
 }
 
 // HealthCheckService is the default implementation of the HealthCheckServiceInterface.
@@ -50,20 +50,20 @@ func Initialize(dbProvider provider.DBProviderInterface,
 }
 
 // CheckReadiness checks the readiness of the server and its dependencies.
-func (hcs *HealthCheckService) CheckReadiness() model.ServerStatus {
+func (hcs *HealthCheckService) CheckReadiness(ctx context.Context) model.ServerStatus {
 	configDBStatus := model.ServiceStatus{
 		ServiceName: "ConfigDB",
-		Status:      hcs.checkConfigDatabaseStatus(queryConfigDBTable),
+		Status:      hcs.checkConfigDatabaseStatus(ctx, queryConfigDBTable),
 	}
 
 	runtimeDBStatus := model.ServiceStatus{
 		ServiceName: "RuntimeDB",
-		Status:      hcs.checkRuntimeDatabaseStatus(queryRuntimeDBTable),
+		Status:      hcs.checkRuntimeDatabaseStatus(ctx, queryRuntimeDBTable),
 	}
 
 	userDBStatus := model.ServiceStatus{
 		ServiceName: "UserDB",
-		Status:      hcs.checkUserDatabaseStatus(queryUserDBTable),
+		Status:      hcs.checkUserDatabaseStatus(ctx, queryUserDBTable),
 	}
 
 	status := model.StatusUp
@@ -83,54 +83,54 @@ func (hcs *HealthCheckService) CheckReadiness() model.ServerStatus {
 }
 
 // checkConfigDatabaseStatus checks the status of the config database with the specified query.
-func (hcs *HealthCheckService) checkConfigDatabaseStatus(query dbmodel.DBQuery) model.Status {
+func (hcs *HealthCheckService) checkConfigDatabaseStatus(ctx context.Context, query dbmodel.DBQuery) model.Status {
 	dbClient, err := hcs.DBProvider.GetConfigDBClient()
-	return hcs.executeDatabaseHealthCheck("ConfigDB", dbClient, err, query)
+	return hcs.executeDatabaseHealthCheck(ctx, "ConfigDB", dbClient, err, query)
 }
 
 // checkRuntimeDatabaseStatus checks the status of the runtime database with the specified query.
-func (hcs *HealthCheckService) checkRuntimeDatabaseStatus(query dbmodel.DBQuery) model.Status {
+func (hcs *HealthCheckService) checkRuntimeDatabaseStatus(ctx context.Context, query dbmodel.DBQuery) model.Status {
 	if config.GetServerRuntime().Config.Database.Runtime.Type == provider.DataSourceTypeRedis {
-		return hcs.checkRedisRuntimeStatus()
+		return hcs.checkRedisRuntimeStatus(ctx)
 	}
 	dbClient, err := hcs.DBProvider.GetRuntimeDBClient()
-	return hcs.executeDatabaseHealthCheck("RuntimeDB", dbClient, err, query)
+	return hcs.executeDatabaseHealthCheck(ctx, "RuntimeDB", dbClient, err, query)
 }
 
 // checkRedisRuntimeStatus checks the health of the Redis runtime store via Ping.
-func (hcs *HealthCheckService) checkRedisRuntimeStatus() model.Status {
+func (hcs *HealthCheckService) checkRedisRuntimeStatus(ctx context.Context) model.Status {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "HealthCheckService"))
 	if hcs.RedisProvider == nil {
-		logger.Error("Redis runtime provider is not initialized")
+		logger.Error(ctx, "Redis runtime provider is not initialized")
 		return model.StatusDown
 	}
 	if err := hcs.RedisProvider.GetRedisClient().Ping(context.Background()).Err(); err != nil {
-		logger.Error("Failed to ping Redis runtime store", log.Error(err))
+		logger.Error(ctx, "Failed to ping Redis runtime store", log.Error(err))
 		return model.StatusDown
 	}
 	return model.StatusUp
 }
 
 // checkUserDatabaseStatus checks the status of the runtime database with the specified query.
-func (hcs *HealthCheckService) checkUserDatabaseStatus(query dbmodel.DBQuery) model.Status {
+func (hcs *HealthCheckService) checkUserDatabaseStatus(ctx context.Context, query dbmodel.DBQuery) model.Status {
 	dbClient, err := hcs.DBProvider.GetUserDBClient()
-	return hcs.executeDatabaseHealthCheck("UserDB", dbClient, err, query)
+	return hcs.executeDatabaseHealthCheck(ctx, "UserDB", dbClient, err, query)
 }
 
 // executeDatabaseHealthCheck runs the provided query on the given database client and reports its status.
-func (hcs *HealthCheckService) executeDatabaseHealthCheck(
+func (hcs *HealthCheckService) executeDatabaseHealthCheck(ctx context.Context,
 	dbName string, dbClient provider.DBClientInterface, err error, query dbmodel.DBQuery,
 ) model.Status {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "HealthCheckService"))
 
 	if err != nil {
-		logger.Error("Failed to get database client", log.String("dbname", dbName), log.Error(err))
+		logger.Error(ctx, "Failed to get database client", log.String("dbname", dbName), log.Error(err))
 		return model.StatusDown
 	}
 
 	_, err = dbClient.Query(query)
 	if err != nil {
-		logger.Error("Failed to execute query", log.String("dbname", dbName), log.Error(err))
+		logger.Error(ctx, "Failed to execute query", log.String("dbname", dbName), log.Error(err))
 		return model.StatusDown
 	}
 	return model.StatusUp

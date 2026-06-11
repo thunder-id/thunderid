@@ -85,6 +85,7 @@
     "@wso2/oxygen-ui-icons-react": "catalog:",
     "dompurify": "catalog:",
     "lucide-react": "catalog:",
+    "qrcode.react": "^4.2.0",
     "react-i18next": "catalog:",
     "tslib": "catalog:"
   },

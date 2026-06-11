@@ -205,8 +205,8 @@ const ThunderIDProvider: Component = defineComponent({
     // ── Build config from props ──
     function buildConfig(): ThunderIDVueConfig {
       return {
-        afterSignInUrl: props.afterSignInUrl,
-        afterSignOutUrl: props.afterSignOutUrl,
+        afterSignInUrl: props.afterSignInUrl ?? window.location.origin,
+        afterSignOutUrl: props.afterSignOutUrl ?? window.location.origin,
         applicationId: props.applicationId,
         baseUrl: props.baseUrl,
         clientId: props.clientId,
@@ -350,6 +350,7 @@ const ThunderIDProvider: Component = defineComponent({
       getAccessToken: (): Promise<string> => client.getAccessToken(),
       getDecodedIdToken: (): Promise<IdToken> => client.getDecodedIdToken(),
       getIdToken: (): Promise<string> => client.getIdToken(),
+      getStorageManager: () => client.getStorageManager(),
       http: {
         request: (requestConfig?: any): Promise<HttpResponse<any>> => client.request(requestConfig),
         requestAll: (requestConfigs?: any[]): Promise<HttpResponse<any>[]> => client.requestAll(requestConfigs),
@@ -385,7 +386,12 @@ const ThunderIDProvider: Component = defineComponent({
       const config: ThunderIDVueConfig = buildConfig();
       await client.initialize(config);
 
-      const initializedConfig: any = client.getConfiguration();
+      // 2. Load the OpenID provider configuration
+      // We manually initialize this here because `initialize` doesn't load it for us.
+      // This is needed for endpoints like /.well-known/openid-configuration.
+      await client.getDiscoveryResponse();
+
+      const initializedConfig: any = await (client.getConfiguration() as any);
 
       if (initializedConfig?.baseUrl) {
         sessionStorage.setItem('thunderid_base_url', initializedConfig.baseUrl);

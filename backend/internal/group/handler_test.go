@@ -19,6 +19,7 @@
 package group
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -1424,7 +1425,7 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleErrorInternalServer()
 	handler := newGroupHandler(nil)
 	rr := httptest.NewRecorder()
 
-	handler.handleError(rr, &serviceerror.ServiceError{
+	handler.handleError(context.Background(), rr, &serviceerror.ServiceError{
 		Type:             serviceerror.ServerErrorType,
 		Code:             "GRP-9999",
 		Error:            i18ncore.I18nMessage{DefaultValue: "boom"},
@@ -1700,7 +1701,7 @@ func (suite *GroupHandlerTestSuite) TestGroupHandler_HandleErrorClientError() {
 	handler := newGroupHandler(nil)
 	rr := httptest.NewRecorder()
 
-	handler.handleError(rr, &ErrorGroupNameConflict)
+	handler.handleError(context.Background(), rr, &ErrorGroupNameConflict)
 
 	require.Equal(t, http.StatusConflict, rr.Code)
 

@@ -121,7 +121,7 @@ func (e *roleExporter) GetResourceByID(
 }
 
 // ValidateResource validates a role resource.
-func (e *roleExporter) ValidateResource(
+func (e *roleExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	role, ok := resource.(*roleDeclarativeResource)
@@ -129,7 +129,7 @@ func (e *roleExporter) ValidateResource(
 		return "", declarativeresource.CreateTypeError(resourceTypeRole, id)
 	}
 
-	if err := declarativeresource.ValidateResourceName(
+	if err := declarativeresource.ValidateResourceName(ctx,
 		role.Name, resourceTypeRole, id, "ROLE_VALIDATION_ERROR", logger); err != nil {
 		return "", err
 	}
@@ -164,7 +164,9 @@ func loadDeclarativeResources(
 				return v.ID
 			}
 			// Log error and return empty string if type assertion fails
-			log.GetLogger().Error("IDExtractor: type assertion failed for RoleWithPermissionsAndAssignments")
+			// Declarative resource loading runs during startup, outside any request.
+			log.GetLogger().Error(context.Background(),
+				"IDExtractor: type assertion failed for RoleWithPermissionsAndAssignments")
 			return ""
 		},
 	}

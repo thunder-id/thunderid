@@ -20,7 +20,13 @@ package group
 
 import (
 	"context"
+	"fmt"
 
+	"bytes"
+
+	"gopkg.in/yaml.v3"
+
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
@@ -52,7 +58,8 @@ func (e *groupExporter) GetParameterizerType() string {
 	return paramTypeGroup
 }
 
-// GetAllResourceIDs retrieves all group IDs.
+// GetAllResourceIDs retrieves all non-declarative group IDs.
+// In composite mode this excludes YAML-backed groups so exports only capture mutable DB groups.
 func (e *groupExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serviceerror.ServiceError) {
 	offset := 0
 	limit := serverconst.MaxPageSize
@@ -103,7 +110,7 @@ func (e *groupExporter) GetResourceByID(
 }
 
 // ValidateResource validates a group resource.
-func (e *groupExporter) ValidateResource(
+func (e *groupExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	grp, ok := resource.(*groupDeclarativeResource)
@@ -111,7 +118,7 @@ func (e *groupExporter) ValidateResource(
 		return "", declarativeresource.CreateTypeError(resourceTypeGroup, id)
 	}
 
-	if err := declarativeresource.ValidateResourceName(
+	if err := declarativeresource.ValidateResourceName(ctx,
 		grp.Name, resourceTypeGroup, id, "GROUP_VALIDATION_ERROR", logger); err != nil {
 		return "", err
 	}
@@ -164,6 +171,113 @@ type groupDeclarativeResource struct {
 	ID          string   `yaml:"id"`
 	Name        string   `yaml:"name"`
 	Description string   `yaml:"description,omitempty"`
-	OUID        string   `yaml:"ou_id"`
+	OUID        string   `yaml:"ou_id,omitempty"`
+	OUHandle    string   `yaml:"ou_handle,omitempty"`
 	Members     []Member `yaml:"members,omitempty"`
+}
+
+// loadDeclarativeResources loads immutable group resources from YAML files into the file store.
+// The dbStore parameter is optional and is used only for duplicate checking in composite mode.
+// The ouService parameter is optional and is used to resolve ou_handle to ou_id.
+func loadDeclarativeResources(
+	fileStore *fileBasedGroupStore, dbStore groupStoreInterface, ouService oupkg.OrganizationUnitServiceInterface,
+) error {
+	resourceConfig := declarativeresource.ResourceConfig{
+		ResourceType:  "Group",
+		DirectoryName: "groups",
+		Parser:        parseToGroupWrapper,
+		Validator: func(data interface{}) error {
+			return validateGroupWrapper(data, fileStore, dbStore, ouService)
+		},
+		IDExtractor: func(data interface{}) string {
+			if v, ok := data.(*groupDeclarativeResource); ok {
+				return v.ID
+			}
+			// Declarative resource loading runs during startup, outside any request.
+			log.GetLogger().Error(context.Background(),
+				"IDExtractor: type assertion failed for groupDeclarativeResource")
+			return ""
+		},
+	}
+
+	loader := declarativeresource.NewResourceLoader(resourceConfig, fileStore)
+	if err := loader.LoadResources(); err != nil {
+		return fmt.Errorf("failed to load group resources: %w", err)
+	}
+
+	return nil
+}
+
+// parseToGroupWrapper wraps parseToGroup to match the ResourceConfig.Parser signature.
+func parseToGroupWrapper(data []byte) (interface{}, error) {
+	return parseToGroup(data)
+}
+
+// parseToGroup parses YAML data into a groupDeclarativeResource.
+// Unknown fields are rejected to surface typos in declarative config files.
+func parseToGroup(data []byte) (*groupDeclarativeResource, error) {
+	var grp groupDeclarativeResource
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&grp); err != nil {
+		return nil, err
+	}
+
+	// Translate public 'user'/'app'/'agent' member types to the internal 'entity' type.
+	for i, m := range grp.Members {
+		if m.Type.IsEntityType() {
+			grp.Members[i].Type = memberTypeEntity
+		}
+	}
+
+	return &grp, nil
+}
+
+// validateGroupWrapper validates a parsed group and checks for duplicate IDs.
+// When ouService is provided, OU handles are resolved before validation runs.
+func validateGroupWrapper(
+	data interface{},
+	fileStore *fileBasedGroupStore,
+	dbStore groupStoreInterface,
+	ouService oupkg.OrganizationUnitServiceInterface,
+) error {
+	grp, ok := data.(*groupDeclarativeResource)
+	if !ok {
+		return fmt.Errorf("invalid type: expected *groupDeclarativeResource")
+	}
+
+	if grp.ID == "" {
+		return fmt.Errorf("group ID is required")
+	}
+	if grp.Name == "" {
+		return fmt.Errorf("group name is required")
+	}
+
+	if ouService != nil {
+		if err := resolveGroupOUHandle(context.Background(), grp, ouService); err != nil {
+			return fmt.Errorf("organization unit with handle %q not found for group '%s': %w",
+				grp.OUHandle, grp.Name, err)
+		}
+	}
+
+	if grp.OUID == "" {
+		return fmt.Errorf("ou_id or ou_handle is required for group '%s'", grp.Name)
+	}
+
+	if fileStore != nil {
+		if existing, err := fileStore.GenericFileBasedStore.Get(grp.ID); err == nil && existing != nil {
+			return fmt.Errorf("duplicate group ID '%s': group already exists in declarative resources", grp.ID)
+		}
+	}
+
+	if dbStore != nil {
+		grpDAO, err := dbStore.GetGroup(context.Background(), grp.ID)
+		if err == nil && grpDAO.ID != "" {
+			return fmt.Errorf("duplicate group ID '%s': group already exists in the database store", grp.ID)
+		} else if err != nil && !isGroupNotFoundError(err) {
+			return fmt.Errorf("failed to check for duplicate group ID '%s': %w", grp.ID, err)
+		}
+	}
+
+	return nil
 }

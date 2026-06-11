@@ -60,7 +60,7 @@ func setupMockObservability(t *testing.T) *observabilitymock.ObservabilityServic
 
 	// Setup common expectations - allow any number of calls
 	mockObs.On("IsEnabled").Return(true).Maybe()
-	mockObs.On("PublishEvent", mock.Anything).Return().Maybe()
+	mockObs.On("PublishEvent", mock.Anything, mock.Anything).Return().Maybe()
 	mockObs.On("Shutdown").Return().Maybe()
 
 	return mockObs
@@ -89,7 +89,7 @@ func TestPublishFlowStartedEvent(t *testing.T) {
 
 		// Verify mock was called
 		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+		mockObs.AssertCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 	})
 
 	t.Run("without_authenticated_user", func(t *testing.T) {
@@ -105,7 +105,7 @@ func TestPublishFlowStartedEvent(t *testing.T) {
 
 		// Verify mock was called
 		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+		mockObs.AssertCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 	})
 }
 
@@ -134,7 +134,7 @@ func TestPublishFlowCompletedEvent(t *testing.T) {
 
 	// Verify mock was called
 	mockObs.AssertCalled(t, "IsEnabled")
-	mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+	mockObs.AssertCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 }
 
 // TestPublishFlowFailedEvent tests the flow failed event publishing
@@ -165,7 +165,7 @@ func TestPublishFlowFailedEvent(t *testing.T) {
 
 		// Verify mock was called
 		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+		mockObs.AssertCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 	})
 
 	t.Run("without_error_description", func(t *testing.T) {
@@ -189,7 +189,7 @@ func TestPublishFlowFailedEvent(t *testing.T) {
 
 		// Verify mock was called
 		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+		mockObs.AssertCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 	})
 }
 
@@ -216,7 +216,7 @@ func TestPublishNodeExecutionStartedEvent(t *testing.T) {
 
 		// Verify mock was called
 		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+		mockObs.AssertCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 	})
 
 	t.Run("retry_node_execution", func(t *testing.T) {
@@ -246,7 +246,7 @@ func TestPublishNodeExecutionStartedEvent(t *testing.T) {
 
 		// Verify mock was called
 		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+		mockObs.AssertCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 	})
 }
 
@@ -290,7 +290,7 @@ func TestPublishNodeExecutionCompletedEvent(t *testing.T) {
 
 		// Verify mock was called
 		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+		mockObs.AssertCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 	})
 
 	t.Run("node_failed_with_error", func(t *testing.T) {
@@ -328,7 +328,7 @@ func TestPublishNodeExecutionCompletedEvent(t *testing.T) {
 
 		// Verify mock was called
 		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+		mockObs.AssertCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 	})
 
 	t.Run("node_incomplete_status", func(t *testing.T) {
@@ -361,7 +361,7 @@ func TestPublishNodeExecutionCompletedEvent(t *testing.T) {
 
 		// Verify mock was called
 		mockObs.AssertCalled(t, "IsEnabled")
-		mockObs.AssertCalled(t, "PublishEvent", mock.Anything)
+		mockObs.AssertCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 	})
 }
 
@@ -383,7 +383,7 @@ func TestObservabilityDisabled(t *testing.T) {
 
 	mockObs := &observabilitymock.ObservabilityServiceInterfaceMock{}
 	mockObs.On("IsEnabled").Return(false).Maybe()
-	mockObs.On("PublishEvent", mock.Anything).Return().Maybe()
+	mockObs.On("PublishEvent", mock.Anything, mock.Anything).Return().Maybe()
 
 	// Try to publish an event
 	ctx := &EngineContext{
@@ -397,5 +397,5 @@ func TestObservabilityDisabled(t *testing.T) {
 
 	// Verify IsEnabled was called but PublishEvent was NOT called
 	mockObs.AssertCalled(t, "IsEnabled")
-	mockObs.AssertNotCalled(t, "PublishEvent", mock.Anything)
+	mockObs.AssertNotCalled(t, "PublishEvent", mock.Anything, mock.Anything)
 }

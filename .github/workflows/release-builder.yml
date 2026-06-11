@@ -207,13 +207,9 @@ jobs:
             install/openchoreo/helm/Chart.yaml \
             install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-oc-componenttype/Chart.yaml \
             install/openchoreo/helm/charts/${PRODUCT_NAME_LOWER}-component/Chart.yaml \
-            samples/apps/react-api-based-sample/package-lock.json \
             samples/apps/react-api-based-sample/package.json \
-            samples/apps/react-sdk-sample/package-lock.json \
             samples/apps/react-sdk-sample/package.json \
-            samples/apps/react-vanilla-sample/package-lock.json \
             samples/apps/react-vanilla-sample/package.json \
-            samples/apps/react-vanilla-sample/server/package-lock.json \
             samples/apps/react-vanilla-sample/server/package.json \
             samples/apps/wayfinder-sample/package.json
 
@@ -643,38 +639,20 @@ jobs:
           NEXT_VERSION="${{ steps.next_version.outputs.next_version }}"
           echo "📝 Setting sample apps version to $NEXT_VERSION"
 
-          # Update the react-vanilla sample app package.json
-          cd samples/apps/react-vanilla-sample
-          npm version $NEXT_VERSION --no-git-tag-version --allow-same-version
+          for sample in react-vanilla-sample react-sdk-sample react-api-based-sample wayfinder-sample; do
+            cd "$GITHUB_WORKSPACE/samples/apps/$sample"
+            pnpm version "$NEXT_VERSION" --no-git-tag-version --no-git-checks --allow-same-version
+          done
 
-          # Update the server package.json
-          cd server
-          npm version $NEXT_VERSION --no-git-tag-version --allow-same-version
-
-          cd "$GITHUB_WORKSPACE"
-
-          # Update the react-sdk sample app package.json
-          cd samples/apps/react-sdk-sample
-          pnpm version $NEXT_VERSION --no-git-tag-version --no-git-checks --allow-same-version
-
-          cd "$GITHUB_WORKSPACE"
-
-          # Update the react-api-based sample app package.json
-          cd samples/apps/react-api-based-sample
-          pnpm version $NEXT_VERSION --no-git-tag-version --no-git-checks --allow-same-version
-
-          cd "$GITHUB_WORKSPACE"
-
-          # Update the agent-id sample app package.json
-          cd samples/apps/wayfinder-sample
-          npm version $NEXT_VERSION --no-git-tag-version --allow-same-version
+          cd "$GITHUB_WORKSPACE/samples/apps/react-vanilla-sample/server"
+          npm version "$NEXT_VERSION" --no-git-tag-version --allow-same-version
 
           cd "$GITHUB_WORKSPACE"
           echo "✅ Updated sample apps version to $NEXT_VERSION"
 
 
-  package-samples-linux:
-    name: 📦 Package Linux & Windows Samples
+  package-samples:
+    name: 📦 Package Samples
     runs-on: ubuntu-latest
     needs: [build, build-and-package]
     steps:
@@ -692,56 +670,20 @@ jobs:
         with:
           version: ${{ needs.build.outputs.version }}
 
-      - name: 📦 Build and Package Linux Samples
-        run: |
-          ./scripts/package-samples.sh linux x64
-          ./scripts/package-samples.sh linux arm64
+      - name: 📦 Build and Package Samples
+        run: ./scripts/package-samples.sh
 
-      - name: 📦 Build and Package Windows Samples
-        run: ./scripts/package-samples.sh win x64
-
-      - name: 📦 Upload Linux & Windows Sample Artifacts
+      - name: 📦 Upload Sample Artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ${{ env.PRODUCT_NAME_LOWER }}-samples-linux-windows
-          path: target/dist/*.zip
-          if-no-files-found: error
-
-  package-samples-macos:
-    name: 📦 Package macOS Samples
-    runs-on: macos-latest
-    needs: [build, build-and-package]
-    steps:
-      - name: 📥 Checkout Code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          fetch-depth: 0
-          ref: ${{ env.RELEASE_BRANCH }}
-
-      - name: ⚙️ Setup Samples Environment
-        uses: ./.github/actions/setup-samples-environment
-
-      - name: 📝 Update Sample Apps Version
-        uses: ./.github/actions/update-sample-versions
-        with:
-          version: ${{ needs.build.outputs.version }}
-
-      - name: 📦 Build and Package macOS Samples
-        run: |
-          ./scripts/package-samples.sh macos x64
-          ./scripts/package-samples.sh macos arm64
-
-      - name: 📦 Upload macOS Sample Artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: ${{ env.PRODUCT_NAME_LOWER }}-samples-macos
+          name: ${{ env.PRODUCT_NAME_LOWER }}-samples
           path: target/dist/*.zip
           if-no-files-found: error
 
   release:
     name: 🚀 Release
     runs-on: ubuntu-latest
-    needs: [build, build-and-package, package-samples-linux, package-samples-macos]
+    needs: [build, build-and-package, package-samples]
     outputs:
       release_tag: ${{ steps.release_info.outputs.release_tag }}
     steps:
@@ -757,29 +699,22 @@ jobs:
           name: product-distribution
           path: ./backend-artifacts
 
-      - name: 📥 Download Linux & Windows Sample Artifacts
+      - name: 📥 Download Sample Artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ${{ env.PRODUCT_NAME_LOWER }}-samples-linux-windows
-          path: ./linux-windows-artifacts
-
-      - name: 📥 Download macOS Sample Artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: ${{ env.PRODUCT_NAME_LOWER }}-samples-macos
-          path: ./macos-artifacts
+          name: ${{ env.PRODUCT_NAME_LOWER }}-samples
+          path: ./sample-artifacts
 
       - name: 📦 Combine All Distribution Artifacts
         run: |
           mkdir -p target/dist
-          
+
           # Copy backend artifacts
           cp ./backend-artifacts/*.zip target/dist/ || true
-          
-          # Copy sample artifacts from each platform
-          cp ./linux-windows-artifacts/*.zip target/dist/ || true
-          cp ./macos-artifacts/*.zip target/dist/ || true
-          
+
+          # Copy sample artifacts
+          cp ./sample-artifacts/*.zip target/dist/ || true
+
           echo "✅ Combined all artifacts:"
           ls -la target/dist/
 
@@ -885,8 +820,8 @@ jobs:
             RELEASE_VERSION="${RELEASE_VERSION#v}"
           fi
           
-          # Extract introduction (everything before first --- divider)
-          INTRO=$(awk 'BEGIN{flag=1} /^---$/{flag=0; exit} flag{print}' README.md)
+          # Extract introduction (everything before ## Architecture)
+          INTRO=$(awk '/^## Architecture/{exit} {print}' README.md)
           
           # Extract Quick Start section
           QUICKSTART=$(sed -n '/^## ⚡ Quickstart/,/^---$/p' README.md | head -n -1)
@@ -930,77 +865,40 @@ jobs:
           # Remove the example paragraph that follows (it's now redundant with the table)
           QUICKSTART=$(echo "$QUICKSTART" | sed '/For example, if you are using a MacOS machine with a Apple Silicon (ARM64) processor, you would download `'"${PRODUCT_NAME_LOWER}-${RELEASE_VERSION}"'-macos-arm64\.zip`\./d')
           
-          # Create the React Vanilla Sample App downloads table with proper newlines using printf
-          VANILLA_SAMPLE_TABLE=$(printf "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s" \
-            "   | OS | Architecture | Download Link |" \
-            "   |-------|-------------|-------------|" \
-            "   | macOS | ARM64 (Apple Silicon) | [sample-app-react-vanilla-${RELEASE_VERSION}-macos-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-vanilla-${RELEASE_VERSION}-macos-arm64.zip) |" \
-            "   | macOS | x64 (Intel) | [sample-app-react-vanilla-${RELEASE_VERSION}-macos-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-vanilla-${RELEASE_VERSION}-macos-x64.zip) |" \
-            "   | Linux | x64 | [sample-app-react-vanilla-${RELEASE_VERSION}-linux-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-vanilla-${RELEASE_VERSION}-linux-x64.zip) |" \
-            "   | Linux | ARM64 | [sample-app-react-vanilla-${RELEASE_VERSION}-linux-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-vanilla-${RELEASE_VERSION}-linux-arm64.zip) |" \
-            "   | Windows | x64 | [sample-app-react-vanilla-${RELEASE_VERSION}-win-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-vanilla-${RELEASE_VERSION}-win-x64.zip) |")
-          
-          # Create the React SDK Sample App downloads table with proper newlines using printf
-          SDK_SAMPLE_TABLE=$(printf "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s" \
-            "   | OS | Architecture | Download Link |" \
-            "   |-------|-------------|-------------|" \
-            "   | macOS | ARM64 (Apple Silicon) | [sample-app-react-sdk-${RELEASE_VERSION}-macos-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-sdk-${RELEASE_VERSION}-macos-arm64.zip) |" \
-            "   | macOS | x64 (Intel) | [sample-app-react-sdk-${RELEASE_VERSION}-macos-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-sdk-${RELEASE_VERSION}-macos-x64.zip) |" \
-            "   | Linux | x64 | [sample-app-react-sdk-${RELEASE_VERSION}-linux-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-sdk-${RELEASE_VERSION}-linux-x64.zip) |" \
-            "   | Linux | ARM64 | [sample-app-react-sdk-${RELEASE_VERSION}-linux-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-sdk-${RELEASE_VERSION}-linux-arm64.zip) |" \
-            "   | Windows | x64 | [sample-app-react-sdk-${RELEASE_VERSION}-win-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-sdk-${RELEASE_VERSION}-win-x64.zip) |")
+          # Build single download links for each sample (arch-agnostic)
+          VANILLA_SAMPLE_LINK="[sample-app-react-vanilla-${RELEASE_VERSION}.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-vanilla-${RELEASE_VERSION}.zip)"
+          SDK_SAMPLE_LINK="[sample-app-react-sdk-${RELEASE_VERSION}.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-sdk-${RELEASE_VERSION}.zip)"
+          API_SAMPLE_LINK="[sample-app-react-api-based-${RELEASE_VERSION}.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-api-based-${RELEASE_VERSION}.zip)"
+          WAYFINDER_SAMPLE_LINK="[sample-app-wayfinder-${RELEASE_VERSION}.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-wayfinder-${RELEASE_VERSION}.zip)"
 
-          # Create the React API-based Sample App downloads table with proper newlines using printf
-          API_SAMPLE_TABLE=$(printf "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s" \
-            "   | OS | Architecture | Download Link |" \
-            "   |-------|-------------|-------------|" \
-            "   | macOS | ARM64 (Apple Silicon) | [sample-app-react-api-based-${RELEASE_VERSION}-macos-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-api-based-${RELEASE_VERSION}-macos-arm64.zip) |" \
-            "   | macOS | x64 (Intel) | [sample-app-react-api-based-${RELEASE_VERSION}-macos-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-api-based-${RELEASE_VERSION}-macos-x64.zip) |" \
-            "   | Linux | x64 | [sample-app-react-api-based-${RELEASE_VERSION}-linux-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-api-based-${RELEASE_VERSION}-linux-x64.zip) |" \
-            "   | Linux | ARM64 | [sample-app-react-api-based-${RELEASE_VERSION}-linux-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-api-based-${RELEASE_VERSION}-linux-arm64.zip) |" \
-            "   | Windows | x64 | [sample-app-react-api-based-${RELEASE_VERSION}-win-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-react-api-based-${RELEASE_VERSION}-win-x64.zip) |")
-
-          # Create the Agent Identity (Wayfinder) Sample App downloads table with proper newlines using printf
-          WAYFINDER_SAMPLE_TABLE=$(printf "%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s" \
-            "   | OS | Architecture | Download Link |" \
-            "   |-------|-------------|-------------|" \
-            "   | macOS | ARM64 (Apple Silicon) | [sample-app-wayfinder-${RELEASE_VERSION}-macos-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-wayfinder-${RELEASE_VERSION}-macos-arm64.zip) |" \
-            "   | macOS | x64 (Intel) | [sample-app-wayfinder-${RELEASE_VERSION}-macos-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-wayfinder-${RELEASE_VERSION}-macos-x64.zip) |" \
-            "   | Linux | x64 | [sample-app-wayfinder-${RELEASE_VERSION}-linux-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-wayfinder-${RELEASE_VERSION}-linux-x64.zip) |" \
-            "   | Linux | ARM64 | [sample-app-wayfinder-${RELEASE_VERSION}-linux-arm64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-wayfinder-${RELEASE_VERSION}-linux-arm64.zip) |" \
-            "   | Windows | x64 | [sample-app-wayfinder-${RELEASE_VERSION}-win-x64.zip](https://github.com/${{ github.repository }}/releases/download/v${RELEASE_VERSION}/sample-app-wayfinder-${RELEASE_VERSION}-win-x64.zip) |")
-
-          # Replace the vanilla sample app download instruction with its table
-          QUICKSTART=$(echo "$QUICKSTART" | awk -v table="$VANILLA_SAMPLE_TABLE" '
-            /Download `sample-app-react-vanilla-.*-<os>-<arch>\.zip` from the \[.*release\]/ {
-              print table
-              next
-            }
-            { print }
-          ')
-          
-          # Replace the SDK sample app download instruction with its table
-          QUICKSTART=$(echo "$QUICKSTART" | awk -v table="$SDK_SAMPLE_TABLE" '
-            /Download `sample-app-react-sdk-.*-<os>-<arch>\.zip` from the \[.*release\]/ {
-              print table
+          # Replace per-arch sample download instructions with single download links
+          QUICKSTART=$(echo "$QUICKSTART" | awk -v link="$VANILLA_SAMPLE_LINK" '
+            /Download `sample-app-react-vanilla-.*` from the \[.*release\]/ {
+              print "   " link
               next
             }
             { print }
           ')
 
-          # Replace the API-based sample app download instruction with its table
-          QUICKSTART=$(echo "$QUICKSTART" | awk -v table="$API_SAMPLE_TABLE" '
-            /Download `sample-app-react-api-based-.*-<os>-<arch>\.zip` from the \[.*release\]/ {
-              print table
+          QUICKSTART=$(echo "$QUICKSTART" | awk -v link="$SDK_SAMPLE_LINK" '
+            /Download `sample-app-react-sdk-.*` from the \[.*release\]/ {
+              print "   " link
               next
             }
             { print }
           ')
 
-          # Replace the Wayfinder sample app download instruction with its table
-          QUICKSTART=$(echo "$QUICKSTART" | awk -v table="$WAYFINDER_SAMPLE_TABLE" '
-            /Download `sample-app-wayfinder-.*-<os>-<arch>\.zip` from the \[.*release\]/ {
-              print table
+          QUICKSTART=$(echo "$QUICKSTART" | awk -v link="$API_SAMPLE_LINK" '
+            /Download `sample-app-react-api-based-.*` from the \[.*release\]/ {
+              print "   " link
+              next
+            }
+            { print }
+          ')
+
+          QUICKSTART=$(echo "$QUICKSTART" | awk -v link="$WAYFINDER_SAMPLE_LINK" '
+            /Download `sample-app-wayfinder-.*` from the \[.*release\]/ {
+              print "   " link
               next
             }
             { print }

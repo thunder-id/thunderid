@@ -360,16 +360,118 @@ Controls declarative configuration support.
 |---------|---------|-------------|
 | `declarative_resources.enabled` | `false` | If `true`, enables declarative resource configuration |
 
-For Helm deployments, this setting is managed through `declarativeResources.enabled` in the Helm values. When enabled, the chart also mounts declarative resource files from either a ConfigMap or Secret into the <ProductName /> `repository/resources` directory.
+### Resource Loading Precedence
 
-Example Helm values:
+At startup, <ProductName /> resolves declarative resources using the following precedence. Only the first matching source is used — sources are not merged.
+
+| Priority | Source | When active |
+|----------|--------|-------------|
+| 1 | Single file passed via `./start.sh <file>` | `--resources` flag is set |
+| 2 | `*.yaml`/`*.yml` files placed directly in `repository/resources/` (not in subdirectories) | Flag not set; at least one root-level YAML file exists |
+| 3 | Per-type subdirectories under `repository/resources/` (e.g. `repository/resources/groups/`) | Flag not set; no root-level YAML files found |
+
+If `--resources` is set, `repository/resources/` is not read at all, regardless of what files it contains. The two sources never merge.
+
+### Start <ProductName/> With a Resources File
+
+Pass a single multi-document YAML file to the server at startup as a positional argument to `start.sh`. The file is forwarded to the server binary as the `-resources` flag and read directly at startup.
+
+```bash
+./start.sh resources.yml
+```
+
+With environment variable substitution:
+
+```bash
+./start.sh resources.yml --env my.env
+```
+
+Each document in the file must declare its type with a `# resource_type: <type>` comment at the top. Supported types:
+
+```
+application, flow, group, identity_provider, layout, notification_sender,
+organization_unit, resource_server, role, theme, translation, user, user_schema
+```
+
+Example single file:
+
+```yaml
+# resource_type: application
+name: My App
+ou_handle: default
+auth_flow_handle: default-basic-flow
+---
+# resource_type: group
+name: admins
+description: Administrators
+```
+
+:::warning
+When `--resources` is active, any files in `repository/resources/` — including per-type subdirectories — are silently ignored. If you need files from the directory to be loaded, do not pass a `--resources` argument.
+:::
+
+### Resources Directory (No Startup Flag)
+
+If you do not pass a `--resources` argument, <ProductName /> automatically picks up multi-document YAML files placed directly in the `repository/resources/` directory (not in subdirectories). This is priority 2 in the loading precedence and requires no configuration change or restart argument.
+
+Place a multi-document YAML file in `repository/resources/`:
+
+```
+repository/
+  resources/
+    my-resources.yaml   ← loaded automatically at startup
+    groups/             ← used only when no root-level YAML files exist
+      admins.yaml
+```
+
+The file must use the same `# resource_type: <type>` document headers as the single-file startup format. On startup, <ProductName /> scans all `*.yaml` and `*.yml` files at that root level and loads every document whose `resource_type` matches a configured declarative resource type.
+
+:::note
+If any `*.yaml` or `*.yml` file is found at the `repository/resources/` root, per-type subdirectories (priority 3) are skipped entirely for that resource type.
+:::
+
+### Helm Deployment
+
+For Helm deployments, this setting is managed through `declarativeResources.enabled` in the Helm values. When enabled, the chart mounts declarative resource files from either a ConfigMap or Secret into the <ProductName /> `repository/resources` directory.
+
+Two mounting modes are available — use the one that fits your resource layout.
+
+#### Combined File Mode
+
+Use `singleFile.keys` to mount one or more combined YAML files (multi-document format with `# resource_type: <type>` headers) directly under `repository/resources`. Each key in your ConfigMap or Secret is mounted as `<key>.yaml` at that path. <ProductName /> scans the directory at startup and loads every document whose `resource_type` matches a configured declarative resource type.
 
 ```yaml
 declarativeResources:
   enabled: true
-  # Base mount path inside the {{ProductName}} container (default: /opt/thunder/repository/resources)
-  mountPath: /opt/thunder/repository/resources
-  # Mount as read-only (recommended)
+  readOnly: true
+  singleFile:
+    keys:
+      - resources          # mounted as repository/resources/resources.yaml
+      - extra-resources    # mounted as repository/resources/extra-resources.yaml
+  configMap:
+    name: declarative-resources
+```
+
+The same works with a Secret source (for files containing sensitive values):
+
+```yaml
+declarativeResources:
+  enabled: true
+  readOnly: true
+  singleFile:
+    keys:
+      - resources
+  secret:
+    name: declarative-resources-secret
+```
+
+#### Individual Files Mode
+
+Use `configMap.items` (or `secret.items`) to mount individual files into typed subdirectories under `repository/resources`. Each item maps a ConfigMap/Secret key to a specific path.
+
+```yaml
+declarativeResources:
+  enabled: true
   readOnly: true
   configMap:
     name: declarative-resources
@@ -382,22 +484,12 @@ declarativeResources:
       # Format 3 — per-item mountPath override (absolute path)
       - key: org-default
         path: organization_units/default.yaml
-        mountPath: /opt/thunder/repository/resources/organization_units/default.yaml
+        mountPath: /opt/thunderid/repository/resources/organization_units/default.yaml
 ```
 
-To source files from a Kubernetes Secret instead (for resources containing sensitive values):
-
-```yaml
-declarativeResources:
-  enabled: true
-  mountPath: /opt/thunder/repository/resources
-  readOnly: true
-  secret:
-    name: declarative-resources-secret
-    items:
-      - key: my-app-with-secrets
-        path: applications/my-app.yaml
-```
+:::note
+`singleFile.keys` and `configMap.items` / `secret.items` are mutually exclusive.
+:::
 
 Templates (email and other templated content) are now supported as a declarative resource. See the templates guide for schema, examples, and the configured directory location: [Template declarative resources](../declarative-configurations/templates.mdx).
 

@@ -21,6 +21,7 @@ import type {JSX} from 'react';
 import BlockAdapter from './adapters/BlockAdapter';
 import ConsentAdapter from './adapters/ConsentAdapter';
 import CopyableTextAdapter from './adapters/CopyableTextAdapter';
+import QrCodeAdapter from './adapters/QrCodeAdapter';
 import DividerAdapter from './adapters/DividerAdapter';
 import IconAdapter from './adapters/IconAdapter';
 import ImageAdapter from './adapters/ImageAdapter';
@@ -191,6 +192,11 @@ export default function FlowComponentRenderer({
   // COPYABLE_TEXT
   if (comp.type === 'COPYABLE_TEXT') {
     return <CopyableTextAdapter component={comp} resolve={resolve} additionalData={additionalData} />;
+  }
+
+  // QR_CODE
+  if (comp.type === 'QR_CODE') {
+    return <QrCodeAdapter component={comp} additionalData={additionalData} />;
   }
 
   // Standalone ACTION / TRIGGER (outside of a block)

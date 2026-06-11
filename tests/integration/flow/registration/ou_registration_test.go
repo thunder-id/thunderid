@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -707,7 +707,8 @@ func (ts *OURegistrationFlowTestSuite) TestBasicRegistrationFlowWithOUCreationDu
 			ts.Require().NoError(err)
 			ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
 			ts.Require().Empty(flowStep.Assertion)
-			ts.Require().Contains(flowStep.FailureReason, tc.expectedErrorSubstr)
+			ts.Require().NotNil(flowStep.Error)
+			ts.Require().Contains(flowStep.Error.Description.DefaultValue, tc.expectedErrorSubstr)
 		})
 	}
 }
@@ -915,7 +916,8 @@ func (ts *OURegistrationFlowTestSuite) TestSMSRegistrationFlowWithOUCreationDupl
 			ts.Require().NoError(err)
 			ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
 			ts.Require().Empty(flowStep.Assertion)
-			ts.Require().Contains(flowStep.FailureReason, tc.expectedErrorSubstr)
+			ts.Require().NotNil(flowStep.Error)
+			ts.Require().Contains(flowStep.Error.Description.DefaultValue, tc.expectedErrorSubstr)
 		})
 	}
 }

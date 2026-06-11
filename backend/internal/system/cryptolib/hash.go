@@ -333,7 +333,7 @@ func (a *argon2idHashProvider) Verify(credentialValueToVerify []byte, referenceC
 // GenerateThumbprint generates a SHA-256 thumbprint for the given data.
 func GenerateThumbprint(data []byte) string {
 	h := sha256.Sum256(data)
-	return base64.StdEncoding.EncodeToString(h[:])
+	return base64.RawURLEncoding.EncodeToString(h[:])
 }
 
 // GenerateThumbprintFromString generates a SHA-256 thumbprint for the given string data.

@@ -39,6 +39,7 @@ type AuthorizationCode struct {
 	Code                string
 	ClientID            string
 	RedirectURI         string
+	RedirectURIProvided bool
 	AuthorizedUserID    string
 	AttributeCacheID    string
 	TimeCreated         time.Time

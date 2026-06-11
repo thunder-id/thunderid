@@ -68,4 +68,8 @@ describe('getTemplateFieldConstraints', () => {
 
     expect(constraints?.oauth2?.tokenEndpointAuthMethod).toBeDefined();
   });
+
+  it('returns null for the "custom" template (no field constraints)', () => {
+    expect(getTemplateFieldConstraints('custom')).toBeNull();
+  });
 });

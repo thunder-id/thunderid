@@ -76,7 +76,7 @@ func (f *fileBasedStore) GetRoleList(ctx context.Context, limit, offset int) ([]
 		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
 		if err != nil {
 			// Log warning for malformed declarative entry
-			log.GetLogger().Warn("Skipping malformed role in GetRoleList",
+			log.GetLogger().Warn(ctx, "Skipping malformed role in GetRoleList",
 				log.String("roleID", item.ID.ID),
 				log.Error(err))
 			continue
@@ -277,7 +277,7 @@ func (f *fileBasedStore) CheckRoleNameExists(ctx context.Context, ouID, name str
 		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
 		if err != nil {
 			// Log warning for malformed declarative entry
-			log.GetLogger().Warn("Skipping malformed role in CheckRoleNameExists",
+			log.GetLogger().Warn(ctx, "Skipping malformed role in CheckRoleNameExists",
 				log.String("roleID", item.ID.ID),
 				log.Error(err))
 			continue
@@ -304,7 +304,7 @@ func (f *fileBasedStore) CheckRoleNameExistsExcludingID(
 		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
 		if err != nil {
 			// Log warning for malformed declarative entry
-			log.GetLogger().Warn("Skipping malformed role in CheckRoleNameExistsExcludingID",
+			log.GetLogger().Warn(ctx, "Skipping malformed role in CheckRoleNameExistsExcludingID",
 				log.String("roleID", item.ID.ID),
 				log.Error(err))
 			continue
@@ -354,7 +354,7 @@ func (f *fileBasedStore) GetAuthorizedPermissions(
 		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
 		if err != nil {
 			// Log warning for malformed declarative entry
-			log.GetLogger().Warn("Skipping malformed role in GetAuthorizedPermissions",
+			log.GetLogger().Warn(ctx, "Skipping malformed role in GetAuthorizedPermissions",
 				log.String("roleID", item.ID.ID),
 				log.Error(err))
 			continue
@@ -402,7 +402,7 @@ func (f *fileBasedStore) GetUserRoles(
 	for _, item := range list {
 		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
 		if err != nil {
-			log.GetLogger().Warn("Skipping malformed role in GetUserRoles",
+			log.GetLogger().Warn(ctx, "Skipping malformed role in GetUserRoles",
 				log.String("roleID", item.ID.ID),
 				log.Error(err))
 			continue

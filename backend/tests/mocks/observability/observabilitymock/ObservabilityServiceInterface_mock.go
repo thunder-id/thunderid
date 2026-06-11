@@ -5,11 +5,13 @@
 package observabilitymock
 
 import (
+	"context"
+
+	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/observability/publisher"
 	"github.com/thunder-id/thunderid/internal/system/observability/subscriber"
-	mock "github.com/stretchr/testify/mock"
 )
 
 // NewObservabilityServiceInterfaceMock creates a new instance of ObservabilityServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -222,8 +224,8 @@ func (_c *ObservabilityServiceInterfaceMock_IsEnabled_Call) RunAndReturn(run fun
 }
 
 // PublishEvent provides a mock function for the type ObservabilityServiceInterfaceMock
-func (_mock *ObservabilityServiceInterfaceMock) PublishEvent(evt *event.Event) {
-	_mock.Called(evt)
+func (_mock *ObservabilityServiceInterfaceMock) PublishEvent(ctx context.Context, evt *event.Event) {
+	_mock.Called(ctx, evt)
 	return
 }
 
@@ -233,19 +235,25 @@ type ObservabilityServiceInterfaceMock_PublishEvent_Call struct {
 }
 
 // PublishEvent is a helper method to define mock.On call
+//   - ctx context.Context
 //   - evt *event.Event
-func (_e *ObservabilityServiceInterfaceMock_Expecter) PublishEvent(evt interface{}) *ObservabilityServiceInterfaceMock_PublishEvent_Call {
-	return &ObservabilityServiceInterfaceMock_PublishEvent_Call{Call: _e.mock.On("PublishEvent", evt)}
+func (_e *ObservabilityServiceInterfaceMock_Expecter) PublishEvent(ctx interface{}, evt interface{}) *ObservabilityServiceInterfaceMock_PublishEvent_Call {
+	return &ObservabilityServiceInterfaceMock_PublishEvent_Call{Call: _e.mock.On("PublishEvent", ctx, evt)}
 }
 
-func (_c *ObservabilityServiceInterfaceMock_PublishEvent_Call) Run(run func(evt *event.Event)) *ObservabilityServiceInterfaceMock_PublishEvent_Call {
+func (_c *ObservabilityServiceInterfaceMock_PublishEvent_Call) Run(run func(ctx context.Context, evt *event.Event)) *ObservabilityServiceInterfaceMock_PublishEvent_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *event.Event
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(*event.Event)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *event.Event
+		if args[1] != nil {
+			arg1 = args[1].(*event.Event)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -256,7 +264,7 @@ func (_c *ObservabilityServiceInterfaceMock_PublishEvent_Call) Return() *Observa
 	return _c
 }
 
-func (_c *ObservabilityServiceInterfaceMock_PublishEvent_Call) RunAndReturn(run func(evt *event.Event)) *ObservabilityServiceInterfaceMock_PublishEvent_Call {
+func (_c *ObservabilityServiceInterfaceMock_PublishEvent_Call) RunAndReturn(run func(ctx context.Context, evt *event.Event)) *ObservabilityServiceInterfaceMock_PublishEvent_Call {
 	_c.Run(run)
 	return _c
 }

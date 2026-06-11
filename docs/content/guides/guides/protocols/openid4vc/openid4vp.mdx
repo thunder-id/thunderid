@@ -1,0 +1,190 @@
+---
+title: OpenID for Verifiable Presentations (OpenID4VP)
+sidebar_position: 1
+description: OpenID4VP in {{ProductName}} — request an SD-JWT VC from a digital wallet, verify the presentation response, and authenticate the holder without a password.
+---
+
+# OpenID for Verifiable Presentations (OpenID4VP)
+
+**OpenID for Verifiable Presentations** ([OpenID4VP](https://openid.net/specs/openid-4-verifiable-presentations-1_0.html)) lets a relying party request cryptographic proof of identity from a credential held in a user's digital wallet. Instead of supplying a username and password, the user's wallet presents a **Selective Disclosure JWT Verifiable Credential (SD-JWT VC)** — a credential signed by a trusted authority such as a government identity provider.
+
+<ProductName /> acts as the **verifier**: it generates a signed authorization request, the wallet responds with an encrypted presentation, and <ProductName /> verifies the SD-JWT VC against a configured trust store. On success, it issues a signed result token to the relying party.
+
+## How It Works
+
+The protocol uses a polling model with two parallel channels: a **back-channel** between <ProductName /> and the relying party, and an **out-of-band channel** to the wallet via a QR code or deep link.
+
+1. The relying party calls `POST /openid4vp/initiate` and receives a transaction identifier, a wallet authorization URI, and a status polling URL.
+2. The relying party displays the wallet authorization URI as a QR code or deep link.
+3. The user scans the QR code. The wallet fetches the signed authorization request from `GET /openid4vp/request`.
+4. The wallet selects matching credentials, applies selective disclosure, and posts the encrypted response to `POST /openid4vp/response`.
+5. <ProductName /> decrypts the response, verifies the SD-JWT VC signature and key binding, and enforces the presentation policy.
+6. The relying party polls `GET /openid4vp/status/{txn_id}` until <ProductName /> returns `COMPLETED` with a signed `result_token`.
+7. The relying party validates the `result_token` to read the verified subject and claims.
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| **Client identification** | The verifier's `client_id` is configured directly (e.g. `x509_hash:<thumbprint>`). The optional `client_id_scheme` field is configurable. The wallet receives the signing certificate chain in the request object's `x5c` header. |
+| **Request object (JAR)** | <ProductName /> signs the authorization request as a compact JWS and serves it at `GET /openid4vp/request?state=...` with `Content-Type: application/oauth-authz-req+jwt`. |
+| **Response encryption** | The wallet encrypts its VP token as a compact JWE using ECDH-ES with the ephemeral public key advertised in `client_metadata.jwks`. The encryption algorithm defaults to `A128GCM`. |
+| **Credential format** | SD-JWT VC (`vc+sd-jwt`). The DCQL query targets a specific `vct` (Verifiable Credential Type) and claims list. |
+| **Selective disclosure** | Only the claims listed in `requested_claims` for the matching presentation definition are accepted. The wallet may disclose fewer optional claims, but extra disclosures beyond the list fail verification. |
+| **Key binding** | When `enforce_key_binding` is enabled, the wallet must include a `kb+jwt` binding the presentation to the nonce and verifier audience. |
+| **Issuer trust** | When `enforce_trusted_issuer` is enabled, <ProductName /> verifies the SD-JWT issuer signature against a pinned certificate for the issuer URL. |
+| **Result token** | On `COMPLETED`, the status endpoint issues a short-lived signed JWT containing `subject`, `verified_claims`, `txn`, and `definition_id` as claims. |
+| **State TTL** | Each transaction expires after `state_ttl_seconds` (default: 300 seconds). The status endpoint returns `EXPIRED` for past-TTL transactions. |
+
+</details>
+
+## Endpoints
+
+### RP-Facing Endpoints
+
+These endpoints are called by the relying party application.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/openid4vp/initiate` | `POST` | Start a new presentation transaction. Returns `txn_id`, `wallet_url`, `status_url`, and `expires_at`. |
+| `/openid4vp/status/{txn_id}` | `GET` | Poll for transaction status. Returns `PENDING`, `FAILED`, `EXPIRED`, or `COMPLETED` with a `result_token`. |
+
+### Wallet-Facing Endpoints
+
+These endpoints are called by the credential wallet after scanning the QR code.
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/openid4vp/request` | `GET` | Serve the signed authorization request object (JAR) to the wallet. Requires a `state` query parameter. |
+| `/openid4vp/response` | `POST` | Receive the wallet's encrypted VP token response. Accepts `state` and `response` as form parameters. |
+
+## Result Token Claims
+
+When the relying party polls the status endpoint and receives `COMPLETED`, the response includes a signed JWT `result_token`. Validate the token against the <ProductName /> JWKS before trusting its claims.
+
+| Claim | Description |
+|---|---|
+| `iss` | The <ProductName /> instance base URL. |
+| `aud` | The relying party identifier supplied in the `POST /openid4vp/initiate` request. |
+| `txn` | The transaction identifier (`txn_id`). |
+| `definition_id` | The presentation definition identifier that was requested. |
+| `subject` | The holder's stable identifier, derived from the credential's `sub` claim or from the configured `subject_claims` hash. |
+| `verified_claims` | A map of the selectively disclosed claim values from the credential (e.g., `given_name`, `family_name`, `birthdate`). |
+| `verifier` | The verifier's `client_id`. |
+
+## Presentation Definitions
+
+A **presentation definition** specifies which credential to request and which claims are mandatory or optional. Define presentation definitions in the `openid4vp.presentation_definitions` array in the server configuration.
+
+| Configuration Key | Required | Description |
+|---|---|---|
+| `id` | Yes | Unique identifier referenced by the relying party or flow executor (e.g., `eudi-pid`). |
+| `display_name` | No | Human-readable name for the credential type. |
+| `credential_id` | Yes | DCQL query credential identifier. |
+| `vct` | Yes | The expected Verifiable Credential Type URI (e.g., `urn:eudi:pid:de:1`). |
+| `mandatory_claims` | No | Claims that must be present in the presentation. Verification fails if any are absent. |
+| `optional_claims` | No | Claims the wallet may disclose. Disclosure of claims not in the combined list is rejected. |
+| `subject_claims` | No | Ordered list of claim names used to derive a stable `subject` identifier when the credential has no `sub` claim. |
+| `trusted_issuers` | No | List of `{ issuer, cert_file }` entries. Required when `enforce_trusted_issuer: true`. |
+
+**Minimal configuration example:**
+
+```json
+{
+  "openid4vp": {
+    "client_id": "x509_hash:<thumbprint>",
+    "signing_key_id": "vp-signing-key",
+    "base_url": "https://auth.example.com",
+    "ephemeral_key_id": "vp-enc-key",
+    "state_ttl_seconds": 300,
+    "enforce_trusted_issuer": true,
+    "enforce_key_binding": true,
+    "presentation_definitions": [
+      {
+        "id": "eudi-pid",
+        "display_name": "EUDI Wallet PID",
+        "credential_id": "pid-sd-jwt",
+        "vct": "urn:eudi:pid:de:1",
+        "mandatory_claims": ["given_name", "family_name"],
+        "optional_claims": ["birthdate"],
+        "subject_claims": ["family_name", "given_name", "birthdate"],
+        "trusted_issuers": [
+          {
+            "issuer": "https://pid-issuer.example.eu/c",
+            "cert_file": "repository/resources/security/pid-issuer.cert"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+## Try It in <ProductName />
+
+### Prerequisites
+
+- The OpenID4VP service must be enabled and configured with at least one presentation definition.
+- A certificate-backed signing key (`signing_key_id`) and an ephemeral encryption key (`ephemeral_key_id`) must be registered in the <ProductName /> key store.
+- To enforce issuer trust, add a PEM certificate for each trusted issuer under `trusted_issuers`.
+
+### Initiate a Presentation Transaction
+
+```http
+POST /openid4vp/initiate
+Content-Type: application/json
+
+{
+  "definition_id": "eudi-pid",
+  "rp_id": "my-application"
+}
+```
+
+Response:
+
+```json
+{
+  "txn_id": "a1b2c3...",
+  "wallet_url": "openid4vp://?client_id=x509_hash%3A...&request_uri=https%3A%2F%2Fauth.example.com%2Fopenid4vp%2Frequest%3Fstate%3Da1b2c3...",
+  "status_url": "https://auth.example.com/openid4vp/status/a1b2c3...",
+  "expires_at": "2026-01-01T12:05:00Z"
+}
+```
+
+Render `wallet_url` as a QR code or as an `openid4vp://` deep link so the user can open the request in their wallet.
+
+### Poll for Status
+
+```http
+GET /openid4vp/status/a1b2c3...
+```
+
+While the wallet is presenting:
+
+```json
+{ "status": "PENDING" }
+```
+
+After successful verification:
+
+```json
+{
+  "status": "COMPLETED",
+  "result_token": "eyJhbGciOiJFUzI1NiJ9.eyJhdWQiOiJteS1hcHBsaWNhdGlvbiIsInN1YmplY3QiOiJl..."
+}
+```
+
+Decode and verify the `result_token` signature against the <ProductName /> [JWKS](/docs/next/guides/guides/protocols/oauth-oidc/jwks) endpoint, then read `verified_claims` to extract the user's identity attributes.
+
+### Use in a Sign-In Flow
+
+To integrate OpenID4VP into an authentication flow, add the **Continue with EUDI Wallet** widget or configure the **OpenID4VP Verify** executor directly. The executor manages the initiate-and-poll lifecycle automatically.
+
+See [Advanced Configurations — OpenID4VP Verify](/docs/next/guides/guides/flows/advanced-configurations#verifiable-credentials) for the executor reference.
+
+## Related Guides
+
+- [Advanced Configurations](/docs/next/guides/guides/flows/advanced-configurations) — Flow executor reference, including the OpenID4VP Verify executor
+- [JWKS](/docs/next/guides/guides/protocols/oauth-oidc/jwks) — Verify the `result_token` signature against the <ProductName /> public key endpoint
+- [Flows](/docs/next/guides/guides/flows/what-are-flows) — Build authentication flows that include credential presentation steps

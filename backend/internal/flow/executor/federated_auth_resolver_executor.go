@@ -70,7 +70,7 @@ func newFederatedAuthResolverExecutor(
 // attribute), matching the same pattern used by the IdentifyingExecutor's filterUsersByAttributes.
 func (f *federatedAuthResolverExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := f.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Executing federated auth resolver")
+	logger.Debug(ctx.Context, "Executing federated auth resolver")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -78,7 +78,7 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *core.NodeContext) (*common.
 	}
 
 	if !f.HasRequiredInputs(ctx, execResp) {
-		logger.Debug("Required inputs not provided")
+		logger.Debug(ctx.Context, "Required inputs not provided")
 		execResp.Status = common.ExecUserInputRequired
 		return execResp, nil
 	}
@@ -112,10 +112,10 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *core.NodeContext) (*common.
 	matched := filterUsersByAttributes(candidates, filters)
 
 	if len(matched) == 0 {
-		logger.Debug("No user matched the provided selection")
+		logger.Debug(ctx.Context, "No user matched the provided selection")
 		execResp.Status = common.ExecUserInputRequired
 		execResp.Inputs = f.GetRequiredInputs(ctx)
-		execResp.FailureReason = failureReasonUserNotFound
+		execResp.Error = &ErrUserNotFound
 		return execResp, nil
 	}
 
@@ -123,9 +123,9 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *core.NodeContext) (*common.
 		// Still ambiguous — extract remaining disambiguation options and request more input
 		options := extractDisambiguationOptions(matched)
 		if len(options) == 0 {
-			logger.Debug("Candidates are indistinguishable, no further disambiguation possible")
+			logger.Debug(ctx.Context, "Candidates are indistinguishable, no further disambiguation possible")
 			execResp.Status = common.ExecFailure
-			execResp.FailureReason = failureReasonFailedToIdentifyUser
+			execResp.Error = &ErrFailedToIdentifyUser
 			return execResp, nil
 		}
 
@@ -139,7 +139,7 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *core.NodeContext) (*common.
 			common.ForwardedDataKeyInputs: options,
 		}
 
-		logger.Debug("Multiple users still match, requesting additional attributes",
+		logger.Debug(ctx.Context, "Multiple users still match, requesting additional attributes",
 			log.Int("candidateCount", len(matched)))
 		return execResp, nil
 	}
@@ -151,9 +151,9 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *core.NodeContext) (*common.
 	// proof of federated authentication, so we must fail closed.
 	sub, hasSub := ctx.RuntimeData[userAttributeSub]
 	if !hasSub || sub == "" {
-		logger.Debug("No federated sub claim found, cannot authenticate")
+		logger.Debug(ctx.Context, "No federated sub claim found, cannot authenticate")
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = failureReasonUserNotAuthenticated
+		execResp.Error = &ErrUserNotAuthenticated
 		return execResp, nil
 	}
 
@@ -166,7 +166,7 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *core.NodeContext) (*common.
 		UserType:        resolvedUser.Type,
 	}
 
-	logger.Debug("Federated auth resolver completed successfully",
+	logger.Debug(ctx.Context, "Federated auth resolver completed successfully",
 		log.MaskedString("userID", resolvedUser.ID))
 
 	return execResp, nil

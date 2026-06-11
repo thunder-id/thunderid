@@ -128,103 +128,41 @@ check_port() {
     fi
 }
 
-# Set up declarative resources from an exported resources file and optional env file.
-# Reads a multi-document YAML file and places each document into the appropriate
-# repository/resources/<type>/ directory, then exports variables from the env file.
-setup_declarative_resources() {
-    local script_dir
-    script_dir="$(cd "$(dirname "$0")" && pwd)"
-    local resources_base="$script_dir/repository/resources"
-
-    # Load and export env vars from the env file.
-    if [[ -n "$ENV_FILE" ]]; then
-        if [[ ! -f "$ENV_FILE" ]]; then
-            echo "Error: env file not found: $ENV_FILE"
-            exit 1
-        fi
-        echo "Loading environment from $ENV_FILE ..."
-        while IFS= read -r line || [[ -n "$line" ]]; do
-            [[ -z "$line" || "$line" == \#* ]] && continue
-            line="${line%$'\r'}"
-            if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
-                key="${BASH_REMATCH[1]}"
-                value="${BASH_REMATCH[2]}"
-                if [[ "$value" == \[* ]]; then
-                    # JSON array — expand into KEY_0, KEY_1, ...
-                    idx=0
-                    _json_tmp=$(mktemp)
-                    if ! python3 -c "import json,sys; [print(x) for x in json.loads(sys.argv[1])]" "$value" > "$_json_tmp" 2>&1; then
-                        echo "Error: failed to parse JSON array for key '$key': $(cat "$_json_tmp")" >&2
-                        rm -f "$_json_tmp"
-                        exit 1
-                    fi
-                    while IFS= read -r elem; do
-                        export "${key}_${idx}=${elem}"
-                        ((idx++))
-                    done < "$_json_tmp"
-                    rm -f "$_json_tmp"
-                else
-                    export "${key}=${value}"
-                fi
-            fi
-        done < "$ENV_FILE"
-    fi
-
-    # Split the combined resources YAML and place each document in its type directory.
-    if [[ -n "$RESOURCES_FILE" ]]; then
-        if [[ ! -f "$RESOURCES_FILE" ]]; then
-            echo "Error: resources file not found: $RESOURCES_FILE"
-            exit 1
-        fi
-        echo "Setting up declarative resources from $RESOURCES_FILE ..."
-        DEC_BASE="$resources_base" awk '
-BEGIN {
-    doc = ""; filename = ""; resource_type = ""
-    base = ENVIRON["DEC_BASE"]
-    type_dir["application"]         = "applications"
-    type_dir["flow"]                = "flows"
-    type_dir["group"]               = "groups"
-    type_dir["identity_provider"]   = "identity_providers"
-    type_dir["layout"]              = "layouts"
-    type_dir["notification_sender"] = "notification_senders"
-    type_dir["organization_unit"]   = "organization_units"
-    type_dir["resource_server"]     = "resource_servers"
-    type_dir["role"]                = "roles"
-    type_dir["theme"]               = "themes"
-    type_dir["translation"]         = "translations"
-    type_dir["user"]                = "users"
-    type_dir["user_schema"]         = "user_schemas"
-}
-function flush(    dir, target, outfile) {
-    if (doc == "" || resource_type == "") {
-        doc = ""; filename = ""; resource_type = ""
+# Load and export env vars from the env file.
+load_env_file() {
+    if [[ -z "$ENV_FILE" ]]; then
         return
-    }
-    dir = (resource_type in type_dir) ? type_dir[resource_type] : resource_type "s"
-    target = base "/" dir
-    system("mkdir -p " target)
-    if (filename == "") filename = "resource.yaml"
-    outfile = target "/" filename
-    printf "%s", doc > outfile
-    close(outfile)
-    print "  Placed: " dir "/" filename > "/dev/stderr"
-    doc = ""; filename = ""; resource_type = ""
-}
-/^---[[:space:]]*$/ { flush(); next }
-/^# File:[[:space:]]*/ {
-    sub(/^# File:[[:space:]]*/, "")
-    filename = $0
-    next
-}
-/^# resource_type:[[:space:]]*/ {
-    sub(/^# resource_type:[[:space:]]*/, "")
-    resource_type = $0
-    next
-}
-{ doc = doc $0 "\n" }
-END { flush() }' "$RESOURCES_FILE"
-        echo "Declarative resources ready."
     fi
+    if [[ ! -f "$ENV_FILE" ]]; then
+        echo "Error: env file not found: $ENV_FILE"
+        exit 1
+    fi
+    echo "Loading environment from $ENV_FILE ..."
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -z "$line" || "$line" == \#* ]] && continue
+        line="${line%$'\r'}"
+        if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+            key="${BASH_REMATCH[1]}"
+            value="${BASH_REMATCH[2]}"
+            if [[ "$value" == \[* ]]; then
+                # JSON array — expand into KEY_0, KEY_1, ...
+                idx=0
+                _json_tmp=$(mktemp)
+                if ! python3 -c "import json,sys; [print(x) for x in json.loads(sys.argv[1])]" "$value" > "$_json_tmp" 2>&1; then
+                    echo "Error: failed to parse JSON array for key '$key': $(cat "$_json_tmp")" >&2
+                    rm -f "$_json_tmp"
+                    exit 1
+                fi
+                while IFS= read -r elem; do
+                    export "${key}_${idx}=${elem}"
+                    ((idx++))
+                done < "$_json_tmp"
+                rm -f "$_json_tmp"
+            else
+                export "${key}=${value}"
+            fi
+        fi
+    done < "$ENV_FILE"
 }
 
 # Check if ports are available
@@ -249,9 +187,9 @@ if [ "$DEBUG_MODE" = "true" ]; then
     fi
 fi
 
-# Set up declarative resources if a resources file or env file was provided.
-if [[ -n "$RESOURCES_FILE" || -n "$ENV_FILE" ]]; then
-    setup_declarative_resources
+# Load env vars before starting the binary so substitution works in resource files.
+if [[ -n "$ENV_FILE" ]]; then
+    load_env_file
 fi
 
 # Cleanup function
@@ -311,12 +249,17 @@ if [ "$DEBUG_MODE" = "true" ]; then
     echo ""
 
     # Run debugger
-    dlv exec --listen=:$DEBUG_PORT --headless=true --api-version=2 --accept-multiclient --continue ./${BINARY_NAME} &
+    RESOURCES_ARGS=()
+    [[ -n "$RESOURCES_FILE" ]] && RESOURCES_ARGS=(-resources "$RESOURCES_FILE")
+    BACKEND_PORT=$BACKEND_PORT dlv exec "--listen=:${DEBUG_PORT}" --headless=true --api-version=2 --accept-multiclient --continue \
+        "./${BINARY_NAME}" -- "${RESOURCES_ARGS[@]}" &
     SERVER_PID=$!
 else
     echo "⚡ Starting ${PRODUCT_NAME} Server ..."
 
-    BACKEND_PORT=$BACKEND_PORT ./${BINARY_NAME} &
+    RESOURCES_ARGS=()
+    [[ -n "$RESOURCES_FILE" ]] && RESOURCES_ARGS=(-resources "$RESOURCES_FILE")
+    BACKEND_PORT=$BACKEND_PORT "./${BINARY_NAME}" "${RESOURCES_ARGS[@]}" &
     SERVER_PID=$!
 fi
 

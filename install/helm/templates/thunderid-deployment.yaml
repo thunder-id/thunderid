@@ -21,6 +21,9 @@
 {{- if and .Values.declarativeResources.enabled (not .Values.declarativeResources.configMap.name) (not .Values.declarativeResources.secret.name) }}
 {{- fail "Invalid declarativeResources configuration: set declarativeResources.configMap.name or declarativeResources.secret.name when declarativeResources.enabled=true." }}
 {{- end }}
+{{- if and .Values.declarativeResources.enabled .Values.declarativeResources.singleFile.keys (or .Values.declarativeResources.configMap.items .Values.declarativeResources.secret.items) }}
+{{- fail "Invalid declarativeResources configuration: declarativeResources.singleFile.keys is mutually exclusive with configMap.items / secret.items." }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -170,7 +173,9 @@ spec:
               mountPath: /opt/thunderid/apps/console/config.js
               subPath: console-config.js
             {{- if .Values.declarativeResources.enabled }}
-            {{- if and .Values.declarativeResources.configMap.name .Values.declarativeResources.configMap.items }}
+            {{- if .Values.declarativeResources.singleFile.keys }}
+{{ include "thunderid.singleFileVolumeMounts" (dict "keys" .Values.declarativeResources.singleFile.keys "mountPath" .Values.declarativeResources.mountPath "readOnly" .Values.declarativeResources.readOnly) | nindent 12 }}
+            {{- else if and .Values.declarativeResources.configMap.name .Values.declarativeResources.configMap.items }}
 {{ include "thunderid.declarativeResourceVolumeMounts" (dict "items" .Values.declarativeResources.configMap.items "field" "declarativeResources.configMap.items" "mountPath" .Values.declarativeResources.mountPath "readOnly" .Values.declarativeResources.readOnly) | nindent 12 }}
             {{- else if and .Values.declarativeResources.secret.name .Values.declarativeResources.secret.items }}
 {{ include "thunderid.declarativeResourceVolumeMounts" (dict "items" .Values.declarativeResources.secret.items "field" "declarativeResources.secret.items" "mountPath" .Values.declarativeResources.mountPath "readOnly" .Values.declarativeResources.readOnly) | nindent 12 }}

@@ -213,7 +213,7 @@ describe('AgentCreatePage', () => {
     const closeButton = screen.getAllByRole('button')[0];
     await user.click(closeButton);
 
-    expect(mockNavigate).toHaveBeenCalledWith('/agents', {replace: true});
+    expect(mockNavigate).toHaveBeenCalledWith('/agents');
   });
 
   it('disables the continue button until the step reports ready', () => {

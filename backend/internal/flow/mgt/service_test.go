@@ -465,7 +465,7 @@ func (s *FlowMgtServiceTestSuite) TestCreateFlow_WithAutoInference() {
 	s.mockStore.EXPECT().IsFlowExistsByHandle(mock.Anything, "test-handle",
 		common.FlowTypeAuthentication).Return(false, nil)
 	s.mockStore.EXPECT().CreateFlow(mock.Anything, mock.Anything, flowDef).Return(expectedFlow, nil)
-	s.mockInference.EXPECT().InferRegistrationFlow(flowDef).Return(inferredRegFlow, nil)
+	s.mockInference.EXPECT().InferRegistrationFlow(mock.Anything, flowDef).Return(inferredRegFlow, nil)
 	s.mockStore.EXPECT().CreateFlow(mock.Anything, mock.Anything, inferredRegFlow).Return(nil, nil)
 
 	result, err := s.service.CreateFlow(context.Background(), flowDef)
@@ -502,7 +502,7 @@ func (s *FlowMgtServiceTestSuite) TestCreateFlow_AutoInferenceFailure() {
 	s.mockStore.EXPECT().IsFlowExistsByHandle(mock.Anything, "test-handle",
 		common.FlowTypeAuthentication).Return(false, nil)
 	s.mockStore.EXPECT().CreateFlow(mock.Anything, mock.Anything, flowDef).Return(expectedFlow, nil)
-	s.mockInference.EXPECT().InferRegistrationFlow(flowDef).Return(nil, errors.New("inference error"))
+	s.mockInference.EXPECT().InferRegistrationFlow(mock.Anything, flowDef).Return(nil, errors.New("inference error"))
 
 	// Should still succeed even if inference fails
 	result, err := s.service.CreateFlow(context.Background(), flowDef)
@@ -1121,7 +1121,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_Success() {
 		},
 	}
 
-	s.mockInference.On("InferRegistrationFlow", authFlowDef).Return(inferredRegFlow, nil)
+	s.mockInference.On("InferRegistrationFlow", mock.Anything, authFlowDef).Return(inferredRegFlow, nil)
 
 	completeFlow := &CompleteFlowDefinition{
 		Handle:   inferredRegFlow.Handle,
@@ -1188,7 +1188,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesInferenceE
 		Nodes:    []NodeDefinition{},
 	}
 
-	s.mockInference.On("InferRegistrationFlow", authFlowDef).Return(nil, errors.New("inference failed"))
+	s.mockInference.On("InferRegistrationFlow", mock.Anything, authFlowDef).Return(nil, errors.New("inference failed"))
 
 	service.(*flowMgtService).tryInferRegistrationFlow(context.Background(), "auth-flow-id", authFlowDef)
 
@@ -1234,7 +1234,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesStoreError
 		},
 	}
 
-	s.mockInference.On("InferRegistrationFlow", authFlowDef).Return(inferredRegFlow, nil)
+	s.mockInference.On("InferRegistrationFlow", mock.Anything, authFlowDef).Return(inferredRegFlow, nil)
 	s.mockStore.On("CreateFlow", mock.Anything, mock.AnythingOfType("string"),
 		inferredRegFlow).Return(nil, errors.New("store error"))
 

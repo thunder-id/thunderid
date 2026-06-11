@@ -19,6 +19,7 @@
 package passkey
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 
@@ -43,7 +44,7 @@ func generateSessionKey() (string, error) {
 }
 
 // storeSessionData stores session data in the database and returns a session key.
-func (w *passkeyService) storeSessionData(
+func (w *passkeyService) storeSessionData(ctx context.Context,
 	sessionData *sessionData,
 ) (string, *serviceerror.ServiceError) {
 	// Generate a random session key
@@ -53,7 +54,7 @@ func (w *passkeyService) storeSessionData(
 	}
 
 	// Store session data in database
-	err = w.sessionStore.storeSession(sessionKey, sessionData, sessionTTLSeconds)
+	err = w.sessionStore.storeSession(ctx, sessionKey, sessionData, sessionTTLSeconds)
 	if err != nil {
 		return "", &serviceerror.InternalServerError
 	}
@@ -62,13 +63,13 @@ func (w *passkeyService) storeSessionData(
 }
 
 // retrieveSessionData retrieves the session data from the database using the session key.
-func (w *passkeyService) retrieveSessionData(
+func (w *passkeyService) retrieveSessionData(ctx context.Context,
 	sessionKey string,
 ) (*sessionData, string, string, *serviceerror.ServiceError) {
 	// Retrieve session data from database
-	session, err := w.sessionStore.retrieveSession(sessionKey)
+	session, err := w.sessionStore.retrieveSession(ctx, sessionKey)
 	if err != nil {
-		w.logger.Debug("Failed to retrieve passkey session", log.Error(err))
+		w.logger.Debug(ctx, "Failed to retrieve passkey session", log.Error(err))
 		return nil, "", "", &serviceerror.InternalServerError
 	}
 
@@ -80,7 +81,7 @@ func (w *passkeyService) retrieveSessionData(
 }
 
 // clearSessionData removes the session data from the database.
-func (w *passkeyService) clearSessionData(sessionKey string) {
+func (w *passkeyService) clearSessionData(ctx context.Context, sessionKey string) {
 	// Remove session from database
-	_ = w.sessionStore.deleteSession(sessionKey)
+	_ = w.sessionStore.deleteSession(ctx, sessionKey)
 }

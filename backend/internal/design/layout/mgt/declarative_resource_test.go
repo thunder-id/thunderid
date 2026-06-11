@@ -33,6 +33,7 @@ import (
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -88,7 +89,7 @@ func (s *DeclarativeResourceTestSuite) TestLayoutExporter_GetResourceRules() {
 func (s *DeclarativeResourceTestSuite) TestLayoutExporter_ValidateResource_InvalidType() {
 	exporter := &layoutExporter{}
 
-	name, err := exporter.ValidateResource("not a layout", "layout1", nil)
+	name, err := exporter.ValidateResource(context.Background(), "not a layout", "layout1", nil)
 
 	s.NotNil(err)
 	s.Empty(name)
@@ -106,7 +107,7 @@ func (s *DeclarativeResourceTestSuite) TestLayoutExporter_GetAllResourceIDs_Succ
 			{ID: "layout-003", DisplayName: "Layout 3"},
 		},
 	}
-	mockService.EXPECT().GetLayoutList(100, 0).Return(layoutList, nil).Once()
+	mockService.EXPECT().GetLayoutList(mock.Anything, 100, 0).Return(layoutList, nil).Once()
 	exporter := &layoutExporter{service: mockService}
 
 	// Act
@@ -124,7 +125,7 @@ func (s *DeclarativeResourceTestSuite) TestLayoutExporter_GetAllResourceIDs_Serv
 	// Arrange
 	serviceErr := &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "Database error"}}
 	mockService := NewLayoutMgtServiceInterfaceMock(s.T())
-	mockService.EXPECT().GetLayoutList(100, 0).Return(&LayoutList{}, serviceErr).Once()
+	mockService.EXPECT().GetLayoutList(mock.Anything, 100, 0).Return(&LayoutList{}, serviceErr).Once()
 	exporter := &layoutExporter{service: mockService}
 
 	// Act
@@ -139,7 +140,7 @@ func (s *DeclarativeResourceTestSuite) TestLayoutExporter_GetAllResourceIDs_Serv
 func (s *DeclarativeResourceTestSuite) TestLayoutExporter_GetAllResourceIDs_EmptyList() {
 	// Arrange
 	mockService := NewLayoutMgtServiceInterfaceMock(s.T())
-	mockService.EXPECT().GetLayoutList(100, 0).Return(&LayoutList{Layouts: []Layout{}}, nil).Once()
+	mockService.EXPECT().GetLayoutList(mock.Anything, 100, 0).Return(&LayoutList{Layouts: []Layout{}}, nil).Once()
 	exporter := &layoutExporter{service: mockService}
 
 	// Act
@@ -161,7 +162,7 @@ func (s *DeclarativeResourceTestSuite) TestLayoutExporter_GetResourceByID_Succes
 		Description: "A centered layout",
 		Layout:      layoutJSON,
 	}
-	mockService.EXPECT().GetLayout("layout-001").Return(layout, nil).Once()
+	mockService.EXPECT().GetLayout(mock.Anything, "layout-001").Return(layout, nil).Once()
 	exporter := &layoutExporter{service: mockService}
 
 	// Act
@@ -182,7 +183,7 @@ func (s *DeclarativeResourceTestSuite) TestLayoutExporter_GetResourceByID_NotFou
 	// Arrange
 	serviceErr := &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "Layout not found"}}
 	mockService := NewLayoutMgtServiceInterfaceMock(s.T())
-	mockService.EXPECT().GetLayout("non-existent").Return(&Layout{}, serviceErr).Once()
+	mockService.EXPECT().GetLayout(mock.Anything, "non-existent").Return(&Layout{}, serviceErr).Once()
 	exporter := &layoutExporter{service: mockService}
 
 	// Act
@@ -351,7 +352,7 @@ func (s *DeclarativeResourceTestSuite) TestLayoutExporter_ValidateResource_Empty
 	}
 
 	// Even with empty layout, validation should succeed (just logs warning)
-	name, err := exporter.ValidateResource(layout, "layout1", testLogger)
+	name, err := exporter.ValidateResource(context.Background(), layout, "layout1", testLogger)
 
 	// The empty layout should not cause validation error in ValidateResource
 	// (it logs a warning instead)

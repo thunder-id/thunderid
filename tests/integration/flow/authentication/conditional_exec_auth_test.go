@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -399,7 +399,7 @@ func (ts *ConditionalExecAuthFlowTestSuite) TestSkipConditionalNodes() {
 	ts.Require().Equal("COMPLETE", flowStep.FlowStatus,
 		"Expected flow status to be COMPLETE (conditional nodes should be skipped for existing user)")
 	ts.Require().NotEmpty(flowStep.Assertion, "Assertion token should be present")
-	ts.Empty(flowStep.FailureReason, "Failure reason should be empty")
+	ts.Nil(flowStep.Error, "Error should be nil")
 
 	// Validate JWT assertion
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(

@@ -255,7 +255,7 @@ func (suite *RoleExporterTestSuite) TestValidateResource_Success() {
 	}
 	logger := log.GetLogger()
 
-	name, exportErr := suite.exporter.ValidateResource(resource, "role1", logger)
+	name, exportErr := suite.exporter.ValidateResource(context.Background(), resource, "role1", logger)
 
 	suite.Nil(exportErr)
 	assert.Equal(suite.T(), "Admin", name)
@@ -265,7 +265,7 @@ func (suite *RoleExporterTestSuite) TestValidateResource_Success() {
 func (suite *RoleExporterTestSuite) TestValidateResource_InvalidType() {
 	logger := log.GetLogger()
 
-	name, exportErr := suite.exporter.ValidateResource("not a role", "role1", logger)
+	name, exportErr := suite.exporter.ValidateResource(context.Background(), "not a role", "role1", logger)
 
 	suite.NotNil(exportErr)
 	assert.Empty(suite.T(), name)

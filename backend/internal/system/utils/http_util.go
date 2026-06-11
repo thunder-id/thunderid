@@ -20,6 +20,7 @@ package utils
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"html"
@@ -36,9 +37,11 @@ import (
 )
 
 // WriteJSONError writes a JSON error response with the given details.
-func WriteJSONError(w http.ResponseWriter, code, desc string, statusCode int, respHeaders []map[string]string) {
+func WriteJSONError(ctx context.Context, w http.ResponseWriter, code, desc string, statusCode int,
+	respHeaders []map[string]string) {
 	logger := log.GetLogger()
-	logger.Error("Error in HTTP response", log.String("error", code), log.String("description", desc))
+	logger.Error(ctx, "Error in HTTP response",
+		log.String("error", code), log.String("description", desc))
 
 	// Set the response headers.
 	for _, header := range respHeaders {
@@ -54,7 +57,7 @@ func WriteJSONError(w http.ResponseWriter, code, desc string, statusCode int, re
 		"error_description": desc,
 	})
 	if err != nil {
-		logger.Error("Failed to write JSON error response", log.Error(err))
+		logger.Error(ctx, "Failed to write JSON error response", log.Error(err))
 		return
 	}
 }
@@ -377,7 +380,7 @@ func ExtractBearerToken(authHeader string) (string, error) {
 }
 
 // WriteSuccessResponse writes a JSON success response with the given status code and data.
-func WriteSuccessResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+func WriteSuccessResponse(ctx context.Context, w http.ResponseWriter, statusCode int, data interface{}) {
 	logger := log.GetLogger()
 
 	if statusCode == http.StatusNoContent {
@@ -388,7 +391,7 @@ func WriteSuccessResponse(w http.ResponseWriter, statusCode int, data interface{
 	// Encode to buffer first to ensure encoding succeeds before sending headers
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(data); err != nil {
-		logger.Error("Failed to encode response", log.Error(err))
+		logger.Error(ctx, "Failed to encode response", log.Error(err))
 		errResp := apierror.ErrorResponse{
 			Code:        serviceerror.ErrorEncodingError.Code,
 			Message:     serviceerror.ErrorEncodingError.Error,
@@ -408,13 +411,13 @@ func WriteSuccessResponse(w http.ResponseWriter, statusCode int, data interface{
 }
 
 // WriteErrorResponse writes a JSON i18n error response with the given status code and error details.
-func WriteErrorResponse(w http.ResponseWriter, statusCode int, errorResp apierror.ErrorResponse) {
+func WriteErrorResponse(ctx context.Context, w http.ResponseWriter, statusCode int, errorResp apierror.ErrorResponse) {
 	logger := log.GetLogger()
 	w.Header().Set(constants.ContentTypeHeaderName, constants.ContentTypeJSON)
 	w.WriteHeader(statusCode)
 
 	if err := json.NewEncoder(w).Encode(errorResp); err != nil {
-		logger.Error("Failed to encode i18n error response", log.Error(err))
+		logger.Error(ctx, "Failed to encode i18n error response", log.Error(err))
 		errResp := apierror.ErrorResponse{
 			Code:        serviceerror.ErrorEncodingError.Code,
 			Message:     serviceerror.ErrorEncodingError.Error,

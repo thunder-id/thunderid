@@ -1,0 +1,23 @@
+id: "ciba-notification"
+displayName: "CIBA Authentication Notification"
+scenario: "CIBA_NOTIFICATION"
+type: "email"
+subject: "Authentication Request from {{ctx(appName)}}"
+contentType: "text/html"
+body: |
+  <!DOCTYPE html>
+  <html>
+  <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+    <h2>Authentication Request</h2>
+    <p><strong>{{ctx(appName)}}</strong> is requesting to authenticate you.</p>
+    <p style="padding: 12px; background-color: #f5f5f5; border-left: 4px solid #3a87ed;
+      border-radius: 4px; margin: 16px 0;">{{ctx(bindingMessage)}}</p>
+    <p>If you recognize this request, click the link below to approve:</p>
+    <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
+      background-color: #3a87ed; color: #fff; text-decoration: none;
+      border-radius: 4px;">Approve Authentication</a></p>
+    <p>If the button above doesn't work, copy and paste the following link into your browser:</p>
+    <p><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
+    <p>If you did not initiate this request, you can safely ignore this email.</p>
+  </body>
+  </html>

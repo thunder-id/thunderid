@@ -19,8 +19,8 @@
 import userEvent from '@testing-library/user-event';
 import {DesignContext, type DesignContextType} from '@thunderid/design';
 import {render as testRender, screen, fireEvent, waitFor} from '@thunderid/test-utils';
-import {describe, it, expect, vi, beforeEach} from 'vitest';
-import AcceptInviteBox from '../AcceptInviteBox';
+import {describe, expect, it, vi, beforeEach} from 'vitest';
+import AcceptInviteBox, {type FlowChangeResponse} from '../AcceptInviteBox';
 
 const {mockLogger} = vi.hoisted(() => ({
   mockLogger: {
@@ -88,8 +88,10 @@ vi.mock('@thunderid/contexts', () => ({
 
 // Mock react-router hooks
 const mockNavigate = vi.fn();
+const mockSearchParams = new URLSearchParams();
 vi.mock('react-router', () => ({
   useNavigate: () => mockNavigate,
+  useSearchParams: () => [mockSearchParams],
 }));
 
 // Mock ThunderID AcceptInvite component
@@ -136,7 +138,7 @@ let mockAcceptInviteRenderProps: MockAcceptInviteRenderProps = createMockAcceptI
 let capturedOnGoToSignIn: (() => void) | undefined;
 let capturedOnComplete: (() => void) | undefined;
 let capturedOnError: ((error: Error) => void) | undefined;
-let capturedOnFlowChange: ((response: {failureReason?: string}) => void) | undefined;
+let capturedOnFlowChange: ((response: FlowChangeResponse) => void) | undefined;
 let capturedBaseUrl: string | undefined;
 const mockUseThunderID = vi.fn().mockReturnValue({
   resolveFlowTemplateLiterals: (template: string) => template,
@@ -160,7 +162,7 @@ vi.mock('@thunderid/react', async () => {
       onGoToSignIn?: () => void;
       onComplete?: () => void;
       onError?: (error: Error) => void;
-      onFlowChange?: (response: {failureReason?: string}) => void;
+      onFlowChange?: (response: FlowChangeResponse) => void;
     }) => {
       capturedBaseUrl = baseUrl;
       capturedOnGoToSignIn = onGoToSignIn;
@@ -1438,25 +1440,37 @@ describe('AcceptInviteBox', () => {
     expect(capturedBaseUrl).toBe(import.meta.env.VITE_THUNDER_BASE_URL as string);
   });
 
-  it('shows flowError when onFlowChange is called with a failureReason', async () => {
+  it('shows flowError when onFlowChange is called with an error', async () => {
     mockAcceptInviteRenderProps = createMockAcceptInviteRenderProps({
       components: [{id: 'block', type: 'BLOCK', components: []}],
     });
     render(<AcceptInviteBox />);
 
     expect(capturedOnFlowChange).toBeDefined();
-    capturedOnFlowChange?.({failureReason: 'Flow failed due to policy'});
+    capturedOnFlowChange?.({
+      error: {
+        code: 'FEE-60001',
+        message: {key: 'flows.errors.policy', defaultValue: 'Flow failed due to policy'},
+        description: {key: 'flows.errors.policy.desc', defaultValue: 'Flow failed due to policy'},
+      },
+    });
 
     expect(await screen.findByText('Flow failed due to policy')).toBeInTheDocument();
   });
 
-  it('clears flowError when onFlowChange is called without failureReason', async () => {
+  it('clears flowError when onFlowChange is called without error', async () => {
     mockAcceptInviteRenderProps = createMockAcceptInviteRenderProps({
       components: [{id: 'block', type: 'BLOCK', components: []}],
     });
     render(<AcceptInviteBox />);
 
-    capturedOnFlowChange?.({failureReason: 'Initial error'});
+    capturedOnFlowChange?.({
+      error: {
+        code: 'FEE-60001',
+        message: {key: 'flows.errors.initial', defaultValue: 'Initial error'},
+        description: {key: 'flows.errors.initial.desc', defaultValue: 'Initial error'},
+      },
+    });
     expect(await screen.findByText('Initial error')).toBeInTheDocument();
 
     capturedOnFlowChange?.({});
@@ -1472,9 +1486,159 @@ describe('AcceptInviteBox', () => {
     });
     render(<AcceptInviteBox />);
 
-    capturedOnFlowChange?.({failureReason: 'Flow error'});
+    capturedOnFlowChange?.({
+      error: {
+        code: 'FEE-60001',
+        message: {key: 'flows.errors.flow', defaultValue: 'Flow error'},
+        description: {key: 'flows.errors.flow.desc', defaultValue: 'Flow error'},
+      },
+    });
 
     expect(await screen.findByText('Flow error')).toBeInTheDocument();
     expect(screen.queryByText('SDK error')).not.toBeInTheDocument();
+  });
+
+  describe('flow callback on completion', () => {
+    beforeEach(() => {
+      // Reset from any previous test and set CIBA params
+      mockSearchParams.delete('auth_req_id');
+      vi.unstubAllGlobals();
+      mockSearchParams.set('auth_req_id', 'ciba-req-123');
+      vi.stubGlobal('fetch', vi.fn());
+    });
+
+    it('calls callback with authId and assertion when flow completes', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({}),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      render(<AcceptInviteBox />);
+
+      capturedOnFlowChange?.({
+        flowStatus: 'COMPLETE',
+        assertion: 'test-assertion',
+      });
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/oauth2/auth/callback') as string,
+          expect.objectContaining({
+            method: 'POST',
+            body: expect.stringContaining('"authId":"ciba-req-123"') as string,
+          }) as RequestInit,
+        );
+      });
+
+      const callBody = JSON.parse((mockFetch.mock.calls[0][1] as {body: string}).body) as {
+        authId?: string;
+        assertion?: string;
+        type?: string;
+      };
+      expect(callBody.authId).toBe('ciba-req-123');
+      expect(callBody.assertion).toBe('test-assertion');
+      expect(callBody.type).toBeUndefined();
+    });
+
+    it('includes callbackType in body when present in additionalData', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({}),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      render(<AcceptInviteBox />);
+
+      capturedOnFlowChange?.({
+        flowStatus: 'COMPLETE',
+        assertion: 'test-assertion',
+        data: {additionalData: {callbackType: 'urn:openid:params:grant-type:ciba'}},
+      });
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+
+      const callBody = JSON.parse((mockFetch.mock.calls[0][1] as {body: string}).body) as {
+        type?: string;
+      };
+      expect(callBody.type).toBe('urn:openid:params:grant-type:ciba');
+    });
+
+    it('redirects when callback response contains redirect_uri', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({redirect_uri: 'https://client.example.com/callback?code=abc'}),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+      const assignSpy = vi.fn();
+      Object.defineProperty(window, 'location', {value: {href: ''}, writable: true});
+      Object.defineProperty(window.location, 'href', {set: assignSpy, configurable: true});
+
+      render(<AcceptInviteBox />);
+
+      capturedOnFlowChange?.({flowStatus: 'COMPLETE', assertion: 'test-assertion'});
+
+      await waitFor(() => {
+        expect(assignSpy).toHaveBeenCalledWith('https://client.example.com/callback?code=abc');
+      });
+    });
+
+    it('does not redirect when callback response has no redirect_uri', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({}),
+      });
+      vi.stubGlobal('fetch', mockFetch);
+      const assignSpy = vi.fn();
+      Object.defineProperty(window.location, 'href', {set: assignSpy, configurable: true});
+
+      render(<AcceptInviteBox />);
+
+      capturedOnFlowChange?.({flowStatus: 'COMPLETE', assertion: 'test-assertion'});
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+      expect(assignSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not call callback when authId is missing', async () => {
+      mockSearchParams.delete('auth_req_id');
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+
+      render(<AcceptInviteBox />);
+
+      capturedOnFlowChange?.({flowStatus: 'COMPLETE', assertion: 'test-assertion'});
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('does not call callback when assertion is missing', async () => {
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+
+      render(<AcceptInviteBox />);
+
+      capturedOnFlowChange?.({flowStatus: 'COMPLETE'});
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('does not call callback when flow is not complete', async () => {
+      const mockFetch = vi.fn();
+      vi.stubGlobal('fetch', mockFetch);
+
+      render(<AcceptInviteBox />);
+
+      capturedOnFlowChange?.({flowStatus: 'INCOMPLETE', assertion: 'test-assertion'});
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
   });
 });

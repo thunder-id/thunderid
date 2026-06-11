@@ -19,6 +19,7 @@
 package group
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -53,7 +54,7 @@ func (gh *groupHandler) HandleGroupListRequest(w http.ResponseWriter, r *http.Re
 
 	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
@@ -61,13 +62,13 @@ func (gh *groupHandler) HandleGroupListRequest(w http.ResponseWriter, r *http.Re
 
 	groupListResponse, svcErr := gh.groupService.GetGroupList(ctx, limit, offset, includeDisplay)
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, groupListResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, groupListResponse)
 
-	logger.Debug("Successfully listed groups with pagination",
+	logger.Debug(ctx, "Successfully listed groups with pagination",
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", groupListResponse.TotalResults),
 		log.Int("count", groupListResponse.Count))
@@ -86,7 +87,7 @@ func (gh *groupHandler) HandleGroupListByPathRequest(w http.ResponseWriter, r *h
 
 	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
@@ -94,13 +95,13 @@ func (gh *groupHandler) HandleGroupListByPathRequest(w http.ResponseWriter, r *h
 
 	groupListResponse, svcErr := gh.groupService.GetGroupsByPath(ctx, path, limit, offset, includeDisplay)
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, groupListResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, groupListResponse)
 
-	logger.Debug("Successfully listed groups by path", log.String("path", path),
+	logger.Debug(ctx, "Successfully listed groups by path", log.String("path", path),
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", groupListResponse.TotalResults),
 		log.Int("count", groupListResponse.Count))
@@ -121,20 +122,20 @@ func (gh *groupHandler) HandleGroupPostRequest(w http.ResponseWriter, r *http.Re
 				Key:          "error.groupservice.create_group_request_parse_failed_description",
 				DefaultValue: "Failed to parse request body: " + err.Error()},
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	sanitizedRequest := gh.sanitizeCreateGroupRequest(createRequest)
 	createdGroup, svcErr := gh.groupService.CreateGroup(ctx, sanitizedRequest)
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusCreated, createdGroup)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, createdGroup)
 
-	logger.Debug("Successfully created group", log.String("group id", createdGroup.ID))
+	logger.Debug(ctx, "Successfully created group", log.String("group id", createdGroup.ID))
 }
 
 // HandleGroupPostByPathRequest handles the create group by OU path request.
@@ -157,19 +158,20 @@ func (gh *groupHandler) HandleGroupPostByPathRequest(w http.ResponseWriter, r *h
 				Key:          "error.groupservice.create_group_by_path_request_parse_failed_description",
 				DefaultValue: "Failed to parse request body: " + err.Error()},
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	group, svcErr := gh.groupService.CreateGroupByPath(ctx, path, *createRequest)
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusCreated, group)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, group)
 
-	logger.Debug("Successfully created group by path", log.String("path", path), log.String("groupName", group.Name))
+	logger.Debug(ctx, "Successfully created group by path",
+		log.String("path", path), log.String("groupName", group.Name))
 }
 
 // HandleGroupGetRequest handles the get group by id request.
@@ -185,7 +187,7 @@ func (gh *groupHandler) HandleGroupGetRequest(w http.ResponseWriter, r *http.Req
 			Message:     ErrorMissingGroupID.Error,
 			Description: ErrorMissingGroupID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
@@ -193,13 +195,13 @@ func (gh *groupHandler) HandleGroupGetRequest(w http.ResponseWriter, r *http.Req
 
 	group, svcErr := gh.groupService.GetGroup(ctx, id, includeDisplay)
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, group)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, group)
 
-	logger.Debug("Successfully retrieved group", log.String("group id", id))
+	logger.Debug(ctx, "Successfully retrieved group", log.String("group id", id))
 }
 
 // HandleGroupPutRequest handles the update group request.
@@ -215,7 +217,7 @@ func (gh *groupHandler) HandleGroupPutRequest(w http.ResponseWriter, r *http.Req
 			Message:     ErrorMissingGroupID.Error,
 			Description: ErrorMissingGroupID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
@@ -229,20 +231,20 @@ func (gh *groupHandler) HandleGroupPutRequest(w http.ResponseWriter, r *http.Req
 				DefaultValue: "Failed to parse request body: " + err.Error(),
 			},
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	sanitizedRequest := gh.sanitizeUpdateGroupRequest(updateRequest)
 	group, svcErr := gh.groupService.UpdateGroup(ctx, id, sanitizedRequest)
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, group)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, group)
 
-	logger.Debug("Successfully updated group", log.String("group id", id))
+	logger.Debug(ctx, "Successfully updated group", log.String("group id", id))
 }
 
 // HandleGroupDeleteRequest handles the delete group request.
@@ -258,18 +260,18 @@ func (gh *groupHandler) HandleGroupDeleteRequest(w http.ResponseWriter, r *http.
 			Message:     ErrorMissingGroupID.Error,
 			Description: ErrorMissingGroupID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	svcErr := gh.groupService.DeleteGroup(ctx, id)
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusNoContent, nil)
-	logger.Debug("Successfully deleted group", log.String("group id", id))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+	logger.Debug(ctx, "Successfully deleted group", log.String("group id", id))
 }
 
 // HandleGroupMembersGetRequest handles the get group members request.
@@ -285,13 +287,13 @@ func (gh *groupHandler) HandleGroupMembersGetRequest(w http.ResponseWriter, r *h
 			Message:     ErrorMissingGroupID.Error,
 			Description: ErrorMissingGroupID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
@@ -299,32 +301,34 @@ func (gh *groupHandler) HandleGroupMembersGetRequest(w http.ResponseWriter, r *h
 
 	memberListResponse, svcErr := gh.groupService.GetGroupMembers(ctx, id, limit, offset, includeDisplay)
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, memberListResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, memberListResponse)
 
-	logger.Debug("Successfully retrieved group members", log.String("group id", id),
+	logger.Debug(ctx, "Successfully retrieved group members", log.String("group id", id),
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", memberListResponse.TotalResults),
 		log.Int("count", memberListResponse.Count))
 }
 
 // HandleGroupMembersAddRequest handles the add members to group request.
+//
+//nolint:dupl // Add/Remove member handlers share the same request-handling skeleton with method-specific service calls.
 func (gh *groupHandler) HandleGroupMembersAddRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, handlerLoggerComponentName))
 
 	id := r.PathValue("id")
 	if id == "" {
-		gh.handleError(w, &ErrorMissingGroupID)
+		gh.handleError(ctx, w, &ErrorMissingGroupID)
 		return
 	}
 
 	membersRequest, err := sysutils.DecodeJSONBody[MembersRequest](r)
 	if err != nil {
-		gh.handleError(w, &ErrorInvalidRequestFormat)
+		gh.handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
@@ -332,28 +336,30 @@ func (gh *groupHandler) HandleGroupMembersAddRequest(w http.ResponseWriter, r *h
 
 	group, svcErr := gh.groupService.AddGroupMembers(ctx, id, sanitizedRequest.Members)
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, group)
-	logger.Debug("Successfully added members to group", log.String("group id", id))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, group)
+	logger.Debug(ctx, "Successfully added members to group", log.String("group id", id))
 }
 
 // HandleGroupMembersRemoveRequest handles the remove members from group request.
+//
+//nolint:dupl // Add/Remove member handlers share the same request-handling skeleton with method-specific service calls.
 func (gh *groupHandler) HandleGroupMembersRemoveRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, handlerLoggerComponentName))
 
 	id := r.PathValue("id")
 	if id == "" {
-		gh.handleError(w, &ErrorMissingGroupID)
+		gh.handleError(ctx, w, &ErrorMissingGroupID)
 		return
 	}
 
 	membersRequest, err := sysutils.DecodeJSONBody[MembersRequest](r)
 	if err != nil {
-		gh.handleError(w, &ErrorInvalidRequestFormat)
+		gh.handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
@@ -361,16 +367,16 @@ func (gh *groupHandler) HandleGroupMembersRemoveRequest(w http.ResponseWriter, r
 
 	group, svcErr := gh.groupService.RemoveGroupMembers(ctx, id, sanitizedRequest.Members)
 	if svcErr != nil {
-		gh.handleError(w, svcErr)
+		gh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, group)
-	logger.Debug("Successfully removed members from group", log.String("group id", id))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, group)
+	logger.Debug(ctx, "Successfully removed members from group", log.String("group id", id))
 }
 
 // handleError handles service errors and returns appropriate HTTP responses.
-func (gh *groupHandler) handleError(w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func (gh *groupHandler) handleError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
 	var statusCode int
 	if svcErr.Type == serviceerror.ClientErrorType {
 		switch svcErr.Code {
@@ -398,7 +404,7 @@ func (gh *groupHandler) handleError(w http.ResponseWriter, svcErr *serviceerror.
 		Message:     svcErr.Error,
 		Description: svcErr.ErrorDescription,
 	}
-	sysutils.WriteErrorResponse(w, statusCode, errResp)
+	sysutils.WriteErrorResponse(ctx, w, statusCode, errResp)
 }
 
 // sanitizeCreateGroupRequest sanitizes the create group request input.
@@ -486,7 +492,7 @@ func extractAndValidatePath(w http.ResponseWriter, r *http.Request) (string, boo
 				DefaultValue: "Handle path is required",
 			},
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(r.Context(), w, http.StatusBadRequest, errResp)
 		return "", true
 	}
 	return path, false

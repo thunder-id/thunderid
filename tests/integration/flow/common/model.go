@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -41,7 +41,7 @@ type FlowStep struct {
 	Type           string   `json:"type,omitempty"`
 	Data           FlowData `json:"data,omitempty"`
 	Assertion      string   `json:"assertion,omitempty"`
-	FailureReason  string   `json:"failureReason,omitempty"`
+	Error          *ErrorResponse `json:"error,omitempty"`
 	ChallengeToken string   `json:"challengeToken,omitempty"`
 }
 

@@ -19,6 +19,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -199,7 +200,7 @@ func (suite *HealthCheckServiceTestSuite) TestCheckReadiness() {
 			}
 
 			// Execute the method being tested
-			serverStatus := suite.service.CheckReadiness()
+			serverStatus := suite.service.CheckReadiness(context.Background())
 
 			// Assertions
 			assert.Equal(t, tc.expectedStatus, serverStatus.Status, "Server status should match expected")
@@ -257,7 +258,7 @@ func (suite *HealthCheckServiceTestSuite) TestCheckReadiness_DBRetrievalError() 
 	suite.mockDBProvider.On("GetUserDBClient").Return(nil, errors.New("failed to get user DB client"))
 
 	// Execute the method being tested
-	serverStatus := suite.service.CheckReadiness()
+	serverStatus := suite.service.CheckReadiness(context.Background())
 
 	// Assertions
 	assert.Equal(suite.T(), model.StatusDown, serverStatus.Status, "Server status should be DOWN")

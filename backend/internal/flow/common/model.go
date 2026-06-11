@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -25,6 +25,7 @@ import (
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 // Input represents the inputs required for a node
@@ -93,35 +94,35 @@ type Prompt struct {
 
 // NodeResponse represents the response from a node execution
 type NodeResponse struct {
-	Status            NodeStatus                `json:"status"`
-	Type              NodeResponseType          `json:"type"`
-	FailureReason     string                    `json:"failureReason,omitempty"`
-	Inputs            []Input                   `json:"inputs,omitempty"`
-	AdditionalData    map[string]string         `json:"additionalData,omitempty"`
-	RedirectURL       string                    `json:"redirectUrl,omitempty"`
-	Actions           []Action                  `json:"actions,omitempty"`
-	Meta              interface{}               `json:"meta,omitempty"`
-	NextNodeID        string                    `json:"nextNodeId,omitempty"`
-	RuntimeData       map[string]string         `json:"runtimeData,omitempty"`
-	ForwardedData     map[string]interface{}    `json:"forwardedData,omitempty"`
-	AuthenticatedUser authncm.AuthenticatedUser `json:"authenticatedUser,omitempty"`
-	Assertion         string                    `json:"assertion,omitempty"`
-	FieldErrors       []FieldError              `json:"fieldErrors,omitempty"`
-	AuthUser          authnprovidermgr.AuthUser `json:"-"`
+	Status            NodeStatus                 `json:"status"`
+	Type              NodeResponseType           `json:"type"`
+	Error             *serviceerror.ServiceError `json:"error,omitempty"`
+	Inputs            []Input                    `json:"inputs,omitempty"`
+	AdditionalData    map[string]string          `json:"additionalData,omitempty"`
+	RedirectURL       string                     `json:"redirectUrl,omitempty"`
+	Actions           []Action                   `json:"actions,omitempty"`
+	Meta              interface{}                `json:"meta,omitempty"`
+	NextNodeID        string                     `json:"nextNodeId,omitempty"`
+	RuntimeData       map[string]string          `json:"runtimeData,omitempty"`
+	ForwardedData     map[string]interface{}     `json:"forwardedData,omitempty"`
+	AuthenticatedUser authncm.AuthenticatedUser  `json:"authenticatedUser,omitempty"`
+	Assertion         string                     `json:"assertion,omitempty"`
+	FieldErrors       []FieldError               `json:"fieldErrors,omitempty"`
+	AuthUser          authnprovidermgr.AuthUser  `json:"-"`
 }
 
 // ExecutorResponse represents the response from an executor
 type ExecutorResponse struct {
-	Status            ExecutorStatus            `json:"status"`
-	Inputs            []Input                   `json:"inputs,omitempty"`
-	AdditionalData    map[string]string         `json:"additionalData,omitempty"`
-	RedirectURL       string                    `json:"redirectUrl,omitempty"`
-	RuntimeData       map[string]string         `json:"runtimeData,omitempty"`
-	ForwardedData     map[string]interface{}    `json:"forwardedData,omitempty"`
-	AuthenticatedUser authncm.AuthenticatedUser `json:"authenticatedUser,omitempty"`
-	Assertion         string                    `json:"assertion,omitempty"`
-	FailureReason     string                    `json:"failureReason,omitempty"`
-	AuthUser          authnprovidermgr.AuthUser `json:"-"`
+	Status            ExecutorStatus             `json:"status"`
+	Inputs            []Input                    `json:"inputs,omitempty"`
+	AdditionalData    map[string]string          `json:"additionalData,omitempty"`
+	RedirectURL       string                     `json:"redirectUrl,omitempty"`
+	RuntimeData       map[string]string          `json:"runtimeData,omitempty"`
+	ForwardedData     map[string]interface{}     `json:"forwardedData,omitempty"`
+	AuthenticatedUser authncm.AuthenticatedUser  `json:"authenticatedUser,omitempty"`
+	Assertion         string                     `json:"assertion,omitempty"`
+	Error             *serviceerror.ServiceError `json:"error,omitempty"`
+	AuthUser          authnprovidermgr.AuthUser  `json:"-"`
 }
 
 // NodeExecutionRecord represents a record of a node execution in the flow.

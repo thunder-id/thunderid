@@ -68,7 +68,7 @@ func (t *dbTransactioner) Transact(ctx context.Context, txFunc func(context.Cont
 	// 1. Begin transaction
 	tx, err := t.db.BeginTx(ctx, nil)
 	if err != nil {
-		log.GetLogger().Error("failed to begin transaction",
+		log.GetLogger().Error(ctx, "failed to begin transaction",
 			log.String("dbName", t.dbName),
 			log.Error(err),
 		)
@@ -80,7 +80,7 @@ func (t *dbTransactioner) Transact(ctx context.Context, txFunc func(context.Cont
 		if p := recover(); p != nil {
 			// Capture stack trace
 			stack := string(debug.Stack())
-			log.GetLogger().Error("panic occurred during transaction",
+			log.GetLogger().Error(ctx, "panic occurred during transaction",
 				log.String("dbName", t.dbName),
 				log.Any("panic", p),
 				log.String("stack", stack),
@@ -88,7 +88,7 @@ func (t *dbTransactioner) Transact(ctx context.Context, txFunc func(context.Cont
 
 			// Panic occurred - rollback and convert panic to error
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
-				log.GetLogger().Error("failed to rollback transaction after unexpected error",
+				log.GetLogger().Error(ctx, "failed to rollback transaction after unexpected error",
 					log.String("dbName", t.dbName),
 					log.Error(rollbackErr),
 				)
@@ -111,7 +111,7 @@ func (t *dbTransactioner) Transact(ctx context.Context, txFunc func(context.Cont
 		} else if err != nil {
 			// Error occurred - rollback
 			if rollbackErr := tx.Rollback(); rollbackErr != nil {
-				log.GetLogger().Error("failed to rollback transaction",
+				log.GetLogger().Error(ctx, "failed to rollback transaction",
 					log.String("dbName", t.dbName),
 					log.Error(rollbackErr),
 				)
@@ -121,7 +121,7 @@ func (t *dbTransactioner) Transact(ctx context.Context, txFunc func(context.Cont
 			// Success - commit
 			err = tx.Commit()
 			if err != nil {
-				log.GetLogger().Error("failed to commit transaction",
+				log.GetLogger().Error(ctx, "failed to commit transaction",
 					log.String("dbName", t.dbName),
 					log.Error(err),
 				)

@@ -1,0 +1,177 @@
+---
+title: Client Authentication Methods
+sidebar_position: 1
+description: How a registered OAuth 2.1 client proves its identity to {{ProductName}} — the four supported client authentication methods.
+---
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Client Authentication Methods
+
+Whenever a client calls a protected endpoint at <ProductName /> — token, introspection, PAR, DCR (when secured) — it must prove which client it is. The `token_endpoint_auth_method` setting on the application picks **how**. The choice is fixed per application and applies uniformly to every protected endpoint.
+
+<ProductName /> supports four methods, three for confidential clients and one (`none`) for public clients. The relevant specs are [RFC 6749 §2.3](https://datatracker.ietf.org/doc/html/rfc6749#section-2.3), [RFC 6749 §2.1](https://datatracker.ietf.org/doc/html/rfc6749#section-2.1) (public clients), and [RFC 7523](https://datatracker.ietf.org/doc/html/rfc7523) (JWT bearer client authentication).
+
+## Comparing the Methods
+
+| Method | Credential type | Where it travels | Confidentiality | Use when |
+|---|---|---|---|---|
+| `client_secret_basic` | Shared secret | `Authorization: Basic` header | TLS-protected | Server-side apps that can store a secret. **Default.** |
+| `client_secret_post` | Shared secret | POST body parameters | TLS-protected | Clients that can't set custom headers |
+| `private_key_jwt` | Asymmetric key | Signed JWT in POST body | No secret on the wire | High-security deployments; FAPI; rotating credentials without redeployment |
+| `none` | — | No credentials | — | Public clients (browser apps, mobile apps) that can't store a secret |
+
+## `client_secret_basic`
+
+The default for new confidential clients. Credentials travel in a standard HTTP `Authorization: Basic` header, Base64-encoded.
+
+```http
+POST /oauth2/token HTTP/1.1
+Host: {{productSlug}}.example.com
+Authorization: Basic Y2xpZW50X2lkOmNsaWVudF9zZWNyZXQ=
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials&scope=api:read
+```
+
+The Base64 payload is the literal string `client_id:client_secret`. <ProductName /> URL-decodes neither the client ID nor the secret — pass them verbatim.
+
+## `client_secret_post`
+
+Same credentials as `client_secret_basic`, but in the body instead of the header. Useful when the HTTP client cannot set custom headers, or when a corporate proxy strips them.
+
+```http
+POST /oauth2/token HTTP/1.1
+Host: {{productSlug}}.example.com
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_id=$CLIENT_ID
+&client_secret=$CLIENT_SECRET
+&scope=api:read
+```
+
+## `private_key_jwt`
+
+The client signs a short-lived JWT assertion with its private key. <ProductName /> verifies the signature against the application's registered public key (either inline `JWKS` or a `JWKS_URI` it fetches). No secret ever crosses the wire.
+
+### Registering Keys on the Application
+
+The application must have either a **JWKS** (inline JSON Web Key Set) or a **JWKS_URI** (HTTPS URL <ProductName /> fetches) configured. See [Application certificate](#application-certificate) below for the rules.
+
+### Assertion Claims
+
+The client builds and signs a JWT with these claims:
+
+| Claim | Value |
+|---|---|
+| `iss` | The `client_id` |
+| `sub` | The `client_id` |
+| `aud` | The token endpoint URL (`https://{{productSlug}}.example.com/oauth2/token`) |
+| `jti` | A unique identifier; <ProductName /> rejects replays |
+| `exp` | A short expiry (seconds, not minutes) |
+| `iat` | Issued-at time |
+
+### Example Request
+
+```http
+POST /oauth2/token HTTP/1.1
+Host: {{productSlug}}.example.com
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer
+&client_assertion=eyJhbGciOiJSUzI1NiIs...
+&scope=api:read
+```
+
+The `client_assertion_type` value is fixed: `urn:ietf:params:oauth:client-assertion-type:jwt-bearer`.
+
+### Supported Assertion Algorithms
+
+`RS256`, `RS512`, `PS256`, `ES256`, `ES384`, `ES512`, `EdDSA`. Symmetric algorithms (`HS*`) are not accepted.
+
+## `none`
+
+Reserved for public clients — applications that cannot keep a secret, like single-page apps and native mobile apps. No credentials travel in the request; client identity is asserted by the `client_id` parameter alone.
+
+Public clients **must** use PKCE on the authorization code flow. <ProductName /> sets `pkceRequired` automatically when `token_endpoint_auth_method` is `none`.
+
+```http
+POST /oauth2/token HTTP/1.1
+Host: {{productSlug}}.example.com
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code
+&code=$CODE
+&redirect_uri=https://app.example.com/callback
+&client_id=$CLIENT_ID
+&code_verifier=$CODE_VERIFIER
+```
+
+## Where Each Method Applies
+
+The chosen method applies uniformly to every endpoint that requires client authentication:
+
+| Endpoint | Method enforced |
+|---|---|
+| `POST /oauth2/token` | Yes |
+| `POST /oauth2/par` | Yes |
+| `POST /oauth2/introspect` | Yes |
+| `POST /oauth2/dcr/register` | Optional — DCR can be configured to require authentication |
+
+## Application Certificate
+
+A "certificate" on a registered application is the public-key material <ProductName /> uses to:
+
+- Verify signed JWT assertions for `private_key_jwt` client authentication.
+- Encrypt ID tokens when [Token Formats](../token-formats) for that application is `JWE` or `NESTED_JWT`.
+- Sign or encrypt UserInfo responses when [UserInfo](../userinfo) response format requires it.
+
+The `certificate` field on an application has three possible types:
+
+| Type | Description |
+|---|---|
+| `None` | No certificate configured. The application cannot use `private_key_jwt`, encrypted ID tokens, or encrypted UserInfo. |
+| `JWKS` | Inline JSON Web Key Set provided as a JSON object on the application. |
+| `JWKS_URI` | HTTPS URL of the application's JWKS endpoint. <ProductName /> fetches the public keys from this URL. The URL must use HTTPS. |
+
+`JWKS` and `JWKS_URI` are mutually exclusive — setting both on the same application returns an error.
+
+This certificate is **separate** from <ProductName />'s own signing keys (see [JWKS](../jwks)), which is the public-key endpoint resource servers use to verify <ProductName />-issued tokens.
+
+## Try It in <ProductName />
+
+<Tabs groupId="client-registration">
+<TabItem value="console" label="Console" default>
+
+1. Open **Applications** or **Agents** in the <ProductName /> Console and select your client.
+2. Open the **Advanced Settings** tab and find the **Client Authentication** section.
+3. Select one of `client_secret_basic`, `client_secret_post`, `private_key_jwt`, or `none`.
+4. For `private_key_jwt`, also configure a **Certificate** (JWKS or JWKS_URI) on the **Certificates** tab.
+5. Save.
+
+</TabItem>
+<TabItem value="dcr" label="Dynamic Client Registration">
+
+```http
+POST /oauth2/dcr/register
+Content-Type: application/json
+
+{
+  "client_name": "My API Client",
+  "grant_types": ["client_credentials"],
+  "token_endpoint_auth_method": "private_key_jwt",
+  "jwks_uri": "https://service.example.com/.well-known/jwks.json"
+}
+```
+
+</TabItem>
+</Tabs>
+
+## Related Guides
+
+- [Dynamic Client Registration](../dynamic-client-registration) — register a client and pick its auth method programmatically
+- [Pushed Authorization Requests](../par) — uses the same client authentication method
+- [Token Introspection](../token-introspection) — uses the same client authentication method
+- [Token Formats](../token-formats) — the application certificate is also used to encrypt ID tokens and UserInfo responses

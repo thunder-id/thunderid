@@ -20,6 +20,7 @@ package notification
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -344,7 +345,7 @@ func (suite *MessageHandlerTestSuite) TestValidateSenderID_EmptyID() {
 	handler := newMessageNotificationSenderHandler(nil, nil)
 
 	rr := httptest.NewRecorder()
-	ok := handler.validateSenderID(rr, "")
+	ok := handler.validateSenderID(context.Background(), rr, "")
 
 	suite.False(ok)
 	suite.Equal(400, rr.Code)
@@ -357,7 +358,7 @@ func (suite *MessageHandlerTestSuite) TestValidateSenderID_EmptyID() {
 func (suite *MessageHandlerTestSuite) TestValidateSenderID_NonEmptyID() {
 	handler := newMessageNotificationSenderHandler(nil, nil)
 	rr := httptest.NewRecorder()
-	ok := handler.validateSenderID(rr, "sender-1")
+	ok := handler.validateSenderID(context.Background(), rr, "sender-1")
 	suite.True(ok)
 	suite.Equal(0, rr.Body.Len())
 }
@@ -409,7 +410,7 @@ func (suite *MessageHandlerTestSuite) TestHandleError() {
 
 	for _, tc := range cases {
 		rr := httptest.NewRecorder()
-		handler.handleError(rr, tc.svcErr, tc.customDesc)
+		handler.handleError(context.Background(), rr, tc.svcErr, tc.customDesc)
 
 		suite.Equal(tc.expectedCode, rr.Code, tc.name)
 
@@ -425,6 +426,45 @@ func (suite *MessageHandlerTestSuite) TestHandleError() {
 	}
 }
 
+func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest_EmptyID() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newMessageNotificationSenderHandler(m, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/senders/", nil)
+	req.SetPathValue("id", "")
+	rr := httptest.NewRecorder()
+
+	handler.HandleSenderGetRequest(rr, req)
+
+	suite.Equal(http.StatusBadRequest, rr.Code)
+}
+
+func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest_EmptyID() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newMessageNotificationSenderHandler(m, nil)
+
+	req := httptest.NewRequest(http.MethodPut, "/senders/", nil)
+	req.SetPathValue("id", "")
+	rr := httptest.NewRecorder()
+
+	handler.HandleSenderUpdateRequest(rr, req)
+
+	suite.Equal(http.StatusBadRequest, rr.Code)
+}
+
+func (suite *MessageHandlerTestSuite) TestHandleSenderDeleteRequest_EmptyID() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newMessageNotificationSenderHandler(m, nil)
+
+	req := httptest.NewRequest(http.MethodDelete, "/senders/", nil)
+	req.SetPathValue("id", "")
+	rr := httptest.NewRecorder()
+
+	handler.HandleSenderDeleteRequest(rr, req)
+
+	suite.Equal(http.StatusBadRequest, rr.Code)
+}
+
 // writer that always errors when writing to exercise the encode error path
 type errWriter struct{}
 
@@ -435,7 +475,7 @@ func (e *errWriter) WriteHeader(statusCode int) {}
 func (suite *MessageHandlerTestSuite) TestHandleError_EncodeFailure() {
 	handler := newMessageNotificationSenderHandler(nil, nil)
 	ew := &errWriter{}
-	handler.handleError(ew, &serviceerror.InternalServerError, "boom")
+	handler.handleError(context.Background(), ew, &serviceerror.InternalServerError, "boom")
 }
 
 func (suite *MessageHandlerTestSuite) TestGetDTOFromSenderRequest() {

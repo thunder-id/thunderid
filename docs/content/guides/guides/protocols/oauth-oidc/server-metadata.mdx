@@ -1,0 +1,125 @@
+---
+title: Server Metadata
+sidebar_position: 1
+description: The OAuth 2.1 Authorization Server Metadata and OIDC Discovery documents published by {{ProductName}} at the .well-known endpoints.
+---
+
+# Server Metadata
+
+**Server Metadata** ([RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) and [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)) is a standardized JSON document that lists every OAuth 2.1 and OpenID Connect endpoint, every supported algorithm, and every feature flag for a <ProductName /> instance. Clients fetch it once at startup (or on demand) and use it instead of hard-coding endpoint URLs.
+
+<ProductName /> publishes two documents — one for OAuth and one for OIDC. The OIDC document is a strict superset of the OAuth one.
+
+## How It Works
+
+| Endpoint | Spec |
+|---|---|
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 |
+| `GET /.well-known/openid-configuration` | OIDC Discovery 1.0 |
+
+Both endpoints are public — no authentication required.
+
+```bash
+curl https://{{productSlug}}.example.com/.well-known/openid-configuration
+```
+
+```json
+{
+  "issuer": "https://{{productSlug}}.example.com",
+  "authorization_endpoint": "https://{{productSlug}}.example.com/oauth2/authorize",
+  "token_endpoint": "https://{{productSlug}}.example.com/oauth2/token",
+  "userinfo_endpoint": "https://{{productSlug}}.example.com/oauth2/userinfo",
+  "introspection_endpoint": "https://{{productSlug}}.example.com/oauth2/introspect",
+  "pushed_authorization_request_endpoint": "https://{{productSlug}}.example.com/oauth2/par",
+  "registration_endpoint": "https://{{productSlug}}.example.com/oauth2/dcr/register",
+  "jwks_uri": "https://{{productSlug}}.example.com/oauth2/jwks",
+
+  "grant_types_supported": [
+    "authorization_code",
+    "client_credentials",
+    "refresh_token",
+    "urn:ietf:params:oauth:grant-type:token-exchange"
+  ],
+  "response_types_supported": ["code"],
+  "code_challenge_methods_supported": ["S256"],
+  "token_endpoint_auth_methods_supported": [
+    "client_secret_basic",
+    "client_secret_post",
+    "private_key_jwt",
+    "none"
+  ],
+  "dpop_signing_alg_values_supported": [
+    "RS256", "RS512", "PS256", "ES256", "ES384", "ES512", "EdDSA"
+  ],
+
+  "subject_types_supported": ["public"],
+  "id_token_signing_alg_values_supported": [
+    "RS256", "RS512", "PS256", "ES256", "ES384", "ES512", "EdDSA"
+  ],
+  "id_token_encryption_alg_values_supported": ["RSA-OAEP", "RSA-OAEP-256"],
+  "id_token_encryption_enc_values_supported": ["A128CBC-HS256", "A256GCM"],
+  "userinfo_signing_alg_values_supported": [
+    "RS256", "RS512", "PS256", "ES256", "ES384", "ES512", "EdDSA"
+  ],
+  "userinfo_encryption_alg_values_supported": ["RSA-OAEP", "RSA-OAEP-256"],
+  "userinfo_encryption_enc_values_supported": ["A128CBC-HS256", "A256GCM"],
+
+  "scopes_supported": ["openid", "profile", "email", "phone", "address"],
+  "claims_supported": [
+    "sub", "iss", "aud", "exp", "iat", "auth_time",
+    "name", "given_name", "family_name", "preferred_username",
+    "email", "email_verified",
+    "phone_number", "phone_number_verified",
+    "address"
+  ],
+  "claims_parameter_supported": true,
+  "require_pushed_authorization_requests": false,
+  "authorization_response_iss_parameter_supported": true,
+  "acr_values_supported": ["urn:mace:incommon:iap:silver"]
+}
+```
+
+The OAuth-only document at `/.well-known/oauth-authorization-server` omits the OIDC-specific fields (subject types, ID token algorithms, claims supported).
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Caching | The document is generated per-instance from runtime configuration. Cache freely on the client. |
+| `issuer` | The deployment's configured issuer URL. Must match the `iss` claim in issued tokens. |
+| Endpoint URLs | Absolute URLs rooted at the configured issuer |
+| Subject types | `public` only — pairwise subject identifiers are not supported |
+| `require_pushed_authorization_requests` | Reflects the global `oauth.par.require_par` setting |
+| `authorization_response_iss_parameter_supported` | Always `true` (see [Issuer Identification](../issuer-identification)) |
+
+</details>
+
+## Try It in <ProductName />
+
+No configuration is needed. The discovery endpoints are always served and reflect the current deployment's settings.
+
+### Use It from a Client
+
+Most OAuth and OIDC SDKs accept a discovery URL and configure themselves from it:
+
+```javascript
+// Generic OIDC client (pseudocode)
+const config = await fetch(
+  'https://{{productSlug}}.example.com/.well-known/openid-configuration'
+).then(r => r.json());
+
+const client = new OIDCClient({
+  authorization_endpoint: config.authorization_endpoint,
+  token_endpoint: config.token_endpoint,
+  jwks_uri: config.jwks_uri,
+  // ...
+});
+```
+
+## Related Guides
+
+- [JWKS](../jwks) — the public-key endpoint pointed to by `jwks_uri`
+- [Issuer Identification](../issuer-identification) — uses the `issuer` value advertised here
+- [Pushed Authorization Requests](../par) — `pushed_authorization_request_endpoint`
+- [Dynamic Client Registration](../dynamic-client-registration) — `registration_endpoint`

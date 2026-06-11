@@ -88,7 +88,7 @@ func (suite *PermissionValidatorTestSuite) TestExecute_DefaultScopeCheck_Failure
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Insufficient permissions", resp.FailureReason)
+	assert.Equal(suite.T(), ErrInsufficientPermissions.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *PermissionValidatorTestSuite) TestExecute_CustomScopeCheck_Success() {
@@ -233,7 +233,7 @@ func (suite *PermissionValidatorTestSuite) TestExecute_NoHTTPContext() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Insufficient permissions", resp.FailureReason)
+	assert.Equal(suite.T(), ErrInsufficientPermissions.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *PermissionValidatorTestSuite) TestExecute_EmptyScopes() {
@@ -253,7 +253,7 @@ func (suite *PermissionValidatorTestSuite) TestExecute_EmptyScopes() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Insufficient permissions", resp.FailureReason)
+	assert.Equal(suite.T(), ErrInsufficientPermissions.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *PermissionValidatorTestSuite) TestExecute_NoScopesInContext() {
@@ -273,7 +273,7 @@ func (suite *PermissionValidatorTestSuite) TestExecute_NoScopesInContext() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Insufficient permissions", resp.FailureReason)
+	assert.Equal(suite.T(), ErrInsufficientPermissions.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *PermissionValidatorTestSuite) TestExecute_ScopesWithUnexpectedType() {
@@ -293,7 +293,7 @@ func (suite *PermissionValidatorTestSuite) TestExecute_ScopesWithUnexpectedType(
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), "Insufficient permissions", resp.FailureReason)
+	assert.Equal(suite.T(), ErrInsufficientPermissions.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func TestPermissionValidatorSuite(t *testing.T) {

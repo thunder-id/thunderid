@@ -18,22 +18,12 @@
 
 import {useHasMultipleOUs} from '@thunderid/configure-organization-units';
 import {useLogger} from '@thunderid/logger/react';
-import {
-  Box,
-  Stack,
-  Button,
-  IconButton,
-  LinearProgress,
-  Breadcrumbs,
-  Typography,
-  Alert,
-  CircularProgress,
-} from '@wso2/oxygen-ui';
-import {X, ChevronRight} from '@wso2/oxygen-ui-icons-react';
+import {Box, Stack, Button, IconButton, LinearProgress, Alert, CircularProgress} from '@wso2/oxygen-ui';
+import {X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useState, useCallback, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {useLocation, useNavigate} from 'react-router';
 import useCreateFlow from '../../flows/api/useCreateFlow';
 import type {BasicFlowDefinition} from '../../flows/models/responses';
 import generateFlowGraph from '../../flows/utils/generateFlowGraph';
@@ -62,6 +52,7 @@ import type {OAuth2Config} from '../models/oauth';
 import type {CreateApplicationRequest} from '../models/requests';
 import getConfigurationTypeFromTemplate from '../utils/getConfigurationTypeFromTemplate';
 import resolveCreationFlow from '../utils/resolveCreationFlow';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 import GatePreview from '@/components/GatePreview/GatePreview';
 import buildPreviewMock from '@/components/GatePreview/mocks/buildPreviewMock';
 
@@ -114,6 +105,8 @@ export default function ApplicationCreatePage(): JSX.Element {
     [t],
   );
   const navigate = useNavigate();
+  const {pathname} = useLocation();
+  const isWelcomeFlow = pathname.startsWith('/welcome');
   const logger = useLogger('ApplicationCreatePage');
   const createApplication = useCreateApplication();
   const {data: userTypesData} = useGetUserTypes();
@@ -170,11 +163,7 @@ export default function ApplicationCreatePage(): JSX.Element {
   }, [creationFlow, hasMultipleOUs, needsConfigure]);
 
   const handleClose = (): void => {
-    (async () => {
-      await navigate('/applications');
-    })().catch((_error: unknown) => {
-      logger.error('Failed to navigate to applications page', {error: _error});
-    });
+    void navigate(isWelcomeFlow ? '/home' : '/applications');
   };
 
   const handleLogoSelect = (logoUrl: string): void => {
@@ -462,7 +451,6 @@ export default function ApplicationCreatePage(): JSX.Element {
             oauthConfig={oauthConfig}
             onOAuthConfigChange={setOAuthConfig}
             onReadyChange={handleTechnologyStepReadyChange}
-            stackTypes={{technology: true, platform: true}}
           />
         );
 
@@ -516,6 +504,22 @@ export default function ApplicationCreatePage(): JSX.Element {
     return visibleSteps.slice(0, idx + 1);
   };
 
+  const prefixCrumbs = isWelcomeFlow
+    ? [
+        {key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')},
+        {
+          key: 'new',
+          label: t('common:welcome.createProject.breadcrumb'),
+          onClick: () => void navigate('/welcome/create-project'),
+        },
+        {
+          key: 'get-started',
+          label: t('common:welcome.getStarted.breadcrumb'),
+          onClick: () => void navigate('/welcome/get-started'),
+        },
+      ]
+    : [{key: 'applications', label: t('navigation:pages.applications'), onClick: () => void navigate('/applications')}];
+
   return (
     <Box sx={{minHeight: '100vh', display: 'flex', flexDirection: 'column'}}>
       {/* Progress bar at the very top */}
@@ -548,22 +552,16 @@ export default function ApplicationCreatePage(): JSX.Element {
               >
                 <X size={24} />
               </IconButton>
-              <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb">
-                {getBreadcrumbSteps().map((step, index, array) => {
-                  const isLast = index === array.length - 1;
-                  const isClickable = !isLast;
-
-                  return isClickable ? (
-                    <Typography key={step} variant="h5" onClick={() => setCurrentStep(step)} sx={{cursor: 'pointer'}}>
-                      {steps[step].label}
-                    </Typography>
-                  ) : (
-                    <Typography key={step} variant="h5" color="text.primary">
-                      {steps[step].label}
-                    </Typography>
-                  );
-                })}
-              </Breadcrumbs>
+              <AppBreadcrumbs
+                items={[
+                  ...prefixCrumbs,
+                  ...getBreadcrumbSteps().map((step, index, array) => ({
+                    key: step,
+                    label: steps[step].label,
+                    onClick: index < array.length - 1 ? () => setCurrentStep(step) : undefined,
+                  })),
+                ]}
+              />
             </Stack>
           </Box>
 

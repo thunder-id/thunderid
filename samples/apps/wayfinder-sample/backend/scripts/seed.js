@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -142,6 +160,141 @@ const flights = [
     cabin: "Economy",
     dates: "Oct 10 - Oct 18",
     tags: JSON.stringify(["Overnight", "Nonstop"])
+  },
+  {
+    id: "flight-cmb-sin-01-biz",
+    from: "Colombo",
+    to: "Singapore",
+    airline: "Serendib Air",
+    departure_time: "08:45",
+    arrival_time: "15:05",
+    duration: "3h 50m",
+    stops: 0,
+    price: 680,
+    currency: "USD",
+    cabin: "Business",
+    dates: "Jun 12 - Jun 18",
+    tags: JSON.stringify(["Nonstop", "Business class"])
+  },
+  {
+    id: "flight-sfo-tyo-01-biz",
+    from: "San Francisco",
+    to: "Tokyo",
+    airline: "Pacifica",
+    departure_time: "11:20",
+    arrival_time: "15:35",
+    duration: "11h 15m",
+    stops: 0,
+    price: 1650,
+    currency: "USD",
+    cabin: "Business",
+    dates: "Jul 04 - Jul 16",
+    tags: JSON.stringify(["Nonstop", "Business class"])
+  },
+  {
+    id: "flight-lon-lis-01-biz",
+    from: "London",
+    to: "Lisbon",
+    airline: "Northline",
+    departure_time: "17:10",
+    arrival_time: "20:05",
+    duration: "2h 55m",
+    stops: 0,
+    price: 390,
+    currency: "USD",
+    cabin: "Business",
+    dates: "Aug 21 - Aug 27",
+    tags: JSON.stringify(["Business class"])
+  },
+  {
+    id: "flight-cmb-dxb-01-biz",
+    from: "Colombo",
+    to: "Dubai",
+    airline: "Ceylon Wings",
+    departure_time: "21:15",
+    arrival_time: "00:25",
+    duration: "4h 40m",
+    stops: 0,
+    price: 620,
+    currency: "USD",
+    cabin: "Business",
+    dates: "Jun 20 - Jun 26",
+    tags: JSON.stringify(["Business class"])
+  },
+  {
+    id: "flight-cmb-sin-02-biz",
+    from: "Colombo",
+    to: "Singapore",
+    airline: "IslandJet",
+    departure_time: "13:30",
+    arrival_time: "19:50",
+    duration: "3h 50m",
+    stops: 0,
+    price: 710,
+    currency: "USD",
+    cabin: "Business",
+    dates: "Jun 12 - Jun 18",
+    tags: JSON.stringify(["Business class", "Flexible ticket"])
+  },
+  {
+    id: "flight-cmb-sin-03-biz",
+    from: "Colombo",
+    to: "Singapore",
+    airline: "Meridian Airways",
+    departure_time: "01:10",
+    arrival_time: "09:20",
+    duration: "5h 40m",
+    stops: 1,
+    price: 590,
+    currency: "USD",
+    cabin: "Business",
+    dates: "Jun 12 - Jun 18",
+    tags: JSON.stringify(["Business class", "1 stop"])
+  },
+  {
+    id: "flight-cmb-tyo-01-biz",
+    from: "Colombo",
+    to: "Tokyo",
+    airline: "Serendib Air",
+    departure_time: "07:25",
+    arrival_time: "22:10",
+    duration: "11h 15m",
+    stops: 1,
+    price: 1280,
+    currency: "USD",
+    cabin: "Business",
+    dates: "Jul 04 - Jul 16",
+    tags: JSON.stringify(["Business class", "Meal included"])
+  },
+  {
+    id: "flight-dxb-lon-01-biz",
+    from: "Dubai",
+    to: "London",
+    airline: "Gulfline",
+    departure_time: "09:40",
+    arrival_time: "14:35",
+    duration: "7h 55m",
+    stops: 0,
+    price: 980,
+    currency: "USD",
+    cabin: "Business",
+    dates: "Sep 02 - Sep 09",
+    tags: JSON.stringify(["Nonstop", "Business class"])
+  },
+  {
+    id: "flight-sin-syd-01-biz",
+    from: "Singapore",
+    to: "Sydney",
+    airline: "Pacifica",
+    departure_time: "20:15",
+    arrival_time: "06:05",
+    duration: "7h 50m",
+    stops: 0,
+    price: 1100,
+    currency: "USD",
+    cabin: "Business",
+    dates: "Oct 10 - Oct 18",
+    tags: JSON.stringify(["Overnight", "Nonstop", "Business class"])
   }
 ];
 
@@ -311,6 +464,7 @@ db.exec("PRAGMA journal_mode = WAL");
 db.exec("PRAGMA foreign_keys = ON");
 
 db.exec(`
+  DROP TABLE IF EXISTS upgrade_requests;
   DROP TABLE IF EXISTS bookings;
   DROP TABLE IF EXISTS trips;
   DROP TABLE IF EXISTS hotels;
@@ -364,6 +518,22 @@ db.exec(`
     travelers INTEGER NOT NULL,
     status TEXT NOT NULL,
     created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE upgrade_requests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    username TEXT NOT NULL,
+    booking_id TEXT NOT NULL,
+    from_flight_id TEXT NOT NULL,
+    to_flight_id TEXT NOT NULL,
+    price_difference REAL NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (booking_id) REFERENCES bookings(id),
+    FOREIGN KEY (from_flight_id) REFERENCES flights(id),
+    FOREIGN KEY (to_flight_id) REFERENCES flights(id)
   );
 `);
 

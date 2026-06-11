@@ -62,6 +62,12 @@ const (
 	RequestParamRequestURI          string = "request_uri"
 	RequestParamAcrValues           string = "acr_values"
 	RequestParamDPoPJkt             string = "dpop_jkt"
+	RequestParamLoginHint           string = "login_hint"
+	RequestParamIDTokenHint         string = "id_token_hint"
+	RequestParamLoginHintToken      string = "login_hint_token" // #nosec G101
+	RequestParamBindingMessage      string = "binding_message"
+	RequestParamRequestedExpiry     string = "requested_expiry"
+	RequestParamAuthReqID           string = "auth_req_id"
 )
 
 // OAuth2 HTTP headers.
@@ -108,15 +114,17 @@ const (
 
 // OAuth2 endpoints.
 const (
-	OAuth2TokenEndpoint         string = "/oauth2/token" // #nosec G101
-	OAuth2AuthorizationEndpoint string = "/oauth2/authorize"
-	OAuth2IntrospectionEndpoint string = "/oauth2/introspect"
-	OAuth2RevokeEndpoint        string = "/oauth2/revoke"
-	OAuth2UserInfoEndpoint      string = "/oauth2/userinfo"
-	OAuth2JWKSEndpoint          string = "/oauth2/jwks"
-	OAuth2LogoutEndpoint        string = "/oauth2/logout"
-	OAuth2DCREndpoint           string = "/oauth2/dcr/register"
-	OAuth2PAREndpoint           string = "/oauth2/par"
+	OAuth2TokenEndpoint                   string = "/oauth2/token" // #nosec G101
+	OAuth2AuthorizationEndpoint           string = "/oauth2/authorize"
+	OAuth2IntrospectionEndpoint           string = "/oauth2/introspect"
+	OAuth2RevokeEndpoint                  string = "/oauth2/revoke"
+	OAuth2UserInfoEndpoint                string = "/oauth2/userinfo"
+	OAuth2JWKSEndpoint                    string = "/oauth2/jwks"
+	OAuth2LogoutEndpoint                  string = "/oauth2/logout"
+	OAuth2DCREndpoint                     string = "/oauth2/dcr/register"
+	OAuth2PAREndpoint                     string = "/oauth2/par"
+	OAuth2BackchannelAuthEndpoint         string = "/oauth2/bc-authorize"
+	OAuth2BackchannelAuthCallbackEndpoint string = "/oauth2/bc-authorize/callback"
 )
 
 // GrantType defines a type for OAuth2 grant types.
@@ -131,6 +139,8 @@ const (
 	GrantTypeRefreshToken GrantType = "refresh_token"
 	// GrantTypeTokenExchange represents the token exchange grant type.
 	GrantTypeTokenExchange GrantType = "urn:ietf:params:oauth:grant-type:token-exchange" //nolint:gosec
+	// GrantTypeCIBA represents the OpenID Connect CIBA (Client-Initiated Backchannel Authentication) grant type.
+	GrantTypeCIBA GrantType = "urn:openid:params:grant-type:ciba"
 )
 
 // supportedGrantTypes is the single source of truth for all supported grant types.
@@ -139,6 +149,7 @@ var supportedGrantTypes = []GrantType{
 	GrantTypeClientCredentials,
 	GrantTypeRefreshToken,
 	GrantTypeTokenExchange,
+	GrantTypeCIBA,
 }
 
 // IsValid checks if the GrantType is valid.
@@ -265,6 +276,11 @@ const (
 	ErrorConsentRequired          string = "consent_required"
 	ErrorAccountSelectionRequired string = "account_selection_required"
 	ErrorInvalidDPoPProof         string = "invalid_dpop_proof"
+	ErrorAuthorizationPending     string = "authorization_pending"
+	ErrorSlowDown                 string = "slow_down"
+	ErrorExpiredToken             string = "expired_token" // #nosec G101
+	ErrorUnknownUserID            string = "unknown_user_id"
+	ErrorInvalidBindingMessage    string = "invalid_binding_message"
 )
 
 // UnSupportedGrantTypeError is returned when an unsupported grant type is requested.
@@ -328,6 +344,7 @@ const (
 	ClaimClaimsLocales      string = "claims_locales"
 	ClaimCompletedAuthClass string = "completed_auth_class"
 	ClaimDPoPJkt            string = "dpop_jkt"
+	ClaimCIBAAuthReqID      string = "ciba_auth_req_id"
 )
 
 // OIDC subject types.
@@ -359,6 +376,15 @@ const (
 	// AttributeCacheTTLBufferSeconds is a fixed buffer added to attribute cache TTL values to
 	// account for the gap between cache entry creation (end of authentication) and token issuance.
 	AttributeCacheTTLBufferSeconds = 60
+)
+
+const (
+	// CIBADefaultExpiresInSeconds is the default lifetime in seconds of a CIBA authentication request.
+	CIBADefaultExpiresInSeconds = 120
+	// CIBADefaultIntervalSeconds is the default minimum interval in seconds between CIBA token polls.
+	CIBADefaultIntervalSeconds = 5
+	// CIBAMaxExpiresInSeconds is the maximum lifetime in seconds a client may request via requested_expiry.
+	CIBAMaxExpiresInSeconds = 600
 )
 
 // GetSupportedResponseTypes returns all supported OAuth2 response types.

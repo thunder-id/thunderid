@@ -25,6 +25,7 @@ const (
 	jsonKeyState               = "state"
 	jsonKeyClientID            = "client_id"
 	jsonKeyRedirectURI         = "redirect_uri"
+	jsonKeyRedirectURIProvided = "redirect_uri_provided"
 	jsonKeyResponseType        = "response_type"
 	jsonKeyStandardScopes      = "standard_scopes"
 	jsonKeyPermissionScopes    = "permission_scopes"

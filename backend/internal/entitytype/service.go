@@ -133,7 +133,7 @@ func (us *entityTypeService) GetEntityTypeList(ctx context.Context, category Typ
 	}
 
 	if accessible.AllAllowed {
-		logger.Debug("Caller has access to all entity types, retrieving without OU filtering",
+		logger.Debug(ctx, "Caller has access to all entity types, retrieving without OU filtering",
 			log.String("category", string(category)))
 		return us.listAllEntityTypes(ctx, category, limit, offset, includeDisplay, logger)
 	}
@@ -147,12 +147,12 @@ func (us *entityTypeService) listAllEntityTypes(
 ) (*EntityTypeListResponse, *serviceerror.ServiceError) {
 	totalCount, err := us.entityTypeStore.GetEntityTypeListCount(ctx, category)
 	if err != nil {
-		return nil, logAndReturnServerError(logger, "Failed to get entity type list count", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get entity type list count", err)
 	}
 
 	entityTypes, err := us.entityTypeStore.GetEntityTypeList(ctx, category, limit, offset)
 	if err != nil {
-		return nil, logAndReturnServerError(logger, "Failed to get entity type list", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get entity type list", err)
 	}
 
 	if includeDisplay {
@@ -188,12 +188,12 @@ func (us *entityTypeService) listAccessibleEntityTypes(
 
 	totalCount, err := us.entityTypeStore.GetEntityTypeListCountByOUIDs(ctx, category, ouIDs)
 	if err != nil {
-		return nil, logAndReturnServerError(logger, "Failed to get accessible entity type count", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get accessible entity type count", err)
 	}
 
 	entityTypes, err := us.entityTypeStore.GetEntityTypeListByOUIDs(ctx, category, ouIDs, limit, offset)
 	if err != nil {
-		return nil, logAndReturnServerError(logger, "Failed to get accessible entity type list", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get accessible entity type list", err)
 	}
 
 	if includeDisplay {
@@ -240,8 +240,8 @@ func (us *entityTypeService) CreateEntityType(
 		SystemAttributes: request.SystemAttributes,
 		Schema:           request.Schema,
 	}
-	if validationErr := validateEntityTypeDefinition(category, schemaToValidate); validationErr != nil {
-		logger.Debug("Entity type validation failed", log.String("name", request.Name))
+	if validationErr := validateEntityTypeDefinition(ctx, category, schemaToValidate); validationErr != nil {
+		logger.Debug(ctx, "Entity type validation failed", log.String("name", request.Name))
 		return nil, validationErr
 	}
 
@@ -259,14 +259,14 @@ func (us *entityTypeService) CreateEntityType(
 	if err == nil {
 		return nil, entityTypeNameConflictErr(category)
 	} else if !errors.Is(err, ErrEntityTypeNotFound) {
-		return nil, logAndReturnServerError(logger, "Failed to check existing entity type", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to check existing entity type", err)
 	}
 
 	id := request.ID
 	if id == "" {
 		id, err = utils.GenerateUUIDv7()
 		if err != nil {
-			logger.Error("Failed to generate UUID", log.Error(err))
+			logger.Error(ctx, "Failed to generate UUID", log.Error(err))
 			return nil, &serviceerror.InternalServerError
 		}
 	}
@@ -284,14 +284,14 @@ func (us *entityTypeService) CreateEntityType(
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return us.entityTypeStore.CreateEntityType(txCtx, entityType)
 	}); err != nil {
-		return nil, logAndReturnServerError(logger, "Failed to create entity type", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to create entity type", err)
 	}
 
 	if us.consentService.IsEnabled() {
 		if svcErr := us.syncConsentElementsOnCreate(ctx, category, entityType.Schema, logger); svcErr != nil {
 			if delErr := us.entityTypeStore.DeleteEntityTypeByID(ctx, category,
 				entityType.ID); delErr != nil {
-				logger.Error("Failed to compensate schema creation after consent sync failure",
+				logger.Error(ctx, "Failed to compensate schema creation after consent sync failure",
 					log.String("schemaID", entityType.ID), log.Error(delErr))
 			}
 
@@ -321,7 +321,7 @@ func (us *entityTypeService) GetEntityType(
 		if errors.Is(err, ErrEntityTypeNotFound) {
 			return nil, entityTypeNotFoundErr(category)
 		}
-		return nil, logAndReturnServerError(logger, "Failed to get entity type", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get entity type", err)
 	}
 
 	if svcErr := us.checkEntityTypeAccess(
@@ -333,7 +333,7 @@ func (us *entityTypeService) GetEntityType(
 		handleMap, svcErr := us.ouService.GetOrganizationUnitHandlesByIDs(
 			ctx, []string{entityType.OUID})
 		if svcErr != nil {
-			logger.Warn("Failed to resolve OU handle for entity type, skipping",
+			logger.Warn(ctx, "Failed to resolve OU handle for entity type, skipping",
 				log.String("id", schemaID), log.Any("error", svcErr))
 		} else if handle, ok := handleMap[entityType.OUID]; ok {
 			entityType.OUHandle = handle
@@ -362,7 +362,7 @@ func (us *entityTypeService) GetEntityTypeByName(
 		if errors.Is(err, ErrEntityTypeNotFound) {
 			return nil, entityTypeNotFoundErr(category)
 		}
-		return nil, logAndReturnServerError(logger, "Failed to get entity type by name", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get entity type by name", err)
 	}
 
 	if svcErr := us.checkEntityTypeAccess(
@@ -408,8 +408,8 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 		SystemAttributes: request.SystemAttributes,
 		Schema:           request.Schema,
 	}
-	if validationErr := validateEntityTypeDefinition(category, schemaToValidate); validationErr != nil {
-		logger.Debug("Entity type validation failed", log.String("id", schemaID))
+	if validationErr := validateEntityTypeDefinition(ctx, category, schemaToValidate); validationErr != nil {
+		logger.Debug(ctx, "Entity type validation failed", log.String("id", schemaID))
 		return nil, validationErr
 	}
 
@@ -423,7 +423,7 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 		if errors.Is(err, ErrEntityTypeNotFound) {
 			return nil, entityTypeNotFoundErr(category)
 		}
-		return nil, logAndReturnServerError(logger, "Failed to get existing entity type", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get existing entity type", err)
 	}
 
 	if svcErr := us.checkEntityTypeAccess(
@@ -443,7 +443,7 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 		if err == nil {
 			return nil, entityTypeNameConflictErr(category)
 		} else if !errors.Is(err, ErrEntityTypeNotFound) {
-			return nil, logAndReturnServerError(logger, "Failed to check existing entity type", err)
+			return nil, logAndReturnServerError(ctx, logger, "Failed to check existing entity type", err)
 		}
 	}
 
@@ -460,7 +460,7 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return us.entityTypeStore.UpdateEntityTypeByID(txCtx, category, schemaID, entityType)
 	}); err != nil {
-		return nil, logAndReturnServerError(logger, "Failed to update entity type", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to update entity type", err)
 	}
 
 	if us.consentService.IsEnabled() {
@@ -468,7 +468,7 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 			entityType.Schema, logger); svcErr != nil {
 			if revertErr := us.entityTypeStore.UpdateEntityTypeByID(ctx, category, schemaID,
 				existingSchema); revertErr != nil {
-				logger.Error("Failed to compensate schema update after consent sync failure",
+				logger.Error(ctx, "Failed to compensate schema update after consent sync failure",
 					log.String("schemaID", schemaID), log.Error(revertErr))
 			}
 
@@ -505,7 +505,7 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 			}
 			return nil
 		}
-		return logAndReturnServerError(logger, "Failed to get entity type for delete", err)
+		return logAndReturnServerError(ctx, logger, "Failed to get entity type for delete", err)
 	}
 
 	if svcErr := us.checkEntityTypeAccess(
@@ -521,7 +521,8 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 	if us.consentService.IsEnabled() {
 		attrNames, err := extractAttributeNames(category, existingSchema.Schema)
 		if err != nil {
-			logger.Error("Failed to extract attribute names for consent cleanup; proceeding with schema deletion",
+			logger.Error(ctx,
+				"Failed to extract attribute names for consent cleanup; proceeding with schema deletion",
 				log.String("schemaID", schemaID), log.Any("error", err))
 			attributeNames = []string{}
 		} else {
@@ -532,7 +533,7 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return us.entityTypeStore.DeleteEntityTypeByID(txCtx, category, schemaID)
 	}); err != nil {
-		return logAndReturnServerError(logger, "Failed to delete entity type", err)
+		return logAndReturnServerError(ctx, logger, "Failed to delete entity type", err)
 	}
 
 	// Sync consent elements for the deleted schema by deleting the associated consent elements
@@ -540,7 +541,7 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 	// since orphaned consent elements are safe and won't cause active harm.
 	if us.consentService.IsEnabled() && len(attributeNames) > 0 {
 		if svcErr := us.deleteConsentElements(ctx, attributeNames, logger); svcErr != nil {
-			logger.Error("Failed to delete consent elements for removed schema attributes; "+
+			logger.Error(ctx, "Failed to delete consent elements for removed schema attributes; "+
 				"orphaned consent elements may remain but schema deletion succeeded",
 				log.Any("attributeNames", attributeNames), log.Any("error", svcErr))
 		}
@@ -565,20 +566,20 @@ func (us *entityTypeService) ValidateEntity(
 		if errors.Is(err, ErrEntityTypeNotFound) {
 			return false, entityTypeNotFoundErr(category)
 		}
-		return false, logAndReturnServerError(logger, "Failed to load entity type", err)
+		return false, logAndReturnServerError(ctx, logger, "Failed to load entity type", err)
 	}
 
-	isValid, err := compiledSchema.Validate(attributes, logger, skipCredentialRequired)
+	isValid, err := compiledSchema.Validate(ctx, attributes, logger, skipCredentialRequired)
 	if err != nil {
-		return false, logAndReturnServerError(logger, "Failed to validate entity attributes against schema", err)
+		return false, logAndReturnServerError(ctx, logger, "Failed to validate entity attributes against schema", err)
 	}
 	if !isValid {
-		logger.Debug("Schema validation failed", log.String("category", string(category)),
+		logger.Debug(ctx, "Schema validation failed", log.String("category", string(category)),
 			log.String("entityType", entityType))
 		return false, nil
 	}
 
-	logger.Debug("Schema validation successful", log.String("category", string(category)),
+	logger.Debug(ctx, "Schema validation successful", log.String("category", string(category)),
 		log.String("entityType", entityType))
 	return true, nil
 }
@@ -602,7 +603,7 @@ func (us *entityTypeService) ValidateEntityUniqueness(
 		if errors.Is(err, ErrEntityTypeNotFound) {
 			return false, entityTypeNotFoundErr(category)
 		}
-		return false, logAndReturnServerError(logger, "Failed to load entity type", err)
+		return false, logAndReturnServerError(ctx, logger, "Failed to load entity type", err)
 	}
 
 	if len(attributes) == 0 {
@@ -611,15 +612,15 @@ func (us *entityTypeService) ValidateEntityUniqueness(
 
 	var attrs map[string]interface{}
 	if err := json.Unmarshal(attributes, &attrs); err != nil {
-		return false, logAndReturnServerError(logger, "Failed to unmarshal entity attributes", err)
+		return false, logAndReturnServerError(ctx, logger, "Failed to unmarshal entity attributes", err)
 	}
 
-	isValid, err := compiledSchema.ValidateUniqueness(attrs, exists, logger)
+	isValid, err := compiledSchema.ValidateUniqueness(ctx, attrs, exists, logger)
 	if err != nil {
-		return false, logAndReturnServerError(logger, "Failed during uniqueness validation", err)
+		return false, logAndReturnServerError(ctx, logger, "Failed during uniqueness validation", err)
 	}
 	if !isValid {
-		logger.Debug("Entity attribute failed uniqueness validation",
+		logger.Debug(ctx, "Entity attribute failed uniqueness validation",
 			log.String("category", string(category)), log.String("entityType", entityType))
 		return false, nil
 	}
@@ -645,7 +646,7 @@ func (us *entityTypeService) GetAttributes(
 		if errors.Is(err, ErrEntityTypeNotFound) {
 			return nil, entityTypeNotFoundErr(category)
 		}
-		return nil, logAndReturnServerError(logger, "Failed to load entity type for attribute infos", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to load entity type for attribute infos", err)
 	}
 
 	return compiledSchema.GetAttributes(allowCredential, allowNonCredential, requiredOnly), nil
@@ -666,7 +667,7 @@ func (us *entityTypeService) GetUniqueAttributes(
 		if errors.Is(err, ErrEntityTypeNotFound) {
 			return nil, entityTypeNotFoundErr(category)
 		}
-		return nil, logAndReturnServerError(logger, "Failed to load entity type for unique attributes", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to load entity type for unique attributes", err)
 	}
 
 	return compiledSchema.GetUniqueAttributes(), nil
@@ -688,7 +689,7 @@ func (us *entityTypeService) GetDisplayAttributesByNames(
 
 	result, err := us.entityTypeStore.GetDisplayAttributesByNames(ctx, category, names)
 	if err != nil {
-		return nil, logAndReturnServerError(logger, "Failed to get display attributes by names", err)
+		return nil, logAndReturnServerError(ctx, logger, "Failed to get display attributes by names", err)
 	}
 
 	return result, nil
@@ -711,7 +712,7 @@ func (us *entityTypeService) getCompiledSchemaForEntityType(
 
 	compiled, err := model.CompileSchema(found.Schema)
 	if err != nil {
-		logger.Error("Failed to compile stored entity type", log.String("category", string(category)),
+		logger.Error(ctx, "Failed to compile stored entity type", log.String("category", string(category)),
 			log.String("entityType", entityType), log.Error(err))
 		return nil, fmt.Errorf("failed to compile stored entity type: %w", err)
 	}
@@ -777,7 +778,7 @@ func (us *entityTypeService) resolveEntityTypeOUHandle(
 ) *serviceerror.ServiceError {
 	if entityType.OUID != "" && entityType.OUHandle != "" {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
-		logger.Warn("Both ou_id and ou_handle provided for entity type; ou_handle ignored",
+		logger.Warn(ctx, "Both ou_id and ou_handle provided for entity type; ou_handle ignored",
 			log.String("entityTypeID", entityType.ID), log.String("name", entityType.Name))
 		return nil
 	}
@@ -802,19 +803,19 @@ func (us *entityTypeService) ensureOrganizationUnitExists(
 	logger *log.Logger,
 ) *serviceerror.ServiceError {
 	if us.ouService == nil {
-		logger.Error("Organization unit service is not configured for entity type operations")
+		logger.Error(ctx, "Organization unit service is not configured for entity type operations")
 		return &serviceerror.InternalServerError
 	}
 
 	exists, svcErr := us.ouService.IsOrganizationUnitExists(ctx, oUID)
 	if svcErr != nil {
-		logger.Error("Failed to verify organization unit existence",
+		logger.Error(ctx, "Failed to verify organization unit existence",
 			log.String("oUID", oUID), log.Any("error", svcErr))
 		return &serviceerror.InternalServerError
 	}
 
 	if !exists {
-		logger.Debug("Organization unit does not exist",
+		logger.Debug(ctx, "Organization unit does not exist",
 			log.String("oUID", oUID))
 		return invalidEntityTypeRequestErr(category, "organization unit id does not exist")
 	}
@@ -848,7 +849,7 @@ func (us *entityTypeService) populateEntityTypeOUHandles(
 
 	handleMap, svcErr := us.ouService.GetOrganizationUnitHandlesByIDs(ctx, ouIDs)
 	if svcErr != nil {
-		logger.Warn("Failed to resolve OU handles for entity types, skipping", log.Any("error", svcErr))
+		logger.Warn(ctx, "Failed to resolve OU handles for entity types, skipping", log.Any("error", svcErr))
 		return
 	}
 
@@ -965,38 +966,39 @@ func buildPaginationLinks(category TypeCategory, limit, offset, totalCount int, 
 }
 
 // logAndReturnServerError logs the error and returns a server error.
-func logAndReturnServerError(
+func logAndReturnServerError(ctx context.Context,
 	logger *log.Logger,
 	message string,
 	err error,
 ) *serviceerror.ServiceError {
-	logger.Error(message, log.Error(err))
+	logger.Error(ctx, message, log.Error(err))
 	return &serviceerror.InternalServerError
 }
 
 // validateEntityTypeDefinition validates the entity type definition without checking OU existence.
 // This is used during initialization to validate file-based configurations.
-func validateEntityTypeDefinition(category TypeCategory, schema EntityType) *serviceerror.ServiceError {
+func validateEntityTypeDefinition(
+	ctx context.Context, category TypeCategory, schema EntityType) *serviceerror.ServiceError {
 	logger := log.GetLogger()
 
 	if schema.Name == "" {
-		logger.Debug("Entity type validation failed: name is empty")
+		logger.Debug(ctx, "Entity type validation failed: name is empty")
 		return invalidEntityTypeRequestErr(category, "entity type name must not be empty")
 	}
 
 	if schema.OUID == "" {
-		logger.Debug("Entity type validation failed: organization unit ID is empty")
+		logger.Debug(ctx, "Entity type validation failed: organization unit ID is empty")
 		return invalidEntityTypeRequestErr(category, "organization unit id must not be empty")
 	}
 
 	if len(schema.Schema) == 0 {
-		logger.Debug("Entity type validation failed: schema definition is empty")
+		logger.Debug(ctx, "Entity type validation failed: schema definition is empty")
 		return invalidEntityTypeRequestErr(category, "schema definition must not be empty")
 	}
 
 	compiledSchema, err := model.CompileSchema(schema.Schema)
 	if err != nil {
-		logger.Debug("Entity type validation failed: schema compilation error",
+		logger.Debug(ctx, "Entity type validation failed: schema compilation error",
 			log.Error(err))
 		return invalidEntityTypeRequestErr(category, err.Error())
 	}
@@ -1043,7 +1045,7 @@ func (us *entityTypeService) syncConsentElementsOnCreate(ctx context.Context,
 	// TODO: Replace "default" with the schema's actual OU when applications are associated with OUs.
 	const ouID = "default"
 
-	logger.Debug("Synchronizing consent elements for the new schema", log.String("ouID", ouID))
+	logger.Debug(ctx, "Synchronizing consent elements for the new schema", log.String("ouID", ouID))
 
 	names, err := extractAttributeNames(category, schema)
 	if err != nil {
@@ -1051,7 +1053,7 @@ func (us *entityTypeService) syncConsentElementsOnCreate(ctx context.Context,
 	}
 
 	if len(names) > 0 {
-		logger.Debug("Creating missing consent elements for the new schema",
+		logger.Debug(ctx, "Creating missing consent elements for the new schema",
 			log.String("ouID", ouID), log.Int("elementCount", len(names)))
 		if svcErr := us.createMissingConsentElements(ctx, ouID, names, logger); svcErr != nil {
 			return svcErr
@@ -1068,7 +1070,7 @@ func (us *entityTypeService) syncConsentElementsOnUpdate(ctx context.Context,
 	// TODO: Replace "default" with the schema's actual OU when applications are associated with OUs.
 	const ouID = "default"
 
-	logger.Debug("Synchronizing consent elements for the updated schema", log.String("ouID", ouID))
+	logger.Debug(ctx, "Synchronizing consent elements for the updated schema", log.String("ouID", ouID))
 
 	oldAttrs, err := extractAttributeNamesAsMap(category, oldSchema)
 	if err != nil {
@@ -1090,7 +1092,7 @@ func (us *entityTypeService) syncConsentElementsOnUpdate(ctx context.Context,
 	}
 
 	if len(requiredNames) > 0 {
-		logger.Debug("Ensuring consent elements exist for all requested attributes",
+		logger.Debug(ctx, "Ensuring consent elements exist for all requested attributes",
 			log.String("ouID", ouID), log.Int("requiredAttributesCount", len(requiredNames)))
 		if err := us.createMissingConsentElements(ctx, ouID, requiredNames, logger); err != nil {
 			return err
@@ -1114,16 +1116,16 @@ func (us *entityTypeService) syncConsentElementsOnUpdate(ctx context.Context,
 func (us *entityTypeService) createMissingConsentElements(ctx context.Context,
 	ouID string, names []string, logger *log.Logger) *serviceerror.ServiceError {
 	if len(names) == 0 {
-		logger.Debug("No consent elements to create for the schema", log.String("ouID", ouID))
+		logger.Debug(ctx, "No consent elements to create for the schema", log.String("ouID", ouID))
 		return nil
 	}
 
-	logger.Debug("Validating consent elements for the schema attributes",
+	logger.Debug(ctx, "Validating consent elements for the schema attributes",
 		log.String("ouID", ouID), log.Int("elementCount", len(names)))
 
 	validNames, err := us.consentService.ValidateConsentElements(ctx, ouID, names)
 	if err != nil {
-		return wrapConsentServiceError(err, logger)
+		return wrapConsentServiceError(ctx, err, logger)
 	}
 
 	// Create a map of existing elements for fast lookup
@@ -1144,10 +1146,10 @@ func (us *entityTypeService) createMissingConsentElements(ctx context.Context,
 	}
 
 	if len(elementsToCreate) > 0 {
-		logger.Debug("Creating new consent elements for the schema attributes",
+		logger.Debug(ctx, "Creating new consent elements for the schema attributes",
 			log.String("ouID", ouID), log.Int("elementCount", len(elementsToCreate)))
 		if _, err := us.consentService.CreateConsentElements(ctx, ouID, elementsToCreate); err != nil {
-			return wrapConsentServiceError(err, logger)
+			return wrapConsentServiceError(ctx, err, logger)
 		}
 	}
 
@@ -1160,11 +1162,11 @@ func (us *entityTypeService) deleteConsentElements(ctx context.Context,
 	// TODO: Replace "default" with the schema's actual OU when applications are associated with OUs.
 	const ouID = "default"
 
-	logger.Debug("Deleting consent elements for the removed schema attributes",
+	logger.Debug(ctx, "Deleting consent elements for the removed schema attributes",
 		log.String("ouID", ouID), log.Int("elementCount", len(attributeNames)))
 
 	if len(attributeNames) == 0 {
-		logger.Debug("No consent elements to delete for the schema", log.String("ouID", ouID))
+		logger.Debug(ctx, "No consent elements to delete for the schema", log.String("ouID", ouID))
 		return nil
 	}
 
@@ -1172,14 +1174,14 @@ func (us *entityTypeService) deleteConsentElements(ctx context.Context,
 		// List existing consent elements for the removed attribute to find their IDs for deletion
 		existing, err := us.consentService.ListConsentElements(ctx, ouID, consent.NamespaceAttribute, attrName)
 		if err != nil {
-			return wrapConsentServiceError(err, logger)
+			return wrapConsentServiceError(ctx, err, logger)
 		}
 
 		// Delete the first element if the list is not empty.
 		// We assume there is only one consent element per attribute name.
 		// TODO: This should be revisited when user type separation is onboarded to consent elements.
 		if len(existing) > 0 {
-			logger.Debug("Deleting consent element for the removed schema attribute",
+			logger.Debug(ctx, "Deleting consent element for the removed schema attribute",
 				log.String("ouID", ouID), log.String("attribute", attrName), log.String("elementID", existing[0].ID))
 			if err := us.consentService.DeleteConsentElement(ctx, ouID, existing[0].ID); err != nil {
 				// Silently ignore the error if it's due to associated purposes, but log a warning.
@@ -1188,13 +1190,14 @@ func (us *entityTypeService) deleteConsentElements(ctx context.Context,
 				// If it's not associated with a purpose, but exists in a different schema, we still delete it,
 				// as the consent element can be created again when configuring attribute for a application.
 				if err.Code == consent.ErrorDeletingConsentElementWithAssociatedPurpose.Code {
-					logger.Warn("Cannot delete consent element for removed attribute due to associated purposes",
+					logger.Warn(ctx,
+						"Cannot delete consent element for removed attribute due to associated purposes",
 						log.String("attribute", attrName), log.String("elementID", existing[0].ID),
 						log.String("error", err.ErrorDescription.DefaultValue))
 					continue
 				}
 
-				return wrapConsentServiceError(err, logger)
+				return wrapConsentServiceError(ctx, err, logger)
 			}
 		}
 	}
@@ -1245,19 +1248,20 @@ func extractAttributeNamesAsMap(
 
 // wrapConsentServiceError converts an ServiceError from the consent service into a ServiceError
 // for the entity type service.
-func wrapConsentServiceError(err *serviceerror.ServiceError, logger *log.Logger) *serviceerror.ServiceError {
+func wrapConsentServiceError(
+	ctx context.Context, err *serviceerror.ServiceError, logger *log.Logger) *serviceerror.ServiceError {
 	if err == nil {
 		return nil
 	}
 
 	if err.Type == serviceerror.ClientErrorType {
-		logger.Debug("Failed to sync consent elements for the schema changes", log.Any("error", err))
+		logger.Debug(ctx, "Failed to sync consent elements for the schema changes", log.Any("error", err))
 		return serviceerror.CustomServiceError(ErrorConsentSyncFailed, core.I18nMessage{
 			Key:          "error.entitytypeservice.consent_sync_failed_description",
 			DefaultValue: fmt.Sprintf("%s : code - %s", ErrorConsentSyncFailed.ErrorDescription.DefaultValue, err.Code),
 		})
 	}
 
-	logger.Error("Failed to sync consent elements for the schema changes", log.Any("error", err))
+	logger.Error(ctx, "Failed to sync consent elements for the schema changes", log.Any("error", err))
 	return &serviceerror.InternalServerError
 }

@@ -20,6 +20,7 @@ package utils
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -84,7 +85,7 @@ func (suite *HTTPUtilTestSuite) TestWriteJSONError() {
 		suite.T().Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 
-			WriteJSONError(w, tc.code, tc.desc, tc.statusCode, tc.respHeaders)
+			WriteJSONError(context.Background(), w, tc.code, tc.desc, tc.statusCode, tc.respHeaders)
 
 			// Verify status code
 			assert.Equal(t, tc.statusCode, w.Code)
@@ -629,7 +630,7 @@ func (suite *HTTPUtilTestSuite) TestWriteSuccessResponse() {
 		suite.T().Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 
-			WriteSuccessResponse(w, tc.statusCode, tc.data)
+			WriteSuccessResponse(context.Background(), w, tc.statusCode, tc.data)
 
 			// Verify status code
 			assert.Equal(t, tc.statusCode, w.Code)
@@ -680,7 +681,7 @@ func (suite *HTTPUtilTestSuite) TestWriteSuccessResponse_EncodingError() {
 		w := httptest.NewRecorder()
 
 		// Channel cannot be JSON encoded, should trigger the encoding error fallback
-		WriteSuccessResponse(w, http.StatusOK, make(chan int))
+		WriteSuccessResponse(context.Background(), w, http.StatusOK, make(chan int))
 
 		// Encoding fails before headers are sent, so we get 500
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -723,7 +724,7 @@ func (suite *HTTPUtilTestSuite) TestWriteErrorResponse_EncodingFallback() {
 			Message:     core.I18nMessage{Key: "error.test", DefaultValue: "Test error"},
 			Description: core.I18nMessage{Key: "error.test_desc", DefaultValue: "A test error"},
 		}
-		WriteErrorResponse(w, http.StatusBadRequest, errorResp)
+		WriteErrorResponse(context.Background(), w, http.StatusBadRequest, errorResp)
 
 		// The fallback JSON must be valid and carry the encoding error fields
 		var resp apierror.ErrorResponse
@@ -792,7 +793,7 @@ func (suite *HTTPUtilTestSuite) TestWriteI18nErrorResponse() {
 		suite.T().Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 
-			WriteErrorResponse(w, tc.statusCode, tc.errorResp)
+			WriteErrorResponse(context.Background(), w, tc.statusCode, tc.errorResp)
 
 			// Verify status code
 			assert.Equal(t, tc.statusCode, w.Code)

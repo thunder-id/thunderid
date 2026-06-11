@@ -288,6 +288,167 @@
   {
     "resourceType": "WIDGET",
     "category": "FLOW",
+    "type": "EUDI_WALLET",
+    "display": {
+      "label": "Continue with EUDI Wallet",
+      "description": "Login experience with the EUDI Wallet (PID presentation)",
+      "image": "assets/images/icons/eudi-generic.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "data": {
+        "__generationMeta__": {
+          "defaultPropertySelectorId": "{{EUDI_EXECUTION_STEP_ID}}",
+          "replacers": [
+            {
+              "key": "EUDI_EXECUTION_STEP_ID",
+              "type": "ID"
+            },
+            {
+              "key": "EUDI_WAIT_VIEW_ID",
+              "type": "ID"
+            },
+            {
+              "key": "AUTH_ASSERT_EXECUTOR_ID",
+              "type": "ID"
+            }
+          ]
+        },
+        "steps": [
+          {
+            "__generationMeta__": {
+              "strategy": "MERGE_WITH_DROP_POINT"
+            },
+            "type": "VIEW",
+            "data": {
+              "components": [
+                {
+                  "id": "{{ID}}",
+                  "category": "ACTION",
+                  "type": "BLOCK",
+                  "components": [
+                    {
+                      "id": "{{ID}}",
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "variant": "OUTLINED",
+                      "eventType": "TRIGGER",
+                      "label": "Continue with EUDI Wallet",
+                      "image": "assets/images/icons/eudi.svg",
+                      "action": {
+                        "type": "NEXT",
+                        "onSuccess": "{{EUDI_EXECUTION_STEP_ID}}"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "{{EUDI_EXECUTION_STEP_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 820,
+              "y": 350
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "OpenID4VPVerifyExecutor"
+                },
+                "onSuccess": "{{AUTH_ASSERT_EXECUTOR_ID}}",
+                "onFailure": "",
+                "onIncomplete": "{{EUDI_WAIT_VIEW_ID}}"
+              },
+              "properties": {
+                "presentation_definition_id": "eudi-pid"
+              }
+            }
+          },
+          {
+            "id": "{{EUDI_WAIT_VIEW_ID}}",
+            "type": "VIEW",
+            "size": {
+              "width": 350,
+              "height": 300
+            },
+            "position": {
+              "x": 820,
+              "y": 50
+            },
+            "data": {
+              "components": [
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "variant": "HEADING_3",
+                  "label": "Scan with your EUDI Wallet"
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "variant": "BODY_1",
+                  "label": "Open your EUDI Wallet and present your PID, then continue."
+                },
+                {
+                  "id": "{{ID}}",
+                  "category": "ACTION",
+                  "type": "BLOCK",
+                  "components": [
+                    {
+                      "id": "{{ID}}",
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "variant": "PRIMARY",
+                      "eventType": "SUBMIT",
+                      "label": "Refresh status",
+                      "action": {
+                        "type": "NEXT",
+                        "onSuccess": "{{EUDI_EXECUTION_STEP_ID}}"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "{{AUTH_ASSERT_EXECUTOR_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 244,
+              "height": 113
+            },
+            "position": {
+              "x": 1234,
+              "y": 230
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "AuthAssertExecutor"
+                },
+                "onSuccess": "END",
+                "onFailure": ""
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "resourceType": "WIDGET",
+    "category": "FLOW",
     "type": "SMS_OTP",
     "display": {
       "label": "Continue with SMS OTP",
@@ -1063,6 +1224,295 @@
                   "label": "<p class=\"rich-text-paragraph\"><span class=\"rich-text-pre-wrap\">Don't have an account? </span><a href=\"{{meta(application.sign_up_url)}}\" target=\"_blank\" rel=\"noopener noreferrer\" class=\"rich-text-link\"><span class=\"rich-text-pre-wrap\">Sign up</span></a></p>"
                 }
               ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "resourceType": "WIDGET",
+    "category": "COMPOSITE",
+    "type": "MAGIC_LINK",
+    "display": {
+      "label": "Continue with Magic Link",
+      "description": "Authenticate securely using a Magic Link sent via email.",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {
+      "data": {
+        "__generationMeta__": {
+          "replacers": [
+            {
+              "key": "EMAIL_VIEW_ID",
+              "type": "ID"
+            },
+            {
+              "key": "MAGIC_GENERATE_EXECUTOR",
+              "type": "ID"
+            },
+            {
+              "key": "EMAIL_SEND_EXECUTOR",
+              "type": "ID"
+            },
+            {
+              "key": "EMAIL_SENT_PROMPT_ID",
+              "type": "ID"
+            },
+            {
+              "key": "MAGIC_VERIFY_EXECUTOR",
+              "type": "ID"
+            },
+            {
+              "key": "AUTH_ASSERT_EXECUTOR_ID",
+              "type": "ID"
+            }
+          ]
+        },
+        "steps": [
+          {
+            "__generationMeta__": {
+              "strategy": "MERGE_WITH_DROP_POINT"
+            },
+            "type": "VIEW",
+            "data": {
+              "components": [
+                {
+                  "id": "{{ID}}",
+                  "category": "ACTION",
+                  "type": "BLOCK",
+                  "components": [
+                    {
+                      "id": "{{ID}}",
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "variant": "OUTLINED",
+                      "eventType": "TRIGGER",
+                      "label": "Continue with Magic Link",
+                      "image": "assets/images/icons/link.svg",
+                      "action": {
+                        "type": "NEXT",
+                        "onSuccess": "{{EMAIL_VIEW_ID}}"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "{{EMAIL_VIEW_ID}}",
+            "type": "VIEW",
+            "size": {
+              "width": 350,
+              "height": 300
+            },
+            "position": {
+              "x": 650,
+              "y": 100
+            },
+            "data": {
+              "components": [
+                {
+                  "id": "{{ID}}",
+                  "category": "DISPLAY",
+                  "type": "TEXT",
+                  "variant": "HEADING_3",
+                  "label": "Login with Magic Link"
+                },
+                {
+                  "category": "BLOCK",
+                  "type": "BLOCK",
+                  "id": "{{ID}}",
+                  "components": [
+                    {
+                      "id": "{{ID}}",
+                      "category": "FIELD",
+                      "type": "EMAIL_INPUT",
+                      "inputType": "email",
+                      "hint": "",
+                      "label": "Email",
+                      "required": true,
+                      "placeholder": "Enter your email address",
+                      "ref": "email"
+                    },
+                    {
+                      "id": "{{ID}}",
+                      "category": "ACTION",
+                      "type": "ACTION",
+                      "variant": "PRIMARY",
+                      "eventType": "SUBMIT",
+                      "label": "Send Magic Link",
+                      "action": {
+                        "type": "NEXT",
+                        "onSuccess": "{{MAGIC_GENERATE_EXECUTOR}}"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "{{MAGIC_GENERATE_EXECUTOR}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 650,
+              "y": 450
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "MagicLinkExecutor",
+                  "mode": "generate"
+                },
+                "onSuccess": "{{EMAIL_SEND_EXECUTOR}}",
+                "onFailure": "{{EMAIL_VIEW_ID}}"
+              }
+            }
+          },
+          {
+            "id": "{{EMAIL_SEND_EXECUTOR}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 650,
+              "y": 600
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "EmailExecutor",
+                  "mode": "send",
+                  "inputs": [
+                    {
+                      "identifier": "email",
+                      "type": "EMAIL_INPUT",
+                      "required": true
+                    }
+                  ]
+                },
+                "onSuccess": "{{EMAIL_SENT_PROMPT_ID}}",
+                "onFailure": "{{EMAIL_VIEW_ID}}"
+              },
+              "properties": {
+                "emailTemplate": "MAGIC_LINK"
+              }
+            }
+          },
+          {
+            "id": "{{EMAIL_SENT_PROMPT_ID}}",
+            "type": "VIEW",
+            "size": {
+              "width": 350,
+              "height": 400
+            },
+            "position": {
+              "x": 1000,
+              "y": 600
+            },
+            "data": {
+              "prompts": [
+                {
+                  "inputs": [
+                    {
+                      "ref": "magic_link_token_input",
+                      "identifier": "magicLinkToken",
+                      "type": "HIDDEN",
+                      "required": true
+                    }
+                  ],
+                  "action": {
+                    "ref": "magic_link_action",
+                    "nextNode": "{{MAGIC_VERIFY_EXECUTOR}}"
+                  }
+                }
+              ],
+              "components": [
+                {
+                  "alt": "{{ t(signin:images.app_logo.alt) }}",
+                  "category": "DISPLAY",
+                  "height": "60",
+                  "id": "{{ID}}",
+                  "resourceType": "ELEMENT",
+                  "src": "{{ meta(application.logoUrl) }}",
+                  "type": "IMAGE",
+                  "width": ""
+                },
+                {
+                  "align": "center",
+                  "category": "DISPLAY",
+                  "id": "{{ID}}",
+                  "label": "{{ t(signin:forms.magic_link.email_sent.title) }}",
+                  "resourceType": "ELEMENT",
+                  "type": "TEXT",
+                  "variant": "HEADING_1"
+                },
+                {
+                  "align": "center",
+                  "category": "DISPLAY",
+                  "id": "{{ID}}",
+                  "label": "{{ t(signin:forms.magic_link.email_sent.description) }}",
+                  "resourceType": "ELEMENT",
+                  "type": "TEXT",
+                  "variant": "BODY_1"
+                }
+              ]
+            }
+          },
+          {
+            "id": "{{MAGIC_VERIFY_EXECUTOR}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 650,
+              "y": 750
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "MagicLinkExecutor",
+                  "mode": "verify"
+                },
+                "onSuccess": "{{AUTH_ASSERT_EXECUTOR_ID}}",
+                "onFailure": "{{EMAIL_VIEW_ID}}"
+              }
+            }
+          },
+          {
+            "id": "{{AUTH_ASSERT_EXECUTOR_ID}}",
+            "type": "TASK_EXECUTION",
+            "size": {
+              "width": 200,
+              "height": 113
+            },
+            "position": {
+              "x": 650,
+              "y": 900
+            },
+            "data": {
+              "action": {
+                "type": "EXECUTOR",
+                "executor": {
+                  "name": "AuthAssertExecutor"
+                },
+                "onSuccess": "END",
+                "onFailure": ""
+              }
             }
           }
         ]

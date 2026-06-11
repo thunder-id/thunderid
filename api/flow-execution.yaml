@@ -173,7 +173,14 @@ paths:
                   value:
                     executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
                     flowStatus: "ERROR"
-                    failureReason: "Invalid credentials"
+                    error:
+                      code: "FET-20002"
+                      message:
+                        key: "flows.executor.errors.invalid_credentials"
+                        defaultValue: "Invalid credentials provided"
+                      description:
+                        key: "flows.executor.errors.invalid_credentials_desc"
+                        defaultValue: "The credentials provided are invalid"
         
         "400":
           description: 'Bad Request: The request body is malformed or contains invalid data'
@@ -306,7 +313,7 @@ components:
       required:
         - executionId
         - flowStatus
-        - failureReason
+        - error
       properties:
         executionId:
           type: string
@@ -315,11 +322,11 @@ components:
         flowStatus:
           type: string
           description: Status of the flow execution
+          enum:
+            - ERROR
           example: "ERROR"
-        failureReason:
-          type: string
-          description: Reason for the failure in the flow execution
-          example: "Invalid credentials"
+        error:
+          $ref: '#/components/schemas/Error'
 
     Data:
       type: object

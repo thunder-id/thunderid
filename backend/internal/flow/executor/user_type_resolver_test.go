@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -167,7 +167,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_AuthenticationFlow_NoAllowed
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "Authentication not available for this application", result.FailureReason)
+	assert.Equal(suite.T(), ErrAuthNotAvailableForApp.Error.DefaultValue, result.Error.Error.DefaultValue)
 	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeByName")
 }
 
@@ -323,7 +323,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserTypeProvidedInInput_NotA
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "Application does not allow registration for the user type", result.FailureReason)
+	assert.Equal(suite.T(), ErrUserTypeNotAllowed.Error.DefaultValue, result.Error.Error.DefaultValue)
 	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeByName")
 }
 
@@ -385,7 +385,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_NoAllowedUserTypes() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "Self-registration not available for this application", result.FailureReason)
+	assert.Equal(suite.T(), ErrSelfRegNotAvailableForApp.Error.DefaultValue, result.Error.Error.DefaultValue)
 	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeByName")
 }
 
@@ -612,7 +612,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserTypeProvidedInInput_Self
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "Self-registration not enabled for the user type", result.FailureReason)
+	assert.Equal(suite.T(), ErrSelfRegDisabledForUserType.Error.DefaultValue, result.Error.Error.DefaultValue)
 	suite.mockEntityTypeService.AssertExpectations(suite.T())
 }
 
@@ -645,7 +645,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_SingleAllowedUserType_SelfRe
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "Self-registration not enabled for the user type", result.FailureReason)
+	assert.Equal(suite.T(), ErrSelfRegDisabledForUserType.Error.DefaultValue, result.Error.Error.DefaultValue)
 	suite.mockEntityTypeService.AssertExpectations(suite.T())
 }
 
@@ -740,7 +740,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_MultipleAllowedUserTypes_NoS
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "Self-registration not available for this application", result.FailureReason)
+	assert.Equal(suite.T(), ErrSelfRegNotAvailableForApp.Error.DefaultValue, result.Error.Error.DefaultValue)
 	suite.mockEntityTypeService.AssertExpectations(suite.T())
 }
 
@@ -879,7 +879,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_RegistrationFlow_NodeAllowed
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "No valid user types available for this flow", result.FailureReason)
+	assert.Equal(suite.T(), ErrNoValidUserTypes.Error.DefaultValue, result.Error.Error.DefaultValue)
 }
 
 func (suite *UserTypeResolverTestSuite) TestExecute_RegistrationFlow_NodeAllowedUserTypes_InputValidation() {
@@ -907,7 +907,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_RegistrationFlow_NodeAllowed
 	// "partner" is in application allowed but NOT in node allowed, so resolveUserTypeFromInput
 	// won't find it in the filtered allowed list
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "Application does not allow registration for the user type", result.FailureReason)
+	assert.Equal(suite.T(), ErrUserTypeNotAllowed.Error.DefaultValue, result.Error.Error.DefaultValue)
 }
 
 func (suite *UserTypeResolverTestSuite) TestGetEntityTypeAndOU_Success() {
@@ -1035,7 +1035,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_UserTypeP
 	assert.NoError(suite.T(), err) // Logic returns ExecFailure, not error
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "Invalid user type", result.FailureReason)
+	assert.Equal(suite.T(), ErrInvalidUserType.Error.DefaultValue, result.Error.Error.DefaultValue)
 
 	suite.mockEntityTypeService.AssertExpectations(suite.T())
 }
@@ -1062,7 +1062,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserTyp
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "No user types available", result.FailureReason)
+	assert.Equal(suite.T(), ErrNoUserTypesAvailable.Error.DefaultValue, result.Error.Error.DefaultValue)
 }
 
 func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserType_SchemaListError() {
@@ -1087,7 +1087,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserTyp
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "Failed to retrieve user types", result.FailureReason)
+	assert.Equal(suite.T(), ErrUserTypeRetrievalFailed.Error.DefaultValue, result.Error.Error.DefaultValue)
 }
 
 func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_NoUserType_SingleSchema_AutoSelect() {
@@ -1247,7 +1247,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "No valid user types available for this flow", result.FailureReason)
+	assert.Equal(suite.T(), ErrNoValidUserTypes.Error.DefaultValue, result.Error.Error.DefaultValue)
 }
 
 func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUserTypes_InputNotInAllowed() {
@@ -1268,7 +1268,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUs
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "User type not allowed for this flow", result.FailureReason)
+	assert.Equal(suite.T(), ErrUserTypeNotAllowed.Error.DefaultValue, result.Error.Error.DefaultValue)
 }
 
 func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboardingFlow_AllowedUserTypes_InputInAllowed() {
@@ -1305,7 +1305,7 @@ func (suite *UserTypeResolverTestSuite) TestPromptUserSelection_ForwardsInputsIn
 		ForwardedData: map[string]interface{}{},
 	}
 
-	suite.executor.promptUserSelection(execResp, options)
+	suite.executor.promptUserSelection(context.Background(), execResp, options)
 
 	// Verify status and inputs are set
 	assert.Equal(suite.T(), common.ExecUserInputRequired, execResp.Status)
@@ -1334,7 +1334,7 @@ func (suite *UserTypeResolverTestSuite) TestPromptUserSelection_WithEmptyOptions
 		ForwardedData: map[string]interface{}{},
 	}
 
-	suite.executor.promptUserSelection(execResp, options)
+	suite.executor.promptUserSelection(context.Background(), execResp, options)
 
 	// Verify status is set
 	assert.Equal(suite.T(), common.ExecUserInputRequired, execResp.Status)
@@ -1361,7 +1361,7 @@ func (suite *UserTypeResolverTestSuite) TestPromptUserSelection_PreservesExistin
 		},
 	}
 
-	suite.executor.promptUserSelection(execResp, options)
+	suite.executor.promptUserSelection(context.Background(), execResp, options)
 
 	// Verify existing ForwardedData is preserved
 	assert.NotNil(suite.T(), execResp.ForwardedData)
@@ -1438,7 +1438,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_UserT
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "User type is not valid for the selected organization unit", result.FailureReason)
+	assert.Equal(suite.T(), ErrUserTypeNotValidForOU.Error.DefaultValue, result.Error.Error.DefaultValue)
 	suite.mockOUService.AssertExpectations(suite.T())
 }
 
@@ -1585,7 +1585,7 @@ func (suite *UserTypeResolverTestSuite) TestExecute_UserOnboarding_OUFirst_AllSc
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, result.Status)
-	assert.Equal(suite.T(), "No valid user types available for this flow", result.FailureReason)
+	assert.Equal(suite.T(), ErrNoValidUserTypes.Error.DefaultValue, result.Error.Error.DefaultValue)
 	suite.mockOUService.AssertExpectations(suite.T())
 }
 

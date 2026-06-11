@@ -187,6 +187,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
                 replacements: {
                   '{{ConsoleUrl}}': productConfig.local.consoleUrl,
                   '{{WayFinderSampleUrl}}': productConfig.local.samples.wayfinderUrl,
+                  '{{WayFinderMailUrl}}': productConfig.local.samples.wayfinderMailUrl,
                 },
               },
             ],
@@ -281,8 +282,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       darkTheme: prismThemes.nightOwl,
     },
     algolia: {
-      appId: 'I2J00F96K6',
-      apiKey: '109b36a4b48dc5da1f24d1f764e7685f',
+      appId: 'PML8PAKD9O',
+      apiKey: '04e88f06bc04c51b7f246d180438cf25',
       indexName: 'thunderid-docs-prod',
     },
   } satisfies Preset.ThemeConfig,

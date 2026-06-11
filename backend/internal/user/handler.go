@@ -19,6 +19,7 @@
 package user
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -56,7 +57,7 @@ func (uh *userHandler) HandleUserListRequest(w http.ResponseWriter, r *http.Requ
 
 	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
@@ -66,7 +67,7 @@ func (uh *userHandler) HandleUserListRequest(w http.ResponseWriter, r *http.Requ
 
 	filters, svcErr := parseFilterParams(r.URL.Query())
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
@@ -76,13 +77,13 @@ func (uh *userHandler) HandleUserListRequest(w http.ResponseWriter, r *http.Requ
 	// Get the user list using the user service.
 	userListResponse, svcErr := uh.userService.GetUserList(ctx, limit, offset, filters, includeDisplay)
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, userListResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, userListResponse)
 
-	logger.Debug("Successfully listed users with pagination",
+	logger.Debug(ctx, "Successfully listed users with pagination",
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", userListResponse.TotalResults),
 		log.Int("count", userListResponse.Count),
@@ -101,7 +102,7 @@ func (uh *userHandler) HandleUserPostRequest(w http.ResponseWriter, r *http.Requ
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
@@ -114,14 +115,14 @@ func (uh *userHandler) HandleUserPostRequest(w http.ResponseWriter, r *http.Requ
 	// Create the user using the user service.
 	createdUser, svcErr := uh.userService.CreateUser(ctx, user)
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusCreated, createdUser)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, createdUser)
 
 	// Log the user creation response.
-	logger.Debug("User POST response sent", log.MaskedString(log.LoggerKeyUserID, createdUser.ID))
+	logger.Debug(ctx, "User POST response sent", log.MaskedString(log.LoggerKeyUserID, createdUser.ID))
 }
 
 // HandleUserGetRequest handles the user request.
@@ -136,7 +137,7 @@ func (uh *userHandler) HandleUserGetRequest(w http.ResponseWriter, r *http.Reque
 			Message:     ErrorMissingUserID.Error,
 			Description: ErrorMissingUserID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
@@ -146,14 +147,14 @@ func (uh *userHandler) HandleUserGetRequest(w http.ResponseWriter, r *http.Reque
 	// Get the user using the user service.
 	user, svcErr := uh.userService.GetUser(ctx, id, includeDisplay)
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, user)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, user)
 
 	// Log the user response.
-	logger.Debug("User GET response sent", log.MaskedString(log.LoggerKeyUserID, id))
+	logger.Debug(ctx, "User GET response sent", log.MaskedString(log.LoggerKeyUserID, id))
 }
 
 // HandleUserGroupsGetRequest handles the get user groups request.
@@ -163,13 +164,13 @@ func (ah *userHandler) HandleUserGroupsGetRequest(w http.ResponseWriter, r *http
 
 	id := r.PathValue("id")
 	if id == "" {
-		handleError(w, &ErrorMissingUserID)
+		handleError(ctx, w, &ErrorMissingUserID)
 		return
 	}
 
 	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
@@ -179,13 +180,13 @@ func (ah *userHandler) HandleUserGroupsGetRequest(w http.ResponseWriter, r *http
 
 	groupListResponse, svcErr := ah.userService.GetUserGroups(ctx, id, limit, offset)
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, groupListResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, groupListResponse)
 
-	logger.Debug("Successfully retrieved user groups", log.MaskedString(log.LoggerKeyUserID, id),
+	logger.Debug(ctx, "Successfully retrieved user groups", log.MaskedString(log.LoggerKeyUserID, id),
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", groupListResponse.TotalResults),
 		log.Int("count", groupListResponse.Count))
@@ -203,7 +204,7 @@ func (uh *userHandler) HandleUserPutRequest(w http.ResponseWriter, r *http.Reque
 			Message:     ErrorMissingUserID.Error,
 			Description: ErrorMissingUserID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
@@ -214,7 +215,7 @@ func (uh *userHandler) HandleUserPutRequest(w http.ResponseWriter, r *http.Reque
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 	updateRequest.ID = id
@@ -222,14 +223,14 @@ func (uh *userHandler) HandleUserPutRequest(w http.ResponseWriter, r *http.Reque
 	// Update the user using the user service.
 	user, svcErr := uh.userService.UpdateUser(ctx, id, updateRequest)
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, user)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, user)
 
 	// Log the user response.
-	logger.Debug("User PUT response sent", log.MaskedString(log.LoggerKeyUserID, id))
+	logger.Debug(ctx, "User PUT response sent", log.MaskedString(log.LoggerKeyUserID, id))
 }
 
 // HandleUserDeleteRequest handles the delete user request.
@@ -244,21 +245,21 @@ func (uh *userHandler) HandleUserDeleteRequest(w http.ResponseWriter, r *http.Re
 			Message:     ErrorMissingUserID.Error,
 			Description: ErrorMissingUserID.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	// Delete the user using the user service.
 	svcErr := uh.userService.DeleteUser(ctx, id)
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusNoContent, nil)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 
 	// Log the user response.
-	logger.Debug("User DELETE response sent", log.MaskedString(log.LoggerKeyUserID, id))
+	logger.Debug(ctx, "User DELETE response sent", log.MaskedString(log.LoggerKeyUserID, id))
 }
 
 // HandleUserListByPathRequest handles the list users by OU path request.
@@ -273,7 +274,7 @@ func (uh *userHandler) HandleUserListByPathRequest(w http.ResponseWriter, r *htt
 
 	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
@@ -283,7 +284,7 @@ func (uh *userHandler) HandleUserListByPathRequest(w http.ResponseWriter, r *htt
 
 	filters, svcErr := parseFilterParams(r.URL.Query())
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
@@ -292,13 +293,13 @@ func (uh *userHandler) HandleUserListByPathRequest(w http.ResponseWriter, r *htt
 
 	userListResponse, svcErr := uh.userService.GetUsersByPath(ctx, path, limit, offset, filters, includeDisplay)
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, userListResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, userListResponse)
 
-	logger.Debug("Successfully listed users by path", log.String("path", path),
+	logger.Debug(ctx, "Successfully listed users by path", log.String("path", path),
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", userListResponse.TotalResults),
 		log.Int("count", userListResponse.Count),
@@ -325,19 +326,20 @@ func (uh *userHandler) HandleUserPostByPathRequest(w http.ResponseWriter, r *htt
 				DefaultValue: "Failed to parse request body: " + err.Error(),
 			},
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
 		return
 	}
 
 	user, svcErr := uh.userService.CreateUserByPath(ctx, path, *createRequest)
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusCreated, user)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, user)
 
-	logger.Debug("Successfully created user by path", log.String("path", path), log.String("userType", user.Type))
+	logger.Debug(ctx, "Successfully created user by path",
+		log.String("path", path), log.String("userType", user.Type))
 }
 
 // HandleSelfUserGetRequest handles the self user retrieval.
@@ -347,7 +349,7 @@ func (uh *userHandler) HandleSelfUserGetRequest(w http.ResponseWriter, r *http.R
 
 	userID := security.GetSubject(ctx)
 	if strings.TrimSpace(userID) == "" {
-		handleError(w, &ErrorAuthenticationFailed)
+		handleError(ctx, w, &ErrorAuthenticationFailed)
 		return
 	}
 
@@ -356,13 +358,13 @@ func (uh *userHandler) HandleSelfUserGetRequest(w http.ResponseWriter, r *http.R
 
 	user, svcErr := uh.userService.GetUser(ctx, userID, includeDisplay)
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, user)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, user)
 
-	logger.Debug("Self user GET response sent", log.MaskedString(log.LoggerKeyUserID, userID))
+	logger.Debug(ctx, "Self user GET response sent", log.MaskedString(log.LoggerKeyUserID, userID))
 }
 
 // HandleSelfUserPutRequest handles the self user update.
@@ -372,30 +374,30 @@ func (uh *userHandler) HandleSelfUserPutRequest(w http.ResponseWriter, r *http.R
 
 	userID := security.GetSubject(ctx)
 	if strings.TrimSpace(userID) == "" {
-		handleError(w, &ErrorAuthenticationFailed)
+		handleError(ctx, w, &ErrorAuthenticationFailed)
 		return
 	}
 
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateSelfUserRequest](r)
 	if err != nil {
-		handleError(w, &ErrorInvalidRequestFormat)
+		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
 	if updateRequest == nil || len(updateRequest.Attributes) == 0 {
-		handleError(w, &ErrorInvalidRequestFormat)
+		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
 	updatedUser, svcErr := uh.userService.UpdateUserAttributes(ctx, userID, updateRequest.Attributes)
 	if svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, updatedUser)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, updatedUser)
 
-	logger.Debug("Self user PUT response sent", log.MaskedString(log.LoggerKeyUserID, userID))
+	logger.Debug(ctx, "Self user PUT response sent", log.MaskedString(log.LoggerKeyUserID, userID))
 }
 
 // HandleSelfUserCredentialUpdateRequest handles the credential update for the authenticated user.
@@ -405,28 +407,29 @@ func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWrit
 
 	userID := security.GetSubject(ctx)
 	if strings.TrimSpace(userID) == "" {
-		handleError(w, &ErrorAuthenticationFailed)
+		handleError(ctx, w, &ErrorAuthenticationFailed)
 		return
 	}
 
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateSelfUserRequest](r)
 	if err != nil {
-		handleError(w, &ErrorInvalidRequestFormat)
+		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
 
 	if updateRequest == nil || len(updateRequest.Attributes) == 0 || string(updateRequest.Attributes) == "{}" {
-		handleError(w, &ErrorMissingCredentials)
+		handleError(ctx, w, &ErrorMissingCredentials)
 		return
 	}
 
 	if svcErr := uh.userService.UpdateUserCredentials(ctx, userID, updateRequest.Attributes); svcErr != nil {
-		handleError(w, svcErr)
+		handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusNoContent, nil)
-	logger.Debug("Self user credential update response sent", log.MaskedString(log.LoggerKeyUserID, userID))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+	logger.Debug(ctx, "Self user credential update response sent",
+		log.MaskedString(log.LoggerKeyUserID, userID))
 }
 
 // parsePaginationParams parses limit and offset query parameters from the request.
@@ -458,7 +461,7 @@ func parsePaginationParams(query url.Values) (int, int, *serviceerror.ServiceErr
 }
 
 // handleError handles service errors and writes appropriate HTTP responses.
-func handleError(w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func handleError(ctx context.Context, w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
 	var statusCode int
 	if svcErr.Type == serviceerror.ClientErrorType {
 		switch svcErr.Code {
@@ -491,7 +494,7 @@ func handleError(w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
 		Description: svcErr.ErrorDescription,
 	}
 
-	sysutils.WriteErrorResponse(w, statusCode, errResp)
+	sysutils.WriteErrorResponse(ctx, w, statusCode, errResp)
 }
 
 // extractAndValidatePath extracts and validates the path parameter from the request.
@@ -503,7 +506,7 @@ func extractAndValidatePath(w http.ResponseWriter, r *http.Request) (string, boo
 			Message:     ErrorHandlePathRequired.Error,
 			Description: ErrorHandlePathRequired.ErrorDescription,
 		}
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, errResp)
+		sysutils.WriteErrorResponse(r.Context(), w, http.StatusBadRequest, errResp)
 		return "", true
 	}
 	return path, false

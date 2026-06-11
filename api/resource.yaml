@@ -59,6 +59,7 @@ paths:
                     description: "Handles all booking operations"
                     handle: "booking-system"
                     identifier: "https://api.example.com/booking"
+                    type: "API"
                     ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                     delimiter: ":"
                   - id: "257e528f-eb24-48b6-884d-20460e190957"
@@ -66,6 +67,7 @@ paths:
                     description: "Property and facility management"
                     handle: "property-mgmt"
                     identifier: "https://api.example.com/property"
+                    type: "CUSTOM"
                     ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                     delimiter: ":"
                 links:
@@ -153,6 +155,7 @@ paths:
                 description: "Handles all booking operations"
                 handle: "booking-system"
                 identifier: "https://api.example.com/booking"
+                type: "CUSTOM"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                 delimiter: ":"
         "400":
@@ -280,6 +283,7 @@ paths:
                 description: "Handles all booking operations"
                 handle: "booking-system"
                 identifier: "https://api.example.com/booking"
+                type: "API"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                 delimiter: ":"
         "400":
@@ -362,6 +366,7 @@ paths:
                 description: "Updated description for booking operations"
                 handle: "booking-system"
                 identifier: "https://api.example.com/booking/v2"
+                type: "API"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                 delimiter: ":"
         "400":
@@ -2219,7 +2224,7 @@ components:
   schemas:
     ResourceServer:
       type: object
-      required: [id, name, handle, ouId, delimiter]
+      required: [id, name, handle, type, ouId, delimiter]
       properties:
         id:
           type: string
@@ -2239,6 +2244,10 @@ components:
           type: string
           nullable: true
           description: Optional identifier for this resource server. Must be unique in the system if provided. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows and the identifier is used as the access token audience claim value.
+        type:
+          type: string
+          enum: [API, MCP, CUSTOM]
+          description: Immutable type of the resource server (metadata only). Defaults to CUSTOM when not provided at creation.
         ouId:
           type: string
           format: uuid
@@ -2266,6 +2275,10 @@ components:
         identifier:
           type: string
           description: Optional identifier for this resource server. Must be unique in the system if provided. When set to an absolute URI, the resource server is used in RFC 8707 resource indicator flows and clients can use this value in the resource parameter to request audience-restricted access tokens.
+        type:
+          type: string
+          enum: [API, MCP, CUSTOM]
+          description: Optional immutable type of the resource server (metadata only). Defaults to CUSTOM when not provided.
         ouId:
           type: string
           format: uuid

@@ -618,6 +618,34 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithoutDPoPJkt
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithActorSub() {
+	ctx := &RefreshTokenBuildContext{
+		ClientID:             "test-client",
+		Scopes:               []string{"read"},
+		GrantType:            string(constants.GrantTypeAuthorizationCode),
+		AccessTokenSubject:   "user123",
+		AccessTokenAudiences: []string{"app123"},
+		OAuthApp:             suite.oauthApp,
+		ActorSub:             "act-entity-id",
+	}
+
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything,
+		"test-client",
+		"https://example.com",
+		int64(3600),
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			return claims["act_sub"] == "act-entity-id"
+		}), mock.Anything, mock.Anything,
+	).Return(testRefreshToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildRefreshToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
 func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_Success_WithoutUserAttributes() {
 	ctx := &RefreshTokenBuildContext{
 		ClientID:             "test-client",
@@ -1198,6 +1226,54 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_CustomValidityPerio
 	suite.mockJWTService.AssertExpectations(suite.T())
 }
 
+func (suite *TokenBuilderTestSuite) TestBuildIDToken_NeverIncludesActClaim() {
+	oauthAppOptedIntoActor := &inboundmodel.OAuthClient{
+		ClientID: "test-client",
+		Token: &inboundmodel.OAuthTokenConfig{
+			IDToken: &inboundmodel.IDTokenConfig{
+				ValidityPeriod: 3600,
+				UserAttributes: []string{"name", "email"},
+			},
+		},
+		ScopeClaims: map[string][]string{
+			"profile": {"name", "email"},
+		},
+	}
+
+	ctx := &IDTokenBuildContext{
+		Subject:  "user123",
+		Audience: "app123",
+		Scopes:   []string{"openid", "profile"},
+		UserAttributes: map[string]interface{}{
+			"sub":   "user123",
+			"name":  testUserName,
+			"email": "john@example.com",
+		},
+		AuthTime: time.Now().Unix(),
+		OAuthApp: oauthAppOptedIntoActor,
+	}
+
+	var capturedClaims map[string]interface{}
+	suite.mockJWTService.On("GenerateJWT",
+		mock.Anything,
+		"user123",
+		"https://example.com",
+		int64(3600),
+		mock.MatchedBy(func(claims map[string]interface{}) bool {
+			capturedClaims = claims
+			return true
+		}), mock.Anything, mock.Anything,
+	).Return(testIDToken, time.Now().Unix(), nil)
+
+	result, err := suite.builder.BuildIDToken(context.Background(), ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	_, hasAct := capturedClaims["act"]
+	assert.False(suite.T(), hasAct, "ID token claims must never include the act actor claim")
+	suite.mockJWTService.AssertExpectations(suite.T())
+}
+
 func (suite *TokenBuilderTestSuite) TestBuildIDToken_Error_NilContext() {
 	result, err := suite.builder.BuildIDToken(context.Background(), nil)
 
@@ -1260,7 +1336,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_WithEncryption_Inli
 	const encryptedJWE = "a.b.c.d.e"
 
 	mockJWE.On("Encrypt",
-		mock.MatchedBy(func(payload []byte) bool {
+		mock.Anything, mock.MatchedBy(func(payload []byte) bool {
 			// Payload must be the signed JWS — three dot-separated parts.
 			return strings.Count(string(payload), ".") == 2
 		}),
@@ -1376,7 +1452,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Error_EncryptionFailed() {
 	}
 	mockJWE := jwemock.NewJWEServiceInterfaceMock(suite.T())
 	mockJWE.On("Encrypt",
-		mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
 		jwe.KeyEncAlgorithm("RSA-OAEP-256"),
 		jwe.ContentEncAlgorithm("A256GCM"),
 		"JWT",
@@ -1443,7 +1519,7 @@ func (suite *TokenBuilderTestSuite) TestBuildIDToken_Success_WithEncryption_JWKS
 
 	mockJWE := jwemock.NewJWEServiceInterfaceMock(suite.T())
 	mockJWE.On("Encrypt",
-		mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
 		jwe.KeyEncAlgorithm("RSA-OAEP-256"),
 		jwe.ContentEncAlgorithm("A256GCM"),
 		"JWT",

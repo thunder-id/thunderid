@@ -19,6 +19,8 @@
 package observability
 
 import (
+	"context"
+
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -41,13 +43,16 @@ import (
 func Initialize() ObservabilityServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
-	logger.Debug("Initializing observability service")
+	// Service construction runs during application startup, outside any request.
+	ctx := context.Background()
+
+	logger.Debug(ctx, "Initializing observability service")
 
 	// Get configuration
 	cfg := config.GetServerRuntime().Config.Observability
 
 	if !cfg.Enabled {
-		logger.Debug("Observability is disabled in configuration")
+		logger.Debug(ctx, "Observability is disabled in configuration")
 		// Return a disabled service (handles all operations as no-ops)
 		return &Service{
 			logger: logger,
@@ -60,7 +65,7 @@ func Initialize() ObservabilityServiceInterface {
 
 	// Log initialization status
 	activeSubscribers := svc.GetActiveSubscribers()
-	logger.Debug("Observability service initialized successfully",
+	logger.Debug(ctx, "Observability service initialized successfully",
 		log.Int("activeSubscribers", len(activeSubscribers)))
 
 	return svc

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -19,6 +19,8 @@
 package core
 
 import (
+	"encoding/json"
+
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -84,10 +86,10 @@ func newTaskExecutionNode(id string, properties map[string]interface{}, isStartN
 // Execute executes the node's executor.
 func (n *taskExecutionNode) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Executing task execution node")
+	logger.Debug(ctx.Context, "Executing task execution node")
 
 	if n.executor == nil {
-		logger.Error("No executor configured for the node")
+		logger.Error(ctx.Context, "No executor configured for the node")
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -115,7 +117,7 @@ func (n *taskExecutionNode) Execute(ctx *NodeContext) (*common.NodeResponse, *se
 		if n.onSuccess != "" {
 			nodeResp.NextNodeID = n.onSuccess
 		}
-	} else if nodeResp.FailureReason != "" && n.onFailure != "" {
+	} else if nodeResp.Error != nil && n.onFailure != "" {
 		// Change status to Forward so engine forwards execution to onFailure node
 		nodeResp.Status = common.NodeStatusForward
 		nodeResp.NextNodeID = n.onFailure
@@ -124,7 +126,9 @@ func (n *taskExecutionNode) Execute(ctx *NodeContext) (*common.NodeResponse, *se
 		if nodeResp.RuntimeData == nil {
 			nodeResp.RuntimeData = make(map[string]string)
 		}
-		nodeResp.RuntimeData["failureReason"] = nodeResp.FailureReason
+		if jsonBytes, err := json.Marshal(nodeResp.Error); err == nil {
+			nodeResp.RuntimeData["failureReasonJSON"] = string(jsonBytes)
+		}
 
 		// Clear user inputs consumed by this executor
 		for _, input := range n.inputs {
@@ -137,11 +141,13 @@ func (n *taskExecutionNode) Execute(ctx *NodeContext) (*common.NodeResponse, *se
 		nodeResp.NextNodeID = n.onIncomplete
 
 		// Propagate failure reason if present
-		if nodeResp.FailureReason != "" {
+		if nodeResp.Error != nil {
 			if nodeResp.RuntimeData == nil {
 				nodeResp.RuntimeData = make(map[string]string)
 			}
-			nodeResp.RuntimeData["failureReason"] = nodeResp.FailureReason
+			if jsonBytes, err := json.Marshal(nodeResp.Error); err == nil {
+				nodeResp.RuntimeData["failureReasonJSON"] = string(jsonBytes)
+			}
 
 			// Clear user inputs consumed by this executor
 			for _, input := range n.inputs {
@@ -152,7 +158,7 @@ func (n *taskExecutionNode) Execute(ctx *NodeContext) (*common.NodeResponse, *se
 		len(nodeResp.Inputs) == 0 {
 		// Executor returned INCOMPLETE+VIEW with no inputs — broken executor implementation.
 		// There is nothing for the client to act on; surface as a server error.
-		logger.Error("Executor returned INCOMPLETE with VIEW type but no inputs")
+		logger.Error(ctx.Context, "Executor returned INCOMPLETE with VIEW type but no inputs")
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -184,11 +190,11 @@ func (n *taskExecutionNode) triggerExecutor(ctx *NodeContext, logger *log.Logger
 	*common.ExecutorResponse, *serviceerror.ServiceError) {
 	execResp, err := n.executor.Execute(ctx)
 	if err != nil {
-		logger.Error("Error executing node executor", log.Error(err))
+		logger.Error(ctx.Context, "Error executing node executor", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	if execResp == nil {
-		logger.Error("Executor returned a nil response")
+		logger.Error(ctx.Context, "Executor returned a nil response")
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -198,7 +204,7 @@ func (n *taskExecutionNode) triggerExecutor(ctx *NodeContext, logger *log.Logger
 // buildNodeResponse constructs a NodeResponse from the ExecutorResponse.
 func (n *taskExecutionNode) buildNodeResponse(execResp *common.ExecutorResponse) *common.NodeResponse {
 	nodeResp := &common.NodeResponse{
-		FailureReason:     execResp.FailureReason,
+		Error:             execResp.Error,
 		Inputs:            execResp.Inputs,
 		AdditionalData:    execResp.AdditionalData,
 		RedirectURL:       execResp.RedirectURL,

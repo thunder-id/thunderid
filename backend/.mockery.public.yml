@@ -116,6 +116,21 @@ packages:
       pkgname: granthandlersmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba:
+    interfaces:
+      CIBARequestStoreInterface:
+        config:
+          dir: tests/mocks/oauth/oauth2/cibamock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: cibamock
+          filename: "{{.InterfaceName}}_mock.go"
+      CIBAServiceInterface:
+        config:
+          dir: tests/mocks/oauth/oauth2/cibamock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: cibamock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop:
     config:
       all: true
@@ -402,7 +417,7 @@ packages:
       pkgname: rolemock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/thunder-id/thunderid/internal/observability:
+  github.com/thunder-id/thunderid/internal/system/observability:
     config:
       all: true
       dir: tests/mocks/observability/observabilitymock
@@ -410,7 +425,7 @@ packages:
       pkgname: observabilitymock
       filename: "{{.InterfaceName}}_mock.go"
 
-  github.com/thunder-id/thunderid/internal/observability/adapter:
+  github.com/thunder-id/thunderid/internal/system/observability/adapter:
     config:
       all: true
       dir: tests/mocks/observability/adaptermock

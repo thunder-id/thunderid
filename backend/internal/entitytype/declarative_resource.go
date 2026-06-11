@@ -91,7 +91,7 @@ func (e *entityTypeExporter) GetResourceByID(ctx context.Context, id string) (
 }
 
 // ValidateResource validates a entity type resource.
-func (e *entityTypeExporter) ValidateResource(
+func (e *entityTypeExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	schema, ok := resource.(*EntityType)
@@ -99,7 +99,7 @@ func (e *entityTypeExporter) ValidateResource(
 		return "", declarativeresource.CreateTypeError(resourceTypeEntityType, id)
 	}
 
-	err := declarativeresource.ValidateResourceName(
+	err := declarativeresource.ValidateResourceName(ctx,
 		schema.Name, resourceTypeEntityType, id, "SCHEMA_VALIDATION_ERROR", logger,
 	)
 	if err != nil {
@@ -107,7 +107,7 @@ func (e *entityTypeExporter) ValidateResource(
 	}
 
 	if len(schema.Schema) == 0 {
-		logger.Warn("Entity type has no schema definition",
+		logger.Warn(ctx, "Entity type has no schema definition",
 			log.String("schemaID", id), log.String("name", schema.Name))
 	}
 

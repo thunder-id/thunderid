@@ -87,6 +87,32 @@ describe('generateFallbackSignUpUrl', () => {
       expect(result).not.toContain('?');
     });
 
+    it('should strip authId and executionId from the query parameters', () => {
+      import.meta.env.BASE_URL = '/gate/';
+      const params = new URLSearchParams({
+        client_id: 'abc',
+        authId: '123',
+        executionId: '456',
+        redirect_uri: 'https://example.com/callback',
+      });
+      const result = generateFallbackSignUpUrl(params);
+
+      expect(result).toContain('/gate/signup?');
+      expect(result).toContain('client_id=abc');
+      expect(result).toContain('redirect_uri=');
+      expect(result).not.toContain('authId=');
+      expect(result).not.toContain('executionId=');
+    });
+
+    it('should return the bare path when only authId and executionId are present', () => {
+      import.meta.env.BASE_URL = '/gate/';
+      const params = new URLSearchParams({authId: '123', executionId: '456'});
+      const result = generateFallbackSignUpUrl(params);
+
+      expect(result).toBe('/gate/signup');
+      expect(result).not.toContain('?');
+    });
+
     it('should return only the sign-up path when params are empty', () => {
       import.meta.env.BASE_URL = '/';
       const result = generateFallbackSignUpUrl(new URLSearchParams());

@@ -18,18 +18,8 @@
 
 import {useCreateTheme, useGetTheme, useGetThemes, type Theme} from '@thunderid/design';
 import {kebabCase} from '@thunderid/utils';
-import {
-  Alert,
-  Box,
-  Breadcrumbs,
-  Button,
-  CircularProgress,
-  IconButton,
-  LinearProgress,
-  Stack,
-  Typography,
-} from '@wso2/oxygen-ui';
-import {ChevronRight, X} from '@wso2/oxygen-ui-icons-react';
+import {Alert, Box, Button, CircularProgress, IconButton, LinearProgress, Stack} from '@wso2/oxygen-ui';
+import {X} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -37,6 +27,7 @@ import GatePreview from '../../../components/GatePreview/GatePreview';
 import ConfigureThemeColor from '../components/create-theme/ConfigureThemeColor';
 import ConfigureThemeName from '../components/create-theme/ConfigureThemeName';
 import buildThemeFromPrimaryColor from '../utils/buildThemeFromPrimaryColor';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 
 type ThemeCreateStep = 'NAME' | 'COLOR';
 
@@ -111,7 +102,7 @@ export default function ThemeCreatePage(): JSX.Element {
   };
 
   const handleClose = (): void => {
-    Promise.resolve(navigate('/design')).catch(() => null);
+    void navigate('/design');
   };
 
   const handleNext = (): void => {
@@ -195,20 +186,13 @@ export default function ThemeCreatePage(): JSX.Element {
               >
                 <X size={24} />
               </IconButton>
-              <Breadcrumbs separator={<ChevronRight size={16} />}>
-                {breadcrumbSteps.map((step, index, arr) => {
-                  const isLast = index === arr.length - 1;
-                  return isLast ? (
-                    <Typography key={step} variant="h5" color="text.primary">
-                      {STEPS[step].label}
-                    </Typography>
-                  ) : (
-                    <Typography key={step} variant="h5" onClick={() => setCurrentStep(step)} sx={{cursor: 'pointer'}}>
-                      {STEPS[step].label}
-                    </Typography>
-                  );
-                })}
-              </Breadcrumbs>
+              <AppBreadcrumbs
+                items={breadcrumbSteps.map((step, index, arr) => ({
+                  key: step,
+                  label: STEPS[step].label,
+                  onClick: index < arr.length - 1 ? () => setCurrentStep(step) : undefined,
+                }))}
+              />
             </Stack>
           </Box>
 

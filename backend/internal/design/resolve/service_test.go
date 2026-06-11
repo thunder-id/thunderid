@@ -163,6 +163,8 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_ApplicationHasNoDesign()
 }
 
 // Test ResolveDesign - Success with theme only
+//
+//nolint:dupl // Theme-only and layout-only resolution tests share the same structure with type-specific mocks.
 func (suite *ResolveServiceTestSuite) TestResolveDesign_SuccessWithThemeOnly() {
 	app := &appmodel.Application{
 		ID:   "00000000-0000-0000-0000-000000000001",
@@ -179,7 +181,7 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_SuccessWithThemeOnly() {
 	}
 
 	suite.mockAppService.On("GetApplication", mock.Anything, "00000000-0000-0000-0000-000000000001").Return(app, nil)
-	suite.mockThemeService.On("GetTheme", "theme-123").Return(themeConfig, nil)
+	suite.mockThemeService.On("GetTheme", mock.Anything, "theme-123").Return(themeConfig, nil)
 
 	result, err := suite.service.ResolveDesign(context.Background(), common.DesignResolveTypeAPP,
 		"00000000-0000-0000-0000-000000000001")
@@ -191,6 +193,8 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_SuccessWithThemeOnly() {
 }
 
 // Test ResolveDesign - Success with layout only
+//
+//nolint:dupl // Theme-only and layout-only resolution tests share the same structure with type-specific mocks.
 func (suite *ResolveServiceTestSuite) TestResolveDesign_SuccessWithLayoutOnly() {
 	app := &appmodel.Application{
 		ID:   "00000000-0000-0000-0000-000000000001",
@@ -207,7 +211,7 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_SuccessWithLayoutOnly() 
 	}
 
 	suite.mockAppService.On("GetApplication", mock.Anything, "00000000-0000-0000-0000-000000000001").Return(app, nil)
-	suite.mockLayoutService.On("GetLayout", "layout-123").Return(layoutConfig, nil)
+	suite.mockLayoutService.On("GetLayout", mock.Anything, "layout-123").Return(layoutConfig, nil)
 
 	result, err := suite.service.ResolveDesign(context.Background(), common.DesignResolveTypeAPP,
 		"00000000-0000-0000-0000-000000000001")
@@ -240,8 +244,8 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_SuccessWithBoth() {
 	}
 
 	suite.mockAppService.On("GetApplication", mock.Anything, "00000000-0000-0000-0000-000000000001").Return(app, nil)
-	suite.mockThemeService.On("GetTheme", "theme-123").Return(themeConfig, nil)
-	suite.mockLayoutService.On("GetLayout", "layout-123").Return(layoutConfig, nil)
+	suite.mockThemeService.On("GetTheme", mock.Anything, "theme-123").Return(themeConfig, nil)
+	suite.mockLayoutService.On("GetLayout", mock.Anything, "layout-123").Return(layoutConfig, nil)
 
 	result, err := suite.service.ResolveDesign(context.Background(), common.DesignResolveTypeAPP,
 		"00000000-0000-0000-0000-000000000001")
@@ -263,7 +267,7 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_ThemeNotFound() {
 		},
 	}
 	suite.mockAppService.On("GetApplication", mock.Anything, "00000000-0000-0000-0000-000000000001").Return(app, nil)
-	suite.mockThemeService.On("GetTheme", "theme-missing").
+	suite.mockThemeService.On("GetTheme", mock.Anything, "theme-missing").
 		Return(nil, &thememgt.ErrorThemeNotFound)
 
 	result, err := suite.service.ResolveDesign(context.Background(), common.DesignResolveTypeAPP,
@@ -289,7 +293,7 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_ThemeServiceError() {
 		Error: core.I18nMessage{Key: "error.test.unexpected_error", DefaultValue: "unexpected error"},
 	}
 	suite.mockAppService.On("GetApplication", mock.Anything, "00000000-0000-0000-0000-000000000001").Return(app, nil)
-	suite.mockThemeService.On("GetTheme", "theme-123").Return(nil, svcErr)
+	suite.mockThemeService.On("GetTheme", mock.Anything, "theme-123").Return(nil, svcErr)
 
 	result, err := suite.service.ResolveDesign(context.Background(), common.DesignResolveTypeAPP,
 		"00000000-0000-0000-0000-000000000001")
@@ -331,7 +335,7 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_LayoutNotFound() {
 		},
 	}
 	suite.mockAppService.On("GetApplication", mock.Anything, "00000000-0000-0000-0000-000000000001").Return(app, nil)
-	suite.mockLayoutService.On("GetLayout", "layout-missing").
+	suite.mockLayoutService.On("GetLayout", mock.Anything, "layout-missing").
 		Return(nil, &layoutmgt.ErrorLayoutNotFound)
 
 	result, err := suite.service.ResolveDesign(context.Background(), common.DesignResolveTypeAPP,
@@ -357,7 +361,7 @@ func (suite *ResolveServiceTestSuite) TestResolveDesign_LayoutServiceError() {
 		Error: core.I18nMessage{Key: "error.test.unexpected_error", DefaultValue: "unexpected error"},
 	}
 	suite.mockAppService.On("GetApplication", mock.Anything, "00000000-0000-0000-0000-000000000001").Return(app, nil)
-	suite.mockLayoutService.On("GetLayout", "layout-123").Return(nil, svcErr)
+	suite.mockLayoutService.On("GetLayout", mock.Anything, "layout-123").Return(nil, svcErr)
 
 	result, err := suite.service.ResolveDesign(context.Background(), common.DesignResolveTypeAPP,
 		"00000000-0000-0000-0000-000000000001")

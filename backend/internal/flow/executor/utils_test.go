@@ -204,6 +204,51 @@ func (s *UtilsTestSuite) TestIsAuthenticationWithoutLocalUserAllowed() {
 	}
 }
 
+func (s *UtilsTestSuite) TestFindInputByType() {
+	tests := []struct {
+		name        string
+		inputs      []common.Input
+		inputType   string
+		expected    common.Input
+		expectFound bool
+	}{
+		{
+			name:        "Empty inputs",
+			inputs:      []common.Input{},
+			inputType:   common.InputTypeEmail,
+			expected:    common.Input{},
+			expectFound: false,
+		},
+		{
+			name: "Type found",
+			inputs: []common.Input{
+				{Identifier: "mobile", Type: "phone"},
+				{Identifier: "workEmail", Type: common.InputTypeEmail},
+			},
+			inputType:   common.InputTypeEmail,
+			expected:    common.Input{Identifier: "workEmail", Type: common.InputTypeEmail},
+			expectFound: true,
+		},
+		{
+			name: "Type not found",
+			inputs: []common.Input{
+				{Identifier: "mobile", Type: "phone"},
+			},
+			inputType:   common.InputTypeEmail,
+			expected:    common.Input{},
+			expectFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			res, found := findInputByType(tt.inputs, tt.inputType)
+			s.Equal(tt.expectFound, found)
+			s.Equal(tt.expected, res)
+		})
+	}
+}
+
 func (s *UtilsTestSuite) TestIsRegistrationWithExistingUserAllowed() {
 	tests := []struct {
 		name       string
@@ -244,6 +289,55 @@ func (s *UtilsTestSuite) TestIsRegistrationWithExistingUserAllowed() {
 		s.Run(tt.name, func() {
 			ctx := &core.NodeContext{NodeProperties: tt.properties}
 			result := isRegistrationWithExistingUserAllowed(ctx)
+			s.Equal(tt.expected, result)
+		})
+	}
+}
+
+func (s *UtilsTestSuite) TestResolveInputIdentifierByType() {
+	tests := []struct {
+		name      string
+		ctx       *core.NodeContext
+		inputType string
+		fallback  string
+		expected  string
+	}{
+		{
+			name: "Type found in NodeInputs",
+			ctx: &core.NodeContext{
+				NodeInputs: []common.Input{
+					{Identifier: "customEmailIdentifier", Type: common.InputTypeEmail},
+				},
+			},
+			inputType: common.InputTypeEmail,
+			fallback:  "defaultEmail",
+			expected:  "customEmailIdentifier",
+		},
+		{
+			name: "Type not found, returns fallback",
+			ctx: &core.NodeContext{
+				NodeInputs: []common.Input{
+					{Identifier: "phone", Type: "mobile"},
+				},
+			},
+			inputType: common.InputTypeEmail,
+			fallback:  "defaultEmail",
+			expected:  "defaultEmail",
+		},
+		{
+			name: "Empty NodeInputs, returns fallback",
+			ctx: &core.NodeContext{
+				NodeInputs: []common.Input{},
+			},
+			inputType: common.InputTypeEmail,
+			fallback:  "defaultEmail",
+			expected:  "defaultEmail",
+		},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			result := resolveInputIdentifierByType(tt.ctx, tt.inputType, tt.fallback)
 			s.Equal(tt.expected, result)
 		})
 	}

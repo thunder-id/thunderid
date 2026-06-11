@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -85,7 +85,7 @@ func newBasicAuthExecutor(
 // Execute executes the basic authentication logic.
 func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := b.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Executing basic authentication executor")
+	logger.Debug(ctx.Context, "Executing basic authentication executor")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -110,7 +110,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 			return execResp, nil
 		}
 	} else if !b.HasRequiredInputs(ctx, execResp) {
-		logger.Debug("Required inputs for basic authentication executor is not provided")
+		logger.Debug(ctx.Context, "Required inputs for basic authentication executor is not provided")
 		execResp.Status = common.ExecUserInputRequired
 		return execResp, nil
 	}
@@ -121,7 +121,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 	authenticatedUser, err := b.getAuthenticatedUser(ctx, execResp)
 	if err != nil {
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Failed to authenticate user: " + err.Error()
+		execResp.Error = &ErrUserAuthFailed
 		return execResp, nil
 	}
 	if execResp.Status == common.ExecFailure || execResp.Status == common.ExecUserInputRequired {
@@ -129,7 +129,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 	}
 	if authenticatedUser == nil {
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Authenticated user not found."
+		execResp.Error = &ErrUserAuthFailed
 		return execResp, nil
 	}
 	if !authenticatedUser.IsAuthenticated && ctx.FlowType != common.FlowTypeRegistration {
@@ -139,14 +139,14 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 		} else {
 			execResp.Inputs = b.GetRequiredInputs(ctx)
 		}
-		execResp.FailureReason = "User authentication failed."
+		execResp.Error = &ErrInvalidCredentials
 		return execResp, nil
 	}
 
 	execResp.AuthenticatedUser = *authenticatedUser
 	execResp.Status = common.ExecComplete
 
-	logger.Debug("Basic authentication executor execution completed",
+	logger.Debug(ctx.Context, "Basic authentication executor execution completed",
 		log.String("status", string(execResp.Status)),
 		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
 
@@ -190,13 +190,14 @@ func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 
 	// For registration flows, only check if user exists.
 	if ctx.FlowType == common.FlowTypeRegistration {
-		_, err := b.IdentifyUser(userIdentifiers, execResp)
+		_, err := b.IdentifyUser(ctx.Context, userIdentifiers, execResp)
 		if err != nil {
 			return nil, err
 		}
 		if execResp.Status == common.ExecFailure {
-			if execResp.FailureReason == failureReasonUserNotFound {
-				logger.Debug("User not found for the provided attributes. Proceeding with registration flow.")
+			if execResp.Error != nil && execResp.Error.Code == ErrUserNotFound.Code {
+				logger.Debug(ctx.Context,
+					"User not found for the provided attributes. Proceeding with registration flow.")
 				execResp.Status = common.ExecComplete
 				return &authncm.AuthenticatedUser{
 					IsAuthenticated: false,
@@ -207,7 +208,7 @@ func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 		}
 		// User found - fail registration.
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "User already exists with the provided attributes."
+		execResp.Error = &ErrUserAlreadyExists
 		return nil, nil
 	}
 
@@ -222,17 +223,17 @@ func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 
 			switch svcErr.Code {
 			case authnprovidermgr.ErrorUserNotFound.Code:
-				execResp.FailureReason = failureReasonUserNotFound
+				execResp.Error = &ErrUserNotFound
 			case authnprovidermgr.ErrorAuthenticationFailed.Code:
-				execResp.FailureReason = failureReasonInvalidCredentials
+				execResp.Error = &ErrInvalidCredentials
 			default:
-				execResp.FailureReason = "Failed to authenticate user: " + svcErr.ErrorDescription.DefaultValue
+				execResp.Error = &ErrUserAuthFailed
 			}
 
 			return nil, nil
 		}
 
-		logger.Error("Failed to authenticate user",
+		logger.Error(ctx.Context, "Failed to authenticate user",
 			log.String("errorCode", svcErr.Code), log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 		return nil, errors.New("failed to authenticate user")
 	}
@@ -244,15 +245,15 @@ func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 
 	if err != nil {
 		if err.Code != entityprovider.ErrorCodeNotImplemented {
-			logger.Error("Failed to get user attributes", log.Error(err))
+			logger.Error(ctx.Context, "Failed to get user attributes", log.Error(err))
 			return nil, errors.New("failed to get user attributes")
 		}
-		logger.Debug("User provider is not implemented. User attributes will be empty.")
+		logger.Debug(ctx.Context, "User provider is not implemented. User attributes will be empty.")
 	}
 
 	if err == nil && user != nil && len(user.Attributes) > 0 {
 		if err := json.Unmarshal(user.Attributes, &userAttributes); err != nil {
-			logger.Error("Failed to unmarshal user attributes", log.Error(err))
+			logger.Error(ctx.Context, "Failed to unmarshal user attributes", log.Error(err))
 			return nil, errors.New("failed to unmarshal user attributes")
 		}
 	}

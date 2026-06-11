@@ -323,7 +323,11 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDTokenSuccess() {
 			setupMocks: func(idToken string, config *oauth.OAuthClientConfig) {
 				suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).
 					Return(config, nil).Once()
-				suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", idToken, config.OAuthEndpoints.JwksEndpoint).
+				suite.mockJWTService.On(
+					"VerifyJWTSignatureWithJWKS",
+					mock.Anything,
+					idToken,
+					config.OAuthEndpoints.JwksEndpoint).
 					Return(nil).Once()
 			},
 		},
@@ -350,7 +354,11 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDTokenSuccess() {
 			setupMocks: func(idToken string, config *oauth.OAuthClientConfig) {
 				suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).
 					Return(config, nil).Once()
-				suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", idToken, config.OAuthEndpoints.JwksEndpoint).
+				suite.mockJWTService.On(
+					"VerifyJWTSignatureWithJWKS",
+					mock.Anything,
+					idToken,
+					config.OAuthEndpoints.JwksEndpoint).
 					Return(nil).Once()
 			},
 		},
@@ -424,7 +432,11 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDTokenWithFailure() {
 	hostedDomainSetupMocks := func(idToken string, config *oauth.OAuthClientConfig) {
 		suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).
 			Return(config, nil).Once()
-		suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", idToken, config.OAuthEndpoints.JwksEndpoint).
+		suite.mockJWTService.On(
+			"VerifyJWTSignatureWithJWKS",
+			mock.Anything,
+			idToken,
+			config.OAuthEndpoints.JwksEndpoint).
 			Return(nil).Once()
 	}
 
@@ -482,7 +494,11 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestValidateIDTokenWithFailure() {
 			setupMocks: func(idToken string, config *oauth.OAuthClientConfig) {
 				suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).
 					Return(config, nil).Once()
-				suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", idToken, config.OAuthEndpoints.JwksEndpoint).
+				suite.mockJWTService.On(
+					"VerifyJWTSignatureWithJWKS",
+					mock.Anything,
+					idToken,
+					config.OAuthEndpoints.JwksEndpoint).
 					Return(&serviceerror.ServiceError{
 						Type: serviceerror.ServerErrorType,
 						Code: "SIGNATURE_VERIFICATION_FAILED",
@@ -769,9 +785,9 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestGetIDTokenClaimsSuccess() {
 		"sub":  "1234567890",
 		"name": "John Doe",
 	}
-	suite.mockOIDCService.On("GetIDTokenClaims", idToken).Return(claims, nil)
+	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).Return(claims, nil)
 
-	result, err := suite.service.GetIDTokenClaims(idToken)
+	result, err := suite.service.GetIDTokenClaims(context.Background(), idToken)
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal("1234567890", result["sub"])
@@ -797,9 +813,9 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestGetInternalUserSuccess() {
 		ID:   "user123",
 		Type: "person",
 	}
-	suite.mockOIDCService.On("GetInternalUser", sub).Return(user, nil)
+	suite.mockOIDCService.On("GetInternalUser", mock.Anything, sub).Return(user, nil)
 
-	result, err := suite.service.GetInternalUser(sub)
+	result, err := suite.service.GetInternalUser(context.Background(), sub)
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal(user.ID, result.ID)

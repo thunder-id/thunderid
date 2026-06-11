@@ -334,6 +334,7 @@ Executors are backend operation nodes. Each Executor performs one specific opera
 | **Attribute Collector** | Collects additional user attributes defined in the user type. | — |
 | **Validate Attribute Uniqueness** | Checks that unique attributes are not already registered. | User Type Resolver must have run |
 | **Set Credentials** | Sets credentials (e.g., password) for an existing user. | — |
+| **OpenID4VP Verify** | Initiates an OpenID4VP credential presentation request, returns a QR code and deep link for the user's wallet, and polls until the credential is verified. | OpenID4VP service configured in <ProductName /> |
 | **Authorization** | Evaluates authorization policies for the current user. | — |
 | **User Consent** | Records explicit user consent for defined scopes or terms. | — |
 | **Validate Permission** | Checks that the request has required scope/permissions. | — |
@@ -383,6 +384,7 @@ Each View node (Step or Widget) collects user input that must be read by a speci
 | **Continue with Google** (Widget) | Google | — | Redirect-based. The executor handles the OAuth redirect and reads the authorization code returned by Google. |
 | **Continue with GitHub** (Widget) | GitHub | — | Redirect-based. The executor handles the OAuth redirect and reads the authorization code returned by GitHub. |
 | **Blank View** (with attribute fields) | Attribute Collector | User must be authenticated | Use when collecting profile attributes required by the user type. The executor checks the user's existing attributes and prompts only for what is missing. |
+| **EUDI Wallet View** (Widget) | OpenID4VP Verify | OpenID4VP service configured | The executor initiates the request and surfaces QR code data. The view renders the QR code and polls until the wallet responds. |
 
 
 Some Executors run entirely in the background and do not need a preceding View to gather user input.
@@ -1880,13 +1882,13 @@ Executes an HTTP request to an external endpoint, optionally retries on failure,
 - **Policy evaluation:** Check an external policy engine before allowing flow continuation
 - **Custom business logic:** Delegate decision-making to a specialized service
 
-**Prerequisites:** None. Any context data referenced via `{{fieldName}}` placeholders in the URL or body must be available from prior executors at runtime.
+**Prerequisites:** None. Any context data referenced via `{{ context.fieldName }}` placeholders in the URL, headers, or body must be available from prior executors at runtime.
 
-**Input Configuration:** None. This executor is entirely configuration-driven; all settings are node properties.
+**Input Configuration:** This executor is entirely configuration-driven; all settings are node properties.
 
 **How it works:**
 1. Parses HTTP configuration from node properties (URL, method, headers, body, timeout)
-2. Resolves template placeholders in the URL and body using data from prior executors (e.g., `{{userId}}`, `{{email}}`)
+2. Resolves `{{ context.fieldName }}` placeholders in the URL, headers, and body using runtime data and user inputs from prior executors
 3. Sends the HTTP request with optional retry logic based on `errorHandling` config
 4. Maps response fields for downstream use based on `responseMapping` configuration
 5. Continues the flow (or fails based on error handling configuration)
@@ -1895,7 +1897,7 @@ Executes an HTTP request to an external endpoint, optionally retries on failure,
 
 | Property | UI Label | Required | Default | Description |
 |---|---|---|---|---|
-| `url` | URL | Yes | — | The endpoint URL (supports placeholders like `{{userId}}` from prior executors) |
+| `url` | URL | Yes | — | The endpoint URL (supports placeholders like `{{ context.userId }}`) |
 | `method` | Method | No | `GET` | HTTP method: GET, POST, PUT, DELETE, or PATCH |
 | `headers` | Headers | No | — | HTTP headers as a map of strings |
 | `body` | Request Body | No | — | Request body (JSON object, only for POST/PUT/PATCH) |
@@ -1904,6 +1906,22 @@ Executes an HTTP request to an external endpoint, optionally retries on failure,
 | `errorHandling.failOnError` | Fail on Error | No | `false` | Whether HTTP error status codes cause flow failure |
 | `errorHandling.retryCount` | Retry Count | No | 0 | Number of retries on failure (max 5) |
 | `errorHandling.retryDelay` | Retry Delay (ms) | No | 0 | Delay between retries in milliseconds (max 5000ms) |
+
+
+**Placeholder syntax:** Use `{{ context.fieldName }}` to reference data from the flow context. Placeholders are resolved from runtime data first, then user inputs. If a placeholder cannot be resolved, it is kept as-is in the request.
+
+The following fields are always available when the corresponding data exists in the flow context:
+
+| Placeholder | Source | Description |
+|---|---|---|
+| `{{ context.userId }}` | Authenticated user or runtime data | The authenticated user's ID. Available after any authentication or provisioning executor has run. |
+| `{{ context.ouId }}` | Authenticated user or runtime data | The organizational unit ID of the current user. Available after OU resolution or authentication. |
+| `{{ context.ouHandle }}` | OU service lookup | The handle of the resolved OU. Fetched automatically when referenced. |
+| `{{ context.ouName }}` | OU service lookup | The display name of the resolved OU. Fetched automatically when referenced. |
+| `{{ context.ouDescription }}` | OU service lookup | The description of the resolved OU. Fetched automatically when referenced. |
+| `{{ context.clientId }}` | OAuth flow context | The OAuth client ID of the application initiating the flow. Available in OAuth/OIDC authorization flows. |
+
+In addition to these fields, any value present in runtime data (set by prior executors) or user inputs (collected from prior Views) can be referenced using the same `{{ context.fieldName }}` syntax (e.g., `{{ context.email }}`, `{{ context.username }}`).
 
 **Failure conditions:**
 - URL not configured or invalid
@@ -1917,23 +1935,24 @@ Executes an HTTP request to an external endpoint, optionally retries on failure,
 
 ```json
 {
-  "id": "enrich_user",
+  "id": "publish_ou_event",
   "type": "TASK_EXECUTION",
   "properties": {
-    "url": "https://api.example.com/users/{{userId}}/enrich",
+    "url": "<webhook-url>",
     "method": "POST",
     "headers": {
-      "Authorization": "Bearer secret_token",
       "Content-Type": "application/json"
     },
     "body": {
-      "email": "{{email}}",
-      "locale": "en-US"
+      "event": "OU_CREATED",
+      "ouName": "{{ context.ouName }}",
+      "ouId": "{{ context.ouId }}",
+      "ouHandle": "{{ context.ouHandle }}"
     },
     "timeout": 5,
     "responseMapping": {
-      "department": "userDepartment",
-      "manager": "userManager"
+      "externalRef": "response.data.referenceId",
+      "statusCode": "response.status"
     },
     "errorHandling": {
       "failOnError": false,
@@ -1948,6 +1967,72 @@ Executes an HTTP request to an external endpoint, optionally retries on failure,
   "onFailure": "end"
 }
 ```
+
+</details>
+
+---
+
+#### Verifiable Credentials
+
+<details>
+<summary>OpenID4VP Verify</summary>
+
+Initiates an OpenID4VP presentation request and, on each subsequent poll, checks whether the user's wallet has responded with a verified credential. The executor handles the full initiate-and-poll lifecycle: on first execution it generates a QR code and deep link; on each re-entry it checks the request state until the credential is verified or the request expires.
+
+**When to use:** Any authentication flow that accepts a credential from a digital wallet (for example, an EUDI Wallet Personal Identification Data presentation). Place this executor in a TASK EXECUTION node and route its `onIncomplete` path to a View that renders the QR code and polls back.
+
+**Prerequisites:**
+- The OpenID4VP service must be configured in <ProductName /> with at least one presentation definition (see the [OpenID4VP protocol guide](/docs/next/guides/guides/protocols/openid4vc/openid4vp)).
+- A certificate-backed signing key and an ephemeral encryption key must be registered in the key store.
+
+**View pairing:** Use the **EUDI Wallet** widget (or manually pair with a custom View that renders `openid4vpWalletUri` as a QR code). The View must post back to the same TASK EXECUTION node to trigger the poll step.
+
+**Executor properties:**
+
+| Property | UI Label | Required | Default | Description |
+|---|---|---|---|---|
+| `presentation_definition_id` | Presentation Definition | No | `eudi-pid` | The identifier of the presentation definition to request. Must match a definition registered in the server configuration. |
+
+**Input Configuration:** None. The executor generates the request internally; no user inputs are required.
+
+**How it works:**
+
+1. On **first execution** (no state in runtime data): calls the OpenID4VP service to initiate a new request. Sets runtime data with the request state and surfaces the following additional data:
+   - `openid4vpWalletUri` — the `openid4vp://` authorization URI for the wallet (QR code target or deep link)
+   - `openid4vpClientId` — the verifier's `client_id`
+   - `openid4vpRequestUri` — the signed request object URI
+   Returns `INCOMPLETE` so the flow pauses at the View node.
+
+2. On **subsequent executions** (state present in runtime data): polls the request state. Returns `INCOMPLETE` again (re-emitting the QR data) if the wallet has not yet responded; completes the flow if the credential is verified; fails the flow if verification fails or the request expires.
+
+3. On **completion**: sets `AuthenticatedUser` with the verified holder's `subject` and all selectively disclosed credential claims, plus `openid4vp_issuer` and `openid4vp_vct` attributes. If an existing local account matches the disclosed attributes, `AuthenticatedUser.UserID` is populated automatically. If no existing local account is found, the runtime data `userEligibleForProvisioning` flag is set so a downstream **Provisioning** executor can create the account.
+
+**Example:**
+
+```json
+{
+  "id": "eudi_verify",
+  "type": "TASK_EXECUTION",
+  "properties": {
+    "presentation_definition_id": "eudi-pid"
+  },
+  "executor": {
+    "name": "OpenID4VPVerifyExecutor"
+  },
+  "onSuccess": "auth_assert",
+  "onFailure": "end",
+  "onIncomplete": "eudi_wait_view"
+}
+```
+
+**Failure conditions:**
+- OpenID4VP service not configured in the server
+- Presentation definition ID not registered
+- Request expired before the wallet responded (state TTL elapsed)
+- Wallet presented an untrusted credential (issuer not in the trust store)
+- Credential signature or key binding verification failed
+- Mandatory claim missing from the presentation
+- Wallet disclosed a claim that was not in the requested claims list
 
 </details>
 

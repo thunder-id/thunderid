@@ -19,6 +19,7 @@
 package userinfo
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -79,19 +80,20 @@ func (h *userInfoHandler) handleBearerRequest(
 			w.Header().Set(serverconst.WWWAuthenticateHeaderName, serverconst.TokenTypeBearer)
 			w.WriteHeader(http.StatusUnauthorized)
 		} else {
-			h.writeBearerError(w, constants.ErrorInvalidRequest,
+			h.writeBearerError(r.Context(), w, constants.ErrorInvalidRequest,
 				"Invalid or malformed Bearer token", http.StatusBadRequest)
 		}
 		return
 	}
 
-	result, svcErr := h.service.GetUserInfo(r.Context(), accessToken)
+	ctx := r.Context()
+	result, svcErr := h.service.GetUserInfo(ctx, accessToken)
 	if svcErr != nil {
-		h.writeServiceErrorResponse(w, svcErr, svcErr == &errorBearerDowngrade)
+		h.writeServiceErrorResponse(ctx, w, svcErr, svcErr == &errorBearerDowngrade)
 		return
 	}
 
-	h.writeUserInfoResponse(w, result)
+	h.writeUserInfoResponse(ctx, w, result)
 }
 
 // handleDPoPRequest serves the request under the DPoP scheme.
@@ -100,28 +102,29 @@ func (h *userInfoHandler) handleDPoPRequest(
 ) {
 	accessToken, err := dpop.ExtractDPoPToken(authHeader)
 	if err != nil {
-		h.writeDPoPError(w, "invalid_token", "Invalid or malformed DPoP token", http.StatusUnauthorized)
+		h.writeDPoPError(r.Context(), w, "invalid_token", "Invalid or malformed DPoP token", http.StatusUnauthorized)
 		return
 	}
 
 	dpopHeaders := r.Header.Values(constants.HeaderDPoP)
 	if len(dpopHeaders) != 1 {
-		h.writeDPoPError(w, "invalid_token",
+		h.writeDPoPError(r.Context(), w, "invalid_token",
 			"Exactly one DPoP header is required", http.StatusUnauthorized)
 		return
 	}
 
+	ctx := r.Context()
 	result, svcErr := h.service.GetUserInfoForDPoP(
-		r.Context(), accessToken, dpopHeaders[0], r.Method, h.userInfoEndpoint)
+		ctx, accessToken, dpopHeaders[0], r.Method, h.userInfoEndpoint)
 	if svcErr != nil {
-		h.writeServiceErrorResponse(w, svcErr, true)
+		h.writeServiceErrorResponse(ctx, w, svcErr, true)
 		return
 	}
 
-	h.writeUserInfoResponse(w, result)
+	h.writeUserInfoResponse(ctx, w, result)
 }
 
-func (h *userInfoHandler) writeUserInfoResponse(w http.ResponseWriter, result *UserInfoResponse) {
+func (h *userInfoHandler) writeUserInfoResponse(ctx context.Context, w http.ResponseWriter, result *UserInfoResponse) {
 	w.Header().Set(serverconst.CacheControlHeaderName, serverconst.CacheControlNoStore)
 	w.Header().Set(serverconst.PragmaHeaderName, serverconst.PragmaNoCache)
 
@@ -135,15 +138,15 @@ func (h *userInfoHandler) writeUserInfoResponse(w http.ResponseWriter, result *U
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(result.JWTBody))
 	default:
-		utils.WriteSuccessResponse(w, http.StatusOK, result.JSONBody)
+		utils.WriteSuccessResponse(ctx, w, http.StatusOK, result.JSONBody)
 	}
 
-	h.logger.Debug("UserInfo response sent successfully")
+	h.logger.Debug(ctx, "UserInfo response sent successfully")
 }
 
 // writeServiceErrorResponse writes a service error response. The dpop flag selects
 // between WWW-Authenticate: Bearer and WWW-Authenticate: DPoP.
-func (h *userInfoHandler) writeServiceErrorResponse(
+func (h *userInfoHandler) writeServiceErrorResponse(ctx context.Context,
 	w http.ResponseWriter, svcErr *serviceerror.ServiceError, dpop bool,
 ) {
 	var statusCode int
@@ -162,37 +165,37 @@ func (h *userInfoHandler) writeServiceErrorResponse(
 	}
 
 	if statusCode == http.StatusInternalServerError {
-		h.logger.Error("Internal server error processing userinfo request",
+		h.logger.Error(ctx, "Internal server error processing userinfo request",
 			log.String("errorCode", svcErr.Code),
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
-		utils.WriteJSONError(w, constants.ErrorServerError,
+		utils.WriteJSONError(ctx, w, constants.ErrorServerError,
 			serviceerror.InternalServerError.Error.DefaultValue, statusCode, nil)
 		return
 	}
 
 	if dpop {
-		h.writeDPoPError(w, svcErr.Code, svcErr.ErrorDescription.DefaultValue, statusCode)
+		h.writeDPoPError(ctx, w, svcErr.Code, svcErr.ErrorDescription.DefaultValue, statusCode)
 	} else {
-		h.writeBearerError(w, svcErr.Code, svcErr.ErrorDescription.DefaultValue, statusCode)
+		h.writeBearerError(ctx, w, svcErr.Code, svcErr.ErrorDescription.DefaultValue, statusCode)
 	}
 }
 
 // writeBearerError writes a JSON error response with a WWW-Authenticate: Bearer header.
-func (h *userInfoHandler) writeBearerError(
+func (h *userInfoHandler) writeBearerError(ctx context.Context,
 	w http.ResponseWriter, errorCode, errorDescription string, statusCode int,
 ) {
 	wwwAuth := fmt.Sprintf("Bearer error=%q, error_description=%q", errorCode, errorDescription)
-	utils.WriteJSONError(w, errorCode, errorDescription, statusCode,
+	utils.WriteJSONError(ctx, w, errorCode, errorDescription, statusCode,
 		[]map[string]string{{serverconst.WWWAuthenticateHeaderName: wwwAuth}})
 }
 
 // writeDPoPError writes a JSON error response with a WWW-Authenticate: DPoP header
 // advertising the supported DPoP signing algorithms.
-func (h *userInfoHandler) writeDPoPError(
+func (h *userInfoHandler) writeDPoPError(ctx context.Context,
 	w http.ResponseWriter, errorCode, errorDescription string, statusCode int,
 ) {
 	wwwAuth := fmt.Sprintf("DPoP algs=%q, error=%q, error_description=%q",
 		strings.Join(h.dpopAllowedAlgs, " "), errorCode, errorDescription)
-	utils.WriteJSONError(w, errorCode, errorDescription, statusCode,
+	utils.WriteJSONError(ctx, w, errorCode, errorDescription, statusCode,
 		[]map[string]string{{serverconst.WWWAuthenticateHeaderName: wwwAuth}})
 }

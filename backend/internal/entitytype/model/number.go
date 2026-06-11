@@ -19,6 +19,7 @@
 package model
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -53,17 +54,17 @@ func (p *number) getDisplayName() string {
 	return p.displayName
 }
 
-func (p *number) validateValue(value interface{}, path string, logger *log.Logger) (bool, error) {
+func (p *number) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	numberValue, ok := convertToFloat64(value)
 	if !ok {
-		logger.Debug("Expected number but got different type",
+		logger.Debug(ctx, "Expected number but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}
 
 	if p.enum != nil {
 		if _, exists := p.enum[numberValue]; !exists {
-			logger.Debug("Value not in enum", log.String("property", path),
+			logger.Debug(ctx, "Value not in enum", log.String("property", path),
 				log.String("value", fmt.Sprintf("%v", value)))
 			return false, nil
 		}
@@ -72,7 +73,7 @@ func (p *number) validateValue(value interface{}, path string, logger *log.Logge
 	return true, nil
 }
 
-func (p *number) validateUniqueness(
+func (p *number) validateUniqueness(ctx context.Context,
 	value interface{},
 	path string,
 	exists func(map[string]interface{}) (bool, error),

@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {render, screen, userEvent} from '@thunderid/test-utils';
+import {render, screen, userEvent, fireEvent} from '@thunderid/test-utils';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 
 const mockNavigate = vi.fn();
@@ -30,6 +30,10 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
       config: {
         brand: {
           product_name: 'ThunderID',
+          documentation: {
+            baseUrl: 'https://docs.example.com/',
+            releasesUrl: 'https://docs.example.com/data/releases.json',
+          },
           favicon: {light: 'assets/images/favicon.ico', dark: 'assets/images/favicon-inverted.ico'},
         },
       },
@@ -72,12 +76,15 @@ vi.mock('@wso2/oxygen-ui-icons-react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@wso2/oxygen-ui-icons-react')>();
   return {
     ...actual,
-    FolderOpen: () => <span data-testid="icon-folder-open" />,
-    X: () => <span data-testid="icon-x" />,
+    Bot: () => <span data-testid="icon-bot" />,
     ChevronRight: () => <span data-testid="icon-chevron-right" />,
-    BookOpen: () => <span data-testid="icon-book-open" />,
+    ExternalLink: () => <span data-testid="icon-external-link" />,
+    FolderOpen: () => <span data-testid="icon-folder-open" />,
     Lightbulb: () => <span data-testid="icon-lightbulb" />,
+    MCP: () => <span data-testid="icon-mcp" />,
     PackagePlus: () => <span data-testid="icon-package-plus" />,
+    Users: () => <span data-testid="icon-users" />,
+    X: () => <span data-testid="icon-x" />,
   };
 });
 
@@ -138,7 +145,7 @@ describe('WelcomePage', () => {
 
   it('renders learn product items', () => {
     render(<WelcomePage />);
-    expect(screen.getByText('common:welcome.tryoutProduct.b2c')).toBeInTheDocument();
+    expect(screen.getByText('common:welcome.tryoutProduct.securingApplication')).toBeInTheDocument();
     expect(screen.getByText('common:welcome.tryoutProduct.aiAgents')).toBeInTheDocument();
   });
 
@@ -159,21 +166,142 @@ describe('WelcomePage', () => {
     expect(mockOpen).toHaveBeenCalledWith(expect.any(String), '_blank', 'noopener,noreferrer');
   });
 
-  it('renders learn product items as links with correct href', () => {
+  it('renders learn product items that navigate on click', () => {
     render(<WelcomePage />);
-
-    const b2cLink = screen.getByText('common:welcome.tryoutProduct.b2c').closest('a');
-    expect(b2cLink).toHaveAttribute('href', expect.stringContaining('/use-cases/b2c/try-it-out'));
-    expect(b2cLink).toHaveAttribute('target', '_blank');
-    expect(b2cLink).toHaveAttribute('rel', 'noopener noreferrer');
-
-    const aiAgentsLink = screen.getByText('common:welcome.tryoutProduct.aiAgents').closest('a');
-    expect(aiAgentsLink).toHaveAttribute('href', expect.stringContaining('/use-cases/ai-agents/try-it-out'));
+    expect(screen.getByText('common:welcome.tryoutProduct.securingApplication')).toBeInTheDocument();
+    expect(screen.getByText('common:welcome.tryoutProduct.aiAgents')).toBeInTheDocument();
   });
 
   it('uses product name from config', () => {
     render(<WelcomePage />);
     // The openImportDesc key is interpolated with productName
     expect(screen.getByText(/openImportDesc.*ThunderID/i)).toBeInTheDocument();
+  });
+
+  it('navigates to /welcome/open-project when open import is clicked', async () => {
+    const user = userEvent.setup();
+    render(<WelcomePage />);
+
+    await user.click(screen.getByText('common:welcome.start.openImport'));
+
+    expect(mockSessionStorageSetItem).toHaveBeenCalledWith('thunderid:welcome:dismissed', 'true');
+    expect(mockNavigate).toHaveBeenCalledWith('/welcome/open-project');
+  });
+
+  it('navigates to /welcome/tryout/securing-application when securing application item is clicked', async () => {
+    const user = userEvent.setup();
+    render(<WelcomePage />);
+
+    await user.click(screen.getByText('common:welcome.tryoutProduct.securingApplication'));
+
+    expect(mockSessionStorageSetItem).toHaveBeenCalledWith('thunderid:welcome:dismissed', 'true');
+    expect(mockNavigate).toHaveBeenCalledWith('/welcome/tryout/securing-application');
+  });
+
+  it('opens AI agents docs URL on ai-agents item click', async () => {
+    const mockOpen = vi.fn();
+    vi.stubGlobal('open', mockOpen);
+    const user = userEvent.setup();
+    render(<WelcomePage />);
+
+    await user.click(screen.getByText('common:welcome.tryoutProduct.aiAgents'));
+
+    expect(mockOpen).toHaveBeenCalledWith(
+      'https://docs.example.com/use-cases/ai-agents/try-it-out',
+      '_blank',
+      'noopener,noreferrer',
+    );
+  });
+
+  it('opens MCP docs URL on mcp item click', async () => {
+    const mockOpen = vi.fn();
+    vi.stubGlobal('open', mockOpen);
+    const user = userEvent.setup();
+    render(<WelcomePage />);
+
+    await user.click(screen.getByText('common:welcome.tryoutProduct.mcp'));
+
+    expect(mockOpen).toHaveBeenCalledWith(
+      'https://docs.example.com/use-cases/ai-agents/mcp-authorization/try-it-out',
+      '_blank',
+      'noopener,noreferrer',
+    );
+  });
+
+  it('triggers new project action on start card Enter keypress', () => {
+    render(<WelcomePage />);
+    const card = screen.getByText('common:welcome.start.newProject').closest('[role="button"]')!;
+    fireEvent.keyDown(card, {key: 'Enter'});
+    expect(mockSessionStorageSetItem).toHaveBeenCalledWith('thunderid:welcome:dismissed', 'true');
+    expect(mockNavigate).toHaveBeenCalledWith('/welcome/create-project');
+  });
+
+  it('triggers open import action on start card Space keypress', () => {
+    render(<WelcomePage />);
+    const card = screen.getByText('common:welcome.start.openImport').closest('[role="button"]')!;
+    fireEvent.keyDown(card, {key: ' '});
+    expect(mockSessionStorageSetItem).toHaveBeenCalledWith('thunderid:welcome:dismissed', 'true');
+    expect(mockNavigate).toHaveBeenCalledWith('/welcome/open-project');
+  });
+
+  it('triggers walkthrough action on Enter keypress', () => {
+    const mockOpen = vi.fn();
+    vi.stubGlobal('open', mockOpen);
+    render(<WelcomePage />);
+    const item = screen.getByText('common:welcome.walkthrough.learnFundamentals').closest('[role="button"]')!;
+    fireEvent.keyDown(item, {key: 'Enter'});
+    expect(mockOpen).toHaveBeenCalledWith('https://docs.example.com', '_blank', 'noopener,noreferrer');
+  });
+
+  it('triggers walkthrough action on Space keypress', () => {
+    const mockOpen = vi.fn();
+    vi.stubGlobal('open', mockOpen);
+    render(<WelcomePage />);
+    const item = screen.getByText('common:welcome.walkthrough.learnFundamentals').closest('[role="button"]')!;
+    fireEvent.keyDown(item, {key: ' '});
+    expect(mockOpen).toHaveBeenCalledWith('https://docs.example.com', '_blank', 'noopener,noreferrer');
+  });
+
+  it('ignores non-Enter/Space keypresses on start card', () => {
+    render(<WelcomePage />);
+    const card = screen.getByText('common:welcome.start.newProject').closest('[role="button"]')!;
+    fireEvent.keyDown(card, {key: 'Tab'});
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('triggers securing application action on learn product Enter keypress', () => {
+    render(<WelcomePage />);
+    const item = screen.getByText('common:welcome.tryoutProduct.securingApplication').closest('[role="button"]')!;
+    fireEvent.keyDown(item, {key: 'Enter'});
+    expect(mockSessionStorageSetItem).toHaveBeenCalledWith('thunderid:welcome:dismissed', 'true');
+    expect(mockNavigate).toHaveBeenCalledWith('/welcome/tryout/securing-application');
+  });
+
+  it('triggers ai-agents action on learn product Space keypress', () => {
+    const mockOpen = vi.fn();
+    vi.stubGlobal('open', mockOpen);
+    render(<WelcomePage />);
+    const item = screen.getByText('common:welcome.tryoutProduct.aiAgents').closest('[role="button"]')!;
+    fireEvent.keyDown(item, {key: ' '});
+    expect(mockOpen).toHaveBeenCalledWith(
+      'https://docs.example.com/use-cases/ai-agents/try-it-out',
+      '_blank',
+      'noopener,noreferrer',
+    );
+  });
+
+  it('renders productName in hero title', () => {
+    render(<WelcomePage />);
+    expect(screen.getByText('ThunderID')).toBeInTheDocument();
+  });
+
+  it('renders hero subtitle', () => {
+    render(<WelcomePage />);
+    expect(screen.getByText('common:welcome.hero.subtitle')).toBeInTheDocument();
+  });
+
+  it('renders sections headings', () => {
+    render(<WelcomePage />);
+    expect(screen.getByText('common:welcome.sections.start')).toBeInTheDocument();
   });
 });

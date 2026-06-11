@@ -35,13 +35,15 @@ import {
 import {
   Bot,
   Building,
-  FileDown,
+  Download,
+  FolderOpen,
   Group,
   Home,
   Languages,
   Layers,
   LayoutGrid,
   Palette,
+  Server,
   ShieldCheck,
   UserRoundCog,
   UsersRound,
@@ -51,29 +53,52 @@ import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link as NavigateLink, Outlet, useNavigate} from 'react-router';
 
-function ExportConfigButton(): ReactNode {
+const ICON_BUTTON_SX = {
+  minWidth: 40,
+  width: 40,
+  height: 40,
+  borderRadius: '50%',
+  px: 0,
+  '& .MuiButton-startIcon': {margin: 0},
+} as const;
+
+const FULL_BUTTON_SX = {
+  height: 40,
+  borderRadius: 40,
+  wordBreak: 'keep-all',
+  whiteSpace: 'nowrap',
+  px: 2,
+} as const;
+
+function SidebarFooterButtons(): ReactNode {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const {collapsed} = useSidebar();
 
+  const buttonSx = collapsed ? ICON_BUTTON_SX : FULL_BUTTON_SX;
+
   return (
-    <Box sx={{p: 1.5, display: 'flex', justifyContent: 'center'}}>
+    <Box
+      sx={{
+        p: 1.5,
+        display: 'flex',
+        flexDirection: collapsed ? 'column' : 'row',
+        justifyContent: 'center',
+        gap: 1,
+      }}
+    >
       <Button
         variant="outlined"
-        startIcon={<FileDown size={18} />}
+        aria-label={t('navigation:pages.openProject')}
+        startIcon={<FolderOpen size={18} />}
+        onClick={() => void navigate('/open-project')}
+        sx={ICON_BUTTON_SX}
+      />
+      <Button
+        variant="outlined"
+        startIcon={<Download size={18} />}
         onClick={() => void navigate('/export')}
-        sx={{
-          minWidth: collapsed ? 40 : 'auto',
-          width: collapsed ? 40 : 'auto',
-          height: 40,
-          borderRadius: collapsed ? '50%' : 40,
-          wordBreak: 'keep-all',
-          whiteSpace: 'nowrap',
-          px: collapsed ? 0 : 2,
-          '& .MuiButton-startIcon': {
-            margin: collapsed ? 0 : undefined,
-          },
-        }}
+        sx={buttonSx}
       >
         {!collapsed && t('navigation:pages.export', 'Export Config')}
       </Button>
@@ -139,6 +164,12 @@ export default function DashboardLayout(): ReactNode {
             text: t('navigation:pages.applications'),
             icon: <LayoutGrid />,
             path: '/applications',
+          },
+          {
+            id: 'resource-servers',
+            text: t('navigation:pages.resourceServers', 'Resource Servers'),
+            icon: <Server size={16} />,
+            path: '/resource-servers',
           },
         ],
       },
@@ -287,7 +318,7 @@ export default function DashboardLayout(): ReactNode {
             ))}
           </Sidebar.Nav>
           <Sidebar.Footer>
-            <ExportConfigButton />
+            <SidebarFooterButtons />
           </Sidebar.Footer>
         </Sidebar>
       </AppShell.Sidebar>

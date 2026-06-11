@@ -657,6 +657,33 @@ describe('CreateUserTypePage', () => {
     expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
+  it('closes snackbar when close button is clicked', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await goToPropertiesStep(user);
+
+    // Add two properties with the same name to trigger the validation snackbar
+    await user.type(screen.getByPlaceholderText(/e\.g\., email, age, address/i), 'email');
+    await user.click(screen.getByRole('button', {name: /Add Property/i}));
+    const propertyInputs = screen.getAllByPlaceholderText(/e\.g\., email, age, address/i);
+    await user.type(propertyInputs[1], 'email');
+
+    await user.click(screen.getByRole('button', {name: /Create User Type/i}));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Duplicate property names found/i)).toBeInTheDocument();
+    });
+
+    // Close the snackbar via its Alert close button
+    const closeButtons = screen.getAllByRole('button', {name: /close/i});
+    await user.click(closeButtons[closeButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Duplicate property names found/i)).not.toBeInTheDocument();
+    });
+  });
+
   it('shows validation error for duplicate property names', async () => {
     const user = userEvent.setup();
     renderPage();

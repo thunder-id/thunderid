@@ -16,11 +16,11 @@
  * under the License.
  */
 
-import Editor from '@monaco-editor/react';
 import {Box, Button, Collapse, IconButton, Paper, Stack, Typography, useColorScheme} from '@wso2/oxygen-ui';
 import {ChevronDown, ChevronUp, FileDown} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import Editor from '@/lib/MonacoEditor';
 
 /**
  * Props for the {@link FileContentViewer} component.

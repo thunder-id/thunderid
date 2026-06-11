@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -17,6 +17,25 @@
  */
 
 import {EmbeddedFlowExecuteRequestConfig as EmbeddedFlowExecuteRequestConfigV1} from '../embedded-flow';
+
+/**
+ * Internationalized message structure returned by the backend.
+ *
+ * The `defaultValue` field carries the untranslated fallback text.
+ */
+export interface I18nMessage {
+  defaultValue?: string;
+  key: string;
+}
+
+/**
+ * Structured error returned in a flow response when flowStatus is ERROR.
+ */
+export interface FlowExecutionError {
+  code: string;
+  description: I18nMessage;
+  message: I18nMessage;
+}
 
 /**
  * Component types supported by the ThunderID embedded flow API.
@@ -91,6 +110,9 @@ export enum EmbeddedFlowComponentType {
 
   /** Timer component for displaying a countdown */
   Timer = 'TIMER',
+
+  /** QR code display component for wallet-based flows (e.g. OpenID4VP) */
+  QrCode = 'QR_CODE',
 }
 
 /**

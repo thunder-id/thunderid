@@ -20,6 +20,7 @@ package application
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -1053,7 +1054,7 @@ func (suite *HandlerTestSuite) TestProcessInboundAuthConfig_Success() {
 		Name: "TestApp",
 	}
 
-	success := handler.processInboundAuthConfig(logger, appDTO, returnApp)
+	success := handler.processInboundAuthConfig(context.Background(), logger, appDTO, returnApp)
 
 	assert.True(suite.T(), success)
 	assert.NotNil(suite.T(), returnApp.InboundAuthConfig)
@@ -1089,7 +1090,7 @@ func (suite *HandlerTestSuite) TestProcessInboundAuthConfig_EmptyRedirectURIs() 
 		Name: "TestApp",
 	}
 
-	success := handler.processInboundAuthConfig(logger, appDTO, returnApp)
+	success := handler.processInboundAuthConfig(context.Background(), logger, appDTO, returnApp)
 
 	assert.True(suite.T(), success)
 	assert.NotNil(suite.T(), returnApp.InboundAuthConfig)
@@ -1124,7 +1125,7 @@ func (suite *HandlerTestSuite) TestProcessInboundAuthConfig_EmptyGrantTypes() {
 		Name: "TestApp",
 	}
 
-	success := handler.processInboundAuthConfig(logger, appDTO, returnApp)
+	success := handler.processInboundAuthConfig(context.Background(), logger, appDTO, returnApp)
 
 	assert.True(suite.T(), success)
 	assert.NotNil(suite.T(), returnApp.InboundAuthConfig)
@@ -1152,7 +1153,7 @@ func (suite *HandlerTestSuite) TestProcessInboundAuthConfig_UnsupportedType() {
 		Name: "TestApp",
 	}
 
-	success := handler.processInboundAuthConfig(logger, appDTO, returnApp)
+	success := handler.processInboundAuthConfig(context.Background(), logger, appDTO, returnApp)
 
 	assert.False(suite.T(), success)
 }
@@ -1178,7 +1179,7 @@ func (suite *HandlerTestSuite) TestProcessInboundAuthConfig_NilOAuthConfig() {
 		Name: "TestApp",
 	}
 
-	success := handler.processInboundAuthConfig(logger, appDTO, returnApp)
+	success := handler.processInboundAuthConfig(context.Background(), logger, appDTO, returnApp)
 
 	assert.False(suite.T(), success)
 }
@@ -1199,7 +1200,7 @@ func (suite *HandlerTestSuite) TestProcessInboundAuthConfig_EmptyInboundAuthConf
 		Name: "TestApp",
 	}
 
-	success := handler.processInboundAuthConfig(logger, appDTO, returnApp)
+	success := handler.processInboundAuthConfig(context.Background(), logger, appDTO, returnApp)
 
 	assert.True(suite.T(), success)
 }
@@ -1213,7 +1214,7 @@ func (suite *HandlerTestSuite) TestHandleError_ClientError() {
 
 	svcErr := &ErrorInvalidApplicationName
 
-	handler.handleError(w, r, svcErr)
+	handler.handleError(context.Background(), w, r, svcErr)
 
 	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
 	assert.Equal(suite.T(), "application/json", w.Header().Get("Content-Type"))
@@ -1233,7 +1234,7 @@ func (suite *HandlerTestSuite) TestHandleError_NotFoundError() {
 
 	svcErr := &ErrorApplicationNotFound
 
-	handler.handleError(w, r, svcErr)
+	handler.handleError(context.Background(), w, r, svcErr)
 
 	assert.Equal(suite.T(), http.StatusNotFound, w.Code)
 	assert.Equal(suite.T(), "application/json", w.Header().Get("Content-Type"))
@@ -1253,7 +1254,7 @@ func (suite *HandlerTestSuite) TestHandleError_ServerError() {
 
 	svcErr := &serviceerror.InternalServerError
 
-	handler.handleError(w, r, svcErr)
+	handler.handleError(context.Background(), w, r, svcErr)
 
 	assert.Equal(suite.T(), http.StatusInternalServerError, w.Code)
 	assert.Equal(suite.T(), "application/json", w.Header().Get("Content-Type"))

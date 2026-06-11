@@ -120,7 +120,7 @@ func (e *translationExporter) GetResourceByID(ctx context.Context, id string) (
 }
 
 // ValidateResource validates a translation resource.
-func (e *translationExporter) ValidateResource(
+func (e *translationExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	trans, ok := resource.(*LanguageTranslations)

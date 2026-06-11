@@ -20,6 +20,7 @@ package utils
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"net/url"
 	"regexp"
 	"strings"
@@ -1029,4 +1030,118 @@ func (suite *OAuth2UtilsTestSuite) TestParseClaimsRequest_NullClaimRequest() {
 	assert.NotNil(suite.T(), claimsRequest)
 	assert.Nil(suite.T(), claimsRequest.UserInfo["email"])
 	assert.Nil(suite.T(), claimsRequest.UserInfo["name"])
+}
+
+// buildTestAssertion builds a minimal (unsigned) JWT string from the given payload map.
+// The signature segment is a placeholder; DecodeFlowAssertionClaims only base64-decodes the payload.
+func buildTestAssertion(payload map[string]interface{}) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
+	payloadBytes, _ := json.Marshal(payload)
+	payloadEnc := base64.RawURLEncoding.EncodeToString(payloadBytes)
+	return header + "." + payloadEnc + ".sig"
+}
+
+// --- DecodeFlowAssertionClaims tests ---
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_InvalidJWT() {
+	_, _, err := DecodeFlowAssertionClaims("not.a.valid.jwt.format.with.too.many.dots")
+	suite.Error(err)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllClaims_IatFloat64() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub":                  "user-123",
+		"aci":                  "cache-abc",
+		"completed_auth_class": "urn:acr:pwd",
+		"iat":                  float64(1700000000),
+	})
+
+	claims, payload, err := DecodeFlowAssertionClaims(assertion)
+	suite.NoError(err)
+	suite.Equal("user-123", claims.UserID)
+	suite.Equal("cache-abc", claims.AttributeCacheID)
+	suite.Equal("urn:acr:pwd", claims.CompletedACR)
+	suite.Equal(int64(1700000000), claims.AuthTime.Unix())
+	suite.NotNil(payload)
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllClaims_IatInt64() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub": "user-456",
+		"iat": int64(1700000001),
+	})
+
+	claims, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.NoError(err)
+	suite.Equal("user-456", claims.UserID)
+	suite.Equal(int64(1700000001), claims.AuthTime.Unix())
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllClaims_IatInt() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub": "user-789",
+		"iat": int(1700000002),
+	})
+
+	claims, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.NoError(err)
+	suite.Equal("user-789", claims.UserID)
+	suite.Equal(int64(1700000002), claims.AuthTime.Unix())
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_IatUnexpectedType_ReturnsError() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub": "user-x",
+		"iat": "not-a-number",
+	})
+
+	_, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.Error(err)
+	suite.Contains(err.Error(), "iat")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_SubNotString_ReturnsError() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub": 42,
+	})
+
+	_, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.Error(err)
+	suite.Contains(err.Error(), "sub")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_AciNotString_ReturnsError() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub": "user-x",
+		"aci": true,
+	})
+
+	_, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.Error(err)
+	suite.Contains(err.Error(), "aci")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_CompletedAuthClassNotString_ReturnsError() {
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub":                  "user-x",
+		"completed_auth_class": 99,
+	})
+
+	_, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.Error(err)
+	suite.Contains(err.Error(), "completed_auth_class")
+}
+
+func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_MissingOptionalClaims_NoError() {
+	// aci and completed_auth_class absent — should succeed with empty strings.
+	assertion := buildTestAssertion(map[string]interface{}{
+		"sub": "user-minimal",
+		"iat": float64(1700000000),
+	})
+
+	claims, _, err := DecodeFlowAssertionClaims(assertion)
+	suite.NoError(err)
+	suite.Equal("user-minimal", claims.UserID)
+	suite.Empty(claims.AttributeCacheID)
+	suite.Empty(claims.CompletedACR)
 }

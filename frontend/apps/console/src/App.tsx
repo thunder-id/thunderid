@@ -32,6 +32,10 @@ import GroupCreateProvider from './features/groups/contexts/GroupCreate/GroupCre
 import RoleCreateProvider from './features/roles/contexts/RoleCreate/RoleCreateProvider';
 import UserTypeCreateProvider from './features/user-types/contexts/UserTypeCreate/UserTypeCreateProvider';
 import WelcomeRedirect from './features/welcome/components/WelcomeRedirect';
+import GetStartedPage from './features/welcome/pages/GetStartedPage';
+import TryoutSecuringAIAgentsPage from './features/welcome/pages/TryoutSecuringAIAgentsPage';
+import TryoutSecuringApplicationPage from './features/welcome/pages/TryoutSecuringApplicationPage';
+import TryoutSecuringMCPPage from './features/welcome/pages/TryoutSecuringMCPPage';
 import DashboardLayout from './layouts/DashboardLayout';
 import FullScreenLayout from './layouts/FullScreenLayout';
 
@@ -51,7 +55,9 @@ const TranslationCreatePage = lazy(() =>
   import('@thunderid/configure-translations').then((m) => ({default: m.TranslationCreatePage})),
 );
 const TranslationsEditPage = lazy(() =>
-  import('@thunderid/configure-translations').then((m) => ({default: m.TranslationsEditPage})),
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-translations').then((m) => ({default: m.TranslationsEditPage})),
+  ),
 );
 const TranslationsListPage = lazy(() =>
   import('@thunderid/configure-translations').then((m) => ({default: m.TranslationsListPage})),
@@ -60,6 +66,15 @@ const UserCreatePage = lazy(() => import('@thunderid/configure-users').then((m) 
 const UserEditPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserEditPage})));
 const UserInvitePage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserInvitePage})));
 const UsersListPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UsersListPage})));
+const ResourceServersListPage = lazy(() =>
+  import('@thunderid/configure-resource-servers').then((m) => ({default: m.ResourceServersListPage})),
+);
+const ResourceServerEditPage = lazy(() =>
+  import('@thunderid/configure-resource-servers').then((m) => ({default: m.ResourceServerEditPage})),
+);
+const CreateResourceServerPage = lazy(() =>
+  import('@thunderid/configure-resource-servers').then((m) => ({default: m.CreateResourceServerPage})),
+);
 
 const AgentCreatePage = lazy(() => import('./features/agents/pages/AgentCreatePage'));
 const AgentEditPage = lazy(() => import('./features/agents/pages/AgentEditPage'));
@@ -130,6 +145,8 @@ export default function App(): JSX.Element {
               <Route path="agents" element={<AgentsListPage />} />
               <Route path="agents/:agentId" element={<AgentEditPage />} />
               <Route path="flows" element={<FlowsListPage />} />
+              <Route path="resource-servers" element={<ResourceServersListPage />} />
+              <Route path="resource-servers/:resourceServerId" element={<ResourceServerEditPage />} />
             </Route>
             {/* Organization Units - wrapped in OrganizationUnitProvider to preserve tree state across navigation */}
             <Route
@@ -231,6 +248,16 @@ export default function App(): JSX.Element {
               <Route index element={<AgentCreatePage />} />
             </Route>
             <Route
+              path="/resource-servers/create"
+              element={
+                <ProtectedRoute>
+                  <FullScreenLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<CreateResourceServerPage />} />
+            </Route>
+            <Route
               path="/flows/create"
               element={
                 <ProtectedRoute>
@@ -311,6 +338,18 @@ export default function App(): JSX.Element {
               <Route index element={<ExportPage />} />
             </Route>
             <Route
+              path="/open-project"
+              element={
+                <ProtectedRoute>
+                  <FullScreenLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<ImportConfigurationUploadPage />} />
+              <Route path="validate" element={<ImportConfigurationValidatePage />} />
+              <Route path="summary" element={<ImportConfigurationSummaryPage />} />
+            </Route>
+            <Route
               path="/welcome"
               element={
                 <ProtectedRoute>
@@ -323,6 +362,18 @@ export default function App(): JSX.Element {
               <Route path="open-project" element={<ImportConfigurationUploadPage />} />
               <Route path="open-project/validate" element={<ImportConfigurationValidatePage />} />
               <Route path="open-project/summary" element={<ImportConfigurationSummaryPage />} />
+              <Route path="get-started" element={<GetStartedPage />} />
+              <Route
+                path="get-started/applications/create"
+                element={
+                  <ApplicationCreateProvider>
+                    <ApplicationCreatePage />
+                  </ApplicationCreateProvider>
+                }
+              />
+              <Route path="tryout/securing-application" element={<TryoutSecuringApplicationPage />} />
+              <Route path="tryout/ai-agents" element={<TryoutSecuringAIAgentsPage />} />
+              <Route path="tryout/mcp" element={<TryoutSecuringMCPPage />} />
             </Route>
             <Route
               path="/design"

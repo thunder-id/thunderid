@@ -41,6 +41,37 @@ type Logger struct {
 	internal *slog.Logger
 }
 
+// contextHandler decorates a slog.Handler to add the trace ID (correlation ID)
+// from the context to every log record, when present. The trace ID is set in
+// the request context by the CorrelationIDMiddleware.
+type contextHandler struct {
+	slog.Handler
+}
+
+// Handle adds the trace ID from the context to the record before delegating
+// to the wrapped handler. The trace ID is only added when it is actually
+// present in the context; sysContext.GetTraceID is not used here as it
+// generates a new ID when absent, which would stamp unrelated log records
+// with distinct, misleading trace IDs.
+func (h *contextHandler) Handle(ctx context.Context, record slog.Record) error {
+	if ctx != nil {
+		if traceID, ok := ctx.Value(sysContext.TraceIDKey).(string); ok && traceID != "" {
+			record.AddAttrs(slog.String(LoggerKeyTraceID, traceID))
+		}
+	}
+	return h.Handler.Handle(ctx, record)
+}
+
+// WithAttrs preserves the context decoration on loggers derived via With.
+func (h *contextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &contextHandler{Handler: h.Handler.WithAttrs(attrs)}
+}
+
+// WithGroup preserves the context decoration on loggers derived via WithGroup.
+func (h *contextHandler) WithGroup(name string) slog.Handler {
+	return &contextHandler{Handler: h.Handler.WithGroup(name)}
+}
+
 // GetLogger creates and returns a singleton instance of the logger.
 func GetLogger() *Logger {
 	once.Do(func() {
@@ -75,7 +106,7 @@ func initLogger() error {
 	}
 
 	logger = &Logger{
-		internal: slog.New(logHandler),
+		internal: slog.New(&contextHandler{Handler: logHandler}),
 	}
 
 	return nil
@@ -108,29 +139,34 @@ func (l *Logger) IsDebugEnabled() bool {
 	return l.internal.Handler().Enabled(context.Background(), slog.LevelDebug)
 }
 
-// Info logs an informational message with custom fields.
-func (l *Logger) Info(msg string, fields ...Field) {
-	l.internal.Info(msg, convertFields(fields)...)
+// Info logs an informational message with custom fields, automatically
+// including the trace ID (correlation ID) from the context if present.
+func (l *Logger) Info(ctx context.Context, msg string, fields ...Field) {
+	l.internal.InfoContext(ctx, msg, convertFields(fields)...)
 }
 
-// Debug logs a debug message with custom fields.
-func (l *Logger) Debug(msg string, fields ...Field) {
-	l.internal.Debug(msg, convertFields(fields)...)
+// Debug logs a debug message with custom fields, automatically
+// including the trace ID (correlation ID) from the context if present.
+func (l *Logger) Debug(ctx context.Context, msg string, fields ...Field) {
+	l.internal.DebugContext(ctx, msg, convertFields(fields)...)
 }
 
-// Warn logs a warning message with custom fields.
-func (l *Logger) Warn(msg string, fields ...Field) {
-	l.internal.Warn(msg, convertFields(fields)...)
+// Warn logs a warning message with custom fields, automatically
+// including the trace ID (correlation ID) from the context if present.
+func (l *Logger) Warn(ctx context.Context, msg string, fields ...Field) {
+	l.internal.WarnContext(ctx, msg, convertFields(fields)...)
 }
 
-// Error logs an error message with custom fields.
-func (l *Logger) Error(msg string, fields ...Field) {
-	l.internal.Error(msg, convertFields(fields)...)
+// Error logs an error message with custom fields, automatically
+// including the trace ID (correlation ID) from the context if present.
+func (l *Logger) Error(ctx context.Context, msg string, fields ...Field) {
+	l.internal.ErrorContext(ctx, msg, convertFields(fields)...)
 }
 
-// Fatal logs a fatal message with custom fields and exits the application.
-func (l *Logger) Fatal(msg string, fields ...Field) {
-	l.internal.Error(msg, convertFields(fields)...)
+// Fatal logs a fatal message with custom fields and exits the application,
+// automatically including the trace ID (correlation ID) from the context if present.
+func (l *Logger) Fatal(ctx context.Context, msg string, fields ...Field) {
+	l.internal.ErrorContext(ctx, msg, convertFields(fields)...)
 	os.Exit(1)
 }
 

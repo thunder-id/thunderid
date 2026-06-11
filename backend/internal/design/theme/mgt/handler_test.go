@@ -20,6 +20,7 @@ package thememgt
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -51,27 +52,29 @@ type mockThemeService struct {
 	isThemeExistFunc func(id string) (bool, *serviceerror.ServiceError)
 }
 
-func (m *mockThemeService) GetThemeList(limit, offset int) (*ThemeList, *serviceerror.ServiceError) {
+func (m *mockThemeService) GetThemeList(_ context.Context, limit, offset int) (*ThemeList, *serviceerror.ServiceError) {
 	return m.getThemeListFunc(limit, offset)
 }
 
-func (m *mockThemeService) CreateTheme(theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError) {
+func (m *mockThemeService) CreateTheme(
+	_ context.Context, theme CreateThemeRequestWithID) (*Theme, *serviceerror.ServiceError) {
 	return m.createThemeFunc(theme)
 }
 
-func (m *mockThemeService) GetTheme(id string) (*Theme, *serviceerror.ServiceError) {
+func (m *mockThemeService) GetTheme(_ context.Context, id string) (*Theme, *serviceerror.ServiceError) {
 	return m.getThemeFunc(id)
 }
 
-func (m *mockThemeService) UpdateTheme(id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError) {
+func (m *mockThemeService) UpdateTheme(
+	_ context.Context, id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError) {
 	return m.updateThemeFunc(id, theme)
 }
 
-func (m *mockThemeService) DeleteTheme(id string) *serviceerror.ServiceError {
+func (m *mockThemeService) DeleteTheme(_ context.Context, id string) *serviceerror.ServiceError {
 	return m.deleteThemeFunc(id)
 }
 
-func (m *mockThemeService) IsThemeExist(id string) (bool, *serviceerror.ServiceError) {
+func (m *mockThemeService) IsThemeExist(_ context.Context, id string) (bool, *serviceerror.ServiceError) {
 	return m.isThemeExistFunc(id)
 }
 
@@ -551,7 +554,7 @@ func (suite *ThemeHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
 			w := httptest.NewRecorder()
-			handleError(w, tc.svcErr)
+			handleError(context.Background(), w, tc.svcErr)
 			assert.Equal(suite.T(), tc.expectedStatus, w.Code)
 		})
 	}

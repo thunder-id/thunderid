@@ -297,5 +297,5 @@ func (ts *SensitiveInputCleanupTestSuite) TestPasswordClearedAfterAuthExecution(
 
 	ts.Require().Equal("COMPLETE", step3.FlowStatus, "Expected flow to complete after re-submitting password")
 	ts.Require().NotEmpty(step3.Assertion, "JWT assertion should be returned after successful authentication")
-	ts.Require().Empty(step3.FailureReason, "Failure reason should be empty for successful authentication")
+	ts.Require().Nil(step3.Error, "Error should be nil for successful authentication")
 }

@@ -62,6 +62,7 @@ func (m *MockSMTPServer) Start() error {
 		return fmt.Errorf("failed to start mock SMTP server on port %d: %w", m.port, err)
 	}
 	m.listener = ln
+	m.port = ln.Addr().(*net.TCPAddr).Port
 
 	go func() {
 		for {

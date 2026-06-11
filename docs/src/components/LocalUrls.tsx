@@ -62,3 +62,10 @@ export function ConsoleUrl(props: UrlComponentProps): ReactNode {
 export function WayFinderSampleUrl(props: UrlComponentProps): ReactNode {
   return renderUrl(useProductConfig().local.samples.wayfinderUrl, props);
 }
+
+/**
+ * Renders a URL to the local Wayfinder sample mail inbox, based on the `local.samples.wayfinderMailUrl` configuration.
+ */
+export function WayFinderMailUrl(props: UrlComponentProps): ReactNode {
+  return renderUrl(useProductConfig().local.samples.wayfinderMailUrl, props);
+}

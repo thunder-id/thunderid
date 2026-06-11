@@ -1,0 +1,228 @@
+{
+    "name": "Default CIBA Email Notification Flow",
+    "handle": "default-ciba-email-flow",
+    "flowType": "AUTHENTICATION",
+    "nodes": [
+        {
+            "id": "start",
+            "type": "START",
+            "onSuccess": "identify_user"
+        },
+        {
+            "id": "identify_user",
+            "type": "TASK_EXECUTION",
+            "properties": {
+                "loginHintAttribute": "username"
+            },
+            "executor": {
+                "name": "IdentifyingExecutor",
+                "inputs": [
+                    {
+                        "identifier": "login_hint",
+                        "type": "TEXT_INPUT",
+                        "required": true
+                    }
+                ]
+            },
+            "onSuccess": "generate_invite"
+        },
+        {
+            "id": "generate_invite",
+            "type": "TASK_EXECUTION",
+            "executor": {
+                "name": "InviteExecutor",
+                "mode": "generate"
+            },
+            "onSuccess": "send_notification_email"
+        },
+        {
+            "id": "send_notification_email",
+            "type": "TASK_EXECUTION",
+            "properties": {
+                "emailTemplate": "CIBA_NOTIFICATION"
+            },
+            "executor": {
+                "name": "EmailExecutor",
+                "mode": "send",
+                "inputs": [
+                    {
+                        "identifier": "email",
+                        "type": "EMAIL_INPUT",
+                        "required": true
+                    }
+                ]
+            },
+            "onSuccess": "notification_sent_status",
+            "onFailure": "notification_sent_status"
+        },
+        {
+            "id": "notification_sent_status",
+            "type": "PROMPT",
+            "meta": {
+                "components": [
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "notification_icon",
+                        "label": "✉️",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "notification_heading",
+                        "label": "Authentication Request Sent",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "notification_message",
+                        "label": "A notification has been sent. Follow the link in the notification to continue.",
+                        "variant": "HEADING_6"
+                    }
+                ]
+            },
+            "message": "Authentication notification sent",
+            "next": "verify_invite"
+        },
+        {
+            "id": "verify_invite",
+            "type": "TASK_EXECUTION",
+            "executor": {
+                "name": "InviteExecutor",
+                "mode": "verify",
+                "inputs": [
+                    {
+                        "identifier": "inviteToken",
+                        "type": "HIDDEN",
+                        "required": true
+                    }
+                ]
+            },
+            "onSuccess": "prompt_credentials"
+        },
+        {
+            "id": "prompt_credentials",
+            "type": "PROMPT",
+            "meta": {
+                "components": [
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "credentials_heading",
+                        "label": "Confirm Your Identity",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "credentials_message",
+                        "label": "Enter your credentials to approve the authentication request.",
+                        "variant": "HEADING_6"
+                    },
+                    {
+                        "type": "BLOCK",
+                        "id": "block_credentials",
+                        "components": [
+                            {
+                                "id": "input_password",
+                                "ref": "password",
+                                "type": "PASSWORD_INPUT",
+                                "label": "Password",
+                                "required": true,
+                                "placeholder": "Enter your password"
+                            },
+                            {
+                                "type": "ACTION",
+                                "id": "action_approve",
+                                "label": "Approve",
+                                "variant": "PRIMARY",
+                                "eventType": "SUBMIT"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "prompts": [
+                {
+                    "inputs": [
+                        {
+                            "ref": "input_password",
+                            "identifier": "password",
+                            "type": "PASSWORD_INPUT",
+                            "required": true
+                        }
+                    ],
+                    "action": {
+                        "ref": "action_approve",
+                        "nextNode": "basic_auth"
+                    }
+                }
+            ]
+        },
+        {
+            "id": "basic_auth",
+            "type": "TASK_EXECUTION",
+            "executor": {
+                "name": "BasicAuthExecutor"
+            },
+            "onSuccess": "authorization_check",
+            "onIncomplete": "prompt_credentials"
+        },
+        {
+            "id": "authorization_check",
+            "type": "TASK_EXECUTION",
+            "executor": {
+                "name": "AuthorizationExecutor"
+            },
+            "onSuccess": "auth_assert"
+        },
+        {
+            "id": "auth_assert",
+            "type": "TASK_EXECUTION",
+            "properties": {
+                "callbackType": "urn:openid:params:grant-type:ciba"
+            },
+            "executor": {
+                "name": "AuthAssertExecutor"
+            },
+            "onSuccess": "auth_success"
+        },
+        {
+            "id": "auth_success",
+            "type": "PROMPT",
+            "meta": {
+                "components": [
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "success_icon",
+                        "label": "✅",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "success_heading",
+                        "label": "Authentication Successful",
+                        "variant": "HEADING_1"
+                    },
+                    {
+                        "align": "center",
+                        "type": "TEXT",
+                        "id": "success_message",
+                        "label": "You have successfully authenticated. The call center agent can now update your profile. You may close this window.",
+                        "variant": "HEADING_6"
+                    }
+                ]
+            },
+            "message": "Authentication successful",
+            "next": "end"
+        },
+        {
+            "id": "end",
+            "type": "END"
+        }
+    ]
+}

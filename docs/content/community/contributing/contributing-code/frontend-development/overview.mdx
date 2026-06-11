@@ -34,6 +34,65 @@ my-feature/
 └── utils/        # Utility functions
 ```
 
+## Monaco Editor
+
+By default `@monaco-editor/react` loads the Monaco editor **and** its language workers from the jsDelivr CDN. This breaks in air-gapped or no-internet deployments, so Monaco is bundled locally and all editor usage goes through a local wrapper.
+
+### Using Monaco in an Existing Console Page
+
+Always import the editor from the local wrapper — never from `@monaco-editor/react` directly:
+
+```tsx
+import Editor, {type OnMount, type EditorProps} from '@/lib/MonacoEditor';
+```
+
+Importing from `@/lib/MonacoEditor` (`frontend/apps/console/src/lib/MonacoEditor.ts`) runs `monaco-setup` as a side effect, which bundles Monaco and its workers locally and calls `loader.config({monaco})`. Importing `@monaco-editor/react` directly skips that setup and falls back to loading Monaco from the CDN, which fails offline.
+
+For a **lazy-loaded** page or feature that pulls in Monaco, import `./lib/monaco-setup` before the lazy chunk so setup runs first — see the `TranslationsEditPage` pattern in `App.tsx`:
+
+```tsx
+const TranslationsEditPage = lazy(() =>
+  import('./lib/monaco-setup').then(() =>
+    import('@thunderid/configure-translations').then((m) => ({default: m.TranslationsEditPage})),
+  ),
+);
+```
+
+### Setting Up Monaco in a New App
+
+Replicate the same pattern:
+
+- Add `monaco-editor` to `dependencies` (not `devDependencies`, so it ships in the build) alongside `@monaco-editor/react` (`catalog:`).
+- Create `src/lib/monaco-setup.ts` that imports the workers via Vite's `?worker` suffix, maps them by `label`, and points the loader at the bundled instance:
+
+  ```ts
+  import {loader} from '@monaco-editor/react';
+  import * as monaco from 'monaco-editor';
+  import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+  import cssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
+  import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
+
+  self.MonacoEnvironment = {
+    getWorker(_, label) {
+      if (label === 'json') return new jsonWorker();
+      if (label === 'css' || label === 'scss' || label === 'less') return new cssWorker();
+      return new editorWorker();
+    },
+  };
+
+  loader.config({monaco});
+  ```
+
+- Create `src/lib/MonacoEditor.ts` that imports `./monaco-setup` then re-exports the `@monaco-editor/react` default and types:
+
+  ```ts
+  import './monaco-setup';
+  export {default} from '@monaco-editor/react';
+  export type {BeforeMount, EditorProps, OnChange, OnMount} from '@monaco-editor/react';
+  ```
+
+Only `json` and `css`/`scss`/`less` get dedicated workers; everything else (`yaml`, `shell`, …) uses the generic `editor.worker`. To add richer support for another language, add its `*.worker?worker` import and a matching `getWorker` branch.
+
 ## Scaffolding Tool
 
 <ProductName /> includes a CLI scaffolding tool (`@thunderid/create`) that generates production-ready feature packages. See the [Scaffolding Tool](scaffolding-tool.mdx) guide for details.

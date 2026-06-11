@@ -76,6 +76,7 @@ func (suite *AuthorizationRequestStoreTestSuite) SetupTest() {
 			State:               "test-state",
 			ClientID:            "test-client-id",
 			RedirectURI:         "https://client.example.com/callback",
+			RedirectURIProvided: true,
 			ResponseType:        "code",
 			StandardScopes:      []string{"openid", "profile"},
 			PermissionScopes:    []string{"read", "write"},
@@ -179,6 +180,7 @@ func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_Success() {
 		"state":                 "test-state",
 		"client_id":             "test-client-id",
 		"redirect_uri":          "https://client.example.com/callback",
+		"redirect_uri_provided": true,
 		"response_type":         "code",
 		"standard_scopes":       []interface{}{"openid", "profile"},
 		"permission_scopes":     []interface{}{"read", "write"},
@@ -208,6 +210,7 @@ func (suite *AuthorizationRequestStoreTestSuite) TestGetRequest_Success() {
 	assert.Equal(suite.T(), "test-state", result.OAuthParameters.State)
 	assert.Equal(suite.T(), "test-client-id", result.OAuthParameters.ClientID)
 	assert.Equal(suite.T(), "https://client.example.com/callback", result.OAuthParameters.RedirectURI)
+	assert.True(suite.T(), result.OAuthParameters.RedirectURIProvided)
 	assert.Equal(suite.T(), "code", result.OAuthParameters.ResponseType)
 	assert.Equal(suite.T(), []string{"openid", "profile"}, result.OAuthParameters.StandardScopes)
 	assert.Equal(suite.T(), []string{"read", "write"}, result.OAuthParameters.PermissionScopes)

@@ -45,7 +45,8 @@ Open `dist/runtime.json` and set the `clientId` to the value you used in `thunde
 ```json
 {
   "clientId": "{your-client-id}",
-  "baseUrl": "https://localhost:8090"
+  "baseUrl": "https://localhost:8090",
+  "scopes": ["openid", "profile"]
 }
 ```
 
@@ -53,17 +54,14 @@ Open `dist/runtime.json` and set the `clientId` to the value you used in `thunde
 |----------|-------------|
 | `clientId` | The OAuth client ID configured in `thunderid.env` |
 | `baseUrl` | The base URL of your server |
+| `scopes` | Optional OAuth scopes as a string array or a space/comma-delimited string |
 
 ### 3. Start the Application
 
 ```bash
-./start.sh
+npm install
+npm start
 ```
-
-The start script will:
-- Serve the application on port 3000
-- Use HTTPS if SSL certificates are present in the `dist` folder
-- Fall back to HTTP if certificates are not found
 
 ### 4. Access the Application
 
@@ -117,9 +115,18 @@ The application will be available at [https://localhost:3000](https://localhost:
 ```json
 {
   "clientId": "string (required) - OAuth client ID",
-  "baseUrl": "string (required) - Server base URL"
+  "baseUrl": "string (required) - Server base URL",
+  "scopes": "string | string[] (optional) - Requested OAuth scopes"
 }
 ```
+
+### Environment Variable Fallbacks
+
+If a value is missing from `runtime.json`, the app falls back to Vite environment variables:
+
+- `VITE_REACT_APP_CLIENT_ID`
+- `VITE_THUNDERID_BASE_URL`
+- `VITE_REACT_APP_SCOPES` (optional, space/comma-delimited list, e.g. `openid profile`)
 
 ### Application Setup
 

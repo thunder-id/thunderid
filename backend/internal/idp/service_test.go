@@ -840,7 +840,7 @@ func (s *IDPServiceTestSuite) TestValidateIDP() {
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			logger := log.GetLogger()
-			err := validateIDP(tc.idp, logger)
+			err := validateIDP(context.Background(), tc.idp, logger)
 			if tc.expectError {
 				s.NotNil(err)
 				s.Equal(tc.errorCode, err.Code)

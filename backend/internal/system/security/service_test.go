@@ -19,6 +19,7 @@
 package security
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -329,7 +330,7 @@ func (suite *SecurityServiceTestSuite) TestIsPublicPath() {
 
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
-			result := suite.service.isPublicPath(tc.path)
+			result := suite.service.isPublicPath(context.Background(), tc.path)
 			assert.Equal(suite.T(), tc.expected, result, "Path: %s", tc.path)
 		})
 	}

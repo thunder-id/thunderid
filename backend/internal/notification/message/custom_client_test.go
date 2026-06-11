@@ -19,6 +19,7 @@
 package message
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -80,7 +81,7 @@ func (suite *CustomClientTestSuite) getValidCustomSenderFORM() common.Notificati
 func (suite *CustomClientTestSuite) TestNewCustomClient_Success() {
 	sender := suite.getValidCustomSenderJSON()
 
-	client, err := NewCustomClient(sender)
+	client, err := NewCustomClient(context.Background(), sender)
 
 	suite.NoError(err)
 	suite.NotNil(client)
@@ -89,7 +90,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_Success() {
 
 func (suite *CustomClientTestSuite) TestGetName() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := NewCustomClient(sender)
+	client, _ := NewCustomClient(context.Background(), sender)
 
 	name := client.GetName()
 
@@ -98,7 +99,7 @@ func (suite *CustomClientTestSuite) TestGetName() {
 
 func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := NewCustomClient(sender)
+	client, _ := NewCustomClient(context.Background(), sender)
 
 	// Create a test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -123,14 +124,14 @@ func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
 		Body:      `{"message":"Test message"}`,
 	}
 
-	err := client.Send(common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.NoError(err)
 }
 
 func (suite *CustomClientTestSuite) TestSendSMS_FORM_Success() {
 	sender := suite.getValidCustomSenderFORM()
-	client, _ := NewCustomClient(sender)
+	client, _ := NewCustomClient(context.Background(), sender)
 
 	// Create a test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -153,14 +154,14 @@ func (suite *CustomClientTestSuite) TestSendSMS_FORM_Success() {
 		Body:      "to=+15559876543\nmessage=Test message",
 	}
 
-	err := client.Send(common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.NoError(err)
 }
 
 func (suite *CustomClientTestSuite) TestSendSMS_Error() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := NewCustomClient(sender)
+	client, _ := NewCustomClient(context.Background(), sender)
 
 	// Create a test server that returns an error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +181,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_Error() {
 		Body:      `{"message":"Test"}`,
 	}
 
-	err := client.Send(common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "status: 400")
@@ -188,7 +189,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_Error() {
 
 func (suite *CustomClientTestSuite) TestSendSMS_NetworkError() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := NewCustomClient(sender)
+	client, _ := NewCustomClient(context.Background(), sender)
 
 	// Use an invalid URL to force a network error
 	customClient := client.(*CustomClient)
@@ -199,7 +200,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_NetworkError() {
 		Body:      `{"message":"Test"}`,
 	}
 
-	err := client.Send(common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.Error(err)
 }
@@ -214,14 +215,14 @@ func (suite *CustomClientTestSuite) TestSendSMS_UnsupportedContentType() {
 			createProperty("content_type", "XML", false),
 		},
 	}
-	client, _ := NewCustomClient(sender)
+	client, _ := NewCustomClient(context.Background(), sender)
 
 	data := common.NotificationData{
 		Recipient: "+15559876543",
 		Body:      `<message>Test</message>`,
 	}
 
-	err := client.Send(common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "unsupported content type")
@@ -229,7 +230,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_UnsupportedContentType() {
 
 func (suite *CustomClientTestSuite) TestGetHeadersFromString_Success() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := NewCustomClient(sender)
+	client, _ := NewCustomClient(context.Background(), sender)
 	customClient := client.(*CustomClient)
 
 	headers, err := customClient.getHeadersFromString("Authorization:Bearer token,X-Api-Key:key123")
@@ -242,7 +243,7 @@ func (suite *CustomClientTestSuite) TestGetHeadersFromString_Success() {
 
 func (suite *CustomClientTestSuite) TestGetHeadersFromString_InvalidFormat() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := NewCustomClient(sender)
+	client, _ := NewCustomClient(context.Background(), sender)
 	customClient := client.(*CustomClient)
 
 	headers, err := customClient.getHeadersFromString("InvalidHeader")
@@ -256,7 +257,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
 	sender := suite.getValidCustomSenderJSON()
 	sender.Properties = append(sender.Properties, createProperty("unknown_prop", "value", false))
 
-	client, err := NewCustomClient(sender)
+	client, err := NewCustomClient(context.Background(), sender)
 
 	// Should succeed and just log a warning for unknown property
 	suite.NoError(err)
@@ -275,7 +276,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidHeaders() {
 		},
 	}
 
-	client, err := NewCustomClient(sender)
+	client, err := NewCustomClient(context.Background(), sender)
 
 	suite.Error(err)
 	suite.Nil(client)

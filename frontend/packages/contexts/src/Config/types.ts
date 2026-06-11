@@ -145,10 +145,9 @@ export interface BrandConfig {
   favicon: {light: string; dark: string};
 
   /**
-   * Base URL for the product documentation site.
-   * @example "https://thunderid.dev/docs/next"
+   * Documentation site URLs.
    */
-  docs_url?: string;
+  documentation?: {baseUrl: string; releasesUrl: string};
 
   /**
    * Design configuration for theming and UI customization.

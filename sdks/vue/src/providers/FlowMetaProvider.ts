@@ -87,8 +87,7 @@ const FlowMetaProvider: Component = defineComponent({
       try {
         const result: FlowMetadataResponse = await getFlowMetaV2({
           baseUrl,
-          id: applicationId,
-          type: FlowMetaType.App,
+          ...(applicationId ? {id: applicationId, type: FlowMetaType.App} : {}),
         });
         meta.value = result;
       } catch (err: unknown) {
@@ -107,9 +106,8 @@ const FlowMetaProvider: Component = defineComponent({
       try {
         const result: FlowMetadataResponse = await getFlowMetaV2({
           baseUrl,
-          id: applicationId,
+          ...(applicationId ? {id: applicationId, type: FlowMetaType.App} : {}),
           language,
-          type: FlowMetaType.App,
         });
 
         // Inject translations before switching language so the i18n state is updated

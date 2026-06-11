@@ -278,7 +278,8 @@ class ThunderIDReactClient<T extends ThunderIDReactConfig = ThunderIDReactConfig
         ('executionId' in arg1 || 'applicationId' in arg1)
       ) {
         const authIdFromUrl: string = new URL(window.location.href).searchParams.get('authId') ?? '';
-        const authIdFromStorage: string = sessionStorage.getItem('thunderid_auth_id') ?? '';
+        const authIdFromStorage: string =
+          ((await this.getStorageManager().getHybridDataParameter('authId')) as string) ?? '';
         const authId: string = authIdFromUrl || authIdFromStorage;
         const baseUrl: string = config?.baseUrl ?? '';
 
@@ -342,11 +343,12 @@ class ThunderIDReactClient<T extends ThunderIDReactConfig = ThunderIDReactConfig
     const baseUrl: string = config?.baseUrl ?? '';
 
     const authIdFromUrl: string = new URL(window.location.href).searchParams.get('authId') ?? '';
-    const authIdFromStorage: string = sessionStorage.getItem('thunderid_auth_id') ?? '';
+    const authIdFromStorage: string =
+      ((await this.getStorageManager().getHybridDataParameter('authId')) as string) ?? '';
     const authId: string = authIdFromUrl || authIdFromStorage;
 
     if (authIdFromUrl && !authIdFromStorage) {
-      sessionStorage.setItem('thunderid_auth_id', authIdFromUrl);
+      await this.getStorageManager().setHybridDataParameter('authId', authIdFromUrl);
     }
 
     const response: any = await executeEmbeddedSignUpFlowV2({

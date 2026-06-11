@@ -49,6 +49,18 @@ export const SMS_OTP_MODES = [
 ] as const;
 
 /**
+ * Available modes for Magic Link executor.
+ */
+export const MAGIC_LINK_MODES = [
+  {
+    value: 'generate',
+    translationKey: 'flows:core.executions.magicLink.mode.generate',
+    displayLabel: 'Generate Magic Link',
+  },
+  {value: 'verify', translationKey: 'flows:core.executions.magicLink.mode.verify', displayLabel: 'Verify Magic Link'},
+] as const;
+
+/**
  * Available modes for Identifying executor.
  */
 export const IDENTIFYING_MODES = [

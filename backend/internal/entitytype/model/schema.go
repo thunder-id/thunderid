@@ -19,6 +19,7 @@
 package model
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -46,8 +47,8 @@ type property interface {
 	isDisplayable() bool
 	isUnique() bool
 	getDisplayName() string
-	validateValue(value interface{}, path string, logger *log.Logger) (bool, error)
-	validateUniqueness(value interface{}, path string,
+	validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error)
+	validateUniqueness(ctx context.Context, value interface{}, path string,
 		exists func(map[string]interface{}) (bool, error), logger *log.Logger) (bool, error)
 }
 
@@ -165,9 +166,10 @@ func (cs *Schema) GetUniqueAttributes() []string {
 // When skipCredentialRequired is true, missing credential properties do not fail
 // the required check. This is used during updates where credentials are not
 // included in the payload.
-func (cs *Schema) Validate(attributes json.RawMessage, logger *log.Logger, skipCredentialRequired bool) (bool, error) {
+func (cs *Schema) Validate(
+	ctx context.Context, attributes json.RawMessage, logger *log.Logger, skipCredentialRequired bool) (bool, error) {
 	if len(attributes) == 0 {
-		logger.Debug("User has no attributes to validate")
+		logger.Debug(ctx, "User has no attributes to validate")
 		return true, nil
 	}
 
@@ -189,7 +191,7 @@ func (cs *Schema) Validate(attributes json.RawMessage, logger *log.Logger, skipC
 			continue
 		}
 
-		isValid, err := prop.validateValue(value, propName, logger)
+		isValid, err := prop.validateValue(ctx, value, propName, logger)
 		if err != nil {
 			return false, err
 		}
@@ -201,7 +203,7 @@ func (cs *Schema) Validate(attributes json.RawMessage, logger *log.Logger, skipC
 	// Reject any user attributes not declared in the schema.
 	for key := range userAttrs {
 		if _, declared := cs.properties[key]; !declared {
-			logger.Debug("Attribute not defined in schema", log.String("attribute", key))
+			logger.Debug(ctx, "Attribute not defined in schema", log.String("attribute", key))
 			return false, nil
 		}
 	}
@@ -211,6 +213,7 @@ func (cs *Schema) Validate(attributes json.RawMessage, logger *log.Logger, skipC
 
 // ValidateUniqueness checks uniqueness constraints for the schema properties.
 func (cs *Schema) ValidateUniqueness(
+	ctx context.Context,
 	attrs map[string]interface{},
 	exists func(map[string]interface{}) (bool, error),
 	logger *log.Logger,
@@ -225,7 +228,7 @@ func (cs *Schema) ValidateUniqueness(
 			continue
 		}
 
-		isValid, err := prop.validateUniqueness(value, propName, exists, logger)
+		isValid, err := prop.validateUniqueness(ctx, value, propName, exists, logger)
 		if err != nil {
 			return false, err
 		}

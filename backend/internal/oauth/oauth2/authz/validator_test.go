@@ -19,6 +19,7 @@
 package authz
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -77,7 +78,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -93,7 +94,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -110,7 +111,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -137,7 +138,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateAuthzRequest_CodeGrant
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, restrictedApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -153,7 +154,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -180,7 +181,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, restrictedApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -197,7 +198,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -218,7 +219,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		Resources: []string{"https://api.example.com/resource"},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -237,7 +238,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		Resources: []string{"https://mcp.example.com/mcp"},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -256,7 +257,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		Resources: []string{"https://mcp.example.com:8443"},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -274,7 +275,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -293,7 +294,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		Resources: []string{"api.example.com/resource"},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -312,7 +313,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		Resources: []string{"https://api.example.com/resource#fragment"},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -331,7 +332,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		Resources: []string{"/api/resource"},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -350,7 +351,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		Resources: []string{"not a valid uri format"},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -370,7 +371,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		Resources: []string{"https://api.example.com/resource?param=value"},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -399,7 +400,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateAuthzReq_PKCERequired_
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, pkceApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -429,7 +430,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateAuthzReq_PKCERequired_
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, pkceApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -461,7 +462,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, pkceApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -491,7 +492,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateAuthzReq_PKCERequired_
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, pkceApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -520,7 +521,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, nonPKCEApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -550,7 +551,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateAuthzReq_PKCENotRequir
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, nonPKCEApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -570,7 +571,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthzRequest_Pr
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -588,7 +589,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.False(suite.T(), sendErrorToApp)
@@ -606,7 +607,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthzRequest_Pr
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -624,7 +625,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthzRequest_Pr
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -642,7 +643,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthzRequest_Pr
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -660,7 +661,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthzRequest_Pr
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -678,7 +679,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthzRequest_Pr
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -696,7 +697,7 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthzRequest_Pr
 		},
 	}
 
-	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+	sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(context.Background(),
 		msg, suite.oauthApp)
 
 	assert.True(suite.T(), sendErrorToApp)
@@ -809,7 +810,10 @@ func (suite *AuthorizationValidatorTestSuite) TestValidateInitialAuthorizationRe
 				},
 			}
 
-			sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(msg, app)
+			sendErrorToApp, errorCode, errorMessage := suite.validator.validateInitialAuthorizationRequest(
+				context.Background(),
+				msg,
+				app)
 
 			if tt.wantError {
 				assert.False(suite.T(), sendErrorToApp)

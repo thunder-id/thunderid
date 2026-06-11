@@ -20,6 +20,7 @@ package layoutmgt
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -51,28 +52,30 @@ type mockLayoutService struct {
 	isLayoutExistFunc func(id string) (bool, *serviceerror.ServiceError)
 }
 
-func (m *mockLayoutService) GetLayoutList(limit, offset int) (*LayoutList, *serviceerror.ServiceError) {
+func (m *mockLayoutService) GetLayoutList(
+	_ context.Context, limit, offset int) (*LayoutList, *serviceerror.ServiceError) {
 	return m.getLayoutListFunc(limit, offset)
 }
 
-func (m *mockLayoutService) CreateLayout(layout CreateLayoutRequest) (*Layout, *serviceerror.ServiceError) {
+func (m *mockLayoutService) CreateLayout(
+	_ context.Context, layout CreateLayoutRequest) (*Layout, *serviceerror.ServiceError) {
 	return m.createLayoutFunc(layout)
 }
 
-func (m *mockLayoutService) GetLayout(id string) (*Layout, *serviceerror.ServiceError) {
+func (m *mockLayoutService) GetLayout(_ context.Context, id string) (*Layout, *serviceerror.ServiceError) {
 	return m.getLayoutFunc(id)
 }
 
-func (m *mockLayoutService) UpdateLayout(
+func (m *mockLayoutService) UpdateLayout(_ context.Context,
 	id string, layout UpdateLayoutRequest) (*Layout, *serviceerror.ServiceError) {
 	return m.updateLayoutFunc(id, layout)
 }
 
-func (m *mockLayoutService) DeleteLayout(id string) *serviceerror.ServiceError {
+func (m *mockLayoutService) DeleteLayout(_ context.Context, id string) *serviceerror.ServiceError {
 	return m.deleteLayoutFunc(id)
 }
 
-func (m *mockLayoutService) IsLayoutExist(id string) (bool, *serviceerror.ServiceError) {
+func (m *mockLayoutService) IsLayoutExist(_ context.Context, id string) (bool, *serviceerror.ServiceError) {
 	return m.isLayoutExistFunc(id)
 }
 
@@ -486,7 +489,7 @@ func (suite *LayoutHandlerTestSuite) TestHandleError_StatusCodeMapping() {
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
 			w := httptest.NewRecorder()
-			handleError(w, tc.svcErr)
+			handleError(context.Background(), w, tc.svcErr)
 			assert.Equal(suite.T(), tc.expectedStatus, w.Code)
 		})
 	}

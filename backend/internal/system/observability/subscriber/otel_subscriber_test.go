@@ -691,6 +691,106 @@ func BenchmarkOTelSubscriber_convertDataToAttributes(b *testing.B) {
 	}
 }
 
+// Test suite for extractErrorMessage
+
+func (suite *OTelSubscriberTestSuite) TestExtractErrorMessage_NoErrorKey() {
+	sub := &OTelSubscriber{}
+	evt := &event.Event{
+		Data: map[string]interface{}{},
+	}
+
+	result := sub.extractErrorMessage(evt)
+	assert.Equal(suite.T(), "unknown error", result)
+}
+
+func (suite *OTelSubscriberTestSuite) TestExtractErrorMessage_PlainString() {
+	sub := &OTelSubscriber{}
+	evt := &event.Event{
+		Data: map[string]interface{}{
+			event.DataKey.Error: "something went wrong",
+		},
+	}
+
+	result := sub.extractErrorMessage(evt)
+	assert.Equal(suite.T(), "something went wrong", result)
+}
+
+func (suite *OTelSubscriberTestSuite) TestExtractErrorMessage_FlowErrorMapWithDefaultValue() {
+	sub := &OTelSubscriber{}
+	evt := &event.Event{
+		Data: map[string]interface{}{
+			event.DataKey.Error: map[string]interface{}{
+				"code": "FET-1008",
+				"message": map[string]interface{}{
+					"key":          "flows.executor.errors.invalid_otp",
+					"defaultValue": "Invalid OTP provided",
+				},
+			},
+		},
+	}
+
+	result := sub.extractErrorMessage(evt)
+	assert.Equal(suite.T(), "Invalid OTP provided", result)
+}
+
+func (suite *OTelSubscriberTestSuite) TestExtractErrorMessage_TokenErrorPlainMessageString() {
+	sub := &OTelSubscriber{}
+	evt := &event.Event{
+		Data: map[string]interface{}{
+			event.DataKey.Error: map[string]interface{}{
+				"code":    "TOKEN-40001",
+				"message": "invalid grant",
+			},
+		},
+	}
+
+	result := sub.extractErrorMessage(evt)
+	assert.Equal(suite.T(), "invalid grant", result)
+}
+
+func (suite *OTelSubscriberTestSuite) TestExtractErrorMessage_MapWithoutMessageKey() {
+	sub := &OTelSubscriber{}
+	evt := &event.Event{
+		Data: map[string]interface{}{
+			event.DataKey.Error: map[string]interface{}{
+				"code": "ERR-500",
+			},
+		},
+	}
+
+	result := sub.extractErrorMessage(evt)
+	assert.Equal(suite.T(), "unknown error", result)
+}
+
+func (suite *OTelSubscriberTestSuite) TestExtractErrorMessage_MapWithEmptyDefaultValue() {
+	sub := &OTelSubscriber{}
+	evt := &event.Event{
+		Data: map[string]interface{}{
+			event.DataKey.Error: map[string]interface{}{
+				"message": map[string]interface{}{
+					"key":          "some.key",
+					"defaultValue": "",
+				},
+			},
+		},
+	}
+
+	result := sub.extractErrorMessage(evt)
+	assert.Equal(suite.T(), "unknown error", result)
+}
+
+func (suite *OTelSubscriberTestSuite) TestExtractErrorMessage_EmptyPlainString() {
+	sub := &OTelSubscriber{}
+	evt := &event.Event{
+		Data: map[string]interface{}{
+			event.DataKey.Error: "",
+		},
+	}
+
+	result := sub.extractErrorMessage(evt)
+	assert.Equal(suite.T(), "unknown error", result)
+}
+
 // Helper functions for testing
 
 func setupTestConfig(t *testing.T) {

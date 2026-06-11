@@ -20,6 +20,7 @@
 package dcr
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 
@@ -42,7 +43,9 @@ func Initialize(
 	transactioner, err := provider.GetDBProvider().GetRuntimeDBTransactioner()
 	if err != nil {
 		wrappedErr := fmt.Errorf("failed to get runtime DB transactioner for DCR: %w", err)
-		log.GetLogger().Error("Failed to initialize DCR service", log.Error(wrappedErr))
+		// Service initialization runs during application startup, outside any request.
+		log.GetLogger().Error(context.Background(),
+			"Failed to initialize DCR service", log.Error(wrappedErr))
 		return wrappedErr
 	}
 	dcrService := newDCRService(appService, ouService, i18nService, transactioner)

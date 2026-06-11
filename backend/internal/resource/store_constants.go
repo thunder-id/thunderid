@@ -28,14 +28,14 @@ var (
 	queryCreateResourceServer = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-01",
 		Query: `INSERT INTO "RESOURCE_SERVER"
-			(ID, OU_ID, NAME, DESCRIPTION, HANDLE, IDENTIFIER, PROPERTIES, DEPLOYMENT_ID)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			(ID, OU_ID, NAME, DESCRIPTION, HANDLE, IDENTIFIER, TYPE, PROPERTIES, DEPLOYMENT_ID)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 	}
 
 	// queryGetResourceServerByID retrieves a resource server by ID.
 	queryGetResourceServerByID = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-02",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, HANDLE, IDENTIFIER, PROPERTIES
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, HANDLE, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -43,7 +43,7 @@ var (
 	// queryGetResourceServerList retrieves a list of resource servers with pagination.
 	queryGetResourceServerList = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-03",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, HANDLE, IDENTIFIER, PROPERTIES
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, HANDLE, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE DEPLOYMENT_ID = $3
 			ORDER BY CREATED_AT DESC
@@ -60,8 +60,8 @@ var (
 	queryUpdateResourceServer = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-05",
 		Query: `UPDATE "RESOURCE_SERVER"
-			SET OU_ID = $1, NAME = $2, DESCRIPTION = $3, HANDLE = $4, IDENTIFIER = $5, PROPERTIES = $6
-			WHERE ID = $7 AND DEPLOYMENT_ID = $8`,
+			SET OU_ID = $1, NAME = $2, DESCRIPTION = $3, HANDLE = $4, IDENTIFIER = $5, TYPE = $6, PROPERTIES = $7
+			WHERE ID = $8 AND DEPLOYMENT_ID = $9`,
 	}
 
 	// queryDeleteResourceServer deletes a resource server.
@@ -91,7 +91,7 @@ var (
 	// queryGetResourceServerByIdentifier retrieves a resource server by identifier.
 	queryGetResourceServerByIdentifier = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-34",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, HANDLE, IDENTIFIER, PROPERTIES
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, HANDLE, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE IDENTIFIER = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -368,7 +368,7 @@ var (
 	queryFindResourceServersByPermissions = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-35",
 		PostgresQuery: `SELECT DISTINCT rs.ID, rs.OU_ID, rs.NAME, rs.DESCRIPTION, rs.HANDLE,
-		               rs.IDENTIFIER, rs.PROPERTIES
+		               rs.IDENTIFIER, rs.TYPE, rs.PROPERTIES
 		        FROM "RESOURCE_SERVER" rs
 		        WHERE rs.DEPLOYMENT_ID = $1
 		          AND rs.IDENTIFIER IS NOT NULL
@@ -386,7 +386,7 @@ var (
 		          )
 		        ORDER BY rs.IDENTIFIER`,
 		SQLiteQuery: `SELECT DISTINCT rs.ID, rs.OU_ID, rs.NAME, rs.DESCRIPTION, rs.HANDLE,
-		              rs.IDENTIFIER, rs.PROPERTIES
+		              rs.IDENTIFIER, rs.TYPE, rs.PROPERTIES
 		        FROM "RESOURCE_SERVER" rs
 		        WHERE rs.DEPLOYMENT_ID = $1
 		          AND rs.IDENTIFIER IS NOT NULL

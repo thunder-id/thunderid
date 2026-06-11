@@ -17,11 +17,12 @@
  */
 
 import {I18nDefaultConstants} from '@thunderid/i18n';
-import enUS from '@thunderid/i18n/locales/en-US';
 import i18next from 'i18next';
 import type {JSX, ComponentType} from 'react';
 import {initReactI18next} from 'react-i18next';
 import I18nProvider from '../i18n/I18nProvider';
+
+const enUS = await import('@thunderid/i18n/locales/en-US').then((m) => m.default);
 
 await i18next.use(initReactI18next).init({
   resources: {

@@ -138,9 +138,12 @@ type AESGCMKWParams struct {
 
 // ECDHESParams carries ECDH-ES-specific inputs.
 // For ECDH-ES decrypt, EPK must be populated with the ephemeral public key from the JWE header.
+// APU and APV are the raw (already base64url-decoded) apu/apv header values; pass nil when absent.
 type ECDHESParams struct {
 	EPK                        gocrypto.PublicKey
 	ContentEncryptionAlgorithm Algorithm
+	APU                        []byte
+	APV                        []byte
 }
 
 // CryptoDetails carries algorithm-specific outputs from an Encrypt operation.

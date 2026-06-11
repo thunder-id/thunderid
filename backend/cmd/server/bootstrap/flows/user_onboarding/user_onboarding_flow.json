@@ -594,7 +594,14 @@
             },
             "executor": {
                 "name": "EmailExecutor",
-                "mode": "send"
+                "mode": "send",
+                "inputs": [
+                    {
+                        "identifier": "email",
+                        "type": "EMAIL_INPUT",
+                        "required": true
+                    }
+                ]
             },
             "onSuccess": "email_invite_status",
             "onFailure": "invite_email_service_unavailable",

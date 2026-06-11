@@ -79,7 +79,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 
 	// Validate the redirect URI.
 	redirectURI := params[oauth2const.RequestParamRedirectURI]
-	if err := oauthApp.ValidateRedirectURI(redirectURI); err != nil {
+	if err := oauthApp.ValidateRedirectURI(ctx, redirectURI); err != nil {
 		return nil, oauth2const.ErrorInvalidRequest, "Invalid redirect URI"
 	}
 
@@ -117,6 +117,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 		return nil, errResp.Error, errResp.ErrorDescription
 	}
 
+	redirectURIProvided := redirectURI != ""
 	if redirectURI == "" && len(oauthApp.RedirectURIs) == 1 {
 		redirectURI = oauthApp.RedirectURIs[0]
 	}
@@ -125,6 +126,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 		State:               params[oauth2const.RequestParamState],
 		ClientID:            oauthApp.ClientID,
 		RedirectURI:         redirectURI,
+		RedirectURIProvided: redirectURIProvided,
 		ResponseType:        params[oauth2const.RequestParamResponseType],
 		StandardScopes:      oidcScopes,
 		PermissionScopes:    nonOidcScopes,
@@ -147,7 +149,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 
 	randomKey, err := s.store.Store(ctx, parRequest, expiresIn)
 	if err != nil {
-		s.logger.Error("Failed to store pushed authorization request", log.Error(err))
+		s.logger.Error(ctx, "Failed to store pushed authorization request", log.Error(err))
 		return nil, oauth2const.ErrorServerError, "Failed to process pushed authorization request"
 	}
 
@@ -178,7 +180,7 @@ func (s *parService) ResolvePushedAuthorizationRequest(
 
 	parRequest, found, err := s.store.Consume(ctx, randomKey)
 	if err != nil {
-		s.logger.Error("Failed to consume PAR request", log.Error(err))
+		s.logger.Error(ctx, "Failed to consume PAR request", log.Error(err))
 		return nil, ErrPARResolutionFailed
 	}
 	if !found {
@@ -188,7 +190,7 @@ func (s *parService) ResolvePushedAuthorizationRequest(
 	// Verify client_id binding: the client making the authorization request must match
 	// the client that pushed the authorization request.
 	if parRequest.ClientID != clientID {
-		s.logger.Debug("Client ID mismatch for PAR request",
+		s.logger.Debug(ctx, "Client ID mismatch for PAR request",
 			log.String("expected", parRequest.ClientID),
 			log.String("actual", clientID))
 		return nil, errClientIDMismatch

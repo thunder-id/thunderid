@@ -91,7 +91,7 @@ func (e *notificationSenderExporter) GetResourceByID(ctx context.Context, id str
 }
 
 // ValidateResource validates a notification sender resource.
-func (e *notificationSenderExporter) ValidateResource(
+func (e *notificationSenderExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	sender, ok := resource.(*common.NotificationSenderDTO)
@@ -99,7 +99,7 @@ func (e *notificationSenderExporter) ValidateResource(
 		return "", declarativeresource.CreateTypeError(resourceTypeNotificationSender, id)
 	}
 
-	err := declarativeresource.ValidateResourceName(
+	err := declarativeresource.ValidateResourceName(ctx,
 		sender.Name, resourceTypeNotificationSender, id, "SENDER_VALIDATION_ERROR", logger,
 	)
 	if err != nil {
@@ -107,7 +107,7 @@ func (e *notificationSenderExporter) ValidateResource(
 	}
 
 	if len(sender.Properties) == 0 {
-		logger.Warn("Notification sender has no properties",
+		logger.Warn(ctx, "Notification sender has no properties",
 			log.String("senderID", id), log.String("name", sender.Name))
 	}
 

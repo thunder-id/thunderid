@@ -44,14 +44,14 @@ func NewTokenVerifier(
 	return func(ctx context.Context, token string, req *http.Request) (*auth.TokenInfo, error) {
 		// Verify JWT signature and claims (iss, aud, exp, nbf)
 		if err := jwtService.VerifyJWT(ctx, token, mcpURL, issuer); err != nil {
-			logger.Error("JWT verification failed", log.String("error", err.Error.DefaultValue))
+			logger.Error(ctx, "JWT verification failed", log.String("error", err.Error.DefaultValue))
 			return nil, auth.ErrInvalidToken
 		}
 
 		// Decode payload to extract claims for TokenInfo
 		payload, err := jwt.DecodeJWTPayload(token)
 		if err != nil {
-			logger.Error("Failed to decode JWT payload", log.Error(err))
+			logger.Error(ctx, "Failed to decode JWT payload", log.Error(err))
 			return nil, auth.ErrInvalidToken
 		}
 
@@ -65,11 +65,11 @@ func NewTokenVerifier(
 		var scopes []string
 		if scopeStr, ok := payload["scope"].(string); ok && scopeStr != "" {
 			scopes = strings.Fields(scopeStr)
-			logger.Debug("Token scopes extracted",
+			logger.Debug(ctx, "Token scopes extracted",
 				log.String("scopes", strings.Join(scopes, ",")),
 				log.String("path", req.URL.Path))
 		} else {
-			logger.Warn("Token missing 'scope' claim", log.String("path", req.URL.Path))
+			logger.Warn(ctx, "Token missing 'scope' claim", log.String("path", req.URL.Path))
 		}
 
 		// Extract user ID from 'sub' claim

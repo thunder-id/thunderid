@@ -21,7 +21,6 @@ import {useLogger} from '@thunderid/logger/react';
 import {
   Alert,
   Box,
-  Breadcrumbs,
   Button,
   Chip,
   Divider,
@@ -36,7 +35,6 @@ import {
   Bell,
   Bot,
   Building,
-  ChevronRight,
   Languages,
   LayoutGrid,
   Layout as LayoutIcon,
@@ -58,6 +56,7 @@ import ResourceSummaryTable from '../components/ResourceSummaryTable';
 import TemplateVariableDisplay from '../components/TemplateVariableDisplay';
 import type {ConfigSummaryItem, ImportItemOutcome, ProductConfig} from '../models/import-configuration';
 import getEnvFileName from '../utils/getEnvFileName';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 
 function parseEnvData(envData: string | null): Map<string, string> {
   const entries = new Map<string, string>();
@@ -147,6 +146,7 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
   const {t} = useTranslation('importExport');
   const navigate = useNavigate();
   const location = useLocation();
+  const isWelcomeFlow = location.pathname.startsWith('/welcome');
   const logger = useLogger('ImportConfigurationSummaryPage');
   const {showToast} = useToast();
   const {config} = useConfig();
@@ -1077,25 +1077,19 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
           >
             <X size={24} />
           </IconButton>
-          <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb">
-            <Typography
-              variant="h5"
-              onClick={() => void navigate('/welcome')}
-              sx={{cursor: 'pointer', '&:hover': {textDecoration: 'underline'}}}
-            >
-              {t('common:welcome.header')}
-            </Typography>
-            <Typography
-              variant="h5"
-              onClick={() => void navigate('/welcome/open-project')}
-              sx={{cursor: 'pointer', '&:hover': {textDecoration: 'underline'}}}
-            >
-              {t('upload.breadcrumb.openProject')}
-            </Typography>
-            <Typography variant="h5" color="text.primary">
-              {t('summary.breadcrumb')}
-            </Typography>
-          </Breadcrumbs>
+          <AppBreadcrumbs
+            items={[
+              ...(isWelcomeFlow
+                ? [{key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')}]
+                : []),
+              {
+                key: 'open-project',
+                label: t('upload.breadcrumb.openProject'),
+                onClick: () => void navigate(`${isWelcomeFlow ? '/welcome' : ''}/open-project`),
+              },
+              {key: 'summary', label: t('summary.breadcrumb')},
+            ]}
+          />
         </Stack>
       </Box>
 

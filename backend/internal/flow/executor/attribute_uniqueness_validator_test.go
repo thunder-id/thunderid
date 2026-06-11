@@ -60,7 +60,9 @@ func (suite *AttributeUniquenessValidatorTestSuite) SetupTest() {
 		Return(func(ctx *core.NodeContext, execResp *common.ExecutorResponse) bool {
 			if _, ok := ctx.RuntimeData[userTypeKey]; !ok {
 				execResp.Status = common.ExecFailure
-				execResp.FailureReason = "Prerequisite not met: " + userTypeKey
+				execResp.Error = &serviceerror.ServiceError{
+					Error: i18ncore.I18nMessage{DefaultValue: "Prerequisite not met: " + userTypeKey},
+				}
 				return false
 			}
 			return true
@@ -147,8 +149,8 @@ func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_AttributeConflic
 
 			assert.NoError(suite.T(), err)
 			assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-			assert.Contains(suite.T(), resp.FailureReason, tt.attribute)
-			assert.Contains(suite.T(), resp.FailureReason, "already exists")
+			assert.Contains(suite.T(), resp.Error.ErrorDescription.DefaultValue, tt.attribute)
+			assert.Contains(suite.T(), resp.Error.ErrorDescription.DefaultValue, "already exists")
 			suite.mockEntityProvider.AssertExpectations(suite.T())
 		})
 	}

@@ -107,7 +107,11 @@ function isMissingOnboardingFlow(error: unknown): boolean {
 
   const flowError = error as Error & {
     code?: string;
-    failureReason?: string;
+    error?: {
+      code?: string;
+      description?: {defaultValue?: string; key?: string};
+      message?: {defaultValue?: string; key?: string};
+    };
     response?: {
       data?: ApiError;
       status?: number;
@@ -120,10 +124,12 @@ function isMissingOnboardingFlow(error: unknown): boolean {
   return (
     apiError?.code === FLOW_NOT_FOUND_ERROR_CODE ||
     flowError.code === FLOW_NOT_FOUND_ERROR_CODE ||
+    flowError.error?.code === FLOW_NOT_FOUND_ERROR_CODE ||
     containsFlowNotFoundText(apiError?.message) ||
     containsFlowNotFoundText(apiError?.description) ||
     containsFlowNotFoundText(flowError.message) ||
-    containsFlowNotFoundText(flowError.failureReason)
+    containsFlowNotFoundText(flowError.error?.message?.defaultValue) ||
+    containsFlowNotFoundText(flowError.error?.description?.defaultValue)
   );
 }
 
@@ -952,7 +958,20 @@ export default function UserInvitePage(): JSX.Element {
                     handleManualCreateFallback();
                     return;
                   }
-                  setFlowError((response?.failureReason as string | null) ?? null);
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                  const messageKey: string | undefined = response?.error?.message?.key;
+                  if (messageKey) {
+                    const translated: string = t(messageKey);
+                    if (translated !== messageKey) {
+                      setFlowError(translated);
+
+                      return;
+                    }
+                  }
+                  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+                  const fallback: string | undefined =
+                    response?.error?.message?.defaultValue ?? response?.error?.description?.defaultValue;
+                  setFlowError(fallback ?? null);
                 }}
               >
                 {(renderProps: InviteUserRenderProps) => (

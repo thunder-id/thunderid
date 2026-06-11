@@ -17,18 +17,20 @@
  */
 
 import {useLogger} from '@thunderid/logger/react';
-import {Box, Breadcrumbs, Button, IconButton, LinearProgress, Stack, Typography, Alert, Chip} from '@wso2/oxygen-ui';
-import {CheckCircle, ChevronRight, X, AlertCircle} from '@wso2/oxygen-ui-icons-react';
+import {Box, Button, IconButton, LinearProgress, Stack, Typography, Alert, Chip} from '@wso2/oxygen-ui';
+import {CheckCircle, X, AlertCircle} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useLocation, useNavigate} from 'react-router';
 import type {ValidationStep, ParseError} from '../models/import-configuration';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 
 export default function ImportConfigurationValidatePage(): JSX.Element {
   const {t} = useTranslation('importExport');
   const navigate = useNavigate();
   const location = useLocation();
+  const isWelcomeFlow = location.pathname.startsWith('/welcome');
   const logger = useLogger('ImportConfigurationValidatePage');
 
   const state = location.state as {
@@ -51,7 +53,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
   };
 
   const handleCancel = (): void => {
-    void navigate('/welcome');
+    void navigate('/home');
   };
 
   useEffect(() => {
@@ -101,7 +103,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
             // Navigate to summary after all steps complete (only if no errors)
             setTimeout(() => {
               (async () => {
-                await navigate('/welcome/open-project/summary', {
+                await navigate(`${isWelcomeFlow ? '/welcome' : ''}/open-project/summary`, {
                   state: location.state as Record<string, unknown>,
                 });
               })().catch((_error: unknown) => {
@@ -114,7 +116,7 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [navigate, location.state, logger, validationSteps.length, hasParseErrors]);
+  }, [navigate, location.state, logger, validationSteps.length, hasParseErrors, isWelcomeFlow]);
 
   const completedSteps = validationSteps.filter((step) => step.status === 'completed').length;
   const progress = (completedSteps / validationSteps.length) * 100;
@@ -140,18 +142,14 @@ export default function ImportConfigurationValidatePage(): JSX.Element {
           >
             <X size={24} />
           </IconButton>
-          <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb">
-            <Typography
-              variant="h5"
-              onClick={() => void navigate('/welcome')}
-              sx={{cursor: 'pointer', '&:hover': {textDecoration: 'underline'}}}
-            >
-              {t('common:welcome.header')}
-            </Typography>
-            <Typography variant="h5" color="text.primary">
-              {t('upload.breadcrumb.openProject')}
-            </Typography>
-          </Breadcrumbs>
+          <AppBreadcrumbs
+            items={[
+              ...(isWelcomeFlow
+                ? [{key: 'welcome', label: t('common:welcome.header'), onClick: () => void navigate('/welcome')}]
+                : []),
+              {key: 'open-project', label: t('upload.breadcrumb.openProject')},
+            ]}
+          />
         </Stack>
       </Box>
 

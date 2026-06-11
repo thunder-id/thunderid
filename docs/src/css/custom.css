@@ -1182,8 +1182,8 @@ aside.theme-doc-sidebar-container {
 /* Scalar side bar item text transformation — removed: tags now use correct
    Title Case directly in the spec files, so no CSS override is needed. */
 
-/* Hide the introduction in side panel & content in Scalar since it's redundant with the content in the main page. */
-.apis-page .scalar-api-reference aside .group\/items > .group\/item:first-child {
+/* Hide the Introduction sidebar entry — identified by its stable data-sidebar-id slug, not by position. */
+.apis-page .scalar-api-reference aside [data-sidebar-id$="/description/introduction"] {
   display: none;
 }
 
@@ -4206,20 +4206,8 @@ a.connect-card {
   gap: 1rem;
 }
 
-/* Gradient line — from center of col-1 circle to center of col-3 circle */
 .dp-route-stops::before {
-  content: '';
-  position: absolute;
-  top: 30px; /* half of circle height (60px) */
-  left: calc((100% - 2rem) / 6 + 30px);  /* col-1 center + circle radius */
-  right: calc((100% - 2rem) / 6 + 30px); /* col-3 center + circle radius (mirrored) */
-  height: 3px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, #0ea5e9 0%, #326CE5 50%, #8b5cf6 100%);
-  transform: scaleX(0);
-  transform-origin: left center;
-  animation: dp-line-draw 900ms cubic-bezier(0.16, 1, 0.3, 1) 250ms both;
-  z-index: -1;
+  display: none;
 }
 
 .dp-route-stop {
@@ -4277,6 +4265,36 @@ a.connect-card {
   /* Extend right for extra width; left aligns with article content edge */
   margin-left: 0;
   margin-right: -2rem;
+  position: relative;
+}
+
+/* Two vertical separators sitting in the column gaps */
+.dp-list::before,
+.dp-list::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--ifm-color-emphasis-200) 15%,
+    var(--ifm-color-emphasis-200) 85%,
+    transparent
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Center of gap 1: after column 1 */
+.dp-list::before {
+  left: calc(33.333% - 0.167rem);
+}
+
+/* Center of gap 2: after column 2 */
+.dp-list::after {
+  left: calc(66.667% + 0.167rem);
 }
 
 .dp-row-card {
@@ -4324,6 +4342,28 @@ a.connect-card {
 .dp-row-1 { animation: dp-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) 450ms both; }
 .dp-row-2 { animation: dp-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) 570ms both; }
 .dp-row-3 { animation: dp-fade-up 700ms cubic-bezier(0.16, 1, 0.3, 1) 690ms both; }
+
+/* In-card logo */
+.dp-card-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--dp-icon-bg);
+  border: 2px solid var(--dp-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.dp-card-icon img {
+  width: 26px;
+  height: 26px;
+  max-width: 26px;
+  object-fit: contain;
+}
 
 /* Step label */
 .dp-rc-step {
@@ -4461,6 +4501,11 @@ a.connect-card {
     max-width: 480px;
     margin-inline: auto;
   }
+
+  .dp-list::before,
+  .dp-list::after {
+    display: none;
+  }
 }
 
 @media (max-width: 680px) {
@@ -4475,11 +4520,6 @@ a.connect-card {
   .dp-row-2,
   .dp-row-3 {
     animation: none !important;
-  }
-
-  .dp-route-stops::before {
-    animation: none !important;
-    transform: translateY(-50%) scaleX(1);
   }
 
   .dp-row-card {
@@ -4959,7 +4999,7 @@ a.connect-card {
 
 .seq-actor-label {
   fill: #fff;
-  font-size: 12.5px;
+  font-size: 19px;
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -4994,13 +5034,13 @@ a.connect-card {
 
 .seq-message-label {
   fill: var(--ifm-font-color-base);
-  font-size: 14px;
+  font-size: 21px;
   font-weight: 600;
 }
 
 .seq-message-sublabel {
   fill: var(--ifm-color-emphasis-600);
-  font-size: 13.5px;
+  font-size: 19px;
   font-weight: 400;
 }
 
@@ -5022,12 +5062,34 @@ a.connect-card {
 
 .seq-note {
   fill: color-mix(in srgb, var(--ifm-color-primary) 80%, var(--ifm-font-color-base));
-  font-size: 11px;
+  font-size: 16px;
   font-style: italic;
 }
 
 [data-theme='dark'] .seq-note {
   fill: color-mix(in srgb, var(--ifm-color-primary) 70%, var(--ifm-color-emphasis-900));
+}
+
+/* ── Protocol family card (Protocols & Standards index) ── */
+.protocol-family-card {
+  margin: 1.5rem 0;
+  padding: 1.25rem 1.5rem;
+  background: var(--ifm-color-emphasis-100);
+  border: 1px solid var(--ifm-color-emphasis-200);
+  border-radius: 12px;
+}
+
+[data-theme='dark'] .protocol-family-card {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--ifm-color-emphasis-200);
+}
+
+.protocol-family-card > :first-child {
+  margin-top: 0;
+}
+
+.protocol-family-card > :last-child {
+  margin-bottom: 0;
 }
 
 /* ── Prerequisites table ── */

@@ -27,3 +27,4 @@ coverage
 *.sln
 *.sw?
 public/version.txt
+src/features/welcome/data/sample-bundles/

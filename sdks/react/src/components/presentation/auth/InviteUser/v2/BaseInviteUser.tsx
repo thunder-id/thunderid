@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -19,6 +19,7 @@
 import {cx} from '@emotion/css';
 import {
   EmbeddedFlowType,
+  FlowExecutionError,
   FlowMetadataResponse,
   logger,
   OrganizationUnitListResponse,
@@ -52,8 +53,8 @@ export interface InviteUserFlowResponse {
       components?: any[];
     };
   };
+  error?: FlowExecutionError;
   executionId: string;
-  failureReason?: string;
   flowStatus: 'INCOMPLETE' | 'COMPLETE' | 'ERROR';
   type?: 'VIEW' | 'REDIRECTION';
 }
@@ -320,9 +321,7 @@ const BaseInviteUser: FC<BaseInviteUserProps> = ({
    */
   const handleError: any = useCallback(
     (error: any) => {
-      // Extract error message from response failureReason or use extractErrorMessage
-      const errorMessage: string =
-        error?.failureReason || extractErrorMessage(error, t, 'components.inviteUser.errors.generic');
+      const errorMessage: string = extractErrorMessage(error, t, 'components.inviteUser.errors.generic');
 
       // Set the API error state
       setApiError(error instanceof Error ? error : new Error(errorMessage));
@@ -491,6 +490,11 @@ const BaseInviteUser: FC<BaseInviteUserProps> = ({
         setFormValues({});
         setFormErrors({});
         setTouchedFields({});
+
+        // Display error from INCOMPLETE response
+        if (response?.error) {
+          handleError(response);
+        }
       } catch (err) {
         handleError(err);
       } finally {

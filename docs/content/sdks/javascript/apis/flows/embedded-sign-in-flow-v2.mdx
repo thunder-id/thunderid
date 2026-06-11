@@ -67,7 +67,7 @@ if (step2.flowStatus === EmbeddedSignInFlowStatusV2.Complete) {
 | `assertion` | `string` | Present when `flowStatus` is `Complete`. Use to exchange for tokens |
 | `challengeToken` | `string` | Present when a challenge is required (e.g., TOTP step) |
 | `redirectUrl` | `string` | Present when `type` is `Redirection` |
-| `failureReason` | `string` | Present when `flowStatus` is `Error` |
+| `error` | `FlowError` | Present when `flowStatus` is `Error` or `Incomplete`. Contains `code`, `message`, and `description` |
 
 ## Enums
 
@@ -77,7 +77,7 @@ if (step2.flowStatus === EmbeddedSignInFlowStatusV2.Complete) {
 |-------|-------------|
 | `Incomplete` | Flow has more steps |
 | `Complete` | Authentication succeeded — use `assertion` to obtain tokens |
-| `Error` | Authentication failed — check `failureReason` |
+| `Error` | Authentication failed, check `error` for details |
 
 ### `EmbeddedSignInFlowTypeV2`
 

@@ -17,18 +17,8 @@
  */
 
 import {useLogger} from '@thunderid/logger/react';
-import {
-  Box,
-  Stack,
-  Button,
-  IconButton,
-  LinearProgress,
-  Breadcrumbs,
-  Typography,
-  Alert,
-  Snackbar,
-} from '@wso2/oxygen-ui';
-import {X, ChevronRight} from '@wso2/oxygen-ui-icons-react';
+import {Box, Stack, Button, IconButton, LinearProgress, Typography, Alert, Snackbar} from '@wso2/oxygen-ui';
+import {X} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useMemo} from 'react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -40,6 +30,7 @@ import ConfigureProperties from '../components/create-user-type/ConfigurePropert
 import useUserTypeCreate from '../contexts/UserTypeCreate/useUserTypeCreate';
 import {UserTypeCreateFlowStep} from '../models/user-type-create-flow';
 import type {PropertyDefinition, UserTypeDefinition, CreateUserTypeRequest} from '../types/user-types';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 
 export default function CreateUserTypePage(): JSX.Element {
   const {t} = useTranslation();
@@ -85,11 +76,7 @@ export default function CreateUserTypePage(): JSX.Element {
   });
 
   const handleClose = (): void => {
-    (async () => {
-      await navigate('/user-types');
-    })().catch((_error: unknown) => {
-      logger.error('Failed to navigate to user types page', {error: _error});
-    });
+    void navigate('/user-types');
   };
 
   const handleStepReadyChange = useCallback((step: UserTypeCreateFlowStep, isReady: boolean): void => {
@@ -319,35 +306,13 @@ export default function CreateUserTypePage(): JSX.Element {
             >
               <X size={24} />
             </IconButton>
-            <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb">
-              {getBreadcrumbSteps().map((step, index, array) => {
-                const isLast = index === array.length - 1;
-
-                return isLast ? (
-                  <Typography key={step} variant="h5" color="text.primary">
-                    {steps[step].label}
-                  </Typography>
-                ) : (
-                  <Typography
-                    key={step}
-                    variant="h5"
-                    color="inherit"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setCurrentStep(step)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setCurrentStep(step);
-                      }
-                    }}
-                    sx={{cursor: 'pointer', '&:hover': {textDecoration: 'underline'}}}
-                  >
-                    {steps[step].label}
-                  </Typography>
-                );
-              })}
-            </Breadcrumbs>
+            <AppBreadcrumbs
+              items={getBreadcrumbSteps().map((step, index, array) => ({
+                key: step,
+                label: steps[step].label,
+                onClick: index < array.length - 1 ? () => setCurrentStep(step) : undefined,
+              }))}
+            />
           </Stack>
         </Box>
 

@@ -19,6 +19,8 @@
 package notification
 
 import (
+	"context"
+
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/notification/message"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
@@ -26,7 +28,8 @@ import (
 
 // notificationClientProviderInterface defines the interface for obtaining notification clients.
 type notificationClientProviderInterface interface {
-	GetClient(sender common.NotificationSenderDTO) (message.NotificationClientInterface, *serviceerror.ServiceError)
+	GetClient(ctx context.Context,
+		sender common.NotificationSenderDTO) (message.NotificationClientInterface, *serviceerror.ServiceError)
 }
 
 // notificationClientProvider is the implementation of notificationClientProviderInterface.
@@ -38,17 +41,17 @@ func newNotificationClientProvider() notificationClientProviderInterface {
 }
 
 // GetClient returns the notification client for the given sender.
-func (p *notificationClientProvider) GetClient(sender common.NotificationSenderDTO) (
+func (p *notificationClientProvider) GetClient(ctx context.Context, sender common.NotificationSenderDTO) (
 	message.NotificationClientInterface, *serviceerror.ServiceError) {
 	var _client message.NotificationClientInterface
 	var err error
 	switch sender.Provider {
 	case common.MessageProviderTypeVonage:
-		_client, err = message.NewVonageClient(sender)
+		_client, err = message.NewVonageClient(ctx, sender)
 	case common.MessageProviderTypeTwilio:
-		_client, err = message.NewTwilioClient(sender)
+		_client, err = message.NewTwilioClient(ctx, sender)
 	case common.MessageProviderTypeCustom:
-		_client, err = message.NewCustomClient(sender)
+		_client, err = message.NewCustomClient(ctx, sender)
 	default:
 		return nil, &ErrorInvalidProvider
 	}

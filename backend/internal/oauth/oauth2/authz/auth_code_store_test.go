@@ -76,6 +76,7 @@ func (suite *AuthorizationCodeStoreTestSuite) SetupTest() {
 		Code:                "test-code",
 		ClientID:            "test-client-id",
 		RedirectURI:         "https://client.example.com/callback",
+		RedirectURIProvided: true,
 		AuthorizedUserID:    "test-user-id",
 		TimeCreated:         time.Now(),
 		Scopes:              "read write",
@@ -143,6 +144,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_Success()
 
 	authzData := map[string]interface{}{
 		"redirect_uri":          "https://client.example.com/callback",
+		"redirect_uri_provided": true,
 		"authorized_user_id":    "test-user-id",
 		"scopes":                "read write",
 		"code_challenge":        "abc123",
@@ -172,6 +174,7 @@ func (suite *AuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_Success()
 	assert.Equal(suite.T(), "test-code", result.Code)
 	assert.Equal(suite.T(), "test-client-id", result.ClientID)
 	assert.Equal(suite.T(), "https://client.example.com/callback", result.RedirectURI)
+	assert.True(suite.T(), result.RedirectURIProvided)
 	assert.Equal(suite.T(), "test-user-id", result.AuthorizedUserID)
 	assert.Equal(suite.T(), "abc123", result.CodeChallenge)
 	assert.Equal(suite.T(), "s256", result.CodeChallengeMethod)

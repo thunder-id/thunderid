@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -19,6 +19,7 @@
 package core
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,6 +28,8 @@ import (
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 )
 
 type TaskExecutionNodeTestSuite struct {
@@ -168,7 +171,10 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteSuccess() {
 func (s *TaskExecutionNodeTestSuite) TestExecuteFailure() {
 	s.mockExecutor.On("GetName").Return("test-executor").Once()
 	s.mockExecutor.On("Execute", mock.Anything).Return(
-		&common.ExecutorResponse{Status: common.ExecFailure, FailureReason: "AUTH_FAILED"},
+		&common.ExecutorResponse{
+			Status: common.ExecFailure,
+			Error:  &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "AUTH_FAILED"}},
+		},
 		nil,
 	).Once()
 
@@ -182,13 +188,16 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailure() {
 	s.Nil(err)
 	s.NotNil(resp)
 	s.Equal(common.NodeStatusFailure, resp.Status)
-	s.Equal("AUTH_FAILED", resp.FailureReason)
+	s.Equal("AUTH_FAILED", resp.Error.Error.DefaultValue)
 }
 
 func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithOnFailureHandler() {
 	s.mockExecutor.On("GetName").Return("test-executor").Once()
 	s.mockExecutor.On("Execute", mock.Anything).Return(
-		&common.ExecutorResponse{Status: common.ExecFailure, FailureReason: "AUTH_FAILED"},
+		&common.ExecutorResponse{
+			Status: common.ExecFailure,
+			Error:  &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "AUTH_FAILED"}},
+		},
 		nil,
 	).Once()
 
@@ -204,9 +213,11 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithOnFailureHandler() {
 	s.NotNil(resp)
 	s.Equal(common.NodeStatusForward, resp.Status)
 	s.Equal("error-prompt", resp.NextNodeID)
-	s.Equal("AUTH_FAILED", resp.FailureReason)
+	s.Equal("AUTH_FAILED", resp.Error.Error.DefaultValue)
 	s.NotNil(resp.RuntimeData)
-	s.Equal("AUTH_FAILED", resp.RuntimeData["failureReason"])
+	var svcErr217 serviceerror.ServiceError
+	s.NoError(json.Unmarshal([]byte(resp.RuntimeData["failureReasonJSON"]), &svcErr217))
+	s.Equal("AUTH_FAILED", svcErr217.Error.DefaultValue)
 }
 
 func (s *TaskExecutionNodeTestSuite) TestExecuteExecutorError() {
@@ -465,7 +476,10 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithoutOnFailureHandler()
 
 	mockExec.On("GetName").Return("test-executor").Once()
 	mockExec.On("Execute", mock.Anything).Return(
-		&common.ExecutorResponse{Status: common.ExecFailure, FailureReason: "AUTH_FAILED"},
+		&common.ExecutorResponse{
+			Status: common.ExecFailure,
+			Error:  &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "AUTH_FAILED"}},
+		},
 		nil,
 	).Once()
 
@@ -478,7 +492,7 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithoutOnFailureHandler()
 	s.NotNil(resp)
 	s.Equal(common.NodeStatusFailure, resp.Status, "Status should remain failure without onFailure handler")
 	s.Empty(resp.NextNodeID, "NextNodeID should not be set without onFailure handler")
-	s.Equal("AUTH_FAILED", resp.FailureReason)
+	s.Equal("AUTH_FAILED", resp.Error.Error.DefaultValue)
 }
 
 func (s *TaskExecutionNodeTestSuite) TestExecuteCompleteWithoutOnSuccess() {
@@ -533,7 +547,7 @@ func (s *TaskExecutionNodeTestSuite) TestBuildNodeResponsePreservesExecutorData(
 	}
 	execResp := &common.ExecutorResponse{
 		Status:            common.ExecComplete,
-		FailureReason:     "TEST_FAILURE",
+		Error:             &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "TEST_FAILURE"}},
 		Inputs:            []common.Input{{Identifier: "email", Required: true}},
 		AdditionalData:    map[string]string{"key1": "value1"},
 		RedirectURL:       "https://example.com",
@@ -545,7 +559,7 @@ func (s *TaskExecutionNodeTestSuite) TestBuildNodeResponsePreservesExecutorData(
 	nodeResp := node.buildNodeResponse(execResp)
 
 	s.NotNil(nodeResp)
-	s.Equal("TEST_FAILURE", nodeResp.FailureReason)
+	s.Equal("TEST_FAILURE", nodeResp.Error.Error.DefaultValue)
 	s.Equal(1, len(nodeResp.Inputs))
 	s.Equal("email", nodeResp.Inputs[0].Identifier)
 	s.Equal("value1", nodeResp.AdditionalData["key1"])
@@ -567,9 +581,9 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithOnFailureStoresFailur
 	mockExec.On("GetName").Return("test-executor").Once()
 	mockExec.On("Execute", mock.Anything).Return(
 		&common.ExecutorResponse{
-			Status:        common.ExecFailure,
-			FailureReason: "CUSTOM_ERROR",
-			RuntimeData:   map[string]string{"existing": "data"},
+			Status:      common.ExecFailure,
+			Error:       &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "CUSTOM_ERROR"}},
+			RuntimeData: map[string]string{"existing": "data"},
 		},
 		nil,
 	).Once()
@@ -583,8 +597,10 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithOnFailureStoresFailur
 	s.NotNil(resp)
 	s.Equal(common.NodeStatusForward, resp.Status)
 	s.Equal("error-handler", resp.NextNodeID)
-	s.Equal("CUSTOM_ERROR", resp.FailureReason)
-	s.Equal("CUSTOM_ERROR", resp.RuntimeData["failureReason"], "Failure reason should be stored in RuntimeData")
+	s.Equal("CUSTOM_ERROR", resp.Error.Error.DefaultValue)
+	var svcErr598 serviceerror.ServiceError
+	s.NoError(json.Unmarshal([]byte(resp.RuntimeData["failureReasonJSON"]), &svcErr598))
+	s.Equal("CUSTOM_ERROR", svcErr598.Error.DefaultValue, "Failure reason should be stored in RuntimeData")
 	s.Equal("data", resp.RuntimeData["existing"], "Existing runtime data should be preserved")
 }
 
@@ -598,9 +614,9 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithOnFailureInitializesR
 	mockExec.On("GetName").Return("test-executor").Once()
 	mockExec.On("Execute", mock.Anything).Return(
 		&common.ExecutorResponse{
-			Status:        common.ExecFailure,
-			FailureReason: "CUSTOM_ERROR",
-			RuntimeData:   nil, // RuntimeData is nil
+			Status:      common.ExecFailure,
+			Error:       &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "CUSTOM_ERROR"}},
+			RuntimeData: nil, // RuntimeData is nil
 		},
 		nil,
 	).Once()
@@ -614,9 +630,11 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithOnFailureInitializesR
 	s.NotNil(resp)
 	s.Equal(common.NodeStatusForward, resp.Status)
 	s.Equal("error-handler", resp.NextNodeID)
-	s.Equal("CUSTOM_ERROR", resp.FailureReason)
+	s.Equal("CUSTOM_ERROR", resp.Error.Error.DefaultValue)
 	s.NotNil(resp.RuntimeData, "RuntimeData should be initialized if nil")
-	s.Equal("CUSTOM_ERROR", resp.RuntimeData["failureReason"], "Failure reason should be stored in RuntimeData")
+	var svcErr630 serviceerror.ServiceError
+	s.NoError(json.Unmarshal([]byte(resp.RuntimeData["failureReasonJSON"]), &svcErr630))
+	s.Equal("CUSTOM_ERROR", svcErr630.Error.DefaultValue, "Failure reason should be stored in RuntimeData")
 }
 
 func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithEmptyFailureReasonAndOnFailure() {
@@ -629,8 +647,8 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithEmptyFailureReasonAnd
 	mockExec.On("GetName").Return("test-executor").Once()
 	mockExec.On("Execute", mock.Anything).Return(
 		&common.ExecutorResponse{
-			Status:        common.ExecFailure,
-			FailureReason: "", // Empty failure reason
+			Status: common.ExecFailure,
+			Error:  nil, // No error — onFailure handler should NOT be triggered
 		},
 		nil,
 	).Once()
@@ -663,8 +681,10 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithOnFailureClearsNodeIn
 	mockExec.On("GetName").Return("test-executor").Once()
 	mockExec.On("Execute", mock.Anything).Return(
 		&common.ExecutorResponse{
-			Status:        common.ExecFailure,
-			FailureReason: "A user with this email already exists",
+			Status: common.ExecFailure,
+			Error: &serviceerror.ServiceError{
+				Error: i18ncore.I18nMessage{DefaultValue: "A user with this email already exists"},
+			},
 		}, nil,
 	).Once()
 
@@ -682,7 +702,9 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithOnFailureClearsNodeIn
 	s.NotNil(resp)
 	s.Equal(common.NodeStatusForward, resp.Status)
 	s.Equal("prompt-email", resp.NextNodeID)
-	s.Equal("A user with this email already exists", resp.RuntimeData["failureReason"])
+	var svcErr698 serviceerror.ServiceError
+	s.NoError(json.Unmarshal([]byte(resp.RuntimeData["failureReasonJSON"]), &svcErr698))
+	s.Equal("A user with this email already exists", svcErr698.Error.DefaultValue)
 	s.Empty(ctx.UserInputs["email"], "Email should be cleared from UserInputs on onFailure")
 }
 
@@ -698,8 +720,8 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteFailureWithOnFailureNoNodeInputs
 	mockExec.On("GetName").Return("test-executor").Once()
 	mockExec.On("Execute", mock.Anything).Return(
 		&common.ExecutorResponse{
-			Status:        common.ExecFailure,
-			FailureReason: "SOME_ERROR",
+			Status: common.ExecFailure,
+			Error:  &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "SOME_ERROR"}},
 		}, nil,
 	).Once()
 
@@ -781,10 +803,12 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteIncompleteWithOnIncompleteAndFai
 	mockExec.On("GetName").Return("test-executor").Once()
 	mockExec.On("Execute", mock.Anything).Return(
 		&common.ExecutorResponse{
-			Status:        common.ExecUserInputRequired,
-			Inputs:        inputs,
-			FailureReason: "Invalid credentials provided",
-			RuntimeData:   map[string]string{"existing": "data"},
+			Status: common.ExecUserInputRequired,
+			Inputs: inputs,
+			Error: &serviceerror.ServiceError{
+				Error: i18ncore.I18nMessage{DefaultValue: "Invalid credentials provided"},
+			},
+			RuntimeData: map[string]string{"existing": "data"},
 		}, nil,
 	).Once()
 
@@ -803,8 +827,10 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteIncompleteWithOnIncompleteAndFai
 	s.NotNil(resp)
 	s.Equal(common.NodeStatusForward, resp.Status, "Should forward to onIncomplete node")
 	s.Equal("prompt-credentials", resp.NextNodeID)
-	s.Equal("Invalid credentials provided", resp.FailureReason)
-	s.Equal("Invalid credentials provided", resp.RuntimeData["failureReason"],
+	s.Equal("Invalid credentials provided", resp.Error.Error.DefaultValue)
+	var svcErr822 serviceerror.ServiceError
+	s.NoError(json.Unmarshal([]byte(resp.RuntimeData["failureReasonJSON"]), &svcErr822))
+	s.Equal("Invalid credentials provided", svcErr822.Error.DefaultValue,
 		"Failure reason should be propagated to RuntimeData")
 	s.Equal("data", resp.RuntimeData["existing"], "Existing runtime data should be preserved")
 
@@ -829,10 +855,10 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteIncompleteWithOnIncompleteAndFai
 	mockExec.On("GetName").Return("test-executor").Once()
 	mockExec.On("Execute", mock.Anything).Return(
 		&common.ExecutorResponse{
-			Status:        common.ExecUserInputRequired,
-			Inputs:        inputs,
-			FailureReason: "User not found",
-			RuntimeData:   nil, // nil RuntimeData
+			Status:      common.ExecUserInputRequired,
+			Inputs:      inputs,
+			Error:       &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "User not found"}},
+			RuntimeData: nil, // nil RuntimeData
 		}, nil,
 	).Once()
 
@@ -851,7 +877,9 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteIncompleteWithOnIncompleteAndFai
 	s.Equal(common.NodeStatusForward, resp.Status)
 	s.Equal("prompt-credentials", resp.NextNodeID)
 	s.NotNil(resp.RuntimeData, "RuntimeData should be initialized when nil")
-	s.Equal("User not found", resp.RuntimeData["failureReason"],
+	var svcErr869 serviceerror.ServiceError
+	s.NoError(json.Unmarshal([]byte(resp.RuntimeData["failureReasonJSON"]), &svcErr869))
+	s.Equal("User not found", svcErr869.Error.DefaultValue,
 		"Failure reason should be stored even when RuntimeData was nil")
 	s.Empty(ctx.UserInputs["username"], "Username should be cleared from UserInputs")
 }
@@ -889,7 +917,7 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteIncompleteWithOnIncompleteNoFail
 	s.NotNil(resp)
 	s.Equal(common.NodeStatusForward, resp.Status)
 	s.Equal("prompt-credentials", resp.NextNodeID)
-	s.Empty(resp.FailureReason, "No failure reason should be set")
+	s.Nil(resp.Error, "No failure error should be set")
 	// UserInputs should NOT be cleared when there's no failure reason
 	s.Equal("testuser", ctx.UserInputs["username"],
 		"UserInputs should not be cleared without failure reason")

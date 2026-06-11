@@ -510,15 +510,39 @@
     "type": "TASK_EXECUTION",
     "display": {
       "header": "Magic Link Executor",
-      "label": "Magic Link",
+      "label": "Generate Magic Link",
       "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": false
+      "showOnResourcePanel": true
     },
     "data": {
       "action": {
         "type": "EXECUTOR",
         "executor": {
-          "name": "MagicLinkExecutor"
+          "name": "MagicLinkExecutor",
+          "mode": "generate"
+        },
+        "onSuccess": "",
+        "onFailure": "",
+        "onIncomplete": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Magic Link Executor",
+      "label": "Verify Magic Link",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "MagicLinkExecutor",
+          "mode": "verify"
         },
         "onSuccess": "",
         "onFailure": "",

@@ -19,6 +19,7 @@
 package ou
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -1968,7 +1969,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_handleErrorStatusMa
 		suite.Run(tc.name, func() {
 			recorder := httptest.NewRecorder()
 
-			handler.handleError(recorder, tc.err)
+			handler.handleError(context.Background(), recorder, tc.err)
 
 			suite.Equal(tc.wantStatus, recorder.Code)
 			var body apierror.ErrorResponse

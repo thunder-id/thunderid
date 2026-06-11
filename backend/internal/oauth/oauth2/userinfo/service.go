@@ -95,13 +95,13 @@ func (s *userInfoService) GetUserInfo(
 
 	accessTokenClaims, err := s.tokenValidator.ValidateAccessToken(ctx, accessToken)
 	if err != nil {
-		s.logger.Debug("Failed to verify access token", log.Error(err))
+		s.logger.Debug(ctx, "Failed to verify access token", log.Error(err))
 		return nil, &errorInvalidAccessToken
 	}
 
 	boundJkt, _ := dpop.ExtractCnfJkt(accessTokenClaims.Claims)
 	if boundJkt != "" {
-		s.logger.Debug("DPoP-bound access token presented under Bearer scheme")
+		s.logger.Debug(ctx, "DPoP-bound access token presented under Bearer scheme")
 		return nil, &errorBearerDowngrade
 	}
 
@@ -120,18 +120,18 @@ func (s *userInfoService) GetUserInfoForDPoP(
 
 	accessTokenClaims, err := s.tokenValidator.ValidateAccessToken(ctx, accessToken)
 	if err != nil {
-		s.logger.Debug("Failed to verify access token", log.Error(err))
+		s.logger.Debug(ctx, "Failed to verify access token", log.Error(err))
 		return nil, &errorInvalidAccessToken
 	}
 
 	expectedJkt, _ := dpop.ExtractCnfJkt(accessTokenClaims.Claims)
 	if expectedJkt == "" {
-		s.logger.Debug("DPoP scheme used with non-bound access token")
+		s.logger.Debug(ctx, "DPoP scheme used with non-bound access token")
 		return nil, &errorDPoPProofInvalid
 	}
 
 	if s.dpopVerifier == nil {
-		s.logger.Error("DPoP verifier not configured")
+		s.logger.Error(ctx, "DPoP verifier not configured")
 		return nil, &serviceerror.InternalServerError
 	}
 	if _, dpopErr := s.dpopVerifier.Verify(ctx, dpop.VerifyParams{
@@ -141,7 +141,7 @@ func (s *userInfoService) GetUserInfoForDPoP(
 		AccessToken: accessToken,
 		ExpectedJkt: expectedJkt,
 	}); dpopErr != nil {
-		s.logger.Debug("DPoP proof verification failed", log.Error(dpopErr))
+		s.logger.Debug(ctx, "DPoP proof verification failed", log.Error(dpopErr))
 		return nil, &errorDPoPProofInvalid
 	}
 
@@ -155,14 +155,14 @@ func (s *userInfoService) buildResponseFromClaims(
 	tokenClaims := accessTokenClaims.Claims
 	sub := accessTokenClaims.Sub
 
-	if svcErr := s.validateGrantType(tokenClaims); svcErr != nil {
+	if svcErr := s.validateGrantType(ctx, tokenClaims); svcErr != nil {
 		return nil, svcErr
 	}
 
 	scopes := s.extractScopes(tokenClaims)
 
 	// Validate that the 'openid' scope is present
-	if svcErr := s.validateOpenIDScope(scopes); svcErr != nil {
+	if svcErr := s.validateOpenIDScope(ctx, scopes); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -182,11 +182,12 @@ func (s *userInfoService) buildResponseFromClaims(
 	userAttributes, err := tokenservice.FetchUserAttributes(ctx, s.attributeCacheSvc,
 		allowedUserAttributes, attributeCacheID)
 	if err != nil {
-		s.logger.Error("Failed to fetch user attributes", log.MaskedString(log.LoggerKeyUserID, sub), log.Error(err))
+		s.logger.Error(ctx, "Failed to fetch user attributes",
+			log.MaskedString(log.LoggerKeyUserID, sub), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	response, svcErr := s.buildUserInfoResponse(sub, scopes, userAttributes, oauthApp, tokenClaims)
+	response, svcErr := s.buildUserInfoResponse(ctx, sub, scopes, userAttributes, oauthApp, tokenClaims)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -229,11 +230,11 @@ func (s *userInfoService) generateJWEUserInfo(
 
 	payload, err := json.Marshal(response)
 	if err != nil {
-		s.logger.Error("Failed to marshal userinfo claims for JWE")
+		s.logger.Error(ctx, "Failed to marshal userinfo claims for JWE")
 		return nil, &serviceerror.InternalServerError
 	}
 
-	compact, svcErr := s.jweService.Encrypt(
+	compact, svcErr := s.jweService.Encrypt(ctx,
 		payload, rpKey,
 		jwe.KeyEncAlgorithm(cfg.EncryptionAlg),
 		jwe.ContentEncAlgorithm(cfg.EncryptionEnc),
@@ -241,7 +242,7 @@ func (s *userInfoService) generateJWEUserInfo(
 		rpKID,
 	)
 	if svcErr != nil {
-		s.logger.Error("Failed to encrypt userinfo JWE")
+		s.logger.Error(ctx, "Failed to encrypt userinfo JWE")
 		return nil, svcErr
 	}
 
@@ -268,7 +269,7 @@ func (s *userInfoService) generateNestedJWTUserInfo(
 		return nil, svcErr
 	}
 
-	compact, svcErr := s.jweService.Encrypt(
+	compact, svcErr := s.jweService.Encrypt(ctx,
 		[]byte(jwsResp.JWTBody), rpKey,
 		jwe.KeyEncAlgorithm(cfg.EncryptionAlg),
 		jwe.ContentEncAlgorithm(cfg.EncryptionEnc),
@@ -276,7 +277,7 @@ func (s *userInfoService) generateNestedJWTUserInfo(
 		rpKID,
 	)
 	if svcErr != nil {
-		s.logger.Error("Failed to encrypt nested JWT userinfo JWE")
+		s.logger.Error(ctx, "Failed to encrypt nested JWT userinfo JWE")
 		return nil, svcErr
 	}
 
@@ -319,10 +320,10 @@ func (s *userInfoService) generateJWSUserInfo(
 	)
 	if err != nil {
 		if err.Code == jwt.ErrorUnsupportedJWSAlgorithm.Code {
-			s.logger.Error("UserInfo signing algorithm is not supported by the server key",
+			s.logger.Error(ctx, "UserInfo signing algorithm is not supported by the server key",
 				log.String("alg", signingAlg), log.String("error", err.Error.DefaultValue))
 		} else {
-			s.logger.Error("Failed to generate signed UserInfo JWT",
+			s.logger.Error(ctx, "Failed to generate signed UserInfo JWT",
 				log.String("error", err.Error.DefaultValue))
 		}
 		return nil, &serviceerror.InternalServerError
@@ -335,7 +336,8 @@ func (s *userInfoService) generateJWSUserInfo(
 }
 
 // validateGrantType validates that the token was not issued using client_credentials grant.
-func (s *userInfoService) validateGrantType(claims map[string]interface{}) *serviceerror.ServiceError {
+func (s *userInfoService) validateGrantType(
+	ctx context.Context, claims map[string]interface{}) *serviceerror.ServiceError {
 	grantTypeValue, ok := claims["grant_type"]
 	if !ok {
 		return nil
@@ -347,7 +349,7 @@ func (s *userInfoService) validateGrantType(claims map[string]interface{}) *serv
 	}
 
 	if constants.GrantType(grantTypeString) == constants.GrantTypeClientCredentials {
-		s.logger.Debug("UserInfo endpoint called with client_credentials grant token",
+		s.logger.Debug(ctx, "UserInfo endpoint called with client_credentials grant token",
 			log.String("grant_type", grantTypeString))
 		return &errorClientCredentialsNotSupported
 	}
@@ -371,9 +373,9 @@ func (s *userInfoService) extractScopes(claims map[string]interface{}) []string 
 }
 
 // validateOpenIDScope validates that the access token contains the required 'openid' scope.
-func (s *userInfoService) validateOpenIDScope(scopes []string) *serviceerror.ServiceError {
+func (s *userInfoService) validateOpenIDScope(ctx context.Context, scopes []string) *serviceerror.ServiceError {
 	if !slices.Contains(scopes, constants.ScopeOpenID) {
-		s.logger.Debug("UserInfo request missing required 'openid' scope",
+		s.logger.Debug(ctx, "UserInfo request missing required 'openid' scope",
 			log.String("scopes", tokenservice.JoinScopes(scopes)))
 		return &errorInsufficientScope
 	}
@@ -400,7 +402,7 @@ func (s *userInfoService) getOAuthApp(
 
 // buildUserInfoResponse builds the final UserInfo response from sub, scopes, and user attributes.
 // It also processes any explicit claims request embedded in the access token.
-func (s *userInfoService) buildUserInfoResponse(
+func (s *userInfoService) buildUserInfoResponse(ctx context.Context,
 	sub string,
 	scopes []string,
 	userAttributes map[string]interface{},
@@ -413,7 +415,7 @@ func (s *userInfoService) buildUserInfoResponse(
 
 	// Build claims from scopes and explicit claims request
 	// Extract only the UserInfo claims map from the access token
-	claimsRequest, svcErr := s.extractClaimsRequest(tokenClaims)
+	claimsRequest, svcErr := s.extractClaimsRequest(ctx, tokenClaims)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -447,7 +449,7 @@ func (s *userInfoService) buildUserInfoResponse(
 }
 
 // extractClaimsRequest extracts the claims request from the access token if present.
-func (s *userInfoService) extractClaimsRequest(
+func (s *userInfoService) extractClaimsRequest(ctx context.Context,
 	tokenClaims map[string]interface{},
 ) (*model.ClaimsRequest, *serviceerror.ServiceError) {
 	claimsRequestStr, ok := tokenClaims[constants.ClaimClaimsRequest].(string)
@@ -457,7 +459,7 @@ func (s *userInfoService) extractClaimsRequest(
 
 	claimsRequest, err := oauth2utils.ParseClaimsRequest(claimsRequestStr)
 	if err != nil {
-		s.logger.Error("Failed to parse claims request from access token", log.Error(err))
+		s.logger.Error(ctx, "Failed to parse claims request from access token", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 

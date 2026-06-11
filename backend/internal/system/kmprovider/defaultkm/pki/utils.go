@@ -19,6 +19,7 @@
 package pki
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"os"
@@ -32,6 +33,9 @@ import (
 // LoadTLSConfig loads a tls.Config from the given certificate and key file paths.
 func LoadTLSConfig(cfg *config.Config, certFilePath string, keyFilePath string) (*tls.Config, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "PKIService"))
+	// TLS config is loaded at server startup, outside any request,
+	// so there is no request context (or trace ID) to propagate.
+	ctx := context.Background()
 
 	if certFilePath == "" {
 		return nil, errors.New("certificate file path is empty")
@@ -52,11 +56,11 @@ func LoadTLSConfig(cfg *config.Config, certFilePath string, keyFilePath string) 
 
 	cert, err := tls.LoadX509KeyPair(certFilePath, keyFilePath)
 	if err != nil {
-		logger.Error("Failed to load X509 key pair", log.Error(err))
+		logger.Error(ctx, "Failed to load X509 key pair", log.Error(err))
 		return nil, err
 	}
 
-	logger.Debug("Successfully loaded TLS certificate",
+	logger.Debug(ctx, "Successfully loaded TLS certificate",
 		log.String("certFile", certFilePath),
 		log.String("keyFile", keyFilePath))
 

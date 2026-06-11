@@ -19,6 +19,7 @@
 package layoutmgt
 
 import (
+	"context"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -48,7 +49,9 @@ func getLayoutStoreMode() serverconst.StoreMode {
 		default:
 			// Warn about unrecognized value and fall back to default
 			logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "LayoutMgtConfig"))
-			logger.Warn("Unrecognized layout store configuration value",
+			// Store mode is resolved at server startup, outside any request,
+			// so there is no request context (or trace ID) to propagate.
+			logger.Warn(context.Background(), "Unrecognized layout store configuration value",
 				log.String("raw_value", cfg.Layout.Store),
 				log.String("normalized_value", string(mode)),
 				log.String("fallback", "global declarative_resources setting"))

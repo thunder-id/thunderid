@@ -81,7 +81,6 @@ const FlowMetaProvider: FC<PropsWithChildren<FlowMetaProviderProps>> = ({
   //   2. Rapid dependency changes (e.g. baseUrl stabilising) that produce two
   //      effect firings before the first fetch completes.
   const lastFetchedRef: RefObject<(() => Promise<void>) | null> = useRef<(() => Promise<void>) | null>(null);
-
   const fetchFlowMeta: () => Promise<void> = useCallback(async (): Promise<void> => {
     if (!enabled || platform !== Platform.ThunderID) {
       setMeta(null);

@@ -1201,12 +1201,12 @@ func (suite *HashUtilsTestSuite) TestThumbprint() {
 		{
 			name:     "EmptyInput",
 			input:    []byte(""),
-			expected: "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+			expected: "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
 		},
 		{
 			name:     "NormalInput",
 			input:    []byte("hello world"),
-			expected: "uU0nuZNNPgilLlLX2n2r+sSE7+N6U4DukIj3rOLvzek=",
+			expected: "uU0nuZNNPgilLlLX2n2r-sSE7-N6U4DukIj3rOLvzek",
 		},
 	}
 
@@ -1227,12 +1227,12 @@ func (suite *HashUtilsTestSuite) TestThumbprintString() {
 		{
 			name:     "EmptyString",
 			input:    "",
-			expected: "47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=",
+			expected: "47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU",
 		},
 		{
 			name:     "NormalString",
 			input:    "hello world",
-			expected: "uU0nuZNNPgilLlLX2n2r+sSE7+N6U4DukIj3rOLvzek=",
+			expected: "uU0nuZNNPgilLlLX2n2r-sSE7-N6U4DukIj3rOLvzek",
 		},
 	}
 

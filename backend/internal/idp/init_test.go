@@ -238,13 +238,13 @@ func (suite *IDPInitTestSuite) TestValidateIDPForInit_Valid() {
 	}
 
 	logger := log.GetLogger()
-	err := validateIDP(idp, logger)
+	err := validateIDP(context.Background(), idp, logger)
 	suite.Nil(err)
 }
 
 func (suite *IDPInitTestSuite) TestValidateIDPForInit_NilIDP() {
 	logger := log.GetLogger()
-	err := validateIDP(nil, logger)
+	err := validateIDP(context.Background(), nil, logger)
 	suite.NotNil(err)
 	suite.Equal(ErrorIDPNil.Code, err.Code)
 }
@@ -257,7 +257,7 @@ func (suite *IDPInitTestSuite) TestValidateIDPForInit_EmptyName() {
 	}
 
 	logger := log.GetLogger()
-	err := validateIDP(idp, logger)
+	err := validateIDP(context.Background(), idp, logger)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidIDPName.Code, err.Code)
 }
@@ -270,7 +270,7 @@ func (suite *IDPInitTestSuite) TestValidateIDPForInit_EmptyType() {
 	}
 
 	logger := log.GetLogger()
-	err := validateIDP(idp, logger)
+	err := validateIDP(context.Background(), idp, logger)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidIDPType.Code, err.Code)
 }
@@ -283,7 +283,7 @@ func (suite *IDPInitTestSuite) TestValidateIDPForInit_InvalidType() {
 	}
 
 	logger := log.GetLogger()
-	err := validateIDP(idp, logger)
+	err := validateIDP(context.Background(), idp, logger)
 	suite.NotNil(err)
 	suite.Equal(ErrorInvalidIDPType.Code, err.Code)
 }

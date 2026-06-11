@@ -16,7 +16,7 @@
  * under the License.
  */
 
-import {render, screen, userEvent} from '@thunderid/test-utils';
+import {render, screen, userEvent, act} from '@thunderid/test-utils';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 
 const mockNavigate = vi.fn();
@@ -151,5 +151,43 @@ describe('ImportConfigurationValidatePage', () => {
     await user.click(screen.getByText('common:welcome.header'));
 
     expect(mockNavigate).toHaveBeenCalledWith('/welcome');
+  });
+
+  it('navigates to /home on cancel when parse errors exist', async () => {
+    mockLocationState = {
+      parseErrors: [{resourceType: 'bad_type', fileName: 'config.yaml', error: 'parse error'}],
+      parseStats: {successCount: 0, failCount: 1},
+    };
+
+    const user = userEvent.setup();
+    render(<ImportConfigurationValidatePage />);
+
+    await user.click(screen.getByRole('button', {name: 'common:actions.cancel'}));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/home');
+  });
+
+  it('advances validation steps via timer and navigates to summary', () => {
+    mockLocationState = {parseErrors: [], configData: {application: []}};
+
+    vi.useFakeTimers();
+    render(<ImportConfigurationValidatePage />);
+
+    // Advance through all three intervals (each 1500ms) + timeouts (1000ms each) + final 500ms
+    for (let i = 0; i < 3; i++) {
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+    }
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith(expect.stringContaining('/open-project/summary'), expect.anything());
+
+    vi.useRealTimers();
   });
 });

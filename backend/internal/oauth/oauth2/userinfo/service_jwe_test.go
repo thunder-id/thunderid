@@ -72,7 +72,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_Success() {
 
 	mockJWE := jwemock.NewJWEServiceInterfaceMock(s.T())
 	mockJWE.On("Encrypt",
-		mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
 		jwe.KeyEncAlgorithm("RSA-OAEP-256"),
 		jwe.ContentEncAlgorithm("A256GCM"),
 		"json",
@@ -116,7 +116,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_EncryptFailure() {
 
 	mockJWE := jwemock.NewJWEServiceInterfaceMock(s.T())
 	mockJWE.On("Encrypt",
-		mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
 		jwe.KeyEncAlgorithm("RSA-OAEP-256"),
 		jwe.ContentEncAlgorithm("A256GCM"),
 		"json",
@@ -149,7 +149,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateNestedJWTUserInfo_Success() {
 
 	mockJWE := jwemock.NewJWEServiceInterfaceMock(s.T())
 	mockJWE.On("Encrypt",
-		mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
 		jwe.KeyEncAlgorithm("RSA-OAEP-256"),
 		jwe.ContentEncAlgorithm("A256GCM"),
 		"JWT",
@@ -189,7 +189,7 @@ func (s *JWEUserInfoTestSuite) TestGenerateJWEUserInfo_EncryptErrorPropagated() 
 	mockJWE := jwemock.NewJWEServiceInterfaceMock(s.T())
 	unsupportedErr := &serviceerror.ServiceError{Code: "JWE-1003", Type: serviceerror.ClientErrorType}
 	mockJWE.On("Encrypt",
-		mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything,
 		jwe.KeyEncAlgorithm("RSA-OAEP-256"),
 		jwe.ContentEncAlgorithm("A256GCM"),
 		"json",

@@ -25,9 +25,11 @@ const mockNavigate = vi.fn();
 const mockShowToast = vi.fn();
 const mockLogger = {error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn()};
 const mockMutate = vi.fn();
+const mockMutateAsync = vi.fn();
 
 let mockMutationState: Partial<UseMutationResult<ImportResponse, Error, unknown>> = {
   mutate: mockMutate,
+  mutateAsync: mockMutateAsync,
   data: undefined,
   isPending: false,
   isError: false,
@@ -128,8 +130,10 @@ afterEach(() => {
 
 describe('ImportConfigurationSummaryPage', () => {
   beforeEach(() => {
+    mockMutateAsync.mockReset();
     mockMutationState = {
       mutate: mockMutate,
+      mutateAsync: mockMutateAsync,
       data: undefined,
       isPending: false,
       isError: false,
@@ -184,7 +188,7 @@ describe('ImportConfigurationSummaryPage', () => {
       const uploadLink = screen.getByText('upload.breadcrumb.openProject');
       await userEvent.click(uploadLink);
 
-      expect(mockNavigate).toHaveBeenCalledWith('/welcome/open-project');
+      expect(mockNavigate).toHaveBeenCalledWith('/open-project');
     });
   });
 
@@ -462,6 +466,84 @@ describe('ImportConfigurationSummaryPage', () => {
 
       // Page renders successfully with env data
       expect(screen.getByText('summary.title')).toBeInTheDocument();
+    });
+  });
+
+  describe('dry run status transitions', () => {
+    const noTemplateState = {
+      configData: {application: [{id: 'app1', name: 'App 1'}]},
+      envData: 'API_KEY=secret123\n',
+      configContent: 'application:\n  - name: static-app\n',
+    };
+
+    it('shows passed alert after successful dry run', async () => {
+      const successResponse: ImportResponse = {
+        summary: {totalDocuments: 2, imported: 2, failed: 0, importedAt: new Date().toISOString()},
+        results: [],
+      };
+      mockMutateAsync.mockResolvedValue(successResponse);
+      mockLocationState.configContent = noTemplateState.configContent;
+      mockLocationState.envData = noTemplateState.envData;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('summary.importTest.passed')).toBeInTheDocument();
+      });
+    });
+
+    it('shows failed alert and retry button after dry run with failures', async () => {
+      const failedResponse: ImportResponse = {
+        summary: {totalDocuments: 1, imported: 0, failed: 1, importedAt: new Date().toISOString()},
+        results: [{resourceType: 'application', resourceId: 'app1', status: 'failed', message: 'Validation error'}],
+      };
+      mockMutateAsync.mockResolvedValue(failedResponse);
+      mockLocationState.configContent = noTemplateState.configContent;
+      mockLocationState.envData = noTemplateState.envData;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', {name: /summary\.importTest\.retry/})).toBeInTheDocument();
+      });
+    });
+
+    it('shows failed results list when dry run fails with results', async () => {
+      const failedResponse: ImportResponse = {
+        summary: {totalDocuments: 1, imported: 0, failed: 1, importedAt: new Date().toISOString()},
+        results: [
+          {
+            resourceType: 'application',
+            resourceId: 'app1',
+            resourceName: 'MyApp',
+            status: 'failed',
+            message: 'Bad config',
+          },
+        ],
+      };
+      mockMutateAsync.mockResolvedValue(failedResponse);
+      mockLocationState.configContent = noTemplateState.configContent;
+      mockLocationState.envData = noTemplateState.envData;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/summary\.importTest\.failures/)).toBeInTheDocument();
+        expect(screen.getByText(/MyApp/)).toBeInTheDocument();
+        expect(screen.getByText(/Bad config/)).toBeInTheDocument();
+      });
+    });
+
+    it('shows failed alert when dry run throws', async () => {
+      mockMutateAsync.mockRejectedValue(new Error('network error'));
+      mockLocationState.configContent = noTemplateState.configContent;
+      mockLocationState.envData = noTemplateState.envData;
+
+      render(<ImportConfigurationSummaryPage />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', {name: /summary\.importTest\.retry/})).toBeInTheDocument();
+      });
     });
   });
 

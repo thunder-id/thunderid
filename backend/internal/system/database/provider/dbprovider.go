@@ -20,6 +20,7 @@
 package provider
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -158,26 +159,28 @@ func (d *dbProvider) getTransactioner(
 
 // initializeAllClients initializes config, runtime, and user database clients at startup.
 func (d *dbProvider) initializeAllClients() {
+	// This runs outside any request, so context.Background() is used (no request trace ID).
+	ctx := context.Background()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DBProvider"))
 
 	configDBConfig := config.GetServerRuntime().Config.Database.Config
 	err := d.initializeClient(&d.configClient, configDBConfig, dbNameConfig)
 	if err != nil {
-		logger.Error("Failed to initialize config database client", log.Error(err))
+		logger.Error(ctx, "Failed to initialize config database client", log.Error(err))
 	}
 
 	runtimeDBConfig := config.GetServerRuntime().Config.Database.Runtime
 	if runtimeDBConfig.Type != DataSourceTypeRedis {
 		err = d.initializeClient(&d.runtimeClient, runtimeDBConfig, dbNameRuntime)
 		if err != nil {
-			logger.Error("Failed to initialize runtime database client", log.Error(err))
+			logger.Error(ctx, "Failed to initialize runtime database client", log.Error(err))
 		}
 	}
 
 	userDBConfig := config.GetServerRuntime().Config.Database.User
 	err = d.initializeClient(&d.userClient, userDBConfig, dbNameUser)
 	if err != nil {
-		logger.Error("Failed to initialize user database client", log.Error(err))
+		logger.Error(ctx, "Failed to initialize user database client", log.Error(err))
 	}
 }
 
@@ -310,7 +313,8 @@ func (d *dbProvider) getDBConfig(dataSource config.DataSource) dbConfig {
 // Close closes the database connections. This should only be called by the lifecycle manager during shutdown.
 func (d *dbProvider) Close() error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DBProvider"))
-	logger.Debug("Closing database connections")
+	// DB shutdown runs outside any request.
+	logger.Debug(context.Background(), "Closing database connections")
 
 	configErr := d.closeClient(&d.configClient, &d.configMutex, "config")
 	runtimeErr := d.closeClient(&d.runtimeClient, &d.runtimeMutex, "runtime")

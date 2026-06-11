@@ -100,7 +100,7 @@ func (h *jwtAuthenticator) verifyToken(ctx context.Context, token string) error 
 	iss := extractIssuer(token)
 	switch {
 	case trustedIssuer.IsConfigured() && iss == trustedIssuer.Issuer:
-		if !h.verifyFederatedToken(token) {
+		if !h.verifyFederatedToken(ctx, token) {
 			return errInvalidToken
 		}
 	case iss == config.GetServerRuntime().Config.JWT.Issuer:
@@ -119,7 +119,7 @@ func (h *jwtAuthenticator) verifyToken(ctx context.Context, token string) error 
 //   - aud: matches this server's own identifier (the resource server)
 //   - signature: verified via the auth server's JWKS endpoint
 //   - required_claims: each configured claim must match the expected value
-func (h *jwtAuthenticator) verifyFederatedToken(token string) (verified bool) {
+func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token string) (verified bool) {
 	trustedIssuer := config.GetServerRuntime().Config.Server.SecurityConfig.TrustedIssuer
 	if !trustedIssuer.IsConfigured() {
 		return false
@@ -136,7 +136,7 @@ func (h *jwtAuthenticator) verifyFederatedToken(token string) (verified bool) {
 	}
 
 	// VerifyJWTWithJWKS validates signature, aud (resource server identity), iss, and time claims.
-	if svcErr := h.jwtService.VerifyJWTWithJWKS(
+	if svcErr := h.jwtService.VerifyJWTWithJWKS(ctx,
 		token, trustedIssuer.JWKSURL, trustedIssuer.Audience, trustedIssuer.Issuer,
 	); svcErr != nil {
 		return false

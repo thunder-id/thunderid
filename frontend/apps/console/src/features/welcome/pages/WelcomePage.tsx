@@ -27,13 +27,13 @@ import {
   Users,
   ExternalLink,
   Lightbulb,
-  Rocket,
   MCP,
 } from '@wso2/oxygen-ui-icons-react';
 import {motion} from 'framer-motion';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import useWelcomeClose from '../hooks/useWelcomeClose';
 import getWelcomeDismissedStorageKey from '../utils/getWelcomeDismissedStorageKey';
 
 const MotionBox = motion.create(Box);
@@ -44,12 +44,8 @@ export default function WelcomePage(): JSX.Element {
   const theme = useTheme();
   const {config} = useConfig();
   const productName = config.brand.product_name;
-  const docsBaseUrl = (config.brand.docs_url ?? '').replace(/\/$/, '');
-
-  const handleClose = (): void => {
-    sessionStorage.setItem(getWelcomeDismissedStorageKey(productName), 'true');
-    void navigate('/home');
-  };
+  const docsBaseUrl = (config.brand.documentation?.baseUrl ?? '').replace(/\/$/, '');
+  const handleClose = useWelcomeClose();
 
   const handleCreateNewProject = (): void => {
     sessionStorage.setItem(getWelcomeDismissedStorageKey(productName), 'true');
@@ -78,25 +74,31 @@ export default function WelcomePage(): JSX.Element {
 
   const learnProduct = [
     {
-      id: 'learn-b2c',
+      id: 'learn-securing-application',
       icon: <Users size={18} />,
-      label: t('common:welcome.tryoutProduct.b2c'),
-      description: t('common:welcome.tryoutProduct.b2cDesc'),
-      url: `${docsBaseUrl}/use-cases/b2c/try-it-out`,
+      label: t('common:welcome.tryoutProduct.securingApplication'),
+      description: t('common:welcome.tryoutProduct.securingApplicationDesc'),
+      action: () => {
+        sessionStorage.setItem(getWelcomeDismissedStorageKey(productName), 'true');
+        void navigate('/welcome/tryout/securing-application');
+      },
     },
     {
       id: 'learn-ai-agents',
       icon: <Bot size={18} />,
       label: t('common:welcome.tryoutProduct.aiAgents'),
       description: t('common:welcome.tryoutProduct.aiAgentsDesc'),
-      url: `${docsBaseUrl}/use-cases/ai-agents/try-it-out`,
+      action: () => window.open(`${docsBaseUrl}/use-cases/ai-agents/try-it-out`, '_blank', 'noopener,noreferrer'),
+      endIcon: <ExternalLink size={14} />,
     },
     {
       id: 'learn-mcp',
       icon: <MCP size={18} />,
       label: t('common:welcome.tryoutProduct.mcp'),
       description: t('common:welcome.tryoutProduct.mcpDesc'),
-      url: `${docsBaseUrl}/use-cases/ai-agents/mcp-authorization/try-it-out`,
+      action: () =>
+        window.open(`${docsBaseUrl}/use-cases/ai-agents/mcp-authorization/try-it-out`, '_blank', 'noopener,noreferrer'),
+      endIcon: <ExternalLink size={14} />,
     },
   ];
 
@@ -200,220 +202,223 @@ export default function WelcomePage(): JSX.Element {
             gap: {xs: 3, md: 4},
           }}
         >
-          {/* Two Column Layout for Start and Walkthrough */}
           <Box
             sx={{
               display: 'flex',
               flexDirection: {xs: 'column', md: 'row'},
-              gap: {xs: 3, md: 10},
+              gap: {xs: 3, md: 6},
+              alignItems: 'stretch',
             }}
           >
             {/* Left Column - Start */}
-            <Box
-              sx={{
-                flex: 1,
-              }}
-            >
-              <Stack spacing={2}>
-                {startActions.map((action, index) => (
-                  <MotionBox
-                    key={action.id}
-                    initial={{opacity: 0, x: -10}}
-                    animate={{opacity: 1, x: 0}}
-                    transition={{duration: 0.2, delay: 0.15 + index * 0.05}}
-                  >
-                    <Card
-                      variant="outlined"
-                      sx={{
-                        p: 2.5,
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                        '&:hover': {
-                          transform: 'translateY(-2px)',
-                          boxShadow: 2,
-                          borderColor: 'primary.main',
-                        },
-                      }}
-                      onClick={action.action}
-                    >
-                      <Stack spacing={1.5}>
-                        <Box sx={{display: 'flex', alignItems: 'flex-start', gap: 1.5}}>
-                          <Box
-                            sx={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: 1,
-                              bgcolor: 'primary.lighter',
-                              color: 'primary.main',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0,
-                            }}
-                          >
-                            {action.icon}
-                          </Box>
-                          <Box sx={{flex: 1}}>
-                            <Box sx={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5}}>
-                              <Typography variant="subtitle1" fontWeight={600}>
-                                {action.label}
-                              </Typography>
-                              <ChevronRight size={18} />
-                            </Box>
-                            <Typography variant="body2" color="text.secondary">
-                              {action.description}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </Stack>
-                    </Card>
-                  </MotionBox>
-                ))}
-              </Stack>
-            </Box>
-
-            {/* Right Column - Walkthrough */}
-            <Box
-              sx={{
-                flex: 1,
-                display: {xs: 'none', md: 'block'},
-              }}
-            >
-              <MotionBox
-                initial={{opacity: 0, y: 20}}
-                animate={{opacity: 1, y: 0}}
-                transition={{duration: 0.3, delay: 0.3}}
+            <Box sx={{flex: 1, display: 'flex', flexDirection: 'column', gap: 2}}>
+              <Typography
+                variant="overline"
+                color="text.secondary"
+                sx={{letterSpacing: 1.5, display: 'block', mb: 0.5}}
               >
-                <Box
-                  sx={{
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                  }}
+                {t('common:welcome.sections.start')}
+              </Typography>
+              {startActions.map((action, index) => (
+                <MotionBox
+                  key={action.id}
+                  initial={{opacity: 0, y: 10}}
+                  animate={{opacity: 1, y: 0}}
+                  transition={{duration: 0.25, delay: 0.1 + index * 0.07}}
                 >
-                  <Typography
-                    variant="h2"
+                  <Card
+                    variant="outlined"
+                    onClick={action.action}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        action.action();
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
                     sx={{
-                      py: 2.8,
-                      px: 2.2,
-                      m: 0,
-                      backgroundColor: 'background.paper',
-                      fontSize: '1.25rem',
-                      fontWeight: 600,
-                      borderRadius: '8px 8px 0 0',
+                      p: 3,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      '&:hover': {
+                        transform: 'translateY(-2px)',
+                        boxShadow: 3,
+                        borderColor: 'primary.main',
+                        '& .start-label': {color: 'primary.main'},
+                      },
                     }}
                   >
-                    <Rocket size={20} style={{marginRight: 12, marginBottom: 2, verticalAlign: 'middle'}} />
-                    {t('common:welcome.sections.tryoutProduct', {productName})}
-                  </Typography>
-                  <Box
-                    sx={{
-                      overflow: 'hidden',
-                    }}
-                  >
-                    {learnProduct.map((item, index) => (
-                      <MotionBox
-                        key={item.id}
-                        initial={{opacity: 0, x: 10}}
-                        animate={{opacity: 1, x: 0}}
-                        transition={{duration: 0.2, delay: 0.3 + index * 0.05}}
-                      >
-                        <Box
-                          component="a"
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1.5,
-                            cursor: 'pointer',
-                            color: 'inherit',
-                            textDecoration: 'none',
-                            px: 2,
-                            py: 1.5,
-                            borderBottom: index < learnProduct.length - 1 ? '1px solid' : 'none',
-                            borderColor: 'divider',
-                            '&:hover': {
-                              bgcolor: 'action.hover',
-                              '& .learnproduct-title': {
-                                color: 'primary.main',
-                                textDecoration: 'underline',
-                              },
-                            },
-                          }}
-                        >
-                          <Box sx={{color: 'text.secondary', display: 'flex', flexShrink: 0, mr: 0.5}}>{item.icon}</Box>
-                          <Stack spacing={0.5} sx={{flex: 1}}>
-                            <Typography
-                              className="learnproduct-title"
-                              variant="body1"
-                              fontWeight={500}
-                              sx={{transition: 'all 0.2s'}}
-                            >
-                              {item.label}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              {item.description}
-                            </Typography>
-                          </Stack>
-                          <Box sx={{color: 'text.disabled', display: 'flex', flexShrink: 0}}>
-                            <ExternalLink size={14} />
-                          </Box>
-                        </Box>
-                      </MotionBox>
-                    ))}
-                  </Box>
-                </Box>
-
-                <Stack spacing={2} sx={{mt: 4}}>
-                  {walkthroughs.map((walkthrough, index) => (
-                    <MotionBox
-                      key={walkthrough.id}
-                      initial={{opacity: 0, x: 10}}
-                      animate={{opacity: 1, x: 0}}
-                      transition={{duration: 0.2, delay: 0.35 + index * 0.05}}
-                      sx={{px: 2}}
-                    >
+                    <Box sx={{display: 'flex', alignItems: 'center', gap: 2}}>
                       <Box
-                        onClick={walkthrough.action}
                         sx={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 1.5,
+                          bgcolor: 'primary.main',
+                          color: '#fff',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: 1.5,
-                          cursor: 'pointer',
-                          py: 1,
-                          '&:hover': {
-                            '& .walkthrough-title': {
-                              color: 'primary.main',
-                              textDecoration: 'underline',
-                            },
-                          },
+                          justifyContent: 'center',
+                          flexShrink: 0,
                         }}
                       >
-                        <Box sx={{color: 'text.secondary', display: 'flex', flexShrink: 0}}>{walkthrough.icon}</Box>
-                        <Stack spacing={0.5}>
-                          <Typography
-                            className="walkthrough-title"
-                            variant="body1"
-                            fontWeight={500}
-                            sx={{
-                              transition: 'all 0.2s',
-                            }}
-                          >
-                            {walkthrough.label}
-                            <Box sx={{color: 'text.disabled', display: 'inline-block', ml: 1}}>
-                              <ExternalLink size={14} />
-                            </Box>
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {walkthrough.description}
-                          </Typography>
-                        </Stack>
+                        {action.icon}
                       </Box>
-                    </MotionBox>
-                  ))}
-                </Stack>
+                      <Box sx={{flex: 1, minWidth: 0}}>
+                        <Typography
+                          className="start-label"
+                          variant="subtitle1"
+                          fontWeight={600}
+                          sx={{transition: 'color 0.2s', mb: 0.25}}
+                        >
+                          {action.label}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                          {action.description}
+                        </Typography>
+                      </Box>
+                      <ChevronRight size={18} style={{flexShrink: 0, opacity: 0.4}} />
+                    </Box>
+                  </Card>
+                </MotionBox>
+              ))}
+
+              <MotionBox
+                initial={{opacity: 0}}
+                animate={{opacity: 1}}
+                transition={{duration: 0.3, delay: 0.35}}
+                sx={{mt: 1}}
+              >
+                {walkthroughs.map((walkthrough) => (
+                  <Box
+                    key={walkthrough.id}
+                    onClick={walkthrough.action}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        walkthrough.action();
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
+                      cursor: 'pointer',
+                      px: 1,
+                      py: 1,
+                      borderRadius: 1,
+                      '&:hover': {'& .walkthrough-title': {color: 'primary.main', textDecoration: 'underline'}},
+                    }}
+                  >
+                    <Box sx={{color: 'text.secondary', display: 'flex', flexShrink: 0}}>{walkthrough.icon}</Box>
+                    <Typography
+                      className="walkthrough-title"
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{transition: 'all 0.2s', flex: 1, display: 'flex', alignItems: 'center', gap: 0.5}}
+                    >
+                      {walkthrough.label}
+                      <ExternalLink size={12} style={{flexShrink: 0, opacity: 0.4}} />
+                    </Typography>
+                  </Box>
+                ))}
+              </MotionBox>
+            </Box>
+
+            {/* Divider */}
+            <Box sx={{width: '1px', bgcolor: 'divider', display: {xs: 'none', md: 'block'}, alignSelf: 'stretch'}} />
+
+            {/* Right Column - Tryout scenarios */}
+            <Box sx={{flex: 1, display: 'flex', flexDirection: 'column', gap: 2}}>
+              <Typography
+                variant="overline"
+                color="text.secondary"
+                sx={{letterSpacing: 1.5, display: 'block', mb: 0.5}}
+              >
+                {t('common:welcome.sections.tryoutProduct', {productName})}
+              </Typography>
+              <MotionBox
+                initial={{opacity: 0, y: 10}}
+                animate={{opacity: 1, y: 0}}
+                transition={{duration: 0.3, delay: 0.2}}
+                sx={{border: '1px solid', borderColor: 'divider', borderRadius: 2, overflow: 'hidden'}}
+              >
+                {learnProduct.map((item, index) => (
+                  <Box
+                    key={item.id}
+                    onClick={item.action}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        item.action();
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                      cursor: 'pointer',
+                      px: 2.5,
+                      py: 2,
+                      borderBottom: index < learnProduct.length - 1 ? '1px solid' : 'none',
+                      borderColor: 'divider',
+                      transition: 'background 0.15s',
+                      '&:hover': {
+                        bgcolor: 'action.hover',
+                        '& .tryout-label': {color: 'primary.main'},
+                        '& .tryout-end-icon': {opacity: 1},
+                      },
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 1.5,
+                        bgcolor: 'action.selected',
+                        color: 'text.secondary',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {item.icon}
+                    </Box>
+                    <Stack spacing={0.25} sx={{flex: 1, minWidth: 0}}>
+                      <Typography
+                        className="tryout-label"
+                        variant="body2"
+                        fontWeight={600}
+                        sx={{transition: 'color 0.2s'}}
+                      >
+                        {item.label}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {item.description}
+                      </Typography>
+                    </Stack>
+                    <Box
+                      className="tryout-end-icon"
+                      sx={{
+                        color: 'text.disabled',
+                        display: 'flex',
+                        flexShrink: 0,
+                        opacity: 0.5,
+                        transition: 'opacity 0.2s',
+                      }}
+                    >
+                      {item.endIcon ?? <ChevronRight size={14} />}
+                    </Box>
+                  </Box>
+                ))}
               </MotionBox>
             </Box>
           </Box>

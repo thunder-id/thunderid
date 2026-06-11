@@ -19,6 +19,7 @@
 package security
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -38,7 +39,7 @@ func middleware(service SecurityServiceInterface) (func(http.Handler) http.Handl
 			ctx, err := service.Process(r)
 			if err != nil {
 				// Write error response and stop request processing
-				writeSecurityError(w, err)
+				writeSecurityError(ctx, w, err)
 				return
 			}
 
@@ -49,13 +50,13 @@ func middleware(service SecurityServiceInterface) (func(http.Handler) http.Handl
 }
 
 // writeSecurityError writes an appropriate HTTP error response based on the security error.
-func writeSecurityError(w http.ResponseWriter, err error) {
+func writeSecurityError(ctx context.Context, w http.ResponseWriter, err error) {
 	w.Header().Set(serverconst.WWWAuthenticateHeaderName, serverconst.TokenTypeBearer)
 
 	if errors.Is(err, errForbidden) || errors.Is(err, errInsufficientPermissions) {
-		utils.WriteErrorResponse(w, http.StatusForbidden, apierror.ErrForbidden)
+		utils.WriteErrorResponse(ctx, w, http.StatusForbidden, apierror.ErrForbidden)
 		return
 	}
 
-	utils.WriteErrorResponse(w, http.StatusUnauthorized, apierror.ErrUnauthorized)
+	utils.WriteErrorResponse(ctx, w, http.StatusUnauthorized, apierror.ErrUnauthorized)
 }

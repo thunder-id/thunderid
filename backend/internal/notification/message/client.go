@@ -20,6 +20,7 @@
 package message
 
 import (
+	"context"
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
@@ -32,5 +33,5 @@ const httpClientTimeout = 10 * time.Second
 type NotificationClientInterface interface {
 	GetName() string
 	IsChannelSupported(channel common.ChannelType) bool
-	Send(channel common.ChannelType, data common.NotificationData) error
+	Send(ctx context.Context, channel common.ChannelType, data common.NotificationData) error
 }

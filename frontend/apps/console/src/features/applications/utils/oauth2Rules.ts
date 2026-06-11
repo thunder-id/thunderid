@@ -109,6 +109,8 @@ export function applyPublicClientChange(current: OAuth2Config, checked: boolean)
  * Computes the set of config updates triggered by changing the token endpoint auth method.
  * Selecting 'none' promotes the client to public and forces PKCE on; switching away
  * from 'none' demotes it to confidential.
+ * Switching away from 'private_key_jwt' clears the certificate since the cert is only
+ * valid for that auth method in the current console configuration.
  */
 export function applyTokenEndpointAuthMethodChange(current: OAuth2Config, method: string): Partial<OAuth2Config> {
   const updates: Partial<OAuth2Config> = {tokenEndpointAuthMethod: method};
@@ -117,6 +119,12 @@ export function applyTokenEndpointAuthMethodChange(current: OAuth2Config, method
     updates.pkceRequired = true;
   } else if (current.publicClient) {
     updates.publicClient = false;
+  }
+  if (
+    current.tokenEndpointAuthMethod === TokenEndpointAuthMethods.PRIVATE_KEY_JWT &&
+    method !== TokenEndpointAuthMethods.PRIVATE_KEY_JWT
+  ) {
+    updates.certificate = null;
   }
   return updates;
 }

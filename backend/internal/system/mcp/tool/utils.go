@@ -20,6 +20,7 @@
 package tool
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -34,7 +35,8 @@ import (
 func GenerateSchema[T any](modifiers ...func(*jsonschema.Schema)) *jsonschema.Schema {
 	schema, err := jsonschema.For[T](&jsonschema.ForOptions{})
 	if err != nil {
-		log.GetLogger().Error("Failed to generate schema",
+		// Schema generation runs during MCP tool registration at startup, outside any request.
+		log.GetLogger().Error(context.Background(), "Failed to generate schema",
 			log.String("type", fmt.Sprintf("%T", *new(T))),
 			log.Error(err))
 		return nil

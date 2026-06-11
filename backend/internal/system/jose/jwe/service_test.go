@@ -90,7 +90,14 @@ func (suite *JWEServiceTestSuite) TestEncryptDecrypt_RSA() {
 	recipientPublicKey := &suite.testRSAPrivateKey.PublicKey
 
 	for _, enc := range encAlgs {
-		jweToken, sErr := suite.jweService.Encrypt(payload, recipientPublicKey, RSAOAEP256, enc, "", "")
+		jweToken, sErr := suite.jweService.Encrypt(
+			context.Background(),
+			payload,
+			recipientPublicKey,
+			RSAOAEP256,
+			enc,
+			"",
+			"")
 		assert.Nil(suite.T(), sErr)
 		decrypted, sErr := suite.jweService.Decrypt(context.Background(), jweToken)
 		assert.Nil(suite.T(), sErr)
@@ -129,7 +136,14 @@ func (suite *JWEServiceTestSuite) TestEncryptDecrypt_ECDH() {
 	recipientPublicKey := &suite.testECPrivateKey.PublicKey
 
 	for _, tc := range testCases {
-		jweToken, sErr := suite.jweService.Encrypt(payload, recipientPublicKey, tc.alg, tc.enc, "", "")
+		jweToken, sErr := suite.jweService.Encrypt(
+			context.Background(),
+			payload,
+			recipientPublicKey,
+			tc.alg,
+			tc.enc,
+			"",
+			"")
 		assert.Nil(suite.T(), sErr)
 		decrypted, sErr := suite.jweService.Decrypt(context.Background(), jweToken)
 		assert.Nil(suite.T(), sErr)
@@ -143,12 +157,26 @@ func (suite *JWEServiceTestSuite) TestEncrypt_Errors() {
 	}
 
 	// Unsupported Encryption algorithm
-	_, sErr := suite.jweService.Encrypt([]byte("p"), &suite.testRSAPrivateKey.PublicKey, RSAOAEP256, "INVALID", "", "")
+	_, sErr := suite.jweService.Encrypt(
+		context.Background(),
+		[]byte("p"),
+		&suite.testRSAPrivateKey.PublicKey,
+		RSAOAEP256,
+		"INVALID",
+		"",
+		"")
 	assert.NotNil(suite.T(), sErr)
 	assert.Equal(suite.T(), ErrorUnsupportedEncryptionAlgorithm, *sErr)
 
 	// EncryptKey failure (RSA with EC key)
-	_, sErr = suite.jweService.Encrypt([]byte("p"), &suite.testECPrivateKey.PublicKey, RSAOAEP256, A128GCM, "", "")
+	_, sErr = suite.jweService.Encrypt(
+		context.Background(),
+		[]byte("p"),
+		&suite.testECPrivateKey.PublicKey,
+		RSAOAEP256,
+		A128GCM,
+		"",
+		"")
 	assert.NotNil(suite.T(), sErr)
 	assert.Equal(suite.T(), ErrorUnsupportedJWEAlgorithm, *sErr)
 }
@@ -168,7 +196,14 @@ func (suite *JWEServiceTestSuite) TestDecrypt_Errors() {
 
 	// Encrypt a valid token (Encrypt does not use the provider)
 	payload := []byte("data")
-	jweToken, _ := suite.jweService.Encrypt(payload, &suite.testRSAPrivateKey.PublicKey, RSAOAEP256, A128GCM, "", "")
+	jweToken, _ := suite.jweService.Encrypt(
+		context.Background(),
+		payload,
+		&suite.testRSAPrivateKey.PublicKey,
+		RSAOAEP256,
+		A128GCM,
+		"",
+		"")
 
 	// DecryptKey failure: provider returns an error
 	mockProvider.EXPECT().Decrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -209,12 +244,12 @@ func (suite *JWEServiceTestSuite) TestEncrypt_ErrorCases() {
 	payload := []byte("test data")
 
 	// Nil recipient key
-	_, sErr := suite.jweService.Encrypt(payload, nil, RSAOAEP256, A128GCM, "", "")
+	_, sErr := suite.jweService.Encrypt(context.Background(), payload, nil, RSAOAEP256, A128GCM, "", "")
 	assert.NotNil(suite.T(), sErr)
 
 	// Unsupported key type
 	fakeKey := "not-a-real-key"
-	_, sErr = suite.jweService.Encrypt(payload, fakeKey, RSAOAEP256, A128GCM, "", "")
+	_, sErr = suite.jweService.Encrypt(context.Background(), payload, fakeKey, RSAOAEP256, A128GCM, "", "")
 	assert.NotNil(suite.T(), sErr)
 }
 
@@ -327,7 +362,7 @@ func (suite *JWEServiceTestSuite) TestEncrypt_WithKidAndCty() {
 		logger:         log.GetLogger(),
 	}
 
-	token, sErr := suite.jweService.Encrypt(
+	token, sErr := suite.jweService.Encrypt(context.Background(),
 		[]byte("payload"), &suite.testRSAPrivateKey.PublicKey, RSAOAEP256, A128GCM, "JWT", "my-kid")
 	assert.Nil(suite.T(), sErr)
 
@@ -380,7 +415,14 @@ func (suite *JWEServiceTestSuite) TestEncryptDecrypt_CBC() {
 
 	payload := []byte("Hello, CBC JWE!")
 	for _, enc := range encAlgs {
-		jweToken, sErr := suite.jweService.Encrypt(payload, &suite.testRSAPrivateKey.PublicKey, RSAOAEP256, enc, "", "")
+		jweToken, sErr := suite.jweService.Encrypt(
+			context.Background(),
+			payload,
+			&suite.testRSAPrivateKey.PublicKey,
+			RSAOAEP256,
+			enc,
+			"",
+			"")
 		assert.Nil(suite.T(), sErr, "enc=%s", enc)
 		decrypted, sErr := suite.jweService.Decrypt(context.Background(), jweToken)
 		assert.Nil(suite.T(), sErr, "enc=%s", enc)

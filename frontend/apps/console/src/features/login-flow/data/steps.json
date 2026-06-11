@@ -123,5 +123,50 @@
         }
       ]
     }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "INTERFACE",
+    "type": "VIEW",
+    "display": {
+      "label": "Email",
+      "image": "assets/images/icons/email.svg",
+      "showOnResourcePanel": true
+    },
+    "config": {},
+    "data": {
+      "components": [
+        {
+          "category": "BLOCK",
+          "type": "BLOCK",
+          "config": {},
+          "id": "{{ID}}",
+          "components": [
+            {
+              "id": "{{ID}}",
+              "category": "FIELD",
+              "type": "EMAIL_INPUT",
+              "inputType": "email",
+              "hint": "",
+              "label": "Email",
+              "required": true,
+              "placeholder": "Enter your email address",
+              "ref": "email"
+            },
+            {
+              "id": "{{ID}}",
+              "category": "ACTION",
+              "type": "ACTION",
+              "variant": "PRIMARY",
+              "buttonType": "submit",
+              "label": "Continue",
+              "action": {
+                "type": "NEXT"
+              }
+            }
+          ]
+        }
+      ]
+    }
   }
 ]

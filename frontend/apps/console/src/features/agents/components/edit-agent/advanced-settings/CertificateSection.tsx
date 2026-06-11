@@ -17,22 +17,21 @@
  */
 
 import {SettingsCard} from '@thunderid/components';
-import {Stack, TextField, FormControl, FormLabel, Autocomplete} from '@wso2/oxygen-ui';
+import {Stack, TextField, FormControl, FormLabel, Autocomplete, FormHelperText} from '@wso2/oxygen-ui';
 import {useTranslation} from 'react-i18next';
 import CertificateTypes from '../../../../applications/constants/certificate-types';
-import type {Agent} from '../../../models/agent';
 
 interface CertificateSectionProps {
-  agent: Agent;
-  editedAgent: Partial<Agent>;
-  onFieldChange: (field: keyof Agent, value: unknown) => void;
+  certificate?: {type?: string; value?: string} | null;
+  onCertificateChange: (cert: {type: string; value: string} | null) => void;
+  required?: boolean;
   disabled?: boolean;
 }
 
 export default function CertificateSection({
-  agent,
-  editedAgent,
-  onFieldChange,
+  certificate = undefined,
+  onCertificateChange,
+  required = false,
   disabled = false,
 }: CertificateSectionProps) {
   const {t} = useTranslation();
@@ -43,7 +42,8 @@ export default function CertificateSection({
     {value: CertificateTypes.JWKS_URI, label: t('applications:edit.advanced.certificate.type.jwksUri')},
   ];
 
-  const currentCertType = editedAgent.certificate?.type ?? agent.certificate?.type ?? CertificateTypes.NONE;
+  const currentCertType = certificate?.type ?? CertificateTypes.NONE;
+  const currentCertValue = certificate?.value ?? '';
 
   return (
     <SettingsCard
@@ -51,23 +51,36 @@ export default function CertificateSection({
       description={t('applications:edit.advanced.certificate.intro')}
     >
       <Stack spacing={2}>
-        <FormControl fullWidth>
+        <FormControl fullWidth error={required && currentCertType === CertificateTypes.NONE}>
           <FormLabel htmlFor="certificate-type">{t('applications:edit.advanced.labels.certificateType')}</FormLabel>
           <Autocomplete
             id="certificate-type"
             value={certificateTypeOptions.find((opt) => opt.value === currentCertType) ?? certificateTypeOptions[0]}
             onChange={(_, newValue) => {
-              const currentCert = editedAgent.certificate ??
-                agent.certificate ?? {type: CertificateTypes.NONE, value: ''};
-              onFieldChange('certificate', {...currentCert, type: newValue?.value || CertificateTypes.NONE});
+              const newType = newValue?.value ?? CertificateTypes.NONE;
+              if (newType === CertificateTypes.NONE) {
+                onCertificateChange(null);
+              } else {
+                onCertificateChange({type: newType, value: currentCertValue});
+              }
             }}
             options={certificateTypeOptions}
             getOptionLabel={(option) => option.label}
             isOptionEqualToValue={(option, value) => option.value === value.value}
-            renderInput={(params) => <TextField {...params} fullWidth />}
+            renderInput={(params) => (
+              <TextField {...params} fullWidth error={required && currentCertType === CertificateTypes.NONE} />
+            )}
             disableClearable
             disabled={disabled}
           />
+          {required && currentCertType === CertificateTypes.NONE && (
+            <FormHelperText>
+              {t(
+                'applications:edit.advanced.certificate.error.required',
+                'A certificate is required for private_key_jwt authentication.',
+              )}
+            </FormHelperText>
+          )}
         </FormControl>
 
         {currentCertType !== CertificateTypes.NONE && (
@@ -75,22 +88,26 @@ export default function CertificateSection({
             fullWidth
             multiline
             rows={3}
-            value={editedAgent.certificate?.value ?? agent.certificate?.value ?? ''}
+            value={currentCertValue}
             onChange={(e) => {
-              const currentCert = editedAgent.certificate ??
-                agent.certificate ?? {type: CertificateTypes.NONE, value: ''};
-              onFieldChange('certificate', {...currentCert, value: e.target.value});
+              onCertificateChange({type: currentCertType, value: e.target.value});
             }}
             disabled={disabled}
+            error={required && !currentCertValue}
             placeholder={
               currentCertType === CertificateTypes.JWKS_URI
                 ? t('applications:edit.advanced.certificate.placeholder.jwksUri')
                 : t('applications:edit.advanced.certificate.placeholder.jwks')
             }
             helperText={
-              currentCertType === CertificateTypes.JWKS_URI
-                ? t('applications:edit.advanced.certificate.hint.jwksUri')
-                : t('applications:edit.advanced.certificate.hint.jwks')
+              required && !currentCertValue
+                ? t(
+                    'applications:edit.advanced.certificate.error.valueRequired',
+                    'Please enter a value for the selected certificate type.',
+                  )
+                : currentCertType === CertificateTypes.JWKS_URI
+                  ? t('applications:edit.advanced.certificate.hint.jwksUri')
+                  : t('applications:edit.advanced.certificate.hint.jwks')
             }
           />
         )}

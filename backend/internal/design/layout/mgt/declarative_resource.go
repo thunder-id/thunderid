@@ -64,7 +64,7 @@ func (e *layoutExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serv
 	offset := 0
 
 	for {
-		layoutList, err := e.service.GetLayoutList(pageSize, offset)
+		layoutList, err := e.service.GetLayoutList(ctx, pageSize, offset)
 		if err != nil {
 			return nil, err
 		}
@@ -90,7 +90,7 @@ func (e *layoutExporter) GetAllResourceIDs(ctx context.Context) ([]string, *serv
 func (e *layoutExporter) GetResourceByID(ctx context.Context, id string) (
 	interface{}, string, *serviceerror.ServiceError,
 ) {
-	layout, err := e.service.GetLayout(id)
+	layout, err := e.service.GetLayout(ctx, id)
 	if err != nil {
 		return nil, "", err
 	}
@@ -98,7 +98,7 @@ func (e *layoutExporter) GetResourceByID(ctx context.Context, id string) (
 }
 
 // ValidateResource validates a layout resource.
-func (e *layoutExporter) ValidateResource(
+func (e *layoutExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	layout, ok := resource.(*Layout)
@@ -106,7 +106,7 @@ func (e *layoutExporter) ValidateResource(
 		return "", declarativeresource.CreateTypeError(resourceTypeLayout, id)
 	}
 
-	err := declarativeresource.ValidateResourceName(
+	err := declarativeresource.ValidateResourceName(ctx,
 		layout.DisplayName, resourceTypeLayout, id, "LAYOUT_VALIDATION_ERROR", logger,
 	)
 	if err != nil {
@@ -114,7 +114,7 @@ func (e *layoutExporter) ValidateResource(
 	}
 
 	if len(layout.Layout) == 0 {
-		logger.Warn("Layout has no layout configuration",
+		logger.Warn(ctx, "Layout has no layout configuration",
 			log.String("layoutID", id), log.String("displayName", layout.DisplayName))
 	}
 

@@ -123,7 +123,7 @@ func (as *authorizeService) GetAuthorizationCodeDetails(
 		return nil
 	})
 	if err != nil {
-		as.logger.Error("Failed to get authorization code details", log.Error(err))
+		as.logger.Error(ctx, "Failed to get authorization code details", log.Error(err))
 		return nil, err
 	}
 	return record, nil
@@ -146,7 +146,7 @@ func (as *authorizeService) HandleInitialAuthorizationRequest(ctx context.Contex
 	// Retrieve the OAuth client based on the client ID.
 	app, lookupErr := as.inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if lookupErr != nil {
-		as.logger.Error("Failed to retrieve OAuth client", log.Error(lookupErr))
+		as.logger.Error(ctx, "Failed to retrieve OAuth client", log.Error(lookupErr))
 		return nil, &AuthorizationError{
 			Code:    oauth2const.ErrorServerError,
 			Message: "Failed to process authorization request",
@@ -181,7 +181,7 @@ func (as *authorizeService) handlePARAuthorizationRequest(
 ) (*AuthorizationInitResult, *AuthorizationError) {
 	oauthParams, err := as.parService.ResolvePushedAuthorizationRequest(ctx, requestURI, clientID)
 	if err != nil {
-		as.logger.Debug("Failed to resolve PAR request", log.Error(err))
+		as.logger.Debug(ctx, "Failed to resolve PAR request", log.Error(err))
 		if errors.Is(err, par.ErrPARResolutionFailed) {
 			return nil, &AuthorizationError{
 				Code:    oauth2const.ErrorServerError,
@@ -229,7 +229,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 		var err error
 		claimsRequest, err = oauth2utils.ParseClaimsRequest(claimsParam)
 		if err != nil {
-			as.logger.Debug("Failed to parse claims parameter", log.Error(err))
+			as.logger.Debug(ctx, "Failed to parse claims parameter", log.Error(err))
 			return nil, &AuthorizationError{
 				Code:    oauth2const.ErrorInvalidRequest,
 				Message: "The claims request parameter is malformed or contains invalid values",
@@ -238,7 +238,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 	}
 
 	// Validate the authorization request.
-	sendErrorToApp, errorCode, errorMessage := as.authZValidator.validateInitialAuthorizationRequest(msg, app)
+	sendErrorToApp, errorCode, errorMessage := as.authZValidator.validateInitialAuthorizationRequest(ctx, msg, app)
 	if errorCode != "" {
 		authErr := &AuthorizationError{
 			Code:    errorCode,
@@ -274,6 +274,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 		State:               state,
 		ClientID:            app.ClientID,
 		RedirectURI:         redirectURI,
+		RedirectURIProvided: redirectURI != "",
 		ResponseType:        responseType,
 		StandardScopes:      oidcScopes,
 		PermissionScopes:    nonOidcScopes,
@@ -291,7 +292,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 	// TODO: This should be removed when supporting other means of authorization.
 	if redirectURI == "" {
 		if len(app.RedirectURIs) == 0 {
-			as.logger.Error("OAuth application has no registered redirect URIs",
+			as.logger.Error(ctx, "OAuth application has no registered redirect URIs",
 				log.String("client_id", app.ClientID))
 			return nil, &AuthorizationError{
 				Code:    oauth2const.ErrorServerError,
@@ -333,7 +334,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 
 	executionID, flowErr := as.flowExecService.InitiateFlow(ctx, flowInitCtx)
 	if flowErr != nil {
-		as.logger.Error("Failed to initiate authentication flow",
+		as.logger.Error(ctx, "Failed to initiate authentication flow",
 			log.String("error_code", flowErr.Code))
 		return nil, &AuthorizationError{
 			Code:              oauth2const.ErrorServerError,
@@ -351,7 +352,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	// Store authorization request context in the store.
 	identifier, storeErr := as.authReqStore.AddRequest(ctx, authRequestCtx)
 	if storeErr != nil {
-		as.logger.Error("Failed to store authorization request context", log.Error(storeErr))
+		as.logger.Error(ctx, "Failed to store authorization request context", log.Error(storeErr))
 		return nil, &AuthorizationError{
 			Code:              oauth2const.ErrorServerError,
 			Message:           "Failed to process authorization request",
@@ -371,7 +372,7 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	// TODO: May require another redirection to a warn consent page when it directly goes to a federated IDP.
 	parsedRedirectURI, err := utils.ParseURL(oauthParams.RedirectURI)
 	if err != nil {
-		as.logger.Error("Failed to parse redirect URI", log.Error(err))
+		as.logger.Error(ctx, "Failed to parse redirect URI", log.Error(err))
 		return nil, &AuthorizationError{
 			Code:              oauth2const.ErrorServerError,
 			Message:           "Failed to process authorization request",
@@ -426,7 +427,7 @@ func (as *authorizeService) HandleAuthorizationCallback(ctx context.Context, aut
 
 		// Verify the assertion.
 		if err := as.verifyAssertion(ctx, assertion); err != nil {
-			as.logger.Debug("Assertion verification failed", log.Error(err))
+			as.logger.Debug(ctx, "Assertion verification failed", log.Error(err))
 			authErr = &AuthorizationError{
 				Code:              oauth2const.ErrorInvalidRequest,
 				Message:           "Authorization request failed",
@@ -468,7 +469,7 @@ func (as *authorizeService) HandleAuthorizationCallback(ctx context.Context, aut
 			if err := validateSubClaimConstraint(
 				authRequestCtx.OAuthParameters.ClaimsRequest, claims.userID,
 			); err != nil {
-				as.logger.Debug("Sub claim validation failed", log.Error(err))
+				as.logger.Debug(ctx, "Sub claim validation failed", log.Error(err))
 				authErr = &AuthorizationError{
 					Code:              oauth2const.ErrorAccessDenied,
 					Message:           "Authorization request failed",
@@ -540,12 +541,12 @@ func (as *authorizeService) HandleAuthorizationCallback(ctx context.Context, aut
 
 	if authErr != nil {
 		if authErr.Code == oauth2const.ErrorServerError {
-			as.logger.Error("Failed to process authorization callback", log.Error(err))
+			as.logger.Error(ctx, "Failed to process authorization callback", log.Error(err))
 		}
 		return "", authErr
 	}
 	if err != nil {
-		as.logger.Error("Failed to process authorization callback", log.Error(err))
+		as.logger.Error(ctx, "Failed to process authorization callback", log.Error(err))
 		return "", &AuthorizationError{
 			Code:    oauth2const.ErrorServerError,
 			Message: "Failed to process authorization request",
@@ -559,17 +560,17 @@ func (as *authorizeService) HandleAuthorizationCallback(ctx context.Context, aut
 func (as *authorizeService) loadAuthRequestContext(ctx context.Context, authID string) (*authRequestContext, error) {
 	ok, authRequestCtx, err := as.authReqStore.GetRequest(ctx, authID)
 	if err != nil {
-		as.logger.Error("Failed to retrieve authorization request context", log.Error(err))
+		as.logger.Error(ctx, "Failed to retrieve authorization request context", log.Error(err))
 		return nil, errors.New("failed to retrieve authorization request context")
 	}
 	if !ok {
-		as.logger.Debug("Authorization request context not found", log.String("auth_id", authID))
+		as.logger.Debug(ctx, "Authorization request context not found", log.String("auth_id", authID))
 		return nil, errAuthRequestNotFound
 	}
 
 	// Remove the authorization request context after retrieval.
 	if clearErr := as.authReqStore.ClearRequest(ctx, authID); clearErr != nil {
-		as.logger.Error("Failed to clear authorization request context", log.Error(clearErr))
+		as.logger.Error(ctx, "Failed to clear authorization request context", log.Error(clearErr))
 	}
 	return &authRequestCtx, nil
 }
@@ -577,75 +578,32 @@ func (as *authorizeService) loadAuthRequestContext(ctx context.Context, authID s
 // verifyAssertion verifies the JWT assertion.
 func (as *authorizeService) verifyAssertion(ctx context.Context, assertion string) error {
 	if err := as.jwtService.VerifyJWT(ctx, assertion, "", ""); err != nil {
-		as.logger.Debug("Invalid assertion signature", log.String("error", err.Error.DefaultValue))
+		as.logger.Debug(ctx, "Invalid assertion signature", log.String("error", err.Error.DefaultValue))
 		return errors.New("invalid assertion signature")
 	}
 	return nil
 }
 
-// decodeAttributesFromAssertion decodes user attributes from the flow assertion JWT.
+// decodeAttributesFromAssertion decodes user attributes from the flow assertion JWT using the
+// shared base decoder. authorized_permissions is auth-code-specific and extracted separately
+// from the raw payload returned alongside the common claims.
 func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time, error) {
-	claims := assertionClaims{}
-
-	_, jwtPayload, err := jwt.DecodeJWT(assertion)
+	base, payload, err := oauth2utils.DecodeFlowAssertionClaims(assertion)
 	if err != nil {
-		return claims, time.Time{}, fmt.Errorf("failed to decode the JWT token: %w", err)
+		return assertionClaims{}, time.Time{}, err
 	}
 
-	// Extract authentication time from iat claim.
-	authTime := time.Time{}
-	if iatValue, ok := jwtPayload["iat"]; ok {
-		switch v := iatValue.(type) {
-		case float64:
-			authTime = time.Unix(int64(v), 0)
-		case int64:
-			authTime = time.Unix(v, 0)
-		case int:
-			authTime = time.Unix(int64(v), 0)
-		default:
-			return claims, time.Time{}, errors.New("JWT 'iat' claim has unexpected type")
-		}
+	claims := assertionClaims{
+		userID:           base.UserID,
+		attributeCacheID: base.AttributeCacheID,
+		completedACR:     base.CompletedACR,
 	}
 
-	for key, value := range jwtPayload {
-		// Extract sub claim.
-		if key == oauth2const.ClaimSub {
-			if strValue, ok := value.(string); ok {
-				claims.userID = strValue
-			} else {
-				return claims, time.Time{}, errors.New("JWT 'sub' claim is not a string")
-			}
-			continue
-		}
-
-		// Extract authorized_permissions claim.
-		if key == "authorized_permissions" {
-			if strValue, ok := value.(string); ok {
-				claims.authorizedPermissions = strValue
-			}
-			continue
-		}
-
-		if key == "aci" {
-			strValue, ok := value.(string)
-			if !ok {
-				return claims, time.Time{}, errors.New("JWT 'aci' claim is not a string")
-			}
-			claims.attributeCacheID = strValue
-			continue
-		}
-
-		if key == oauth2const.ClaimCompletedAuthClass {
-			strValue, ok := value.(string)
-			if !ok {
-				return claims, time.Time{}, errors.New("JWT 'completed_auth_class' claim is not a string")
-			}
-			claims.completedACR = strValue
-			continue
-		}
+	if v, ok := payload["authorized_permissions"].(string); ok {
+		claims.authorizedPermissions = v
 	}
 
-	return claims, authTime, nil
+	return claims, base.AuthTime, nil
 }
 
 // createAuthorizationCode generates an authorization code based on the provided
@@ -695,6 +653,7 @@ func createAuthorizationCode(
 		Code:                code,
 		ClientID:            clientID,
 		RedirectURI:         redirectURI,
+		RedirectURIProvided: authRequestCtx.OAuthParameters.RedirectURIProvided,
 		AuthorizedUserID:    claims.userID,
 		AttributeCacheID:    claims.attributeCacheID,
 		TimeCreated:         authTime,

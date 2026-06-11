@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -45,7 +45,6 @@ var DataKey = struct {
 	AuthMethod    string
 	RedirectTo    string
 	FailedStep    string
-	FailureReason string
 
 	// OAuth/Token Keys
 	Scope     string
@@ -54,8 +53,6 @@ var DataKey = struct {
 	// Event Metadata Keys
 	Message     string
 	Error       string
-	ErrorCode   string
-	ErrorType   string
 	DurationMs  string
 	LatencyUs   string
 	TraceParent string
@@ -83,7 +80,6 @@ var DataKey = struct {
 	AuthMethod:    "auth_method",
 	RedirectTo:    "redirect_to",
 	FailedStep:    "failed_step",
-	FailureReason: "failure_reason",
 
 	// OAuth/Token Keys
 	Scope:     "scope",
@@ -92,8 +88,6 @@ var DataKey = struct {
 	// Event Metadata Keys
 	Message:     "message",
 	Error:       "error",
-	ErrorCode:   "error_code",
-	ErrorType:   "error_type",
 	DurationMs:  "duration_ms",
 	LatencyUs:   "latency_us",
 	TraceParent: "trace_parent",

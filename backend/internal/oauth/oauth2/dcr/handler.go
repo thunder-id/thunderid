@@ -19,6 +19,7 @@
 package dcr
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -50,7 +51,7 @@ func (dh *dcrHandler) HandleDCRRegistration(w http.ResponseWriter, r *http.Reque
 
 	dcrRequest, err := sysutils.DecodeJSONBody[DCRRegistrationRequest](r)
 	if err != nil {
-		sysutils.WriteJSONError(w, ErrorInvalidRequestFormat.Code,
+		sysutils.WriteJSONError(ctx, w, ErrorInvalidRequestFormat.Code,
 			ErrorInvalidRequestFormat.ErrorDescription.DefaultValue, http.StatusBadRequest, nil)
 		return
 	}
@@ -59,17 +60,17 @@ func (dh *dcrHandler) HandleDCRRegistration(w http.ResponseWriter, r *http.Reque
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ServerErrorType {
 			logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DCRHandler"))
-			logger.Error("Internal server error processing DCR registration request",
+			logger.Error(ctx, "Internal server error processing DCR registration request",
 				log.MaskedString("client_name", dcrRequest.ClientName),
 				log.String("error_code", svcErr.Code),
 				log.String("error", svcErr.Error.DefaultValue),
 			)
 		}
-		dh.writeServiceErrorResponse(w, svcErr)
+		dh.writeServiceErrorResponse(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusCreated, dcrResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, dcrResponse)
 }
 
 // checkDCRAuthorization verifies that the caller holds required permission.
@@ -78,13 +79,16 @@ func (dh *dcrHandler) checkDCRAuthorization(r *http.Request, w http.ResponseWrit
 	if security.HasSystemPermission(security.GetPermissions(r.Context())) {
 		return true
 	}
-	sysutils.WriteJSONError(w, ErrorUnauthorized.Code,
+	sysutils.WriteJSONError(r.Context(), w, ErrorUnauthorized.Code,
 		ErrorUnauthorized.ErrorDescription.DefaultValue, http.StatusUnauthorized, nil)
 	return false
 }
 
 // writeServiceErrorResponse writes a service error response.
-func (dh *dcrHandler) writeServiceErrorResponse(w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func (
+	dh *dcrHandler) writeServiceErrorResponse(ctx context.Context,
+	w http.ResponseWriter,
+	svcErr *serviceerror.ServiceError) {
 	var statusCode int
 
 	switch svcErr.Type {
@@ -96,5 +100,5 @@ func (dh *dcrHandler) writeServiceErrorResponse(w http.ResponseWriter, svcErr *s
 		statusCode = http.StatusBadRequest
 	}
 
-	sysutils.WriteJSONError(w, svcErr.Code, svcErr.ErrorDescription.DefaultValue, statusCode, nil)
+	sysutils.WriteJSONError(ctx, w, svcErr.Code, svcErr.ErrorDescription.DefaultValue, statusCode, nil)
 }

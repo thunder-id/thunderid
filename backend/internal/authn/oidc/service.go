@@ -39,7 +39,7 @@ const (
 type OIDCAuthnCoreServiceInterface interface {
 	authnoauth.OAuthAuthnCoreServiceInterface
 	ValidateIDToken(ctx context.Context, idpID, idToken string) *serviceerror.ServiceError
-	GetIDTokenClaims(idToken string) (map[string]interface{}, *serviceerror.ServiceError)
+	GetIDTokenClaims(ctx context.Context, idToken string) (map[string]interface{}, *serviceerror.ServiceError)
 }
 
 // OIDCAuthnServiceInterface defines the contract for OIDC based authenticator services.
@@ -103,18 +103,18 @@ func (s *oidcAuthnService) ExchangeCodeForToken(ctx context.Context, idpID, code
 func (s *oidcAuthnService) ValidateTokenResponse(ctx context.Context, idpID string,
 	tokenResp *authnoauth.TokenResponse, validateIDToken bool) *serviceerror.ServiceError {
 	logger := s.logger
-	logger.Debug("Validating token response")
+	logger.Debug(ctx, "Validating token response")
 
 	if tokenResp == nil {
-		logger.Debug("Empty token response received from identity provider")
+		logger.Debug(ctx, "Empty token response received from identity provider")
 		return &authnoauth.ErrorInvalidTokenResponse
 	}
 	if tokenResp.AccessToken == "" {
-		logger.Debug("Access token is empty in the token response")
+		logger.Debug(ctx, "Access token is empty in the token response")
 		return &authnoauth.ErrorInvalidTokenResponse
 	}
 	if tokenResp.IDToken == "" {
-		logger.Debug("ID token is empty in the token response")
+		logger.Debug(ctx, "ID token is empty in the token response")
 		return &authnoauth.ErrorInvalidTokenResponse
 	}
 
@@ -134,10 +134,10 @@ func (s *oidcAuthnService) ValidateTokenResponse(ctx context.Context, idpID stri
 // is called with validateResponse set to true.
 func (s *oidcAuthnService) ValidateIDToken(ctx context.Context, idpID, idToken string) *serviceerror.ServiceError {
 	logger := s.logger.With(log.String("idpId", idpID))
-	logger.Debug("Validating ID token")
+	logger.Debug(ctx, "Validating ID token")
 
 	if strings.TrimSpace(idToken) == "" {
-		logger.Debug("ID token is empty")
+		logger.Debug(ctx, "ID token is empty")
 		return &ErrorInvalidIDToken
 	}
 
@@ -148,13 +148,14 @@ func (s *oidcAuthnService) ValidateIDToken(ctx context.Context, idpID, idToken s
 
 	// Validate ID token signature using JWKS endpoint if available
 	if oAuthClientConfig.OAuthEndpoints.JwksEndpoint != "" {
-		err := s.jwtService.VerifyJWTWithJWKS(idToken, oAuthClientConfig.OAuthEndpoints.JwksEndpoint, "", "")
+		err := s.jwtService.VerifyJWTWithJWKS(ctx, idToken, oAuthClientConfig.OAuthEndpoints.JwksEndpoint, "", "")
 		if err != nil {
-			logger.Debug("ID token signature validation failed", log.String("error", err.Error.DefaultValue))
+			logger.Debug(ctx, "ID token signature validation failed",
+				log.String("error", err.Error.DefaultValue))
 			return &ErrorInvalidIDTokenSignature
 		}
 	} else {
-		logger.Debug("Skipping ID token signature validation as JWKS endpoint is not configured")
+		logger.Debug(ctx, "Skipping ID token signature validation as JWKS endpoint is not configured")
 	}
 
 	// TODO: Should mandate ID token validation when the support is available through a IDP configuration.
@@ -165,19 +166,19 @@ func (s *oidcAuthnService) ValidateIDToken(ctx context.Context, idpID, idToken s
 }
 
 // GetIDTokenClaims extracts and returns the claims from the ID token.
-func (s *oidcAuthnService) GetIDTokenClaims(idToken string) (
+func (s *oidcAuthnService) GetIDTokenClaims(ctx context.Context, idToken string) (
 	map[string]interface{}, *serviceerror.ServiceError) {
 	logger := s.logger
-	logger.Debug("Extracting claims from ID token")
+	logger.Debug(ctx, "Extracting claims from ID token")
 
 	if strings.TrimSpace(idToken) == "" {
-		logger.Debug("ID token is empty")
+		logger.Debug(ctx, "ID token is empty")
 		return nil, &ErrorInvalidIDToken
 	}
 
 	claims, err := jwt.DecodeJWTPayload(idToken)
 	if err != nil {
-		logger.Debug("Failed to decode ID token payload", log.Error(err))
+		logger.Debug(ctx, "Failed to decode ID token payload", log.Error(err))
 		return nil, &ErrorInvalidIDToken
 	}
 
@@ -191,8 +192,9 @@ func (s *oidcAuthnService) FetchUserInfo(ctx context.Context, idpID, accessToken
 }
 
 // GetInternalUser retrieves the internal user based on the external subject identifier.
-func (s *oidcAuthnService) GetInternalUser(sub string) (*entityprovider.Entity, *serviceerror.ServiceError) {
-	return s.internal.GetInternalUser(sub)
+func (s *oidcAuthnService) GetInternalUser(
+	ctx context.Context, sub string) (*entityprovider.Entity, *serviceerror.ServiceError) {
+	return s.internal.GetInternalUser(ctx, sub)
 }
 
 // Authenticate performs the full OIDC authentication flow: exchanges the code for a token,
@@ -201,14 +203,14 @@ func (s *oidcAuthnService) GetInternalUser(sub string) (*entityprovider.Entity, 
 func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string) (
 	*authncm.FederatedAuthResult, *serviceerror.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
-	logger.Debug("Performing federated OIDC authentication")
+	logger.Debug(ctx, "Performing federated OIDC authentication")
 
 	tokenResp, svcErr := s.ExchangeCodeForToken(ctx, idpID, code, true)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 
-	claims, svcErr := s.GetIDTokenClaims(tokenResp.IDToken)
+	claims, svcErr := s.GetIDTokenClaims(ctx, tokenResp.IDToken)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -221,7 +223,7 @@ func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string)
 		}
 	}
 	if sub == "" {
-		logger.Debug("sub claim not found in ID token")
+		logger.Debug(ctx, "sub claim not found in ID token")
 		return nil, &authncm.ErrorSubClaimNotFound
 	}
 
@@ -237,7 +239,7 @@ func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string)
 					}
 				}
 			} else {
-				logger.Debug("UserInfo sub mismatch, skipping attribute merge")
+				logger.Debug(ctx, "UserInfo sub mismatch, skipping attribute merge")
 			}
 		}
 	}
@@ -246,7 +248,7 @@ func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string)
 		Sub:    sub,
 		Claims: claims,
 	}
-	user, svcErr := s.GetInternalUser(sub)
+	user, svcErr := s.GetInternalUser(ctx, sub)
 	if svcErr != nil {
 		if svcErr.Code == authncm.ErrorUserNotFound.Code {
 			return result, nil

@@ -99,12 +99,12 @@ func postAndDecode[T any](p *restAuthnProvider, ctx context.Context, url string,
 	reqBody interface{}) (*T, *serviceerror.ServiceError) {
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, p.logAndReturnServerError("Failed to marshal request", log.String("error", err.Error()))
+		return nil, p.logAndReturnServerError(ctx, "Failed to marshal request", log.String("error", err.Error()))
 	}
 
 	resp, err := p.doRequest(ctx, url, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		return nil, p.logAndReturnServerError("Failed to send request", log.String("error", err.Error()))
+		return nil, p.logAndReturnServerError(ctx, "Failed to send request", log.String("error", err.Error()))
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -113,16 +113,17 @@ func postAndDecode[T any](p *restAuthnProvider, ctx context.Context, url string,
 	if resp.StatusCode == http.StatusOK {
 		var result T
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return nil, p.logAndReturnServerError("Failed to decode response", log.String("error", err.Error()))
+			return nil, p.logAndReturnServerError(ctx, "Failed to decode response", log.String("error", err.Error()))
 		}
 		return &result, nil
 	}
 
-	return nil, p.decodeError(resp.Body, resp.StatusCode)
+	return nil, p.decodeError(ctx, resp.Body, resp.StatusCode)
 }
 
-func (p *restAuthnProvider) logAndReturnServerError(msg string, fields ...log.Field) *serviceerror.ServiceError {
-	p.logger.Error(msg, fields...)
+func (p *restAuthnProvider) logAndReturnServerError(
+	ctx context.Context, msg string, fields ...log.Field) *serviceerror.ServiceError {
+	p.logger.Error(ctx, msg, fields...)
 	err := serviceerror.InternalServerError
 	return &err
 }
@@ -135,10 +136,11 @@ func isClientError(statusCode int, code string) bool {
 		code == authnprovidercm.ErrorCodeInvalidRequest
 }
 
-func (p *restAuthnProvider) decodeError(body io.Reader, statusCode int) *serviceerror.ServiceError {
+func (p *restAuthnProvider) decodeError(
+	ctx context.Context, body io.Reader, statusCode int) *serviceerror.ServiceError {
 	var apiErr apiErrorResponse
 	if err := json.NewDecoder(body).Decode(&apiErr); err != nil {
-		return p.logAndReturnServerError("Failed to decode error response from authn provider",
+		return p.logAndReturnServerError(ctx, "Failed to decode error response from authn provider",
 			log.String("error", err.Error()))
 	}
 
@@ -148,7 +150,7 @@ func (p *restAuthnProvider) decodeError(body io.Reader, statusCode int) *service
 	}
 
 	if errorType == serviceerror.ServerErrorType {
-		return p.logAndReturnServerError("Authn provider returned server error",
+		return p.logAndReturnServerError(ctx, "Authn provider returned server error",
 			log.String("code", apiErr.Code), log.String("message", apiErr.Message),
 			log.String("description", apiErr.Description))
 	}

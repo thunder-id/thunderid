@@ -65,19 +65,19 @@ func (e *permissionValidator) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 	// Get required scopes from node properties.
 	requiredScopes := e.getRequiredScopes(ctx)
 
-	logger.Debug("Checking scope protection", log.Any("requiredScopes", requiredScopes))
+	logger.Debug(ctx.Context, "Checking scope protection", log.Any("requiredScopes", requiredScopes))
 
 	// Check if context exists
 	if ctx.Context == nil {
-		logger.Debug("No context available - blocking access")
+		logger.Debug(ctx.Context, "No context available - blocking access")
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Insufficient permissions"
+		execResp.Error = &ErrInsufficientPermissions
 		return execResp, nil
 	}
 
 	// Extract permissions from request context
 	userPermissions := security.GetPermissions(ctx.Context)
-	logger.Debug("Extracted permissions from context",
+	logger.Debug(ctx.Context, "Extracted permissions from context",
 		log.Int("permissionCount", len(userPermissions)),
 		log.String("permissions", strings.Join(userPermissions, ", ")))
 
@@ -85,14 +85,14 @@ func (e *permissionValidator) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 	if !slices.ContainsFunc(requiredScopes, func(reqScope string) bool {
 		return slices.Contains(userPermissions, reqScope)
 	}) {
-		logger.Debug("Request lacks required scope",
+		logger.Debug(ctx.Context, "Request lacks required scope",
 			log.Any("requiredScopes", requiredScopes))
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Insufficient permissions"
+		execResp.Error = &ErrInsufficientPermissions
 		return execResp, nil
 	}
 
-	logger.Debug("Scope protection passed", log.Any("requiredScopes", requiredScopes))
+	logger.Debug(ctx.Context, "Scope protection passed", log.Any("requiredScopes", requiredScopes))
 	execResp.Status = common.ExecComplete
 	return execResp, nil
 }

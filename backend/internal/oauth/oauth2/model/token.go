@@ -38,6 +38,7 @@ type TokenRequest struct {
 	ActorTokenType     string   `json:"actor_token_type,omitempty"`
 	RequestedTokenType string   `json:"requested_token_type,omitempty"`
 	Audiences          []string `json:"audiences,omitempty"`
+	AuthReqID          string   `json:"auth_req_id,omitempty"`
 }
 
 // TokenResponse represents the OAuth2 token response.

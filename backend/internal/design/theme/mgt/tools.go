@@ -93,7 +93,7 @@ func registerMCPTools(server *mcp.Server, themeMgtService ThemeMgtServiceInterfa
 
 // listThemes handles the list_themes tool call.
 func (t *themeTools) listThemes(
-	_ context.Context,
+	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	_ any,
 ) (*mcp.CallToolResult, *themeListMCPResponse, error) {
@@ -102,7 +102,7 @@ func (t *themeTools) listThemes(
 	offset := 0
 
 	for {
-		resp, svcErr := t.themeMgtService.GetThemeList(serverconst.MaxPageSize, offset)
+		resp, svcErr := t.themeMgtService.GetThemeList(ctx, serverconst.MaxPageSize, offset)
 		if svcErr != nil {
 			return nil, nil, fmt.Errorf("failed to list themes: %s", svcErr.ErrorDescription)
 		}
@@ -134,11 +134,11 @@ func (t *themeTools) listThemes(
 
 // getThemeByID handles the get_theme_by_id tool call.
 func (t *themeTools) getThemeByID(
-	_ context.Context,
+	ctx context.Context,
 	_ *mcp.CallToolRequest,
 	input tool.IDInput,
 ) (*mcp.CallToolResult, *themeDetailMCPResponse, error) {
-	theme, svcErr := t.themeMgtService.GetTheme(input.ID)
+	theme, svcErr := t.themeMgtService.GetTheme(ctx, input.ID)
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to get theme: %s", svcErr.ErrorDescription)
 	}

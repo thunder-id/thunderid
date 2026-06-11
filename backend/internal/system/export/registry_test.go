@@ -130,7 +130,7 @@ func (m *mockResourceExporter) GetResourceByID(
 }
 
 func (m *mockResourceExporter) ValidateResource(
-	resource interface{}, id string, logger *log.Logger,
+	_ context.Context, resource interface{}, id string, logger *log.Logger,
 ) (string, *ExportError) {
 	return m.validateName, m.validateExportErr
 }

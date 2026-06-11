@@ -20,6 +20,7 @@ import {render, screen, userEvent, waitFor} from '@thunderid/test-utils';
 import {afterEach, describe, it, expect, vi, beforeEach} from 'vitest';
 import DashboardLayout from '../DashboardLayout';
 
+const mockNavigate = vi.fn();
 const mockSignIn = vi.fn();
 const mockSignOut = vi.fn();
 const mockClearSession = vi.fn();
@@ -105,6 +106,7 @@ vi.mock('react-router', async () => {
         {children}
       </a>
     ),
+    useNavigate: () => mockNavigate,
   };
 });
 
@@ -220,6 +222,16 @@ describe('DashboardLayout', () => {
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
   });
 
+  it('navigates to open-project page when open project button is clicked', async () => {
+    const user = userEvent.setup();
+    render(<DashboardLayout />);
+
+    const openProjectButton = screen.getByRole('button', {name: /navigation:pages\.openProject/i});
+    await user.click(openProjectButton);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/open-project');
+  });
+
   it('navigates to export page when export button is clicked', async () => {
     const user = userEvent.setup();
     render(<DashboardLayout />);
@@ -294,6 +306,27 @@ describe('DashboardLayout', () => {
       expect(mockClearSession).toHaveBeenCalled();
       expect(window.location.href).toContain('https://idp.example.com/logout');
       expect(window.location.href).toContain('client_id=test-client-id');
+    });
+
+    it('logs error when clearSession throws during generic OIDC sign out', async () => {
+      mockDiscovery = {wellKnown: {end_session_endpoint: 'https://idp.example.com/logout'}};
+      const sessionError = new Error('session clear failed');
+      mockClearSession.mockImplementation(() => {
+        throw sessionError;
+      });
+      const user = userEvent.setup();
+
+      render(<DashboardLayout />);
+
+      const userMenuTrigger = screen.getByLabelText('Test User');
+      await user.click(userMenuTrigger);
+
+      const signOutButton = await screen.findByText('common:userMenu.signOut');
+      await user.click(signOutButton);
+
+      expect(mockLoggerError).toHaveBeenCalledWith(expect.stringContaining('Failed to clear local session'), {
+        error: sessionError,
+      });
     });
   });
 });

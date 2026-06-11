@@ -31,6 +31,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/oauth/jwks"
+	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/callback"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
@@ -84,17 +87,22 @@ func Initialize(
 	dpopVerifier := dpop.Initialize(jtiStore)
 	parService := par.Initialize(mux, inboundClient, authnProvider, jwtService, discoveryService,
 		resourceService, dpopVerifier)
-	grantHandlerProvider, err := granthandlers.Initialize(
-		mux, jwtService, inboundClient, flowExecService, tokenBuilder, tokenValidator,
-		attributeCacheSvc, ouService, authzService, entityProvider, resourceService, parService)
+	cibaService := ciba.Initialize(mux, jwtService, inboundClient, authnProvider, flowExecService,
+		discoveryService, resourceService)
+	oauth2AuthzService, err := oauth2authz.Initialize(mux, inboundClient, resourceService,
+		jwtService, flowExecService, parService)
 	if err != nil {
 		return err
 	}
+	grantHandlerProvider := granthandlers.Initialize(
+		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
+		attributeCacheSvc, ouService, authzService, entityProvider, resourceService, cibaService)
 	token.Initialize(mux, jwtService, inboundClient, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier)
 	introspect.Initialize(mux, jwtService, inboundClient, authnProvider, discoveryService)
 	userinfo.Initialize(mux, jwtService, jweService, resolver,
 		tokenValidator, inboundClient, attributeCacheSvc,
 		discoveryService, dpopVerifier)
+	callback.Initialize(mux, oauth2AuthzService, cibaService)
 	return nil
 }

@@ -58,7 +58,7 @@ func (suite *TokenServiceTestSuite) SetupTest() {
 
 	suite.mockObsSvc = observabilitymock.NewObservabilityServiceInterfaceMock(suite.T())
 	suite.mockObsSvc.On("IsEnabled").Return(true).Maybe()
-	suite.mockObsSvc.On("PublishEvent", mock.Anything).Return().Maybe()
+	suite.mockObsSvc.On("PublishEvent", mock.Anything, mock.Anything).Return().Maybe()
 
 	suite.mockDPoPVerifier = dpopmock.NewVerifierInterfaceMock(suite.T())
 

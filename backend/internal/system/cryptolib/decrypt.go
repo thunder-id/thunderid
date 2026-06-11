@@ -137,7 +137,8 @@ func decryptECDHES(ecdsaPriv *ecdsa.PrivateKey, params AlgorithmParams) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	return ecdhConcatKDF(z, string(params.ECDHES.ContentEncryptionAlgorithm), keyLen)
+	return ecdhConcatKDF(
+		z, string(params.ECDHES.ContentEncryptionAlgorithm), keyLen, params.ECDHES.APU, params.ECDHES.APV)
 }
 
 func decryptECDHESKW(ecdsaPriv *ecdsa.PrivateKey, params AlgorithmParams, content []byte) ([]byte, error) {
@@ -156,7 +157,7 @@ func decryptECDHESKW(ecdsaPriv *ecdsa.PrivateKey, params AlgorithmParams, conten
 	case AlgorithmECDHESA256KW:
 		kekLen = 32
 	}
-	kek, err := ecdhConcatKDF(z, string(params.Algorithm), kekLen)
+	kek, err := ecdhConcatKDF(z, string(params.Algorithm), kekLen, params.ECDHES.APU, params.ECDHES.APV)
 	if err != nil {
 		return nil, fmt.Errorf("key derivation failed: %w", err)
 	}

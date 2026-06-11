@@ -26,7 +26,7 @@ import CustomCSSEditor from '../CustomCSSEditor';
 import type {CustomCSSEditorHandle} from '../CustomCSSEditor';
 
 // Mock Monaco Editor as a plain textarea
-vi.mock('@monaco-editor/react', () => ({
+vi.mock('@/lib/MonacoEditor', () => ({
   default: ({value, onChange, height}: {value: string; onChange?: (v: string | undefined) => void; height: string}) => (
     <textarea
       data-testid="monaco-editor"

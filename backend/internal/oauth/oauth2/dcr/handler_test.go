@@ -284,7 +284,7 @@ func TestWriteServiceErrorResponse_DirectCall(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			rr := httptest.NewRecorder()
-			handler.writeServiceErrorResponse(rr, tc.serviceError)
+			handler.writeServiceErrorResponse(context.Background(), rr, tc.serviceError)
 
 			assert.Equal(t, tc.expectedStatus, rr.Code)
 			var errorResponse map[string]interface{}

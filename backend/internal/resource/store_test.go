@@ -89,7 +89,29 @@ func (suite *ResourceStoreTestSuite) TestCreateResourceServer() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateResourceServer, "rs1", "ou1", "Test Server",
-					"Test Description", nil, "test-identifier", []byte(`{"delimiter":":"}`), "test-deployment").
+					"Test Description", nil, "test-identifier", nil,
+					[]byte(`{"delimiter":":"}`), "test-deployment").
+					Return(int64(1), nil)
+			},
+			shouldErr: false,
+		},
+		{
+			name:       "SuccessWithType",
+			resourceID: "rs1",
+			resourceServer: ResourceServer{
+				OUID:        "ou1",
+				Name:        "Test Server",
+				Description: "Test Description",
+				Identifier:  "test-identifier",
+				Type:        ResourceServerTypeMCP,
+				Delimiter:   ":",
+			},
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("ExecuteContext", context.Background(),
+					queryCreateResourceServer, "rs1", "ou1", "Test Server",
+					"Test Description", nil, "test-identifier", "MCP",
+					[]byte(`{"delimiter":":"}`), "test-deployment").
 					Return(int64(1), nil)
 			},
 			shouldErr: false,
@@ -108,7 +130,8 @@ func (suite *ResourceStoreTestSuite) TestCreateResourceServer() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateResourceServer, "rs1", "ou1", "Test Server",
-					"Test Description", nil, "test-identifier", []byte(`{"delimiter":":"}`), "test-deployment").
+					"Test Description", nil, "test-identifier", nil,
+					[]byte(`{"delimiter":":"}`), "test-deployment").
 					Return(int64(0), errors.New("insert failed"))
 			},
 			shouldErr: true,
@@ -190,6 +213,7 @@ func (suite *ResourceStoreTestSuite) TestGetResourceServer() {
 							"name":        "Test Server",
 							"description": "Test Description",
 							"identifier":  "test-identifier",
+							"type":        "MCP",
 							"properties":  []byte(`{"delimiter":"/"}`),
 						},
 					}, nil)
@@ -201,6 +225,7 @@ func (suite *ResourceStoreTestSuite) TestGetResourceServer() {
 				Name:        "Test Server",
 				Description: "Test Description",
 				Identifier:  "test-identifier",
+				Type:        ResourceServerTypeMCP,
 				Delimiter:   "/",
 			},
 			shouldErr: false,
@@ -267,6 +292,7 @@ func (suite *ResourceStoreTestSuite) TestGetResourceServer() {
 				suite.Equal(tc.expectedRS.Name, rs.Name)
 				suite.Equal(tc.expectedRS.Description, rs.Description)
 				suite.Equal(tc.expectedRS.Identifier, rs.Identifier)
+				suite.Equal(tc.expectedRS.Type, rs.Type)
 				suite.Equal(tc.expectedRS.Delimiter, rs.Delimiter)
 			}
 		})
@@ -460,13 +486,14 @@ func (suite *ResourceStoreTestSuite) TestUpdateResourceServer() {
 				Name:        "Updated Server",
 				Description: "Updated Description",
 				Identifier:  "updated-identifier",
+				Type:        ResourceServerTypeAPI,
 				Delimiter:   "-",
 			},
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryUpdateResourceServer, "ou1", "Updated Server",
-					"Updated Description", nil, "updated-identifier",
+					"Updated Description", nil, "updated-identifier", "API",
 					[]byte(`{"delimiter":"-"}`), "rs1", "test-deployment").
 					Return(int64(1), nil)
 			},
@@ -480,13 +507,14 @@ func (suite *ResourceStoreTestSuite) TestUpdateResourceServer() {
 				Name:        "Updated Server",
 				Description: "Updated Description",
 				Identifier:  "updated-identifier",
+				Type:        ResourceServerTypeAPI,
 				Delimiter:   "-",
 			},
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryUpdateResourceServer, "ou1", "Updated Server",
-					"Updated Description", nil, "updated-identifier",
+					"Updated Description", nil, "updated-identifier", "API",
 					[]byte(`{"delimiter":"-"}`), "rs1", "test-deployment").
 					Return(int64(0), errors.New("update failed"))
 			},

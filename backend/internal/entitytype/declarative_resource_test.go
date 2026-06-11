@@ -163,7 +163,7 @@ func (s *EntityTypeExporterTestSuite) TestValidateResource_Success() {
 		Schema: json.RawMessage(`{"field": "value"}`),
 	}
 
-	name, err := s.exporter.ValidateResource(schema, "schema1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), schema, "schema1", s.logger)
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Valid Schema", name)
@@ -172,7 +172,7 @@ func (s *EntityTypeExporterTestSuite) TestValidateResource_Success() {
 func (s *EntityTypeExporterTestSuite) TestValidateResource_InvalidType() {
 	invalidResource := "not a schema"
 
-	name, err := s.exporter.ValidateResource(invalidResource, "schema1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), invalidResource, "schema1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)
@@ -187,7 +187,7 @@ func (s *EntityTypeExporterTestSuite) TestValidateResource_EmptyName() {
 		Name: "",
 	}
 
-	name, err := s.exporter.ValidateResource(schema, "schema1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), schema, "schema1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)
@@ -204,7 +204,7 @@ func (s *EntityTypeExporterTestSuite) TestValidateResource_NoSchema() {
 		Schema: json.RawMessage(`{}`),
 	}
 
-	name, err := s.exporter.ValidateResource(schema, "schema1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), schema, "schema1", s.logger)
 
 	// Should still succeed but log a warning
 	assert.Nil(s.T(), err)

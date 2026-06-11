@@ -107,7 +107,7 @@ All agent access tokens are signed JWTs (`typ: at+jwt`) and share a common set o
 
 | Claim | M2M (`client_credentials`) | OBO (token exchange) |
 |---|---|---|
-| `sub` | The agent's Client ID. | The original user's subject identifier. |
+| `sub` | The agent's resource ID. | The original user's subject identifier. |
 | `iss` | <ProductName /> instance URL. | <ProductName /> instance URL. |
 | `aud` | Resource server identifier(s), or Client ID as fallback. | Resource server identifier(s), or Client ID as fallback. |
 | `scope` | Authorized scopes from the agent's group/role assignments. | A subset of the user's original scopes. |
@@ -124,7 +124,7 @@ When a token exchange request includes an explicit `actor_token`, the issued OBO
 
 ```json
 "act": {
-  "sub": "<ACTOR_CLIENT_ID>",
+  "sub": "<ACTOR_RESOURCE_ID>",
   "iss": "<ISSUER>"
 }
 ```

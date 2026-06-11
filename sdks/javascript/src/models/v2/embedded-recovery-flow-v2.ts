@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {FlowExecutionError} from './embedded-flow-v2';
 import {EmbeddedFlowType} from '../embedded-flow';
 
 /**
@@ -97,9 +98,9 @@ export interface EmbeddedRecoveryFlowResponse {
   executionId: string;
 
   /**
-   * Optional reason for failure when flowStatus is ERROR.
+   * Structured error details when flowStatus is ERROR.
    */
-  failureReason?: string;
+  error?: FlowExecutionError;
 
   /**
    * Current status of the recovery flow.
@@ -140,23 +141,11 @@ export interface EmbeddedRecoveryFlowRequest extends Partial<EmbeddedRecoveryFlo
  * @experimental Part of the new ThunderID API
  */
 export interface EmbeddedRecoveryFlowErrorResponse {
-  /**
-   * Additional response data, typically empty for error responses.
-   */
   data: Record<string, any>;
 
-  /**
-   * Unique identifier for the recovery flow instance that failed.
-   */
+  error: FlowExecutionError;
+
   executionId: string;
 
-  /**
-   * Human-readable explanation of why the recovery operation failed.
-   */
-  failureReason: string;
-
-  /**
-   * Status of the recovery flow — always ERROR for this interface.
-   */
   flowStatus: EmbeddedRecoveryFlowStatus;
 }

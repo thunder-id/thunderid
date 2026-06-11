@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -156,9 +156,12 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UserAuthenticated_Success(
 		},
 	}
 
-	suite.mockAssertGenerator.On("GenerateAssertion", mock.MatchedBy(func(refs []authncm.AuthenticatorReference) bool {
-		return len(refs) == 1 && refs[0].Authenticator == authncm.AuthenticatorCredentials
-	})).Return(&authnassert.AssertionResult{
+	suite.mockAssertGenerator.On(
+		"GenerateAssertion",
+		mock.Anything,
+		mock.MatchedBy(func(refs []authncm.AuthenticatorReference) bool {
+			return len(refs) == 1 && refs[0].Authenticator == authncm.AuthenticatorCredentials
+		})).Return(&authnassert.AssertionResult{
 		Context: &authnassert.AssuranceContext{},
 	}, nil)
 
@@ -192,7 +195,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_UserNotAuthenticated() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), failureReasonUserNotAuthenticated, resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserNotAuthenticated.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestExecute_WithAuthorizedPermissions() {
@@ -321,7 +324,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_AssertionGenerationFails_S
 		Application: appmodel.Application{},
 	}
 
-	suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything).
+	suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).
 		Return(nil, &serviceerror.ServiceError{
 			Type:  serviceerror.ServerErrorType,
 			Error: i18ncore.I18nMessage{Key: "error.test.internal_error", DefaultValue: "internal error"},
@@ -434,7 +437,7 @@ func (suite *AuthAssertExecutorTestSuite) TestGetUserAttributesFromUserProvider_
 
 	suite.mockEntityProvider.On("GetEntity", "user-123").Return(existingUser, nil)
 
-	resultAttrs, err := suite.executor.getUserAttributesFromUserProvider("user-123")
+	resultAttrs, err := suite.executor.getUserAttributesFromUserProvider(context.Background(), "user-123")
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resultAttrs)
@@ -447,7 +450,7 @@ func (suite *AuthAssertExecutorTestSuite) TestGetUserAttributesFromUserProvider_
 	suite.mockEntityProvider.On("GetEntity", "user-123").
 		Return(nil, &entityprovider.EntityProviderError{Message: "user not found"})
 
-	resultAttrs, err := suite.executor.getUserAttributesFromUserProvider("user-123")
+	resultAttrs, err := suite.executor.getUserAttributesFromUserProvider(context.Background(), "user-123")
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), resultAttrs)
@@ -462,7 +465,7 @@ func (suite *AuthAssertExecutorTestSuite) TestGetUserAttributesFromUserProvider_
 
 	suite.mockEntityProvider.On("GetEntity", "user-123").Return(existingUser, nil)
 
-	resultAttrs, err := suite.executor.getUserAttributesFromUserProvider("user-123")
+	resultAttrs, err := suite.executor.getUserAttributesFromUserProvider(context.Background(), "user-123")
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), resultAttrs)
@@ -1821,4 +1824,58 @@ func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_Drops
 
 func (suite *AuthAssertExecutorTestSuite) TestIntersectPermissionSpaceList_NoOverlap() {
 	assert.Equal(suite.T(), "", intersectPermissionSpaceList("a b", "c d"))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_CallbackType_EmittedWhenSet() {
+	ctx := &core.NodeContext{
+		ExecutionID: "flow-ciba",
+		EntityID:    "app-1",
+		FlowType:    common.FlowTypeAuthentication,
+		AuthenticatedUser: authncm.AuthenticatedUser{
+			IsAuthenticated: true,
+			UserID:          "user-1",
+		},
+		NodeProperties: map[string]interface{}{
+			propertyKeyCallbackType: "urn:openid:params:grant-type:ciba",
+		},
+		RuntimeData:      map[string]string{},
+		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+	}
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-1", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), "jwt-token", resp.Assertion)
+	assert.Equal(suite.T(), "urn:openid:params:grant-type:ciba", resp.AdditionalData[propertyKeyCallbackType])
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestExecute_CallbackType_AbsentWhenNotSet() {
+	ctx := &core.NodeContext{
+		ExecutionID: "flow-authcode",
+		EntityID:    "app-1",
+		FlowType:    common.FlowTypeAuthentication,
+		AuthenticatedUser: authncm.AuthenticatedUser{
+			IsAuthenticated: true,
+			UserID:          "user-1",
+		},
+		NodeProperties:   map[string]interface{}{},
+		RuntimeData:      map[string]string{},
+		ExecutionHistory: map[string]*common.NodeExecutionRecord{},
+	}
+
+	suite.mockJWTService.On("GenerateJWT", mock.Anything, "user-1", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).Return("jwt-token", int64(3600), nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), resp)
+	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	_, hasCallbackType := resp.AdditionalData[propertyKeyCallbackType]
+	assert.False(suite.T(), hasCallbackType, "callbackType must not be present for auth code flows")
 }

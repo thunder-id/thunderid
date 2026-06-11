@@ -39,7 +39,7 @@ You can use `*` to match a single path segment or part of a hostname label, and 
 - `https://example.com/cb/*` — matches `https://example.com/cb/v1` but not `https://example.com/cb/v1/extra`
 - `https://app-*.example.com/cb` — matches `https://app-prod.example.com/cb` and `https://app-staging.example.com/cb`
 
-The `redirect_uri` in a token request is always validated with exact matching per [RFC 6749 §4.1.3](https://www.rfc-editor.org/rfc/rfc6749#section-4.1.3) — wildcard expansion does not apply at the token endpoint.
+When the authorization request included a `redirect_uri`, the token endpoint validates it with exact matching per [RFC 6749 §4.1.3](https://www.rfc-editor.org/rfc/rfc6749#section-4.1.3) — wildcard expansion does not apply at the token endpoint.
 
 ## Configure Sign-In, Registration, and Recovery Flows
 
@@ -127,10 +127,10 @@ You can also attach a **Certificate** for client authentication (`private_key_jw
 | `JWKS` | Provide the JSON Web Key Set (JWKS) inline. |
 | `JWKS_URI` | Provide the URL of the application's JWKS endpoint. <ProductName /> fetches the public keys to verify signed requests. Must use HTTPS. |
 
-For full API-level configuration — including ACR values, scope-to-claims mapping, PAR enforcement, and token signing and encryption algorithms — see [OAuth 2.0 Configuration](../../protocols/oauth2).
+For full protocol-level details — including ACR values, scope-to-claims mapping, PAR enforcement, and token signing and encryption algorithms — see the [OAuth & OIDC](../../protocols/oauth-oidc/) catalogue.
 
 ## Related Guides
 
 - [Manage Applications](../manage-applications) - Create, update, and delete applications
-- [OAuth 2.0 Configuration](../../protocols/oauth2) - Full reference for OAuth 2.0 settings available via the API
+- [OAuth & OIDC](../../protocols/oauth-oidc/) - Protocol-by-protocol reference for OAuth 2.1 and OpenID Connect features
 - [Flows](/docs/next/guides/guides/flows/what-are-flows) - Build and assign custom authentication and registration flows

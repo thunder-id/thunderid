@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/server.js",
+    "dev": "node scripts/seed.js && node --watch src/server.js",
     "seed": "node scripts/seed.js",
-    "start": "node src/server.js"
+    "start": "node scripts/seed.js && node src/server.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.4",

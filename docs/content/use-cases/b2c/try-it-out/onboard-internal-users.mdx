@@ -6,7 +6,7 @@ sidebar_position: 6
 
 # Onboard Internal Users
 
-In this walkthrough, Alex Carter signs in to the <ProductName /> Console as the operations admin. He invites two new staff members: Sam Rivera onto the support team and Maya Patel onto the destinations team. Each invitee receives an email, opens the link, fills in a few additional attributes, and gets onboarded.
+In this walkthrough, you sign in to the <ProductName /> Console as your admin user and invite two new staff members: Sam Rivera onto the support team and Maya Patel onto the destinations team. Each invitee receives an email, opens the link, fills in a few additional attributes, and gets onboarded.
 
 Onboarding internal users happens entirely in the <ProductName /> Console, so this walkthrough applies regardless of which solution pattern the app uses.
 
@@ -20,41 +20,22 @@ Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) bef
 
 ## Set Up Internal User Onboarding
 
-1. Invitation emails are delivered through a SMTP server. **Configure a SMTP provider** and apply the configuration in `repository/conf/deployment.yaml`.
+Activate the user onboarding flow before running this walkthrough. Set `user_onboarding_flow_handle` in `repository/conf/deployment.yaml`, then restart <ProductName /> for the change to take effect:
 
-    **Sample SMTP Configuration:**
-
-    ```yaml
-    email:
-      smtp:
-        host: "<smtp-host>"
-        port: <smtp-port>
-        username: "<smtp-username>"
-        password: "<smtp-password>"
-        from_address: "<from-address>"
-        enable_start_tls: true
-        enable_authentication: true
-    ```
-    For the full property reference and provider-specific examples, see [Configure SMTP Server](../../../../guides/guides/smtp-server/smtp-server-configuration).
-
-2. **Activate the user onboarding flow** by pointing the `user_onboarding_flow_handle` to the bundled flow in `repository/conf/deployment.yaml`:
-
-    ```yaml
-    flow:
-      user_onboarding_flow_handle: "wayfinder-onboarding-flow"
-    ```
-
-3. Restart <ProductName /> for the changes to take effect.
+```yaml
+flow:
+  user_onboarding_flow_handle: "wayfinder-onboarding-flow"
+```
 
 ## Try the Use Case
 
 The Wayfinder onboarding flow prompts the admin to pick the staff role (Support or DestinationsAdmin), then collects the invitee's email and sends the invitation. When the invitee accepts, the matching role is attached automatically, with no separate role-assignment step.
 
-1. Sign in to the <ProductName /> Console as Alex Carter (`alex.carter` / `alex.carter`).
-2. Navigate to **Users** and select **Invite User**.
+1. Sign in to the <ProductName /> Console at <ConsoleUrl /> as your admin user.
+2. Navigate to **Users** and select **Add User**.
 3. Select `Staff` as the user type.
-4. Pick **Support** as the role, enter Sam Rivera's email (`sam.rivera@example.com`), and send the invitation. <ProductName /> emails Sam an invite link.
-5. Open the email in Sam's inbox and open the link. The browser opens a **Complete Your Profile** page.
+4. Pick **Support** as the role, enter Sam Rivera's email (`sam.rivera@example.com`), and click **Send invitation**. <ProductName /> emails Sam an invite link.
+5. Open Sam's invitation email from the inbox at <WayFinderMailUrl /> and open the link. The browser opens a **Complete Your Profile** page.
 6. Fill in the additional attributes (username `sam.rivera`, display name `Sam Rivera`, a password) and submit. Sam's account is now active with the `Support` role attached.
 7. Repeat the flow for Maya Patel (email `maya.patel@example.com`, username `maya.patel`), picking **DestinationsAdmin** as the role.
 
@@ -62,3 +43,4 @@ The Wayfinder onboarding flow prompts the admin to pick the staff role (Support 
 
 - Want to understand how the staff user type and roles fit together? See [User Types](../../identity-concepts#user-types) and [Roles](../../identity-concepts#roles) in the Identity Concepts.
 - Prefer to build the user onboarding side of the model manually? See [Set Up Internal User Onboarding](../../configure-it-yourself#set-up-internal-user-onboarding) in Configure It Yourself.
+- Building internal user onboarding in your own setup instead of Wayfinder? See [Onboard Internal Users — Try In Your Own App](../../try-in-your-own-app/onboard-internal-users).

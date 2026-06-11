@@ -65,7 +65,7 @@ func (s *runtimeCryptoService) Encrypt(
 		if keyRef == nil {
 			return nil, nil, fmt.Errorf("keyRef required for %s", params.Algorithm)
 		}
-		rsaPub, err := s.getRSAPublicKey(*keyRef)
+		rsaPub, err := s.getRSAPublicKey(ctx, *keyRef)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -75,7 +75,7 @@ func (s *runtimeCryptoService) Encrypt(
 		if keyRef == nil {
 			return nil, nil, fmt.Errorf("keyRef required for %s", params.Algorithm)
 		}
-		ecPub, err := s.getECPublicKey(*keyRef)
+		ecPub, err := s.getECPublicKey(ctx, *keyRef)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -98,7 +98,7 @@ func (s *runtimeCryptoService) Decrypt(
 		if keyRef == nil {
 			return nil, fmt.Errorf("keyRef required for %s", params.Algorithm)
 		}
-		rsaPriv, err := s.getRSAPrivateKey(*keyRef)
+		rsaPriv, err := s.getRSAPrivateKey(ctx, *keyRef)
 		if err != nil {
 			return nil, err
 		}
@@ -108,7 +108,7 @@ func (s *runtimeCryptoService) Decrypt(
 		if keyRef == nil {
 			return nil, fmt.Errorf("keyRef required for %s", params.Algorithm)
 		}
-		ecPriv, err := s.getECPrivateKey(*keyRef)
+		ecPriv, err := s.getECPrivateKey(ctx, *keyRef)
 		if err != nil {
 			return nil, err
 		}
@@ -119,12 +119,12 @@ func (s *runtimeCryptoService) Decrypt(
 }
 
 func (s *runtimeCryptoService) Sign(
-	_ context.Context, keyRef kmprovider.KeyRef, algorithm cryptolib.SignAlgorithm, content []byte,
+	ctx context.Context, keyRef kmprovider.KeyRef, algorithm cryptolib.SignAlgorithm, content []byte,
 ) ([]byte, error) {
 	if s.pkiService == nil {
 		return nil, errors.New("PKI service not initialized")
 	}
-	privKey, svcErr := s.pkiService.GetPrivateKey(keyRef.KeyID)
+	privKey, svcErr := s.pkiService.GetPrivateKey(ctx, keyRef.KeyID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("key not found for id %s: [%s] %s",
 			keyRef.KeyID, svcErr.Code, svcErr.Error.DefaultValue)
@@ -133,13 +133,13 @@ func (s *runtimeCryptoService) Sign(
 }
 
 func (s *runtimeCryptoService) GetPublicKeys(
-	_ context.Context, filter kmprovider.PublicKeyFilter,
+	ctx context.Context, filter kmprovider.PublicKeyFilter,
 ) ([]kmprovider.PublicKeyInfo, error) {
 	if s.pkiService == nil {
 		return nil, errors.New("PKI service not initialized")
 	}
 
-	allCerts, svcErr := s.pkiService.GetAllX509Certificates()
+	allCerts, svcErr := s.pkiService.GetAllX509Certificates(ctx)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to retrieve certificates: [%s] %s",
 			svcErr.Code, svcErr.Error.DefaultValue)
@@ -160,7 +160,7 @@ func (s *runtimeCryptoService) GetPublicKeys(
 			case "P-521":
 				alg = cryptolib.AlgorithmES512
 			default:
-				s.logger.Warn("Unsupported EC curve; skipping",
+				s.logger.Warn(ctx, "Unsupported EC curve; skipping",
 					log.String("keyID", id),
 					log.String("curve", pub.Curve.Params().Name))
 				continue
@@ -168,7 +168,7 @@ func (s *runtimeCryptoService) GetPublicKeys(
 		case ed25519.PublicKey:
 			alg = cryptolib.AlgorithmEdDSA
 		default:
-			s.logger.Debug("Unsupported public key type; skipping", log.String("keyID", id))
+			s.logger.Debug(ctx, "Unsupported public key type; skipping", log.String("keyID", id))
 			continue
 		}
 
@@ -180,11 +180,12 @@ func (s *runtimeCryptoService) GetPublicKeys(
 		}
 
 		keys = append(keys, kmprovider.PublicKeyInfo{
-			KeyID:          id,
-			Algorithm:      alg,
-			PublicKey:      cert.PublicKey,
-			Thumbprint:     s.pkiService.GetCertThumbprint(id),
-			CertificateDER: cert.Raw,
+			KeyID:               id,
+			Algorithm:           alg,
+			PublicKey:           cert.PublicKey,
+			Thumbprint:          s.pkiService.GetCertThumbprint(id),
+			CertificateDER:      cert.Raw,
+			CertificateChainDER: s.pkiService.GetCertificateChain(id),
 		})
 	}
 
@@ -192,7 +193,7 @@ func (s *runtimeCryptoService) GetPublicKeys(
 }
 
 func (s *runtimeCryptoService) GetTLSMaterial(
-	_ context.Context,
+	ctx context.Context,
 ) (*kmprovider.TLSMaterial, error) {
 	if s.pkiService == nil {
 		return nil, errors.New("PKI service not initialized")
@@ -207,11 +208,11 @@ func (s *runtimeCryptoService) GetTLSMaterial(
 	}, nil
 }
 
-func (s *runtimeCryptoService) getRSAPublicKey(keyRef kmprovider.KeyRef) (*rsa.PublicKey, error) {
+func (s *runtimeCryptoService) getRSAPublicKey(ctx context.Context, keyRef kmprovider.KeyRef) (*rsa.PublicKey, error) {
 	if s.pkiService == nil {
 		return nil, errors.New("PKI service not initialized")
 	}
-	cert, svcErr := s.pkiService.GetX509Certificate(keyRef.KeyID)
+	cert, svcErr := s.pkiService.GetX509Certificate(ctx, keyRef.KeyID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("key not found for id %s: [%s] %s",
 			keyRef.KeyID, svcErr.Code, svcErr.Error.DefaultValue)
@@ -223,11 +224,11 @@ func (s *runtimeCryptoService) getRSAPublicKey(keyRef kmprovider.KeyRef) (*rsa.P
 	return rsaPub, nil
 }
 
-func (s *runtimeCryptoService) getECPublicKey(keyRef kmprovider.KeyRef) (*ecdsa.PublicKey, error) {
+func (s *runtimeCryptoService) getECPublicKey(ctx context.Context, keyRef kmprovider.KeyRef) (*ecdsa.PublicKey, error) {
 	if s.pkiService == nil {
 		return nil, errors.New("PKI service not initialized")
 	}
-	cert, svcErr := s.pkiService.GetX509Certificate(keyRef.KeyID)
+	cert, svcErr := s.pkiService.GetX509Certificate(ctx, keyRef.KeyID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("key not found for id %s: [%s] %s",
 			keyRef.KeyID, svcErr.Code, svcErr.Error.DefaultValue)
@@ -239,11 +240,12 @@ func (s *runtimeCryptoService) getECPublicKey(keyRef kmprovider.KeyRef) (*ecdsa.
 	return ecPub, nil
 }
 
-func (s *runtimeCryptoService) getRSAPrivateKey(keyRef kmprovider.KeyRef) (*rsa.PrivateKey, error) {
+func (s *runtimeCryptoService) getRSAPrivateKey(
+	ctx context.Context, keyRef kmprovider.KeyRef) (*rsa.PrivateKey, error) {
 	if s.pkiService == nil {
 		return nil, errors.New("PKI service not initialized")
 	}
-	privKey, svcErr := s.pkiService.GetPrivateKey(keyRef.KeyID)
+	privKey, svcErr := s.pkiService.GetPrivateKey(ctx, keyRef.KeyID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("key not found for id %s: [%s] %s",
 			keyRef.KeyID, svcErr.Code, svcErr.Error.DefaultValue)
@@ -255,11 +257,12 @@ func (s *runtimeCryptoService) getRSAPrivateKey(keyRef kmprovider.KeyRef) (*rsa.
 	return rsaPriv, nil
 }
 
-func (s *runtimeCryptoService) getECPrivateKey(keyRef kmprovider.KeyRef) (*ecdsa.PrivateKey, error) {
+func (s *runtimeCryptoService) getECPrivateKey(
+	ctx context.Context, keyRef kmprovider.KeyRef) (*ecdsa.PrivateKey, error) {
 	if s.pkiService == nil {
 		return nil, errors.New("PKI service not initialized")
 	}
-	privKey, svcErr := s.pkiService.GetPrivateKey(keyRef.KeyID)
+	privKey, svcErr := s.pkiService.GetPrivateKey(ctx, keyRef.KeyID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("key not found for id %s: [%s] %s",
 			keyRef.KeyID, svcErr.Code, svcErr.Error.DefaultValue)

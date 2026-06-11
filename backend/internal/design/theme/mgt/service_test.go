@@ -19,6 +19,7 @@
 package thememgt
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -78,7 +79,7 @@ func (suite *ThemeServiceTestSuite) TestGetThemeList_Success() {
 	suite.mockStore.On("GetThemeListCount").Return(2, nil)
 	suite.mockStore.On("GetThemeList", 10, 0).Return(themes, nil)
 
-	result, err := suite.service.GetThemeList(10, 0)
+	result, err := suite.service.GetThemeList(context.Background(), 10, 0)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -92,7 +93,7 @@ func (suite *ThemeServiceTestSuite) TestGetThemeList_Success() {
 func (suite *ThemeServiceTestSuite) TestGetThemeList_CountError() {
 	suite.mockStore.On("GetThemeListCount").Return(0, errors.New("database error"))
 
-	result, err := suite.service.GetThemeList(10, 0)
+	result, err := suite.service.GetThemeList(context.Background(), 10, 0)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -103,7 +104,7 @@ func (suite *ThemeServiceTestSuite) TestGetThemeList_StoreError() {
 	suite.mockStore.On("GetThemeListCount").Return(2, nil)
 	suite.mockStore.On("GetThemeList", 10, 0).Return(nil, errors.New("database error"))
 
-	result, err := suite.service.GetThemeList(10, 0)
+	result, err := suite.service.GetThemeList(context.Background(), 10, 0)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -111,7 +112,7 @@ func (suite *ThemeServiceTestSuite) TestGetThemeList_StoreError() {
 
 // Test GetThemeList - Invalid Pagination
 func (suite *ThemeServiceTestSuite) TestGetThemeList_InvalidLimit() {
-	result, err := suite.service.GetThemeList(-1, 0)
+	result, err := suite.service.GetThemeList(context.Background(), -1, 0)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -119,7 +120,7 @@ func (suite *ThemeServiceTestSuite) TestGetThemeList_InvalidLimit() {
 }
 
 func (suite *ThemeServiceTestSuite) TestGetThemeList_InvalidOffset() {
-	result, err := suite.service.GetThemeList(10, -1)
+	result, err := suite.service.GetThemeList(context.Background(), 10, -1)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -144,7 +145,7 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_Success() {
 	suite.mockStore.On("IsThemeHandleConflict", "new-theme", "").Return(false, nil)
 	suite.mockStore.On("CreateTheme", mock.AnythingOfType("string"), storeReq).Return(nil)
 
-	result, err := suite.service.CreateTheme(themeRequest)
+	result, err := suite.service.CreateTheme(context.Background(), themeRequest)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -163,7 +164,7 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_MissingDisplayName() {
 		Theme:       json.RawMessage(`{"colors": {"primary": "#ff0000"}}`),
 	}
 
-	result, err := suite.service.CreateTheme(themeRequest)
+	result, err := suite.service.CreateTheme(context.Background(), themeRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -179,7 +180,7 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_MissingHandle() {
 		Theme:       json.RawMessage(`{"colors": {"primary": "#ff0000"}}`),
 	}
 
-	result, err := suite.service.CreateTheme(themeRequest)
+	result, err := suite.service.CreateTheme(context.Background(), themeRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -197,7 +198,7 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_DuplicateHandle() {
 
 	suite.mockStore.On("IsThemeHandleConflict", "existing-theme", "").Return(true, nil)
 
-	result, err := suite.service.CreateTheme(themeRequest)
+	result, err := suite.service.CreateTheme(context.Background(), themeRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -216,7 +217,7 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_DeclarativeModeEnabled() {
 		Theme:       json.RawMessage(`{"colors": {"primary": "#ff0000"}}`),
 	}
 
-	result, err := suite.service.CreateTheme(themeRequest)
+	result, err := suite.service.CreateTheme(context.Background(), themeRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -234,7 +235,7 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_InvalidJSON() {
 
 	suite.mockStore.On("IsThemeHandleConflict", "my-theme", "").Return(false, nil)
 
-	result, err := suite.service.CreateTheme(themeRequest)
+	result, err := suite.service.CreateTheme(context.Background(), themeRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -259,7 +260,7 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_StoreError() {
 	suite.mockStore.On("IsThemeHandleConflict", "my-theme", "").Return(false, nil)
 	suite.mockStore.On("CreateTheme", mock.AnythingOfType("string"), storeReq).Return(errors.New("database error"))
 
-	result, err := suite.service.CreateTheme(themeRequest)
+	result, err := suite.service.CreateTheme(context.Background(), themeRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -276,7 +277,7 @@ func (suite *ThemeServiceTestSuite) TestGetTheme_Success() {
 
 	suite.mockStore.On("GetTheme", "theme-123").Return(theme, nil)
 
-	result, err := suite.service.GetTheme("theme-123")
+	result, err := suite.service.GetTheme(context.Background(), "theme-123")
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -286,7 +287,7 @@ func (suite *ThemeServiceTestSuite) TestGetTheme_Success() {
 
 // Test GetTheme - Invalid ID
 func (suite *ThemeServiceTestSuite) TestGetTheme_InvalidID() {
-	result, err := suite.service.GetTheme("")
+	result, err := suite.service.GetTheme(context.Background(), "")
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -297,7 +298,7 @@ func (suite *ThemeServiceTestSuite) TestGetTheme_InvalidID() {
 func (suite *ThemeServiceTestSuite) TestGetTheme_NotFound() {
 	suite.mockStore.On("GetTheme", "non-existent").Return(Theme{}, errThemeNotFound)
 
-	result, err := suite.service.GetTheme("non-existent")
+	result, err := suite.service.GetTheme(context.Background(), "non-existent")
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -308,7 +309,7 @@ func (suite *ThemeServiceTestSuite) TestGetTheme_NotFound() {
 func (suite *ThemeServiceTestSuite) TestGetTheme_StoreError() {
 	suite.mockStore.On("GetTheme", "theme-123").Return(Theme{}, errors.New("database error"))
 
-	result, err := suite.service.GetTheme("theme-123")
+	result, err := suite.service.GetTheme(context.Background(), "theme-123")
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -331,7 +332,7 @@ func (suite *ThemeServiceTestSuite) TestUpdateTheme_Success() {
 	suite.mockStore.On("GetTheme", "theme-123").Return(existingTheme, nil)
 	suite.mockStore.On("UpdateTheme", "theme-123", updateRequest).Return(nil)
 
-	result, err := suite.service.UpdateTheme("theme-123", updateRequest)
+	result, err := suite.service.UpdateTheme(context.Background(), "theme-123", updateRequest)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -357,7 +358,7 @@ func (suite *ThemeServiceTestSuite) TestUpdateTheme_OmittedHandle_UsesExisting()
 	suite.mockStore.On("GetTheme", "theme-123").Return(existingTheme, nil)
 	suite.mockStore.On("UpdateTheme", "theme-123", updateRequest).Return(nil)
 
-	result, err := suite.service.UpdateTheme("theme-123", updateRequest)
+	result, err := suite.service.UpdateTheme(context.Background(), "theme-123", updateRequest)
 
 	assert.Nil(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -373,7 +374,7 @@ func (suite *ThemeServiceTestSuite) TestUpdateTheme_InvalidID() {
 		Theme:       json.RawMessage(`{"colors": {}}`),
 	}
 
-	result, err := suite.service.UpdateTheme("", updateRequest)
+	result, err := suite.service.UpdateTheme(context.Background(), "", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -389,7 +390,7 @@ func (suite *ThemeServiceTestSuite) TestUpdateTheme_MissingDisplayName() {
 		Theme:       json.RawMessage(`{"colors": {}}`),
 	}
 
-	result, err := suite.service.UpdateTheme("theme-123", updateRequest)
+	result, err := suite.service.UpdateTheme(context.Background(), "theme-123", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -412,7 +413,7 @@ func (suite *ThemeServiceTestSuite) TestUpdateTheme_ImmutableHandle() {
 	suite.mockStore.On("IsThemeDeclarative", "theme-123").Return(false)
 	suite.mockStore.On("GetTheme", "theme-123").Return(existingTheme, nil)
 
-	result, err := suite.service.UpdateTheme("theme-123", updateRequest)
+	result, err := suite.service.UpdateTheme(context.Background(), "theme-123", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -431,7 +432,7 @@ func (suite *ThemeServiceTestSuite) TestUpdateTheme_NotFound() {
 	suite.mockStore.On("IsThemeDeclarative", "non-existent").Return(false)
 	suite.mockStore.On("GetTheme", "non-existent").Return(Theme{}, errThemeNotFound)
 
-	result, err := suite.service.UpdateTheme("non-existent", updateRequest)
+	result, err := suite.service.UpdateTheme(context.Background(), "non-existent", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -452,7 +453,7 @@ func (suite *ThemeServiceTestSuite) TestUpdateTheme_InvalidJSON() {
 	}
 	suite.mockStore.On("IsThemeDeclarative", "theme-123").Return(false)
 	suite.mockStore.On("GetTheme", "theme-123").Return(existingTheme, nil)
-	result, err := suite.service.UpdateTheme("theme-123", updateRequest)
+	result, err := suite.service.UpdateTheme(context.Background(), "theme-123", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -466,14 +467,14 @@ func (suite *ThemeServiceTestSuite) TestDeleteTheme_Success() {
 	suite.mockStore.On("GetApplicationsCountByThemeID", "theme-123").Return(0, nil)
 	suite.mockStore.On("DeleteTheme", "theme-123").Return(nil)
 
-	err := suite.service.DeleteTheme("theme-123")
+	err := suite.service.DeleteTheme(context.Background(), "theme-123")
 
 	assert.Nil(suite.T(), err)
 }
 
 // Test DeleteTheme - Invalid ID
 func (suite *ThemeServiceTestSuite) TestDeleteTheme_InvalidID() {
-	err := suite.service.DeleteTheme("")
+	err := suite.service.DeleteTheme(context.Background(), "")
 
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), "THM-1002", err.Code)
@@ -484,7 +485,7 @@ func (suite *ThemeServiceTestSuite) TestDeleteTheme_NotFound() {
 	suite.mockStore.On("IsThemeDeclarative", "non-existent").Return(false)
 	suite.mockStore.On("IsThemeExist", "non-existent").Return(false, nil)
 
-	err := suite.service.DeleteTheme("non-existent")
+	err := suite.service.DeleteTheme(context.Background(), "non-existent")
 
 	assert.Nil(suite.T(), err)
 }
@@ -495,7 +496,7 @@ func (suite *ThemeServiceTestSuite) TestDeleteTheme_InUse() {
 	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
 	suite.mockStore.On("GetApplicationsCountByThemeID", "theme-123").Return(3, nil)
 
-	err := suite.service.DeleteTheme("theme-123")
+	err := suite.service.DeleteTheme(context.Background(), "theme-123")
 
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), "THM-1004", err.Code)
@@ -508,7 +509,7 @@ func (suite *ThemeServiceTestSuite) TestDeleteTheme_StoreError() {
 	suite.mockStore.On("GetApplicationsCountByThemeID", "theme-123").Return(0, nil)
 	suite.mockStore.On("DeleteTheme", "theme-123").Return(errors.New("database error"))
 
-	err := suite.service.DeleteTheme("theme-123")
+	err := suite.service.DeleteTheme(context.Background(), "theme-123")
 
 	assert.NotNil(suite.T(), err)
 }
@@ -517,7 +518,7 @@ func (suite *ThemeServiceTestSuite) TestDeleteTheme_StoreError() {
 func (suite *ThemeServiceTestSuite) TestIsThemeExist_True() {
 	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
 
-	exists, err := suite.service.IsThemeExist("theme-123")
+	exists, err := suite.service.IsThemeExist(context.Background(), "theme-123")
 
 	assert.Nil(suite.T(), err)
 	assert.True(suite.T(), exists)
@@ -527,7 +528,7 @@ func (suite *ThemeServiceTestSuite) TestIsThemeExist_True() {
 func (suite *ThemeServiceTestSuite) TestIsThemeExist_False() {
 	suite.mockStore.On("IsThemeExist", "non-existent").Return(false, nil)
 
-	exists, err := suite.service.IsThemeExist("non-existent")
+	exists, err := suite.service.IsThemeExist(context.Background(), "non-existent")
 
 	assert.Nil(suite.T(), err)
 	assert.False(suite.T(), exists)
@@ -537,7 +538,7 @@ func (suite *ThemeServiceTestSuite) TestIsThemeExist_False() {
 func (suite *ThemeServiceTestSuite) TestIsThemeExist_StoreError() {
 	suite.mockStore.On("IsThemeExist", "theme-123").Return(false, errors.New("database error"))
 
-	exists, err := suite.service.IsThemeExist("theme-123")
+	exists, err := suite.service.IsThemeExist(context.Background(), "theme-123")
 
 	assert.NotNil(suite.T(), err)
 	assert.False(suite.T(), exists)
@@ -554,7 +555,7 @@ func (suite *ThemeServiceTestSuite) TestCreateTheme_HandleConflictError() {
 
 	suite.mockStore.On("IsThemeHandleConflict", "my-theme", "").Return(false, errors.New("database error"))
 
-	result, err := suite.service.CreateTheme(themeRequest)
+	result, err := suite.service.CreateTheme(context.Background(), themeRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -572,7 +573,7 @@ func (suite *ThemeServiceTestSuite) TestUpdateTheme_GetThemeError() {
 	suite.mockStore.On("IsThemeDeclarative", "theme-123").Return(false)
 	suite.mockStore.On("GetTheme", "theme-123").Return(Theme{}, errors.New("database error"))
 
-	result, err := suite.service.UpdateTheme("theme-123", updateRequest)
+	result, err := suite.service.UpdateTheme(context.Background(), "theme-123", updateRequest)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), err)
@@ -584,7 +585,7 @@ func (suite *ThemeServiceTestSuite) TestDeleteTheme_ApplicationsCountError() {
 	suite.mockStore.On("IsThemeExist", "theme-123").Return(true, nil)
 	suite.mockStore.On("GetApplicationsCountByThemeID", "theme-123").Return(0, errors.New("database error"))
 
-	err := suite.service.DeleteTheme("theme-123")
+	err := suite.service.DeleteTheme(context.Background(), "theme-123")
 
 	assert.NotNil(suite.T(), err)
 }

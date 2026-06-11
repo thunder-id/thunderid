@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -219,7 +219,7 @@ const BaseSignIn: Component = defineComponent({
     const isFormValid: ComputedRef<boolean> = computed<boolean>(() => Object.keys(formErrors.value).length === 0);
 
     const handleError = (error: any): void => {
-      const errorMessage: string = error?.failureReason || extractErrorMessage(error, t);
+      const errorMessage: string = extractErrorMessage(error, t);
       apiError.value = error instanceof Error ? error : new Error(errorMessage);
       clearMessages();
       addMessage({message: errorMessage, type: 'error'});

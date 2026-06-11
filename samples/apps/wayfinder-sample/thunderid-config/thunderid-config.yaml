@@ -36,9 +36,9 @@ schema: {
       "displayName": "Last Name",
       "required": false
     },
-    "sub": {
+    "mobileNumber": {
       "type": "string",
-      "displayName": "Federated Subject",
+      "displayName": "Mobile Number",
       "required": false
     }
   }
@@ -120,6 +120,21 @@ resources:
       - name: Recommend
         handle: recommend
         description: Grants access to surface flight recommendations
+      - name: Upgrade
+        handle: upgrade
+        description: Allows requesting and processing flight cabin upgrades
+  - name: Upgrade
+    handle: upgrade
+    actions:
+      - name: Read
+        handle: read
+        description: Allows the upgrade scheduler agent to list pending upgrade requests via M2M
+      - name: Search
+        handle: search
+        description: Allows the upgrade scheduler agent to search available Business class flights for a route
+      - name: Process
+        handle: process
+        description: Allows the upgrade scheduler agent to execute a pending upgrade via CIBA user token
 
 ---
 # resource_type: flow
@@ -221,6 +236,7 @@ nodes:
     type: TASK_EXECUTION
     properties:
       assignRole: wayfinder-traveler-role
+      includeOptional: true
     executor:
       name: ProvisioningExecutor
       inputs:
@@ -630,7 +646,7 @@ nodes:
         - align: center
           type: TEXT
           id: text_header_user_details_s
-          label: Complete your profile
+          label: Complete Your Profile
           variant: HEADING_1
         - type: BLOCK
           id: block_user_details_s
@@ -750,7 +766,7 @@ nodes:
         - align: center
           type: TEXT
           id: text_header_user_details_d
-          label: Complete your profile
+          label: Complete Your Profile
           variant: HEADING_1
         - type: BLOCK
           id: block_user_details_d
@@ -811,7 +827,6 @@ assertion:
     - family_name
     - email
     - groups
-    - sub
     - username
 allowed_user_types:
   - Customer
@@ -850,9 +865,416 @@ inbound_auth_config:
           - username
           - given_name
           - family_name
-          - sub
         group:
           - groups
+
+---
+# resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000006
+name: Default Wayfinder CIBA Email Notification Flow
+handle: wayfinder-ciba-email-flow
+flowType: AUTHENTICATION
+nodes:
+  - id: start
+    type: START
+    onSuccess: identify_user
+  - id: identify_user
+    type: TASK_EXECUTION
+    properties:
+      loginHintAttribute: email
+    executor:
+      name: IdentifyingExecutor
+      inputs:
+        - identifier: login_hint
+          type: TEXT_INPUT
+          required: true
+    onSuccess: generate_invite
+  - id: generate_invite
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: generate
+    onSuccess: send_notification_email
+  - id: send_notification_email
+    type: TASK_EXECUTION
+    properties:
+      emailTemplate: CIBA_NOTIFICATION
+    executor:
+      name: EmailExecutor
+      mode: send
+      inputs:
+        - identifier: email
+          type: EMAIL_INPUT
+          required: true
+    onSuccess: notification_sent_status
+  - id: notification_sent_status
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: notification_icon
+          label: "✉️"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: notification_heading
+          label: Authentication Request Sent
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: notification_message
+          label: A notification has been sent. Follow the link in the notification to continue.
+          variant: HEADING_6
+    message: Authentication notification sent
+    next: verify_invite
+  - id: verify_invite
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: verify
+      inputs:
+        - identifier: inviteToken
+          type: HIDDEN
+          required: true
+    onSuccess: prompt_credentials
+  - id: prompt_credentials
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: credentials_heading
+          label: Confirm Your Identity
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: credentials_message
+          label: Enter your password to approve the authentication request.
+          variant: HEADING_6
+        - type: BLOCK
+          id: block_credentials
+          components:
+            - id: input_password
+              ref: password
+              type: PASSWORD_INPUT
+              label: Password
+              required: true
+              placeholder: Enter your password
+            - type: ACTION
+              id: action_approve
+              label: Approve
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_password
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_approve
+          nextNode: basic_auth
+  - id: basic_auth
+    type: TASK_EXECUTION
+    executor:
+      name: BasicAuthExecutor
+    onSuccess: authorization_check
+    onIncomplete: prompt_credentials
+  - id: authorization_check
+    type: TASK_EXECUTION
+    executor:
+      name: AuthorizationExecutor
+    onSuccess: consent_check
+  - id: consent_check
+    type: TASK_EXECUTION
+    executor:
+      name: ConsentExecutor
+    onSuccess: auth_assert
+    onIncomplete: prompt_consent
+  - id: prompt_consent
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: consent_heading
+          label: "{{ meta(application.name) }} is requesting authorization"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: consent_message
+          label: Review the permissions being requested and confirm your authorization.
+          variant: HEADING_6
+        - type: BLOCK
+          id: consent_block
+          components:
+            - id: consent_input
+              ref: consent_decisions
+              type: CONSENT
+              required: true
+            - type: ACTION
+              id: consent_action_deny
+              label: Deny
+              variant: SECONDARY
+              eventType: SUBMIT
+            - type: ACTION
+              id: consent_action_allow
+              label: Approve
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT
+            required: true
+        action:
+          ref: consent_action_allow
+          nextNode: consent_check
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT
+            required: true
+        action:
+          ref: consent_action_deny
+          nextNode: consent_check
+  - id: auth_assert
+    type: TASK_EXECUTION
+    properties:
+      callbackType: "urn:openid:params:grant-type:ciba"
+    executor:
+      name: AuthAssertExecutor
+    onSuccess: auth_success
+  - id: auth_success
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: success_icon
+          label: "✅"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: success_heading
+          label: Authentication Successful
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: success_message
+          label: You have successfully authenticated. You may close this window.
+          variant: HEADING_6
+    message: Authentication successful
+    next: end
+  - id: end
+    type: END
+
+
+---
+# resource_type: flow
+id: 0193b0a1-1001-7000-8000-000000000007
+name: Default Wayfinder CIBA SMS Notification Flow
+handle: wayfinder-ciba-sms-flow
+flowType: AUTHENTICATION
+nodes:
+  - id: start
+    type: START
+    onSuccess: identify_user
+  - id: identify_user
+    type: TASK_EXECUTION
+    properties:
+      loginHintAttribute: email
+    executor:
+      name: IdentifyingExecutor
+      inputs:
+        - identifier: login_hint
+          type: TEXT_INPUT
+          required: true
+    onSuccess: generate_invite
+  - id: generate_invite
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: generate
+    onSuccess: send_notification_sms
+  - id: send_notification_sms
+    type: TASK_EXECUTION
+    properties:
+      smsTemplate: CIBA_NOTIFICATION
+      senderId: "{{.SMS_SENDER_ID}}"
+    executor:
+      name: SMSExecutor
+      mode: send
+      inputs:
+        - identifier: mobileNumber
+          type: PHONE_INPUT
+          required: true
+    onSuccess: notification_sent_status
+  - id: notification_sent_status
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: notification_icon
+          label: "📱"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: notification_heading
+          label: Authentication Request Sent
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: notification_message
+          label: A notification has been sent. Follow the link in the notification to continue.
+          variant: HEADING_6
+    message: Authentication notification sent
+    next: verify_invite
+  - id: verify_invite
+    type: TASK_EXECUTION
+    executor:
+      name: InviteExecutor
+      mode: verify
+      inputs:
+        - identifier: inviteToken
+          type: HIDDEN
+          required: true
+    onSuccess: prompt_credentials
+  - id: prompt_credentials
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: credentials_heading
+          label: Confirm Your Identity
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: credentials_message
+          label: Enter your password to approve the authentication request.
+          variant: HEADING_6
+        - type: BLOCK
+          id: block_credentials
+          components:
+            - id: input_password
+              ref: password
+              type: PASSWORD_INPUT
+              label: Password
+              required: true
+              placeholder: Enter your password
+            - type: ACTION
+              id: action_approve
+              label: Approve
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: input_password
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_approve
+          nextNode: basic_auth
+  - id: basic_auth
+    type: TASK_EXECUTION
+    executor:
+      name: BasicAuthExecutor
+    onSuccess: authorization_check
+    onIncomplete: prompt_credentials
+  - id: authorization_check
+    type: TASK_EXECUTION
+    executor:
+      name: AuthorizationExecutor
+    onSuccess: consent_check
+  - id: consent_check
+    type: TASK_EXECUTION
+    executor:
+      name: ConsentExecutor
+    onSuccess: auth_assert
+    onIncomplete: prompt_consent
+  - id: prompt_consent
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: consent_heading
+          label: "{{ meta(application.name) }} is requesting authorization"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: consent_message
+          label: Review the permissions being requested and confirm your authorization.
+          variant: HEADING_6
+        - type: BLOCK
+          id: consent_block
+          components:
+            - id: consent_input
+              ref: consent_decisions
+              type: CONSENT
+              required: true
+            - type: ACTION
+              id: consent_action_deny
+              label: Deny
+              variant: SECONDARY
+              eventType: SUBMIT
+            - type: ACTION
+              id: consent_action_allow
+              label: Approve
+              variant: PRIMARY
+              eventType: SUBMIT
+    prompts:
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT
+            required: true
+        action:
+          ref: consent_action_allow
+          nextNode: consent_check
+      - inputs:
+          - ref: consent_input
+            identifier: consent_decisions
+            type: CONSENT
+            required: true
+        action:
+          ref: consent_action_deny
+          nextNode: consent_check
+  - id: auth_assert
+    type: TASK_EXECUTION
+    properties:
+      callbackType: "urn:openid:params:grant-type:ciba"
+    executor:
+      name: AuthAssertExecutor
+    onSuccess: auth_success
+  - id: auth_success
+    type: PROMPT
+    meta:
+      components:
+        - align: center
+          type: TEXT
+          id: success_icon
+          label: "✅"
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: success_heading
+          label: Authentication Successful
+          variant: HEADING_1
+        - align: center
+          type: TEXT
+          id: success_message
+          label: You have successfully authenticated. You may close this window.
+          variant: HEADING_6
+    message: Authentication successful
+    next: end
+  - id: end
+    type: END
 
 ---
 # resource_type: flow
@@ -1016,6 +1438,43 @@ inbound_auth_config:
       token:
         access_token:
           validity_period: 3600
+          user_attributes:
+            - email
+
+---
+# resource_type: agent
+# CIBA-only client used by the upgrade scheduler to initiate backchannel
+# authentication for users who have a pending upgrade request.
+# Uses default-ciba-email-flow so Thunder sends an email notification to the
+# user's registered address. Kept separate from wayfinder-concierge because
+# auth_flow_handle is shared between authorization_code and CIBA — they need
+# different flows (interactive vs backchannel notification).
+id: wayfinder-upgrade-agent
+name: WAYFINDER-UPGRADE-AGENT
+description: Upgrade scheduler agent — initiates CIBA for users with pending flight upgrade requests
+ou_handle: default
+type: default
+auth_flow_handle: wayfinder-ciba-email-flow
+allowed_user_types:
+  - Customer
+inbound_auth_config:
+  - type: oauth2
+    config:
+      client_id: "{{.UPGRADE_AGENT_CLIENT_ID}}"
+      client_secret: "{{.UPGRADE_AGENT_CLIENT_SECRET}}"
+      grant_types:
+        - client_credentials
+        - urn:openid:params:grant-type:ciba
+      token_endpoint_auth_method: client_secret_basic
+      public_client: false
+      token:
+        access_token:
+          validity_period: 3600
+          user_attributes:
+            - given_name
+            - family_name
+            - email
+            - username
 
 ---
 # resource_type: application
@@ -1100,12 +1559,16 @@ assignments:
 # resource_type: role
 id: chat-user-role
 name: Chat User
-description: Grants access to use the Wayfinder Concierge agent
+description: Grants access to use the Wayfinder Concierge agent and request flight upgrades through it
 ou_handle: default
 permissions:
   - resource_server_id: wayfinder-agent-rs
     permissions:
       - agent:access
+  - resource_server_id: wayfinder-booking-rs
+    permissions:
+      - booking:upgrade
+      - upgrade:process
 assignments:
   - id: wayfinder-john-doe
     type: user
@@ -1132,14 +1595,30 @@ assignments:
 # resource_type: role
 id: recommender-role
 name: Recommender
-description: Grants access to the booking:recommend permission, assigned to the Wayfinder Concierge agent
+description: Grants access to booking:recommend and upgrade:search permissions, assigned to the Wayfinder Concierge agent
 ou_handle: default
 permissions:
   - resource_server_id: wayfinder-booking-rs
     permissions:
       - booking:recommend
+      - upgrade:search
 assignments:
   - id: wayfinder-concierge
+    type: agent
+
+---
+# resource_type: role
+id: upgrade-scheduler-role
+name: Upgrade Scheduler
+description: Grants upgrade:read to the upgrade scheduler agent so its M2M token can list pending upgrade requests
+ou_handle: default
+permissions:
+  - resource_server_id: wayfinder-booking-rs
+    permissions:
+      - upgrade:read
+      - upgrade:search
+assignments:
+  - id: wayfinder-upgrade-agent
     type: agent
 
 ---
@@ -1152,6 +1631,7 @@ attributes:
   given_name: John
   family_name: Doe
   email: john.doe@example.com
+  mobileNumber: "+15550192837"
 credentials:
   password: "{{.JOHN_DOE_PASSWORD}}"
 
@@ -1165,6 +1645,7 @@ attributes:
   given_name: Jane
   family_name: Smith
   email: jane.smith@example.com
+  mobileNumber: "+15550384756"
 credentials:
   password: "{{.JANE_SMITH_PASSWORD}}"
 

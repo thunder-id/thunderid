@@ -53,6 +53,8 @@ interface EditAdvancedSettingsProps {
   onFieldChange: (field: keyof Application, value: unknown) => void;
 }
 
+type OAuthCertificate = {type: string; value?: string} | null;
+
 /**
  * Container component for advanced application settings.
  *
@@ -79,6 +81,10 @@ export default function EditAdvancedSettings({
     onFieldChange('inboundAuthConfig', updatedInboundAuth);
   };
 
+  const handleCertificateChange = (cert: OAuthCertificate) => {
+    handleOAuth2ConfigChange({certificate: cert});
+  };
+
   return (
     <Stack spacing={3}>
       <OAuth2ConfigSection
@@ -88,9 +94,9 @@ export default function EditAdvancedSettings({
         disabled={application.isReadOnly}
       />
       <CertificateSection
-        application={application}
-        editedApp={editedApp}
-        onFieldChange={onFieldChange}
+        certificate={oauth2Config?.certificate}
+        onCertificateChange={handleCertificateChange}
+        required={oauth2Config?.tokenEndpointAuthMethod === 'private_key_jwt'}
         disabled={application.isReadOnly}
       />
       <MetadataSection application={application} />

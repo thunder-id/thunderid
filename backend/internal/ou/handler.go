@@ -19,6 +19,7 @@
 package ou
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -52,7 +53,7 @@ func (ouh *organizationUnitHandler) HandleOUListRequest(w http.ResponseWriter, r
 
 	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(ctx, w, svcErr)
 		return
 	}
 
@@ -62,19 +63,19 @@ func (ouh *organizationUnitHandler) HandleOUListRequest(w http.ResponseWriter, r
 
 	f, err := filter.ParseFilterParam(r.URL.Query())
 	if err != nil {
-		ouh.handleError(w, &ErrorInvalidFilter)
+		ouh.handleError(ctx, w, &ErrorInvalidFilter)
 		return
 	}
 
 	ouListResponse, svcErr := ouh.service.GetOrganizationUnitList(ctx, limit, offset, f)
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, ouListResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ouListResponse)
 
-	logger.Debug("Successfully listed organization units with pagination",
+	logger.Debug(ctx, "Successfully listed organization units with pagination",
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", ouListResponse.TotalResults),
 		log.Int("count", ouListResponse.Count))
@@ -87,7 +88,7 @@ func (ouh *organizationUnitHandler) HandleOUPostRequest(w http.ResponseWriter, r
 
 	createRequest, err := sysutils.DecodeJSONBody[OrganizationUnitRequest](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorInvalidRequestFormat.Code,
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
@@ -99,13 +100,13 @@ func (ouh *organizationUnitHandler) HandleOUPostRequest(w http.ResponseWriter, r
 
 	createdOU, svcErr := ouh.service.CreateOrganizationUnit(ctx, sanitizedRequest)
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusCreated, createdOU)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, createdOU)
 
-	logger.Debug("Successfully created organization unit", log.String("ouId", createdOU.ID))
+	logger.Debug(ctx, "Successfully created organization unit", log.String("ouId", createdOU.ID))
 }
 
 // HandleOUGetRequest handles the get organization unit by id request.
@@ -120,13 +121,13 @@ func (ouh *organizationUnitHandler) HandleOUGetRequest(w http.ResponseWriter, r 
 
 	ou, svcErr := ouh.service.GetOrganizationUnit(ctx, id)
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, ou)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.Debug("Successfully retrieved organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully retrieved organization unit", log.String("ouId", id))
 }
 
 // HandleOUPutRequest handles the update organization unit request.
@@ -146,13 +147,13 @@ func (ouh *organizationUnitHandler) HandleOUPutRequest(w http.ResponseWriter, r 
 
 	ou, svcErr := ouh.service.UpdateOrganizationUnit(ctx, id, sanitizedRequest)
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, ou)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.Debug("Successfully updated organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully updated organization unit", log.String("ouId", id))
 }
 
 // HandleOUDeleteRequest handles the delete organization unit request.
@@ -167,12 +168,12 @@ func (ouh *organizationUnitHandler) HandleOUDeleteRequest(w http.ResponseWriter,
 
 	svcErr := ouh.service.DeleteOrganizationUnit(ctx, id)
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusNoContent, nil)
-	logger.Debug("Successfully deleted organization unit", log.String("ouId", id))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+	logger.Debug(ctx, "Successfully deleted organization unit", log.String("ouId", id))
 }
 
 // HandleOUChildrenListRequest handles the list child organization units request.
@@ -180,7 +181,7 @@ func (ouh *organizationUnitHandler) HandleOUChildrenListRequest(w http.ResponseW
 	ctx := r.Context()
 	f, err := filter.ParseFilterParam(r.URL.Query())
 	if err != nil {
-		ouh.handleError(w, &ErrorInvalidFilter)
+		ouh.handleError(ctx, w, &ErrorInvalidFilter)
 		return
 	}
 	ouh.handleResourceListRequest(w, r, "child organization units",
@@ -209,7 +210,10 @@ func (ouh *organizationUnitHandler) HandleOUGroupsListRequest(w http.ResponseWri
 }
 
 // handleError handles service errors and returns appropriate HTTP responses.
-func (ouh *organizationUnitHandler) handleError(w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func (
+	ouh *organizationUnitHandler) handleError(ctx context.Context,
+	w http.ResponseWriter,
+	svcErr *serviceerror.ServiceError) {
 	var statusCode int
 	switch svcErr.Type {
 	case serviceerror.ClientErrorType:
@@ -231,7 +235,7 @@ func (ouh *organizationUnitHandler) handleError(w http.ResponseWriter, svcErr *s
 		statusCode = http.StatusInternalServerError
 	}
 
-	sysutils.WriteErrorResponse(w, statusCode, apierror.ErrorResponse{
+	sysutils.WriteErrorResponse(ctx, w, statusCode, apierror.ErrorResponse{
 		Code:        svcErr.Code,
 		Message:     svcErr.Error,
 		Description: svcErr.ErrorDescription,
@@ -259,7 +263,7 @@ func (ouh *organizationUnitHandler) sanitizeOrganizationUnitRequest(
 func extractAndValidateID(w http.ResponseWriter, r *http.Request) (string, bool) {
 	id := r.PathValue("id")
 	if id == "" {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
+		sysutils.WriteErrorResponse(r.Context(), w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorMissingOUID.Code,
 			Message:     ErrorMissingOUID.Error,
 			Description: ErrorMissingOUID.ErrorDescription,
@@ -274,7 +278,7 @@ func validateUpdateRequest(
 ) (OrganizationUnitRequestWithID, bool) {
 	updateRequest, err := sysutils.DecodeJSONBody[OrganizationUnitRequest](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
+		sysutils.WriteErrorResponse(r.Context(), w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorInvalidRequestFormat.Code,
 			Message:     ErrorInvalidRequestFormat.Error,
 			Description: ErrorInvalidRequestFormat.ErrorDescription,
@@ -324,7 +328,7 @@ func (ouh *organizationUnitHandler) handleResourceListRequest(
 
 	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(r.Context(), w, svcErr)
 		return
 	}
 
@@ -334,11 +338,11 @@ func (ouh *organizationUnitHandler) handleResourceListRequest(
 
 	response, svcErr := serviceFunc(id, limit, offset)
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(r.Context(), w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, response)
+	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, response)
 
 	// Extract pagination info for logging based on response type
 	var totalResults, count int
@@ -354,7 +358,8 @@ func (ouh *organizationUnitHandler) handleResourceListRequest(
 		count = resp.Count
 	}
 
-	logger.Debug("Successfully listed resources in organization unit", log.String("resourceType", resourceType),
+	logger.Debug(r.Context(), "Successfully listed resources in organization unit",
+		log.String("resourceType", resourceType),
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", totalResults),
 		log.Int("count", count))
@@ -372,13 +377,13 @@ func (ouh *organizationUnitHandler) HandleOUGetByPathRequest(w http.ResponseWrit
 
 	ou, svcErr := ouh.service.GetOrganizationUnitByPath(ctx, path)
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, ou)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.Debug("Successfully retrieved organization unit by path", log.String("path", path))
+	logger.Debug(ctx, "Successfully retrieved organization unit by path", log.String("path", path))
 }
 
 // HandleOUPutByPathRequest handles the update organization unit by hierarchical handle path request.
@@ -398,13 +403,13 @@ func (ouh *organizationUnitHandler) HandleOUPutByPathRequest(w http.ResponseWrit
 
 	ou, svcErr := ouh.service.UpdateOrganizationUnitByPath(ctx, path, sanitizedRequest)
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, ou)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.Debug("Successfully updated organization unit by path", log.String("path", path))
+	logger.Debug(ctx, "Successfully updated organization unit by path", log.String("path", path))
 }
 
 // HandleOUDeleteByPathRequest handles the delete organization unit by hierarchical handle path request.
@@ -419,12 +424,12 @@ func (ouh *organizationUnitHandler) HandleOUDeleteByPathRequest(w http.ResponseW
 
 	svcErr := ouh.service.DeleteOrganizationUnitByPath(ctx, path)
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusNoContent, nil)
-	logger.Debug("Successfully deleted organization unit by path", log.String("path", path))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+	logger.Debug(ctx, "Successfully deleted organization unit by path", log.String("path", path))
 }
 
 // handleResourceListByPathRequest is a generic handler for listing resources under an organization unit by path.
@@ -441,7 +446,7 @@ func (ouh *organizationUnitHandler) handleResourceListByPathRequest(
 
 	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(r.Context(), w, svcErr)
 		return
 	}
 
@@ -451,11 +456,11 @@ func (ouh *organizationUnitHandler) handleResourceListByPathRequest(
 
 	response, svcErr := serviceFunc(path, limit, offset)
 	if svcErr != nil {
-		ouh.handleError(w, svcErr)
+		ouh.handleError(r.Context(), w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, response)
+	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, response)
 
 	if logger.IsDebugEnabled() {
 		var totalResults, count int
@@ -471,7 +476,7 @@ func (ouh *organizationUnitHandler) handleResourceListByPathRequest(
 			count = resp.Count
 		}
 
-		logger.Debug("Successfully listed resources in organization unit by path",
+		logger.Debug(r.Context(), "Successfully listed resources in organization unit by path",
 			log.String("resourceType", resourceType), log.String("path", path),
 			log.Int("limit", limit), log.Int("offset", offset),
 			log.Int("totalResults", totalResults), log.Int("count", count))
@@ -483,7 +488,7 @@ func (ouh *organizationUnitHandler) HandleOUChildrenListByPathRequest(w http.Res
 	ctx := r.Context()
 	f, err := filter.ParseFilterParam(r.URL.Query())
 	if err != nil {
-		ouh.handleError(w, &ErrorInvalidFilter)
+		ouh.handleError(ctx, w, &ErrorInvalidFilter)
 		return
 	}
 	ouh.handleResourceListByPathRequest(w, r, "child organization units",
@@ -514,7 +519,7 @@ func (ouh *organizationUnitHandler) HandleOUGroupsListByPathRequest(w http.Respo
 func extractAndValidatePath(w http.ResponseWriter, r *http.Request) (string, bool) {
 	path := r.PathValue("path")
 	if path == "" {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, apierror.ErrorResponse{
+		sysutils.WriteErrorResponse(r.Context(), w, http.StatusBadRequest, apierror.ErrorResponse{
 			Code:        ErrorInvalidHandlePath.Code,
 			Message:     ErrorInvalidHandlePath.Error,
 			Description: ErrorInvalidHandlePath.ErrorDescription,

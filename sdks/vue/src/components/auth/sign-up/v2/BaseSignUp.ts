@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -204,7 +204,7 @@ const BaseSignUp: Component = defineComponent({
     // ── Helpers ──
 
     const handleError = (error: any): void => {
-      const errorMessage: string = error?.failureReason || extractErrorMessage(error, t);
+      const errorMessage: string = extractErrorMessage(error, t);
       apiError.value = error instanceof Error ? error : new Error(errorMessage);
       flowMessages.value = [{message: errorMessage, type: 'error'}];
     };
@@ -330,6 +330,11 @@ const BaseSignUp: Component = defineComponent({
           } else if (continueResponse.flowStatus === EmbeddedFlowStatus.Incomplete) {
             currentFlow.value = continueResponse;
             setupFormFields(continueResponse);
+
+            // Display error from INCOMPLETE response
+            if ((continueResponse as any)?.error) {
+              handleError(continueResponse);
+            }
           }
           popup.close();
           cleanup();
@@ -456,6 +461,11 @@ const BaseSignUp: Component = defineComponent({
 
           currentFlow.value = response;
           setupFormFields(response);
+
+          // Display error from INCOMPLETE response
+          if ((response as any)?.error) {
+            handleError(response);
+          }
         }
       } catch (err) {
         handleError(err);
@@ -499,6 +509,11 @@ const BaseSignUp: Component = defineComponent({
           } else {
             currentFlow.value = processed;
             setupFormFields(processed);
+
+            // Display error from INCOMPLETE response
+            if ((processed as any)?.error) {
+              handleError(processed);
+            }
           }
 
           passkeyState.value = {actionId: null, creationOptions: null, error: null, flowId: null, isActive: false};
@@ -541,6 +556,11 @@ const BaseSignUp: Component = defineComponent({
               }
               if (response.flowStatus === EmbeddedFlowStatus.Incomplete) {
                 setupFormFields(response);
+
+                // Display error from INCOMPLETE response
+                if ((response as any)?.error) {
+                  handleError(response);
+                }
               }
             } catch (err) {
               handleError(err);

@@ -1,20 +1,11 @@
 {
   "name": "server",
-  "version": "0.41.0",
+  "version": "0.43.0",
   "description": "Sample App Server for ThunderID",
   "bin": "server.js",
   "main": "server.js",
-  "pkg": {
-    "assets": [
-      "server.key",
-      "server.cert"
-    ],
-    "scripts": [
-      "server.js"
-    ],
-    "outputPath": "executables"
-  },
   "scripts": {
+    "prestart": "npm install",
     "start": "node server.js"
   },
   "dependencies": {
@@ -22,8 +13,5 @@
   },
   "overrides": {
     "path-to-regexp": "0.1.13"
-  },
-  "devDependencies": {
-    "pkg": "5.8.1"
   }
 }

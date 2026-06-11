@@ -434,6 +434,18 @@ declarativeResources:
   mountPath: /opt/thunderid/repository/resources
   # Mount resources as read-only.
   readOnly: true
+  # Combined file mode.
+  # Each key listed here is mounted as <key>.yaml directly under mountPath.
+  # Files must use the # resource_type: <type> header format so the directory
+  # scanner can identify each document.
+  # Mutually exclusive with configMap.items / secret.items.
+  singleFile:
+    # Keys in the ConfigMap or Secret to mount as combined resource YAML files.
+    # Example:
+    # keys:
+    #   - resources
+    #   - extra-resources
+    keys: []
   # Source from an existing ConfigMap.
   # When 'items' is empty, all keys are mounted.
   # Each item supports either:

@@ -20,6 +20,7 @@ package oauth
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -145,7 +146,7 @@ func (suite *OAuthUtilsTestSuite) TestBuildTokenRequestSuccess() {
 	code := "auth_code_123"
 	logger := log.GetLogger()
 
-	req, err := buildTokenRequest(config, code, logger)
+	req, err := buildTokenRequest(context.Background(), config, code, logger)
 
 	suite.Nil(err)
 	suite.NotNil(req)
@@ -173,7 +174,7 @@ func (suite *OAuthUtilsTestSuite) TestBuildTokenRequestWithInvalidURL() {
 	}
 	logger := log.GetLogger()
 
-	req, err := buildTokenRequest(config, "code123", logger)
+	req, err := buildTokenRequest(context.Background(), config, "code123", logger)
 
 	suite.Nil(req)
 	suite.NotNil(err)
@@ -271,7 +272,7 @@ func (suite *OAuthUtilsTestSuite) TestBuildUserInfoRequestSuccess() {
 	accessToken := "access_token_123"
 	logger := log.GetLogger()
 
-	req, err := buildUserInfoRequest(userInfoEndpoint, accessToken, logger)
+	req, err := buildUserInfoRequest(context.Background(), userInfoEndpoint, accessToken, logger)
 
 	suite.Nil(err)
 	suite.NotNil(req)
@@ -284,7 +285,7 @@ func (suite *OAuthUtilsTestSuite) TestBuildUserInfoRequestSuccess() {
 func (suite *OAuthUtilsTestSuite) TestBuildUserInfoRequestWithInvalidURL() {
 	logger := log.GetLogger()
 
-	req, err := buildUserInfoRequest("://invalid-url", "token", logger)
+	req, err := buildUserInfoRequest(context.Background(), "://invalid-url", "token", logger)
 
 	suite.Nil(req)
 	suite.NotNil(err)

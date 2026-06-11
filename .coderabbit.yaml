@@ -5,6 +5,10 @@ reviews:
   request_changes_workflow: false
   high_level_summary: true
   poem: false
+  auto_apply_labels: true
+  labeling_instructions:
+    - label: skip-changelog
+      instructions: "All changed files are under docs/"
 
   path_instructions:
     - path: "**/*.go"
@@ -54,6 +58,18 @@ reviews:
         `useConfig` hook (e.g., `const { productName } = useConfig();`) rather than a raw string literal.
         For JSX string content, prefer the `<ProductName />` component if it is available in this context.
         Do not flag occurrences inside comments, type names, or import paths.
+
+    - path: "frontend/apps/**/*.{ts,tsx}"
+      instructions: |
+        Flag any direct import of `@monaco-editor/react` or `monaco-editor` in application code.
+        Monaco editor usage must go through the local wrapper `@/lib/MonacoEditor`
+        (e.g. `import Editor from '@/lib/MonacoEditor';`), which runs the worker setup and calls
+        `loader.config({monaco})` so Monaco and its language workers are bundled locally instead of
+        loaded from the jsDelivr CDN. A direct import bypasses this setup and reintroduces the CDN
+        dependency, which breaks in air-gapped / no-internet deployments.
+        EXEMPT the wrapper and setup files themselves — `**/lib/MonacoEditor.ts` and
+        `**/lib/monaco-setup.ts` are the only files allowed to import `@monaco-editor/react` or
+        `monaco-editor` directly. Do not flag these files.
 
     - path: "docs/**"
       instructions: |

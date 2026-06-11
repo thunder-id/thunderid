@@ -28,6 +28,7 @@ import type {
   Platform,
   Schema,
   SignInOptions,
+  StorageManager,
   Theme,
   TokenExchangeRequestConfig,
   TokenResponse,
@@ -64,6 +65,7 @@ export interface ThunderIDContext {
   getAccessToken: () => Promise<string>;
   getDecodedIdToken: () => Promise<IdToken>;
   getIdToken: () => Promise<string>;
+  getStorageManager: () => StorageManager<any>;
   // ── HTTP ──
   http: {
     request: (requestConfig?: HttpRequestConfig) => Promise<HttpResponse<any>>;

@@ -19,6 +19,8 @@
 package authz
 
 import (
+	"context"
+
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz/requestvalidator"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -28,7 +30,7 @@ import (
 
 // AuthorizationValidatorInterface defines the interface for validating OAuth2 authorization requests.
 type AuthorizationValidatorInterface interface {
-	validateInitialAuthorizationRequest(msg *OAuthMessage, oauthApp *inboundmodel.OAuthClient) (
+	validateInitialAuthorizationRequest(ctx context.Context, msg *OAuthMessage, oauthApp *inboundmodel.OAuthClient) (
 		bool, string, string)
 }
 
@@ -41,7 +43,7 @@ func newAuthorizationValidator() AuthorizationValidatorInterface {
 }
 
 // validateInitialAuthorizationRequest validates the initial authorization request parameters.
-func (av *authorizationValidator) validateInitialAuthorizationRequest(msg *OAuthMessage,
+func (av *authorizationValidator) validateInitialAuthorizationRequest(ctx context.Context, msg *OAuthMessage,
 	oauthApp *inboundmodel.OAuthClient) (bool, string, string) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthorizationValidator"))
 
@@ -52,8 +54,8 @@ func (av *authorizationValidator) validateInitialAuthorizationRequest(msg *OAuth
 		return false, constants.ErrorInvalidRequest, "Missing client_id parameter"
 	}
 
-	if err := oauthApp.ValidateRedirectURI(redirectURI); err != nil {
-		logger.Debug("Validation failed for redirect URI", log.Error(err))
+	if err := oauthApp.ValidateRedirectURI(ctx, redirectURI); err != nil {
+		logger.Debug(ctx, "Validation failed for redirect URI", log.Error(err))
 		return false, constants.ErrorInvalidRequest, "Invalid redirect URI"
 	}
 

@@ -16,10 +16,10 @@
  * under the License.
  */
 
-import Editor, {type OnMount} from '@monaco-editor/react';
 import {Box, Stack, Typography} from '@wso2/oxygen-ui';
 import type {editor as MonacoEditor, IDisposable, IRange} from 'monaco-editor';
 import {useRef, useEffect} from 'react';
+import Editor, {type OnMount} from '@/lib/MonacoEditor';
 
 /**
  * Descriptions for standard JWT claims, shown as hover tooltips in the preview.

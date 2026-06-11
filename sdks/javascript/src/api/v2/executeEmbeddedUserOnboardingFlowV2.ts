@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -18,7 +18,10 @@
 
 import ThunderIDAPIError from '../../errors/ThunderIDAPIError';
 import {EmbeddedFlowType} from '../../models/embedded-flow';
-import {EmbeddedFlowExecuteRequestConfig as EmbeddedFlowExecuteRequestConfigV2} from '../../models/v2/embedded-flow-v2';
+import {
+  EmbeddedFlowExecuteRequestConfig as EmbeddedFlowExecuteRequestConfigV2,
+  FlowExecutionError,
+} from '../../models/v2/embedded-flow-v2';
 
 /**
  * Response from the user onboarding flow execution.
@@ -45,9 +48,9 @@ export interface EmbeddedUserOnboardingFlowResponse {
   executionId: string;
 
   /**
-   * Reason for failure if flowStatus is ERROR.
+   * Structured error details when flowStatus is ERROR.
    */
-  failureReason?: string;
+  error?: FlowExecutionError;
 
   /**
    * Current status of the flow.

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -19,6 +19,7 @@
 package executor
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -80,7 +81,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyUser_Success() {
 	userID := testUserID
 	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(&userID, nil)
 
-	result, err := suite.executor.IdentifyUser(filters, execResp)
+	result, err := suite.executor.IdentifyUser(context.Background(), filters, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -97,12 +98,12 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyUser_UserNotFound() {
 	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
 
-	result, err := suite.executor.IdentifyUser(filters, execResp)
+	result, err := suite.executor.IdentifyUser(context.Background(), filters, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
-	assert.Equal(suite.T(), failureReasonUserNotFound, execResp.FailureReason)
+	assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, execResp.Error.Error.DefaultValue)
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
@@ -115,12 +116,12 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyUser_ServiceError() {
 	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "", ""))
 
-	result, err := suite.executor.IdentifyUser(filters, execResp)
+	result, err := suite.executor.IdentifyUser(context.Background(), filters, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
-	assert.Contains(suite.T(), execResp.FailureReason, "Failed to identify user")
+	assert.Equal(suite.T(), ErrFailedToIdentifyUser.Error.DefaultValue, execResp.Error.Error.DefaultValue)
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
@@ -133,12 +134,12 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyUser_EmptyUserID() {
 
 	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(&emptyID, nil)
 
-	result, err := suite.executor.IdentifyUser(filters, execResp)
+	result, err := suite.executor.IdentifyUser(context.Background(), filters, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
-	assert.Equal(suite.T(), failureReasonUserNotFound, execResp.FailureReason)
+	assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, execResp.Error.Error.DefaultValue)
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
@@ -161,7 +162,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyUser_FilterNonSearchableA
 		return &userID
 	}(), nil)
 
-	result, err := suite.executor.IdentifyUser(filters, execResp)
+	result, err := suite.executor.IdentifyUser(context.Background(), filters, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -178,7 +179,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyUser_WithEmail() {
 
 	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(&emailUserID, nil)
 
-	result, err := suite.executor.IdentifyUser(filters, execResp)
+	result, err := suite.executor.IdentifyUser(context.Background(), filters, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -195,7 +196,7 @@ func (suite *IdentifyingExecutorTestSuite) TestIdentifyUser_WithMobileNumber() {
 
 	suite.mockEntityProvider.On("IdentifyEntity", filters).Return(&mobileUserID, nil)
 
-	result, err := suite.executor.IdentifyUser(filters, execResp)
+	result, err := suite.executor.IdentifyUser(context.Background(), filters, execResp)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
@@ -297,9 +298,9 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Failure_IdentifyUserError
 	assert.NotNil(suite.T(), resp)
 	// IdentifyUser method in implementation swallows the error and returns nil, nil.
 	// Then Execute checks for nil userID and returns UserNotFound.
-	// So we should expect failureReasonUserNotFound
+	// So we should expect ErrUserNotFound
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), failureReasonUserNotFound, resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestExecute_Failure_UserNotFound() {
@@ -324,7 +325,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Failure_UserNotFound() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), failureReasonUserNotFound, resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 // TestExecute_Success_WithVariousAttributes tests successful user identification with different attributes.
@@ -433,7 +434,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Failure_UserNotFoundByAtt
 			assert.NoError(suite.T(), err)
 			assert.NotNil(suite.T(), resp)
 			assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-			assert.Equal(suite.T(), failureReasonUserNotFound, resp.FailureReason)
+			assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 			suite.mockEntityProvider.AssertExpectations(suite.T())
 		})
 	}
@@ -515,7 +516,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Failure_EmptyInput() {
 			assert.NoError(suite.T(), err)
 			assert.NotNil(suite.T(), resp)
 			assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-			assert.Equal(suite.T(), failureReasonUserNotFound, resp.FailureReason)
+			assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 			suite.mockEntityProvider.AssertExpectations(suite.T())
 		})
 	}
@@ -720,7 +721,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_FilteredToNone() {
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), failureReasonUserNotFound, resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestExecute_IdentifyMode_AmbiguousUser() {
@@ -745,7 +746,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_IdentifyMode_AmbiguousUse
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), failureReasonAmbiguousUser, resp.FailureReason)
+	assert.Equal(suite.T(), ErrAmbiguousUserIdentity.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	assert.Empty(suite.T(), resp.Inputs, "Inputs must not be populated for ambiguous user in identify mode")
 }
 
@@ -772,7 +773,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_IdentifyMode_UserNotFound
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), failureReasonUserNotFound, resp.FailureReason)
+	assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	assert.NotEmpty(suite.T(), resp.Inputs, "Inputs must be populated for retry when user is not found")
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
@@ -800,7 +801,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_IdentifyMode_SystemError(
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Equal(suite.T(), failureReasonFailedToIdentifyUser, resp.FailureReason)
+	assert.Equal(suite.T(), ErrFailedToIdentifyUser.Error.DefaultValue, resp.Error.Error.DefaultValue)
 	assert.Empty(suite.T(), resp.Inputs, "Inputs must not be populated for non-recoverable errors")
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
@@ -845,7 +846,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_RetryableIdentificationEr
 			attribute:      "username",
 			value:          "nonexistent",
 			entityError:    entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""),
-			expectedReason: failureReasonUserNotFound,
+			expectedReason: ErrUserNotFound.Error.DefaultValue,
 			message:        "Should return inputs for retry when user is not found",
 		},
 		{
@@ -853,7 +854,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_RetryableIdentificationEr
 			attribute:      "username",
 			value:          "testuser",
 			emptyID:        true,
-			expectedReason: failureReasonUserNotFound,
+			expectedReason: ErrUserNotFound.Error.DefaultValue,
 			message:        "Should return inputs for retry when empty user ID is returned",
 		},
 	}
@@ -888,7 +889,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_RetryableIdentificationEr
 			assert.NoError(t, err)
 			assert.NotNil(t, resp)
 			assert.Equal(t, common.ExecUserInputRequired, resp.Status)
-			assert.Equal(t, tt.expectedReason, resp.FailureReason, tt.message)
+			assert.Equal(t, tt.expectedReason, resp.Error.Error.DefaultValue, tt.message)
 			assert.NotEmpty(t, resp.Inputs, "Inputs should be re-populated for retry")
 			suite.mockEntityProvider.AssertExpectations(t)
 		})

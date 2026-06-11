@@ -19,6 +19,7 @@
 package model
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -51,17 +52,17 @@ func (p *boolean) isUnique() bool {
 	return false
 }
 
-func (p *boolean) validateValue(value interface{}, path string, logger *log.Logger) (bool, error) {
+func (p *boolean) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	_, ok := value.(bool)
 	if !ok {
-		logger.Debug("Expected boolean but got different type",
+		logger.Debug(ctx, "Expected boolean but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}
 	return true, nil
 }
 
-func (p *boolean) validateUniqueness(
+func (p *boolean) validateUniqueness(ctx context.Context,
 	value interface{},
 	path string,
 	exists func(map[string]interface{}) (bool, error),

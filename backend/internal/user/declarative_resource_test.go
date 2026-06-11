@@ -273,7 +273,7 @@ func (suite *DeclarativeResourceTestSuite) TestValidateResource_MissingUsername(
 		Attributes: map[string]interface{}{},
 	}
 
-	_, err := exporter.ValidateResource(resource, "user-1", log.GetLogger())
+	_, err := exporter.ValidateResource(context.Background(), resource, "user-1", log.GetLogger())
 	suite.NotNil(err)
 }
 

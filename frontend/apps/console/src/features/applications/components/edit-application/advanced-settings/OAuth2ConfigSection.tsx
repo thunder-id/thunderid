@@ -38,6 +38,7 @@ import {Lock} from '@wso2/oxygen-ui-icons-react';
 import {useTranslation} from 'react-i18next';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import {OAuth2ResponseTypes, TokenEndpointAuthMethods, type OAuth2Config} from '../../../models/oauth';
+import {getGrantTypeLabel} from '../../../utils/getGrantTypeLabel';
 import {
   applyGrantTypesChange,
   applyPublicClientChange,
@@ -220,7 +221,7 @@ export default function OAuth2ConfigSection({
             {availableGrantTypes.map((grant) => (
               <MenuItem key={grant} value={grant} disabled={isGrantItemDisabled(grant, grantTypes)}>
                 <Checkbox checked={grantTypes.includes(grant)} size="small" />
-                <ListItemText primary={grant} />
+                <ListItemText primary={getGrantTypeLabel(grant, t)} />
               </MenuItem>
             ))}
           </Select>

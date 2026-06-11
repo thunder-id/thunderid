@@ -38,6 +38,9 @@ describe('TechnologyBasedApplicationTemplateMetadata', () => {
         expect(metadata).toHaveProperty('titleKey');
         expect(metadata).toHaveProperty('descriptionKey');
         expect(metadata).toHaveProperty('template');
+        expect(metadata).toHaveProperty('categories');
+        expect(Array.isArray(metadata.categories)).toBe(true);
+        expect(metadata.categories.length).toBeGreaterThan(0);
       });
     });
   });
@@ -210,12 +213,39 @@ describe('TechnologyBasedApplicationTemplateMetadata', () => {
       });
     });
 
-    it('should have at least React, Next.js, and Vanilla JS templates', () => {
+    it('should have at least React, Next.js, Vanilla JS, and Express templates', () => {
       const configuredValues = TechnologyBasedApplicationTemplateMetadata.map((m) => m.value);
       expect(configuredValues).toContain(TechnologyApplicationTemplate.EXPRESS);
       expect(configuredValues).toContain(TechnologyApplicationTemplate.REACT);
       expect(configuredValues).toContain(TechnologyApplicationTemplate.NEXTJS);
       expect(configuredValues).toContain(TechnologyApplicationTemplate.VANILLA_JS);
+    });
+
+    it('should assign web category to React, Vue, Vanilla JS, and Nuxt', () => {
+      const webTemplates = [
+        TechnologyApplicationTemplate.REACT,
+        TechnologyApplicationTemplate.VUE,
+        TechnologyApplicationTemplate.VANILLA_JS,
+      ];
+      webTemplates.forEach((value) => {
+        const meta = TechnologyBasedApplicationTemplateMetadata.find((m) => m.value === value);
+        expect(meta?.categories).toContain('web');
+      });
+    });
+
+    it('should assign web and backend categories to Next.js and Nuxt', () => {
+      [TechnologyApplicationTemplate.NEXTJS, TechnologyApplicationTemplate.NUXT].forEach((value) => {
+        const meta = TechnologyBasedApplicationTemplateMetadata.find((m) => m.value === value);
+        expect(meta?.categories).toContain('web');
+        expect(meta?.categories).toContain('backend');
+      });
+    });
+
+    it('should assign backend category to Express and Node.js', () => {
+      [TechnologyApplicationTemplate.EXPRESS, TechnologyApplicationTemplate.NODEJS].forEach((value) => {
+        const meta = TechnologyBasedApplicationTemplateMetadata.find((m) => m.value === value);
+        expect(meta?.categories).toContain('backend');
+      });
     });
   });
 
@@ -223,7 +253,7 @@ describe('TechnologyBasedApplicationTemplateMetadata', () => {
     it('should all have renderable icons', () => {
       TechnologyBasedApplicationTemplateMetadata.forEach((metadata) => {
         const {container} = render(<div>{metadata.icon}</div>);
-        expect(container.querySelector('svg')).toBeInTheDocument();
+        expect(container.firstChild?.firstChild).toBeTruthy();
       });
     });
   });

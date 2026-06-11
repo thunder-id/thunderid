@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -340,7 +340,7 @@ func (suite *BasicAuthExecutorTestSuite) TestExecute_AuthenticationFailed() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "Failed to authenticate user")
+	assert.Equal(suite.T(), ErrUserAuthFailed.Code, resp.Error.Code)
 	assert.NotEmpty(suite.T(), resp.Inputs, "Inputs should be re-populated for retry")
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
@@ -372,7 +372,7 @@ func (suite *BasicAuthExecutorTestSuite) TestExecute_UserNotFound_Authentication
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "Failed to authenticate user",
+	assert.Equal(suite.T(), ErrUserAuthFailed.Code, resp.Error.Code,
 		"Failure reason should contain authentication failure message")
 	assert.NotEmpty(suite.T(), resp.Inputs, "Inputs should be re-populated for retry")
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
@@ -399,7 +399,7 @@ func (suite *BasicAuthExecutorTestSuite) TestExecute_UserAlreadyExists_Registrat
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "User already exists")
+	assert.Equal(suite.T(), ErrUserAlreadyExists.Code, resp.Error.Code)
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
@@ -456,7 +456,7 @@ func (suite *BasicAuthExecutorTestSuite) TestExecute_AuthenticationServiceError(
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
-	assert.Contains(suite.T(), resp.FailureReason, "Failed to authenticate user")
+	assert.Equal(suite.T(), ErrUserAuthFailed.Code, resp.Error.Code)
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
@@ -621,28 +621,28 @@ func (suite *BasicAuthExecutorTestSuite) TestGetAuthenticatedUser_RegistrationFl
 
 func (suite *BasicAuthExecutorTestSuite) TestExecute_RetryableAuthenticationErrors() {
 	tests := []struct {
-		name           string
-		username       string
-		password       string
-		errorCode      string
-		expectedReason string
-		message        string
+		name              string
+		username          string
+		password          string
+		errorCode         string
+		expectedErrorCode string
+		message           string
 	}{
 		{
-			name:           "Invalid credentials",
-			username:       "testuser",
-			password:       "wrongpassword",
-			errorCode:      authnprovidermgr.ErrorAuthenticationFailed.Code,
-			expectedReason: failureReasonInvalidCredentials,
-			message:        "Should return specific failure reason for invalid credentials",
+			name:              "Invalid credentials",
+			username:          "testuser",
+			password:          "wrongpassword",
+			errorCode:         authnprovidermgr.ErrorAuthenticationFailed.Code,
+			expectedErrorCode: ErrInvalidCredentials.Code,
+			message:           "Should return specific failure reason for invalid credentials",
 		},
 		{
-			name:           "User not found",
-			username:       "nonexistent",
-			password:       "password123",
-			errorCode:      authnprovidermgr.ErrorUserNotFound.Code,
-			expectedReason: failureReasonUserNotFound,
-			message:        "Should return specific failure reason for user not found",
+			name:              "User not found",
+			username:          "nonexistent",
+			password:          "password123",
+			errorCode:         authnprovidermgr.ErrorUserNotFound.Code,
+			expectedErrorCode: ErrUserNotFound.Code,
+			message:           "Should return specific failure reason for user not found",
 		},
 	}
 
@@ -674,7 +674,7 @@ func (suite *BasicAuthExecutorTestSuite) TestExecute_RetryableAuthenticationErro
 			assert.NoError(t, err)
 			assert.NotNil(t, resp)
 			assert.Equal(t, common.ExecUserInputRequired, resp.Status)
-			assert.Equal(t, tt.expectedReason, resp.FailureReason, tt.message)
+			assert.Equal(t, tt.expectedErrorCode, resp.Error.Code, tt.message)
 			assert.NotEmpty(t, resp.Inputs, "Inputs should be re-populated for retry")
 			assert.Len(t, resp.Inputs, 2, "Should include both username and password inputs")
 			suite.mockAuthnProvider.AssertExpectations(t)
@@ -713,7 +713,7 @@ func (suite *BasicAuthExecutorTestSuite) TestGetAuthenticatedUser_ClientError_Re
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, execResp.Status,
 		"Should return ExecUserInputRequired for invalid credentials")
-	assert.Equal(suite.T(), failureReasonInvalidCredentials, execResp.FailureReason)
+	assert.Equal(suite.T(), ErrInvalidCredentials.Code, execResp.Error.Code)
 	assert.NotEmpty(suite.T(), execResp.Inputs, "Inputs should be re-populated for retry")
 	assert.Len(suite.T(), execResp.Inputs, 2, "Should include both username and password inputs")
 }

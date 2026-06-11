@@ -61,7 +61,7 @@ build_docs:
 	./build.sh build_docs
 
 package_samples:
-	./build.sh package_samples $(OS) $(ARCH)
+	./build.sh package_samples
 
 build_samples:
 	./build.sh build_samples

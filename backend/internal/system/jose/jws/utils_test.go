@@ -19,7 +19,6 @@
 package jws
 
 import (
-	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -357,37 +356,27 @@ func (suite *JWSUtilsTestSuite) TestJWKToOKPPublicKeyInvalidKeyLength() {
 	assert.Contains(suite.T(), err.Error(), "invalid Ed25519 public key length")
 }
 
-func (suite *JWSUtilsTestSuite) TestGetECCurveInfoP256() {
-	curve, keySize, err := getECCurveInfo(P256)
+func (suite *JWSUtilsTestSuite) TestJWKToPublicKeyEC() {
+	xBytes := make([]byte, 32)
+	yBytes := make([]byte, 32)
+	suite.ecPublicKey.X.FillBytes(xBytes)
+	suite.ecPublicKey.Y.FillBytes(yBytes)
+
+	jwk := map[string]interface{}{
+		"kty": "EC",
+		"crv": "P-256",
+		"x":   base64.RawURLEncoding.EncodeToString(xBytes),
+		"y":   base64.RawURLEncoding.EncodeToString(yBytes),
+	}
+
+	publicKey, err := JWKToPublicKey(jwk)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), ecdh.P256(), curve)
-	assert.Equal(suite.T(), 32, keySize)
-}
-
-func (suite *JWSUtilsTestSuite) TestGetECCurveInfoP384() {
-	curve, keySize, err := getECCurveInfo(P384)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), ecdh.P384(), curve)
-	assert.Equal(suite.T(), 48, keySize)
-}
-
-func (suite *JWSUtilsTestSuite) TestGetECCurveInfoP521() {
-	curve, keySize, err := getECCurveInfo(P521)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), ecdh.P521(), curve)
-	assert.Equal(suite.T(), 66, keySize)
-}
-
-func (suite *JWSUtilsTestSuite) TestGetECCurveInfoUnsupported() {
-	curve, keySize, err := getECCurveInfo("P-999")
-
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), curve)
-	assert.Equal(suite.T(), 0, keySize)
-	assert.Contains(suite.T(), err.Error(), "unsupported EC curve")
+	assert.NotNil(suite.T(), publicKey)
+	ecKey, ok := publicKey.(*ecdsa.PublicKey)
+	assert.True(suite.T(), ok)
+	assert.Equal(suite.T(), suite.ecPublicKey.X, ecKey.X)
+	assert.Equal(suite.T(), suite.ecPublicKey.Y, ecKey.Y)
 }
 
 func (suite *JWSUtilsTestSuite) TestJWKToPublicKeyInvalidEC() {

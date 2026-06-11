@@ -23,6 +23,7 @@ import (
 	rbacauthz "github.com/thunder-id/thunderid/internal/authz"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -41,6 +42,7 @@ type GrantHandlerProvider struct {
 	authorizationCodeGrantHandler GrantHandlerInterface
 	refreshTokenGrantHandler      GrantHandlerInterface
 	tokenExchangeGrantHandler     GrantHandlerInterface
+	cibaGrantHandler              GrantHandlerInterface
 }
 
 // newGrantHandlerProvider creates a new instance of GrantHandlerProvider.
@@ -54,6 +56,7 @@ func newGrantHandlerProvider(
 	rbacAuthzService rbacauthz.AuthorizationServiceInterface,
 	entityProv entityprovider.EntityProviderInterface,
 	resourceService resource.ResourceServiceInterface,
+	cibaService ciba.CIBAServiceInterface,
 ) GrantHandlerProviderInterface {
 	return &GrantHandlerProvider{
 		clientCredentialsGrantHandler: newClientCredentialsGrantHandler(
@@ -64,6 +67,7 @@ func newGrantHandlerProvider(
 			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService),
 		tokenExchangeGrantHandler: newTokenExchangeGrantHandler(
 			tokenBuilder, tokenValidator, resourceService),
+		cibaGrantHandler: newCIBAGrantHandler(cibaService, tokenBuilder, attrCacheService),
 	}
 }
 
@@ -78,6 +82,8 @@ func (p *GrantHandlerProvider) GetGrantHandler(grantType constants.GrantType) (G
 		return p.refreshTokenGrantHandler, nil
 	case constants.GrantTypeTokenExchange:
 		return p.tokenExchangeGrantHandler, nil
+	case constants.GrantTypeCIBA:
+		return p.cibaGrantHandler, nil
 	default:
 		return nil, constants.UnSupportedGrantTypeError
 	}

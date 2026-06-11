@@ -32,7 +32,10 @@ import ROUTES from '../constants/routes';
 export default function generateFallbackSignInUrl(searchParams: URLSearchParams): string {
   const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   const signInPath = `${base}${ROUTES.AUTH.SIGN_IN}`;
-  const currentParams: string = searchParams.toString();
+  const cleanParams = new URLSearchParams(searchParams.toString());
+  cleanParams.delete('authId');
+  cleanParams.delete('executionId');
+  const currentParams: string = cleanParams.toString();
 
   return currentParams ? `${signInPath}?${currentParams}` : signInPath;
 }

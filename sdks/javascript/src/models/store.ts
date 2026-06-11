@@ -64,6 +64,11 @@ export type TemporaryStoreValue = string | string[] | boolean | number | OIDCEnd
 export type TemporaryStore = Record<string, TemporaryStoreValue>;
 
 /**
+ * Represents a key-value store for hybrid data storage.
+ */
+export type HybridStore = Record<string, TemporaryStoreValue>;
+
+/**
  * Enum representing different types of data stores used in the application.
  */
 export enum Stores {
@@ -91,4 +96,9 @@ export enum Stores {
    * Store for temporary data that needs to persist only for a short duration.
    */
   TemporaryData = 'temporary_data',
+
+  /**
+   * Store for data that leverages local storage if available, falling back to the configured storage.
+   */
+  HybridData = 'hybrid_data',
 }

@@ -28,11 +28,8 @@ interface Station {
   href: string;
   accentColor: string;
   iconBackground: string;
-  stepLabel: string;
-  stepTag: string;
   title: string;
   chooseIf: string;
-  setupTime: string;
   cta: string;
   icon: React.ReactNode;
   features: Feature[];
@@ -56,24 +53,6 @@ function OpenChoreoLogo() {
       alt="OpenChoreo"
       style={{objectFit: 'contain', display: 'block'}}
     />
-  );
-}
-
-function ClockIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
   );
 }
 
@@ -116,18 +95,14 @@ const stations: Station[] = [
     href: './docker',
     accentColor: '#0ea5e9',
     iconBackground: 'rgba(14,165,233,0.12)',
-    stepLabel: '01',
-    stepTag: 'Local evaluation',
     title: 'Docker',
-    chooseIf: 'You want to try ThunderID locally, test features, or run demos without setting up a cluster.',
-    setupTime: '<5 min',
-    cta: 'Start locally →',
+    chooseIf: 'You want a portable, self-contained deployment with full configuration control and no cluster infrastructure required.',
+    cta: 'Deploy with Docker →',
     icon: <DockerLogo />,
     features: [
       {text: 'Quick setup with pre-built images', available: true},
       {text: 'PostgreSQL integration', available: true},
       {text: 'Custom configuration mounting', available: true},
-      {text: 'Not for production use', available: false},
     ],
     animClass: 'dp-row-1',
   },
@@ -135,11 +110,8 @@ const stations: Station[] = [
     href: './kubernetes',
     accentColor: '#326CE5',
     iconBackground: 'rgba(50,108,229,0.12)',
-    stepLabel: '02',
-    stepTag: 'Self-hosted production',
     title: 'Kubernetes',
     chooseIf: 'You want production control while running ThunderID on infrastructure your team manages.',
-    setupTime: '<10 min',
     cta: 'Deploy on Kubernetes →',
     icon: <KubernetesLogo />,
     features: [
@@ -155,11 +127,8 @@ const stations: Station[] = [
     href: './openchoreo',
     accentColor: '#8b5cf6',
     iconBackground: 'rgba(139,92,246,0.12)',
-    stepLabel: '03',
-    stepTag: 'Managed platform',
     title: 'OpenChoreo',
     chooseIf: 'You want a platform-managed deployment model with environment separation and promotion workflows.',
-    setupTime: '<15 min',
     cta: 'Deploy on OpenChoreo →',
     icon: <OpenChoreoLogo />,
     features: [
@@ -183,22 +152,6 @@ export default function DeploymentCards() {
         </p>
       </div>
 
-      {/* Route strip */}
-      <div className="dp-route">
-        <div className="dp-route-stops">
-          {stations.map((s) => (
-            <div
-              key={s.href}
-              className="dp-route-stop"
-              style={{['--dp-accent' as string]: s.accentColor, ['--dp-icon-bg' as string]: s.iconBackground}}
-            >
-              <div className="dp-route-node">{s.icon}</div>
-              <span className="dp-route-stop-label">{s.title}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* 3-column cards */}
       <div className="dp-list">
         {stations.map((s) => (
@@ -208,20 +161,8 @@ export default function DeploymentCards() {
             className={`dp-row-card ${s.animClass}${s.featured ? ' dp-featured' : ''}`}
             style={{['--dp-accent' as string]: s.accentColor, ['--dp-icon-bg' as string]: s.iconBackground}}
           >
-            <div className="dp-rc-step">
-              Path {s.stepLabel} — {s.stepTag}
-            </div>
+            <div className="dp-card-icon">{s.icon}</div>
             <div className="dp-rc-title">{s.title}</div>
-
-            <div className="dp-setup-badge">
-              <span className="dp-setup-badge-icon">
-                <ClockIcon />
-              </span>
-              <div>
-                <div className="dp-setup-label">Setup time</div>
-                <div className="dp-setup-value">{s.setupTime}</div>
-              </div>
-            </div>
 
             <ul className="dp-feature-list">
               {s.features.map((f) => (
@@ -242,11 +183,6 @@ export default function DeploymentCards() {
         ))}
       </div>
 
-      {/* Production recommendation note */}
-      <p className="dp-prod-note">
-        For production deployments, use <strong>Kubernetes</strong> or <strong>OpenChoreo</strong> with PostgreSQL. Use
-        Docker for local evaluation, demos, and development testing.
-      </p>
     </div>
   );
 }

@@ -293,6 +293,10 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 	claims["access_token_aud"] = ctx.AccessTokenAudiences
 	claims["grant_type"] = ctx.GrantType
 
+	if ctx.ActorSub != "" {
+		claims["act_sub"] = ctx.ActorSub
+	}
+
 	if ctx.AttributeCacheID != "" {
 		claims["aci"] = ctx.AttributeCacheID
 	}
@@ -374,7 +378,7 @@ func (tb *tokenBuilder) BuildIDToken(
 				return nil, fmt.Errorf("failed to resolve ID token encryption key: %v", svcErr)
 			}
 			// cty="JWT" indicates a nested JWT (signed JWS payload encrypted as JWE per OIDC spec)
-			encrypted, svcErr := tb.jweService.Encrypt(
+			encrypted, svcErr := tb.jweService.Encrypt(ctx,
 				[]byte(token), rpKey,
 				jwe.KeyEncAlgorithm(idTokenCfg.EncryptionAlg),
 				jwe.ContentEncAlgorithm(idTokenCfg.EncryptionEnc),

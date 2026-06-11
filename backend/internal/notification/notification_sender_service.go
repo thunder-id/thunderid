@@ -61,7 +61,7 @@ func (s *notificationSenderService) Send(ctx context.Context, channel common.Cha
 		return &ErrorRequestedSenderIsNotOfExpectedType
 	}
 
-	_client, svcErr := s.clientProvider.GetClient(*sender)
+	_client, svcErr := s.clientProvider.GetClient(ctx, *sender)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -70,8 +70,9 @@ func (s *notificationSenderService) Send(ctx context.Context, channel common.Cha
 		return &ErrorUnsupportedChannel
 	}
 
-	if err := _client.Send(channel, data); err != nil {
-		s.logger.Error("Failed to send notification", log.String("channel", string(channel)), log.Error(err))
+	if err := _client.Send(ctx, channel, data); err != nil {
+		s.logger.Error(ctx, "Failed to send notification",
+			log.String("channel", string(channel)), log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 

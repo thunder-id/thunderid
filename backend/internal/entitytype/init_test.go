@@ -898,7 +898,7 @@ func TestValidateEntityTypeWithOUCheck(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateEntityTypeDefinition(TypeCategoryUser, tc.schema)
+			err := validateEntityTypeDefinition(context.Background(), TypeCategoryUser, tc.schema)
 
 			if tc.shouldBeValid {
 				assert.Nil(t, err, "Expected schema to be valid but got error: %v", err)
@@ -1079,7 +1079,7 @@ this is not valid yaml:
 				assert.NotNil(t, schemaDTO)
 
 				// Step 2: Validate schema (as done in Initialize before OU check)
-				validationErr := validateEntityTypeDefinition(TypeCategoryUser, *schemaDTO)
+				validationErr := validateEntityTypeDefinition(context.Background(), TypeCategoryUser, *schemaDTO)
 
 				if tc.expectValidOK {
 					assert.Nil(t, validationErr, "Expected validation to succeed")

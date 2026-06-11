@@ -83,6 +83,12 @@
       "forms.credentials.fields.password.label": "Password",
       "forms.credentials.fields.password.placeholder": "Enter your password",
       "forms.credentials.actions.submit.label": "Sign In",
+      "forms.magic_link.title": "Sign In with Magic Link",
+      "forms.magic_link.fields.email.label": "Email Address",
+      "forms.magic_link.fields.email.placeholder": "Enter your email address",
+      "forms.magic_link.actions.submit.label": "Send Magic Link",
+      "forms.magic_link.email_sent.title": "Check Your Email",
+      "forms.magic_link.email_sent.description": "We sent you a verification link. Please check your inbox and click the link to continue.",
       "forms.passkey.title": "Sign in with Passkey",
       "forms.passkey.description": "Use your passkey to securely sign in to your account without a password.",
       "forms.passkey.actions.submit.label": "Sign in with Passkey",
@@ -119,7 +125,13 @@
       "forms.credentials.links.forgot_password.prefix": "Forgot password?",
       "forms.credentials.links.forgot_password.label": "Reset",
       "forms.credentials.links.sign_up.prefix": "Don't have an account?",
-      "forms.credentials.links.sign_up.label": "Sign up"
+      "forms.credentials.links.sign_up.label": "Sign up",
+      "forms.magic_link.title": "Sign In with Magic Link",
+      "forms.magic_link.fields.email.label": "Email Address",
+      "forms.magic_link.fields.email.placeholder": "Enter your email address",
+      "forms.magic_link.actions.submit.label": "Send Magic Link",
+      "forms.magic_link.email_sent.title": "Check Your Email",
+      "forms.magic_link.email_sent.description": "We sent you a verification link. Please check your inbox and click the link to continue."
     },
     "signup": {
       "images.app_logo.alt": "Application logo",
@@ -206,6 +218,8 @@
       "forms.collect_user_info.fields.username.placeholder": "Enter your username",
       "forms.collect_user_info.fields.email.label": "Email",
       "forms.collect_user_info.fields.email.placeholder": "Enter your email",
+      "forms.collect_user_info.fields.password.label": "Password",
+      "forms.collect_user_info.fields.password.placeholder": "Enter your password",
       "forms.collect_user_info.actions.submit.label": "Sign Up",
       "forms.email.title": "Sign Up",
       "forms.email.fields.email.label": "Email",
@@ -235,7 +249,9 @@
       "forms.otp.description": "Enter the verification code sent to your phone",
       "forms.otp.fields.otp.label": "Verification Code",
       "forms.otp.fields.otp.placeholder": "Enter code",
-      "forms.otp.actions.submit.label": "Verify"
+      "forms.otp.actions.submit.label": "Verify",
+      "forms.magic_link.email_sent.title": "Check Your Email",
+      "forms.magic_link.email_sent.description": "We sent you a verification link. Please check your inbox and click the link to continue."
     },
     "recovery": {
       "forms.username.title": "Password Recovery",

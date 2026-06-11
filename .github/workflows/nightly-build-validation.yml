@@ -48,6 +48,12 @@ jobs:
       - name: ✅ Verify All Build Artifacts
         run: ./scripts/verify-build-artifacts.sh
 
+      - name: 📦 Set up pnpm
+        uses: ./.github/actions/setup-pnpm
+
+      - name: 📚 Build Documentation
+        run: make build_docs
+
       - name: ✅ Verify Docs Artifacts
         run: |
           if [ ! -d "docs/build" ] || [ -z "$(ls -A docs/build)" ]; then

@@ -19,6 +19,7 @@
 package declarativeresource
 
 import (
+	"context"
 	"errors"
 
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
@@ -119,7 +120,8 @@ func (s *GenericFileBasedStore) ClearByType() error {
 
 // LogTypeAssertionError logs a type assertion error.
 func LogTypeAssertionError(resourceType, id string) {
-	log.GetLogger().Error("Type assertion failed while retrieving resource",
+	// Declarative resource ID extraction runs during startup loading, outside any request.
+	log.GetLogger().Error(context.Background(), "Type assertion failed while retrieving resource",
 		log.String("resourceType", resourceType),
 		log.String("id", id))
 }

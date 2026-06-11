@@ -63,6 +63,7 @@ export default function () {
 
       // @emotion/css calls document.createElement at module init, which fails
       // in Node.js SSR. Alias it to a no-op shim for the server build only.
+      // dompurify requires a DOM environment and fails to initialize in Node.js SSR.
       if (isServer) {
         return {
           ...baseConfig,
@@ -70,6 +71,7 @@ export default function () {
             alias: {
               '@emotion/css': path.resolve(__dirname, 'shims/emotion-css.cjs'),
               '@thunderid/react': thunderidReactShim,
+              'dompurify': path.resolve(__dirname, 'shims/dompurify.cjs'),
             },
           },
         };

@@ -146,6 +146,7 @@ func (authzRS *authorizationRequestStore) getJSONDataBytes(authRequestCtx authRe
 		jsonKeyState:               authRequestCtx.OAuthParameters.State,
 		jsonKeyClientID:            authRequestCtx.OAuthParameters.ClientID,
 		jsonKeyRedirectURI:         authRequestCtx.OAuthParameters.RedirectURI,
+		jsonKeyRedirectURIProvided: authRequestCtx.OAuthParameters.RedirectURIProvided,
 		jsonKeyResponseType:        authRequestCtx.OAuthParameters.ResponseType,
 		jsonKeyStandardScopes:      authRequestCtx.OAuthParameters.StandardScopes,
 		jsonKeyPermissionScopes:    authRequestCtx.OAuthParameters.PermissionScopes,
@@ -200,6 +201,9 @@ func (authzRS *authorizationRequestStore) buildAuthRequestContextFromResultRow(
 	}
 	if redirectURI, ok := requestDataMap[jsonKeyRedirectURI].(string); ok {
 		oauthParams.RedirectURI = redirectURI
+	}
+	if redirectURIProvided, ok := requestDataMap[jsonKeyRedirectURIProvided].(bool); ok {
+		oauthParams.RedirectURIProvided = redirectURIProvided
 	}
 	if responseType, ok := requestDataMap[jsonKeyResponseType].(string); ok {
 		oauthParams.ResponseType = responseType

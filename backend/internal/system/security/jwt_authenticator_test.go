@@ -486,7 +486,7 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_Disabled() {
 		map[string]interface{}{"sub": "user1", "iss": testFederatedIssuer},
 	)
 
-	result := suite.authenticator.verifyFederatedToken(token)
+	result := suite.authenticator.verifyFederatedToken(context.Background(), token)
 	assert.False(suite.T(), result)
 }
 
@@ -512,7 +512,7 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_IssuerMismatch(
 		map[string]interface{}{"sub": "user1", "iss": "https://wrong-auth:8090"},
 	)
 
-	result := suite.authenticator.verifyFederatedToken(token)
+	result := suite.authenticator.verifyFederatedToken(context.Background(), token)
 	assert.False(suite.T(), result)
 }
 
@@ -543,10 +543,10 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_JWKSVerificatio
 	)
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	mockJWT.On("VerifyJWTWithJWKS", token, jwksURL, audience, issuer).Return(nil)
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(nil)
 	auth := newJWTAuthenticator(mockJWT)
 
-	result := auth.verifyFederatedToken(token)
+	result := auth.verifyFederatedToken(context.Background(), token)
 	assert.True(suite.T(), result)
 	mockJWT.AssertExpectations(suite.T())
 }
@@ -578,14 +578,14 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_JWKSVerificatio
 	)
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	mockJWT.On("VerifyJWTWithJWKS", token, jwksURL, audience, issuer).Return(&serviceerror.ServiceError{
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(&serviceerror.ServiceError{
 		Type:  serviceerror.ServerErrorType,
 		Code:  "JWKS_ERROR",
 		Error: i18ncore.I18nMessage{DefaultValue: "JWKS verification failed"},
 	})
 	auth := newJWTAuthenticator(mockJWT)
 
-	result := auth.verifyFederatedToken(token)
+	result := auth.verifyFederatedToken(context.Background(), token)
 	assert.False(suite.T(), result)
 	mockJWT.AssertExpectations(suite.T())
 }
@@ -674,10 +674,10 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_RequiredClaims(
 			)
 
 			mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
-			mockJWT.On("VerifyJWTWithJWKS", token, jwksURL, audience, issuer).Return(nil)
+			mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(nil)
 			auth := newJWTAuthenticator(mockJWT)
 
-			result := auth.verifyFederatedToken(token)
+			result := auth.verifyFederatedToken(context.Background(), token)
 			assert.Equal(suite.T(), tc.expectedResult, result)
 			mockJWT.AssertExpectations(suite.T())
 		})
@@ -742,7 +742,7 @@ func (suite *JWTAuthenticatorTestSuite) TestVerifyFederatedToken_InvalidPayload(
 			mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 			auth := newJWTAuthenticator(mockJWT)
 
-			result := auth.verifyFederatedToken(tc.token)
+			result := auth.verifyFederatedToken(context.Background(), tc.token)
 			assert.False(suite.T(), result, "malformed token must not verify")
 			mockJWT.AssertNotCalled(suite.T(), "VerifyJWTWithJWKS")
 		})
@@ -784,7 +784,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenFailure()
 	)
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
-	mockJWT.On("VerifyJWTWithJWKS", token, jwksURL, audience, issuer).Return(&serviceerror.ServiceError{
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(&serviceerror.ServiceError{
 		Type:  serviceerror.ServerErrorType,
 		Code:  "JWKS_ERROR",
 		Error: i18ncore.I18nMessage{DefaultValue: "JWKS verification failed"},
@@ -834,7 +834,7 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_FederatedTokenSuccess()
 
 	mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	// When trusted issuer is configured, the local-key path is skipped entirely.
-	mockJWT.On("VerifyJWTWithJWKS", token, jwksURL, audience, issuer).Return(nil)
+	mockJWT.On("VerifyJWTWithJWKS", mock.Anything, token, jwksURL, audience, issuer).Return(nil)
 	auth := newJWTAuthenticator(mockJWT)
 
 	req := httptest.NewRequest(http.MethodGet, "/users", nil)

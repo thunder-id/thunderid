@@ -1,6 +1,7 @@
 package publisher
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -70,7 +71,7 @@ func TestCategoryPublisher_SmartPublishing(t *testing.T) {
 	}
 
 	// Publish event with NO subscribers - should be skipped
-	pub.Publish(evt)
+	pub.Publish(context.Background(), evt)
 
 	// Give it time to process
 	time.Sleep(50 * time.Millisecond)
@@ -93,7 +94,7 @@ func TestCategoryPublisher_SmartPublishing(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	pub.Publish(evt2)
+	pub.Publish(context.Background(), evt2)
 
 	// Give it time to process
 	time.Sleep(100 * time.Millisecond)
@@ -142,7 +143,7 @@ func TestCategoryPublisher_CategoryRouting(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	pub.Publish(authEvent)
+	pub.Publish(context.Background(), authEvent)
 
 	// Publish token event
 	tokenEvent := &event.Event{
@@ -153,7 +154,7 @@ func TestCategoryPublisher_CategoryRouting(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	pub.Publish(tokenEvent)
+	pub.Publish(context.Background(), tokenEvent)
 
 	// Give it time to process
 	time.Sleep(100 * time.Millisecond)
@@ -288,7 +289,7 @@ func TestCategoryPublisher_MultipleSubscribersPerCategory(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	pub.Publish(evt)
+	pub.Publish(context.Background(), evt)
 
 	// Give it time to process
 	time.Sleep(100 * time.Millisecond)
@@ -310,7 +311,7 @@ func TestCategoryPublisher_PublishNilEvent(t *testing.T) {
 	defer pub.Shutdown()
 
 	// Should not panic
-	pub.Publish(nil)
+	pub.Publish(context.Background(), nil)
 }
 
 func TestCategoryPublisher_PublishInvalidEvent(t *testing.T) {
@@ -324,7 +325,7 @@ func TestCategoryPublisher_PublishInvalidEvent(t *testing.T) {
 	}
 
 	// Should not panic, should be rejected
-	pub.Publish(invalidEvt)
+	pub.Publish(context.Background(), invalidEvt)
 }
 
 func TestCategoryPublisher_PublishAfterShutdown(t *testing.T) {
@@ -349,7 +350,7 @@ func TestCategoryPublisher_PublishAfterShutdown(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	pub.Publish(evt)
+	pub.Publish(context.Background(), evt)
 
 	// Give it time (should not process)
 	time.Sleep(50 * time.Millisecond)
@@ -397,7 +398,7 @@ func TestCategoryPublisher_SubscriberPanic(t *testing.T) {
 	}
 
 	// Should not crash the publisher
-	pub.Publish(evt)
+	pub.Publish(context.Background(), evt)
 
 	// Give it time to process
 	time.Sleep(100 * time.Millisecond)
@@ -426,7 +427,7 @@ func TestCategoryPublisher_SubscriberError(t *testing.T) {
 		Timestamp: time.Now(),
 	}
 
-	pub.Publish(evt)
+	pub.Publish(context.Background(), evt)
 
 	// Give it time to process
 	time.Sleep(100 * time.Millisecond)
@@ -609,7 +610,7 @@ func TestCategoryPublisher_AsyncNonBlocking(t *testing.T) {
 
 	// Measure time taken for Publish to return
 	start := time.Now()
-	pub.Publish(evt)
+	pub.Publish(context.Background(), evt)
 	elapsed := time.Since(start)
 
 	// It should return almost instantly, definitely much faster than the 200ms sleep

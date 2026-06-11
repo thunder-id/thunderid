@@ -19,6 +19,7 @@
 package subscriber
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
@@ -65,6 +66,9 @@ func (fs *FileSubscriber) IsEnabled() bool {
 
 // Initialize sets up the file subscriber with the provided configuration.
 func (fs *FileSubscriber) Initialize() error {
+	// Subscriber initialization runs during application startup, outside any request.
+	ctx := context.Background()
+
 	// Get config from observability service
 	fileConfig := config.GetServerRuntime().Config.Observability.Output.File
 
@@ -80,7 +84,7 @@ func (fs *FileSubscriber) Initialize() error {
 
 	if fs.adapter != nil {
 		if err := fs.adapter.Close(); err != nil {
-			fs.logger.Warn("failed to close existing file adapter", log.Error(err))
+			fs.logger.Warn(ctx, "failed to close existing file adapter", log.Error(err))
 		}
 	}
 	// Create file adapter using the Initialize pattern
@@ -105,7 +109,7 @@ func (fs *FileSubscriber) Initialize() error {
 	fs.adapter = adptr
 	fs.logger = log.GetLogger().With(log.String(log.LoggerKeyComponentName, fileSubscriberComponentName))
 
-	fs.logger.Debug("File subscriber initialized",
+	fs.logger.Debug(ctx, "File subscriber initialized",
 		log.String("filePath", filePath),
 		log.String("format", fileConfig.Format),
 		log.Int("categories", len(fs.categories)))
@@ -134,20 +138,23 @@ func (fs *FileSubscriber) OnEvent(evt *event.Event) error {
 
 // Close closes the subscriber and releases resources.
 func (fs *FileSubscriber) Close() error {
-	fs.logger.Info("Closing file subscriber", log.String("subscriberID", fs.id))
+	// Subscriber shutdown runs during application teardown, outside any request.
+	ctx := context.Background()
+
+	fs.logger.Info(ctx, "Closing file subscriber", log.String("subscriberID", fs.id))
 
 	// Flush and close adapter
 	if fs.adapter != nil {
 		if err := fs.adapter.Flush(); err != nil {
-			fs.logger.Error("Failed to flush file adapter", log.Error(err))
+			fs.logger.Error(ctx, "Failed to flush file adapter", log.Error(err))
 		}
 
 		if err := fs.adapter.Close(); err != nil {
-			fs.logger.Error("Failed to close file adapter", log.Error(err))
+			fs.logger.Error(ctx, "Failed to close file adapter", log.Error(err))
 			return err
 		}
 	}
 
-	fs.logger.Info("File subscriber closed", log.String("subscriberID", fs.id))
+	fs.logger.Info(ctx, "File subscriber closed", log.String("subscriberID", fs.id))
 	return nil
 }

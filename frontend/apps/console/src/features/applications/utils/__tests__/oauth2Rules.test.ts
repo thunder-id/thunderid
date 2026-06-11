@@ -160,6 +160,36 @@ describe('applyTokenEndpointAuthMethodChange', () => {
     const updates = applyTokenEndpointAuthMethodChange(baseConfig(), TokenEndpointAuthMethods.CLIENT_SECRET_POST);
     expect(updates.publicClient).toBeUndefined();
   });
+
+  it('clears certificate when switching away from private_key_jwt', () => {
+    const updates = applyTokenEndpointAuthMethodChange(
+      baseConfig({
+        tokenEndpointAuthMethod: TokenEndpointAuthMethods.PRIVATE_KEY_JWT,
+        certificate: {type: 'JWKS_URI', value: 'https://example.com/jwks'},
+      }),
+      TokenEndpointAuthMethods.CLIENT_SECRET_BASIC,
+    );
+    expect(updates.certificate).toBeNull();
+  });
+
+  it('does not clear certificate when staying on private_key_jwt', () => {
+    const updates = applyTokenEndpointAuthMethodChange(
+      baseConfig({
+        tokenEndpointAuthMethod: TokenEndpointAuthMethods.PRIVATE_KEY_JWT,
+        certificate: {type: 'JWKS_URI', value: 'https://example.com/jwks'},
+      }),
+      TokenEndpointAuthMethods.PRIVATE_KEY_JWT,
+    );
+    expect(updates.certificate).toBeUndefined();
+  });
+
+  it('does not clear certificate when switching between non-private_key_jwt methods', () => {
+    const updates = applyTokenEndpointAuthMethodChange(
+      baseConfig({tokenEndpointAuthMethod: TokenEndpointAuthMethods.CLIENT_SECRET_BASIC}),
+      TokenEndpointAuthMethods.CLIENT_SECRET_POST,
+    );
+    expect(updates.certificate).toBeUndefined();
+  });
 });
 
 describe('isGrantItemDisabled', () => {

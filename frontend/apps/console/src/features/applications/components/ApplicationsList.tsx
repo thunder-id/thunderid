@@ -20,7 +20,7 @@ import {ResourceAvatar} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
-import {Box, Chip, IconButton, Tooltip, Typography, ListingTable, DataGrid, useTheme} from '@wso2/oxygen-ui';
+import {Box, Chip, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
 import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -31,7 +31,6 @@ import type {BasicApplication} from '../models/application';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
 
 export default function ApplicationsList(): JSX.Element {
-  const theme = useTheme();
   const navigate = useNavigate();
   const {config} = useConfig();
   const {t} = useTranslation();
@@ -171,7 +170,7 @@ export default function ApplicationsList(): JSX.Element {
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, systemConsoleClientId, t, theme],
+    [handleDeleteClick, handleEditClick, systemConsoleClientId, t],
   );
 
   if (error) {

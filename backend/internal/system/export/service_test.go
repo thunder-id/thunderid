@@ -1152,7 +1152,7 @@ type MockParameterizer struct {
 	errorMsg   string
 }
 
-func (m *MockParameterizer) ToParameterizedYAML(obj interface{},
+func (m *MockParameterizer) ToParameterizedYAML(_ context.Context, obj interface{},
 	resourceType string, resourceName string,
 	rules *declarativeresource.ResourceRules) (string, map[string]string, error) {
 	if m.shouldFail {

@@ -258,6 +258,19 @@ export const DefaultThemeConfig = {
       defaultProps: {
         size: 'small',
       },
+      styleOverrides: {
+        option: {
+          '&.Mui-focused, &[data-focus="true"]': {
+            backgroundColor: 'var(--oxygen-palette-action-hover) !important',
+          },
+          '&[aria-selected="true"]': {
+            backgroundColor: 'var(--oxygen-palette-action-selected) !important',
+          },
+          '&[aria-selected="true"].Mui-focused, &[aria-selected="true"][data-focus="true"]': {
+            backgroundColor: 'var(--oxygen-palette-action-selected) !important',
+          },
+        },
+      },
     },
     MuiDataGrid: {
       styleOverrides: {

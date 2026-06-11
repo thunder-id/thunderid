@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -517,4 +518,15 @@ func WaitAndValidateNotification(mockServer interface{}, expectedCount int, time
 // GenerateUniqueUsername generates a unique username using the given prefix
 func GenerateUniqueUsername(prefix string) string {
 	return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
+}
+
+var magicLinkTokenRegex = regexp.MustCompile(`token=([^"&<\s]+)`)
+
+// ExtractMagicLinkToken extracts the magic link token from the email body.
+func ExtractMagicLinkToken(e *testutils.EmailMessage) string {
+	match := magicLinkTokenRegex.FindStringSubmatch(e.Body)
+	if len(match) != 2 {
+		return ""
+	}
+	return match[1]
 }

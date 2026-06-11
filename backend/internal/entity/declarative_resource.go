@@ -19,6 +19,7 @@
 package entity
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -105,7 +106,8 @@ func loadDeclarativeResources(
 	idExtractor := func(data interface{}) string {
 		resource, ok := data.(*entityStoreEntry)
 		if !ok {
-			logger.Error("IDExtractor: type assertion failed for entityStoreEntry")
+			// Declarative resource loading runs at startup, outside any request.
+			logger.Error(context.Background(), "IDExtractor: type assertion failed for entityStoreEntry")
 			return ""
 		}
 		if config.IDExtractor != nil {

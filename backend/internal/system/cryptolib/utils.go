@@ -80,19 +80,20 @@ func ecdhComputeSharedSecretForRecipient(
 }
 
 // ecdhConcatKDF implements the Concat KDF (RFC 7518 Section 4.6.2) using SHA-256.
-func ecdhConcatKDF(z []byte, algID string, keyLen int) ([]byte, error) {
+// apu and apv are the raw (already base64url-decoded) header values; pass nil when absent.
+func ecdhConcatKDF(z []byte, algID string, keyLen int, apu, apv []byte) ([]byte, error) {
 	suppPubInfo := make([]byte, 4)
 	binary.BigEndian.PutUint32(suppPubInfo, uint32(uint64(keyLen)*8)) // nolint:gosec // G115
 
 	algorithmIDBytes := lengthPrefixedBytes([]byte(algID))
-	partyUInfo := lengthPrefixedBytes(nil)
-	partyVInfo := lengthPrefixedBytes(nil)
-	suppPrivInfo := lengthPrefixedBytes(nil)
+	partyUInfo := lengthPrefixedBytes(apu)
+	partyVInfo := lengthPrefixedBytes(apv)
 
+	// OtherInfo per RFC 7518 §4.6.2: AlgID || PartyUInfo || PartyVInfo || SuppPubInfo
+	// SuppPrivInfo is empty and must not be included.
 	otherInfo := append(algorithmIDBytes, partyUInfo...) // nolint:gocritic
 	otherInfo = append(otherInfo, partyVInfo...)
 	otherInfo = append(otherInfo, suppPubInfo...)
-	otherInfo = append(otherInfo, suppPrivInfo...)
 
 	key := make([]byte, 0, keyLen)
 	for counter := uint32(1); len(key) < keyLen; counter++ {

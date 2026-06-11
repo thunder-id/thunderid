@@ -28,7 +28,7 @@ Each domain package under `internal/` follows a flat structure:
 
 - **File naming**: `snake_case` (e.g., `error_constants.go`)
 - **Exports**: Only export service interface and models used in service. Keep implementations, constants, queries unexported.
-- **Logging**: Use `log` package from `internal/system`. Avoid PII; use `MaskString` for sensitive data.
+- **Logging**: Use the `log` package from `internal/system`. Pass the request `context.Context` as the first argument to the logging methods (e.g. `Info(ctx, …)`/`Error(ctx, …)`) so entries carry the correlation (trace) ID. For non-request code (startup, shutdown, detached goroutines), pass `context.Background()` — or `context.WithoutCancel(ctx)` to keep the trace ID across a goroutine — with a short comment explaining why no request context is available. Avoid PII; use `MaskString` for sensitive data.
 
 ## Mock Generation
 

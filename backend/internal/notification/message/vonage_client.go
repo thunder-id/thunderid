@@ -20,6 +20,7 @@ package message
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,7 +47,7 @@ type VonageClient struct {
 }
 
 // NewVonageClient creates a new instance of VonageClient.
-func NewVonageClient(sender common.NotificationSenderDTO) (NotificationClientInterface, error) {
+func NewVonageClient(ctx context.Context, sender common.NotificationSenderDTO) (NotificationClientInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, vonageLoggerComponentName))
 
 	client := &VonageClient{}
@@ -67,7 +68,7 @@ func NewVonageClient(sender common.NotificationSenderDTO) (NotificationClientInt
 		case common.VonagePropKeySenderID:
 			client.senderID = value
 		default:
-			logger.Warn("Unknown property for Vonage client", log.String("property", prop.GetName()))
+			logger.Warn(ctx, "Unknown property for Vonage client", log.String("property", prop.GetName()))
 		}
 	}
 	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
@@ -86,19 +87,19 @@ func (v *VonageClient) IsChannelSupported(channel common.ChannelType) bool {
 }
 
 // Send dispatches a notification via the requested channel.
-func (v *VonageClient) Send(channel common.ChannelType, data common.NotificationData) error {
+func (v *VonageClient) Send(ctx context.Context, channel common.ChannelType, data common.NotificationData) error {
 	switch channel {
 	case common.ChannelTypeSMS:
-		return v.sendSMS(data)
+		return v.sendSMS(ctx, data)
 	default:
 		return fmt.Errorf("unsupported channel: %s", channel)
 	}
 }
 
 // sendSMS sends an SMS via the Vonage API.
-func (v *VonageClient) sendSMS(data common.NotificationData) error {
+func (v *VonageClient) sendSMS(ctx context.Context, data common.NotificationData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, vonageLoggerComponentName))
-	logger.Debug("Sending SMS via Vonage", log.MaskedString("to", data.Recipient))
+	logger.Debug(ctx, "Sending SMS via Vonage", log.MaskedString("to", data.Recipient))
 
 	formattedPhoneNumber := v.formatPhoneNumber(data.Recipient)
 
@@ -133,15 +134,15 @@ func (v *VonageClient) sendSMS(data common.NotificationData) error {
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.Error("Failed to close response body", log.Error(closeErr))
+			logger.Error(ctx, "Failed to close response body", log.Error(closeErr))
 		}
 	}()
 
-	logger.Debug("Received response from Vonage", log.Int("statusCode", resp.StatusCode))
+	logger.Debug(ctx, "Received response from Vonage", log.Int("statusCode", resp.StatusCode))
 
 	if resp.StatusCode != http.StatusAccepted {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		logger.Error("Failed to send SMS via Vonage", log.Int("statusCode", resp.StatusCode),
+		logger.Error(ctx, "Failed to send SMS via Vonage", log.Int("statusCode", resp.StatusCode),
 			log.String("response", string(bodyBytes)))
 		return fmt.Errorf("vonage SMS send failed, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
 	}

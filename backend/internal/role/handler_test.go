@@ -20,6 +20,7 @@ package role
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -739,7 +740,7 @@ func (suite *RoleHandlerTestSuite) TestHandleError_ClientAndServerErrors() {
 	suite.T().Run("Client_NotFound", func(t *testing.T) {
 		w := httptest.NewRecorder()
 
-		handleError(w, &ErrorRoleNotFound)
+		handleError(context.Background(), w, &ErrorRoleNotFound)
 
 		suite.Equal(http.StatusNotFound, w.Code)
 		var resp apierror.ErrorResponse
@@ -751,7 +752,7 @@ func (suite *RoleHandlerTestSuite) TestHandleError_ClientAndServerErrors() {
 	suite.T().Run("ServerError", func(t *testing.T) {
 		w := httptest.NewRecorder()
 
-		handleError(w, &serviceerror.InternalServerError)
+		handleError(context.Background(), w, &serviceerror.InternalServerError)
 
 		suite.Equal(http.StatusInternalServerError, w.Code)
 		var resp apierror.ErrorResponse

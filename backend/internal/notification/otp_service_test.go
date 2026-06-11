@@ -325,9 +325,9 @@ func (suite *OTPServiceTestSuite) TestSendOTP_Success() {
 
 	mm := messagemock.NewNotificationClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
-	mm.EXPECT().Send(common.ChannelTypeSMS, mock.Anything).Return(nil).Once()
+	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(nil).Once()
 	cp := newNotificationClientProviderInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything).Return(mm, nil).Once()
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 	suite.service.clientProvider = cp
 
 	suite.mockJWTService.EXPECT().GenerateJWT(mock.Anything, mock.Anything, mock.Anything,
@@ -354,9 +354,9 @@ func (suite *OTPServiceTestSuite) TestSendOTP_SendSMSError() {
 
 	mm := messagemock.NewNotificationClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
-	mm.EXPECT().Send(common.ChannelTypeSMS, mock.Anything).Return(errors.New("send failed")).Once()
+	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(errors.New("send failed")).Once()
 	cp := newNotificationClientProviderInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything).Return(mm, nil).Once()
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 	suite.service.clientProvider = cp
 
 	res, err := suite.service.SendOTP(context.Background(), req)
@@ -380,9 +380,9 @@ func (suite *OTPServiceTestSuite) TestSendOTP_GenerateJWTError() {
 
 	mm := messagemock.NewNotificationClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
-	mm.EXPECT().Send(common.ChannelTypeSMS, mock.Anything).Return(nil).Once()
+	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS, mock.Anything).Return(nil).Once()
 	cp := newNotificationClientProviderInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything).Return(mm, nil).Once()
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 	suite.service.clientProvider = cp
 
 	suite.mockJWTService.EXPECT().GenerateJWT(
@@ -474,7 +474,7 @@ func (suite *OTPServiceTestSuite) TestSendOTP_ClientProviderError() {
 
 	// client provider returns a service error
 	cp := newNotificationClientProviderInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything).Return(nil, &serviceerror.InternalServerError).Once()
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(nil, &serviceerror.InternalServerError).Once()
 	suite.service.clientProvider = cp
 
 	res, err := suite.service.SendOTP(context.Background(), req)
@@ -500,7 +500,7 @@ func (suite *OTPServiceTestSuite) TestSendOTP_ClientChannelNotSupported() {
 	mm := messagemock.NewNotificationClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(false).Once()
 	cp := newNotificationClientProviderInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything).Return(mm, nil).Once()
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 	suite.service.clientProvider = cp
 
 	res, err := suite.service.SendOTP(context.Background(), req)
@@ -637,10 +637,11 @@ func (suite *OTPServiceTestSuite) TestSendOTP_TemplateRenderSuccess_UsesRendered
 
 	mm := messagemock.NewNotificationClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Once()
-	mm.EXPECT().Send(common.ChannelTypeSMS, common.NotificationData{Recipient: "+15559876543", Body: renderedBody}).
+	mm.EXPECT().Send(mock.Anything, common.ChannelTypeSMS,
+		common.NotificationData{Recipient: "+15559876543", Body: renderedBody}).
 		Return(nil).Once()
 	cp := newNotificationClientProviderInterfaceMock(suite.T())
-	cp.EXPECT().GetClient(mock.Anything).Return(mm, nil).Once()
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 	suite.service.clientProvider = cp
 
 	suite.mockJWTService.EXPECT().GenerateJWT(mock.Anything, mock.Anything, mock.Anything,

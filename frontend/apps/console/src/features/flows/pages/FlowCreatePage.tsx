@@ -17,18 +17,8 @@
  */
 
 import {useLogger} from '@thunderid/logger/react';
-import {
-  Alert,
-  Box,
-  Breadcrumbs,
-  Button,
-  CircularProgress,
-  IconButton,
-  LinearProgress,
-  Stack,
-  Typography,
-} from '@wso2/oxygen-ui';
-import {ChevronRight, X} from '@wso2/oxygen-ui-icons-react';
+import {Alert, Box, Button, CircularProgress, IconButton, LinearProgress, Stack} from '@wso2/oxygen-ui';
+import {X} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -40,6 +30,7 @@ import SelectFlowTemplate from '../components/create-flow/SelectFlowTemplate';
 import SelectFlowType from '../components/create-flow/SelectFlowType';
 import type {FlowType} from '../models/flows';
 import type {FlowTemplate} from '../models/templates';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 
 const FlowCreateStep = {
   TYPE: 'TYPE',
@@ -75,11 +66,7 @@ export default function FlowCreatePage(): JSX.Element {
   );
 
   const handleClose = (): void => {
-    (async () => {
-      await navigate('/flows');
-    })().catch((_error: unknown) => {
-      logger.error('Failed to navigate to flows page', {error: _error});
-    });
+    void navigate('/flows');
   };
 
   const handleNextStep = (): void => {
@@ -188,20 +175,13 @@ export default function FlowCreatePage(): JSX.Element {
             >
               <X size={24} />
             </IconButton>
-            <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb">
-              {getBreadcrumbSteps().map((step, index, array) => {
-                const isLast = index === array.length - 1;
-                return isLast ? (
-                  <Typography key={step} variant="h5" color="text.primary">
-                    {steps[step].label}
-                  </Typography>
-                ) : (
-                  <Typography key={step} variant="h5" onClick={() => setCurrentStep(step)} sx={{cursor: 'pointer'}}>
-                    {steps[step].label}
-                  </Typography>
-                );
-              })}
-            </Breadcrumbs>
+            <AppBreadcrumbs
+              items={getBreadcrumbSteps().map((step, index, array) => ({
+                key: step,
+                label: steps[step].label,
+                onClick: index < array.length - 1 ? () => setCurrentStep(step) : undefined,
+              }))}
+            />
           </Stack>
         </Box>
 

@@ -52,6 +52,7 @@ import (
 // nolint:gosec // Test token, not a real credential
 const testJWTToken = "test-jwt-token-123"
 const testResourceURL = "https://mcp.example.com/mcp"
+const testEntityID = "agent-entity-123"
 
 type ClientCredentialsGrantHandlerTestSuite struct {
 	suite.Suite
@@ -108,7 +109,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 		Return([]entityprovider.EntityGroup{}, nil).Maybe()
 
 	suite.oauthApp = &inboundmodel.OAuthClient{
-		ID:                      "app123",
+		ID:                      testEntityID,
 		ClientID:                testClientID,
 		RedirectURIs:            []string{"https://example.com/callback"},
 		GrantTypes:              []constants.GrantType{constants.GrantTypeClientCredentials},
@@ -205,7 +206,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Success() {
 			suite.mockTokenBuilder.On("BuildAccessToken",
 				mock.Anything,
 				mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
-					return ctx.Subject == testClientID &&
+					return ctx.Subject == testEntityID &&
 						(len(ctx.Audiences) > 0 && ctx.Audiences[0] == testClientID) &&
 						ctx.ClientID == testClientID &&
 						tokenservice.JoinScopes(ctx.Scopes) == tokenservice.JoinScopes(tc.expectedScopes)
@@ -216,7 +217,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Success() {
 				ExpiresIn: 3600,
 				Scopes:    tc.expectedScopes,
 				ClientID:  testClientID,
-				Subject:   testClientID,
+				Subject:   testEntityID,
 				Audiences: []string{testClientID},
 			}, nil)
 
@@ -230,8 +231,9 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Success() {
 			assert.Equal(t, tc.expectedScopes, result.AccessToken.Scopes)
 			assert.Equal(t, testClientID, result.AccessToken.ClientID)
 
-			// Verify token attributes
-			assert.Equal(t, testClientID, result.AccessToken.Subject)
+			// The sub claim must be the resource entity ID, not the OAuth client_id.
+			assert.Equal(t, testEntityID, result.AccessToken.Subject)
+			assert.NotEqual(t, result.AccessToken.ClientID, result.AccessToken.Subject)
 			assert.Contains(t, result.AccessToken.Audiences, testClientID)
 
 			suite.mockTokenBuilder.AssertExpectations(t)
@@ -287,7 +289,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NilTokenAtt
 	expectedToken := testJWTToken
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
-			return ctx.Subject == testClientID && (len(ctx.Audiences) > 0 && ctx.Audiences[0] == testClientID) &&
+			return ctx.Subject == testEntityID && (len(ctx.Audiences) > 0 && ctx.Audiences[0] == testClientID) &&
 				tokenservice.JoinScopes(ctx.Scopes) == testScopeRead
 		})).Return(&model.TokenDTO{
 		Token:     expectedToken,
@@ -296,7 +298,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NilTokenAtt
 		ExpiresIn: 3600,
 		Scopes:    []string{"read"},
 		ClientID:  "client123",
-		Subject:   testClientID,
+		Subject:   testEntityID,
 		Audiences: []string{testClientID},
 	}, nil)
 
@@ -306,8 +308,8 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NilTokenAtt
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), expectedToken, result.AccessToken.Token)
 
-	// Verify token attributes
-	assert.Equal(suite.T(), testClientID, result.AccessToken.Subject)
+	// The sub claim must be the resource entity ID, not the OAuth client_id.
+	assert.Equal(suite.T(), testEntityID, result.AccessToken.Subject)
 	assert.Contains(suite.T(), result.AccessToken.Audiences, testClientID)
 
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
@@ -418,7 +420,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_WithResourc
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
 		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
 			capturedAudiences = ctx.Audiences
-			return ctx.Subject == testClientID &&
+			return ctx.Subject == testEntityID &&
 				len(ctx.Audiences) == 1 &&
 				ctx.Audiences[0] == "https://mcp.example.com/mcp"
 		})).Return(&model.TokenDTO{
@@ -428,7 +430,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_WithResourc
 		ExpiresIn: 3600,
 		Scopes:    []string{"read"},
 		ClientID:  "client123",
-		Subject:   testClientID,
+		Subject:   testEntityID,
 		Audiences: []string{"https://mcp.example.com/mcp"},
 	}, nil)
 
@@ -463,7 +465,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_WithoutReso
 			if len(ctx.Audiences) > 0 {
 				capturedAudience = ctx.Audiences[0]
 			}
-			return ctx.Subject == testClientID && (len(ctx.Audiences) > 0 && ctx.Audiences[0] == testClientID)
+			return ctx.Subject == testEntityID && (len(ctx.Audiences) > 0 && ctx.Audiences[0] == testClientID)
 		})).Return(&model.TokenDTO{
 		Token:     testJWTToken,
 		TokenType: constants.TokenTypeBearer,
@@ -471,7 +473,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_WithoutReso
 		ExpiresIn: 3600,
 		Scopes:    []string{"read"},
 		ClientID:  "client123",
-		Subject:   testClientID,
+		Subject:   testEntityID,
 		Audiences: []string{testClientID},
 	}, nil)
 
@@ -676,7 +678,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 		ExpiresIn: 3600,
 		Scopes:    []string{"r1:s1"},
 		ClientID:  testClientID,
-		Subject:   testClientID,
+		Subject:   testEntityID,
 		Audiences: []string{rsIdentifier},
 	}, nil)
 
@@ -742,7 +744,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 		ExpiresIn: 3600,
 		Scopes:    []string{"r1:s1"},
 		ClientID:  testClientID,
-		Subject:   testClientID,
+		Subject:   testEntityID,
 		Audiences: []string{rsIdentifier1, rsIdentifier2},
 	}, nil)
 

@@ -22,7 +22,9 @@ package jws
 import (
 	"crypto"
 	"crypto/ecdh"
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
@@ -91,7 +93,7 @@ func JWKToPublicKey(jwk map[string]interface{}) (crypto.PublicKey, error) {
 	case "RSA":
 		return jwkToRSAPublicKey(jwk)
 	case "EC":
-		return JWKToECPublicKey(jwk)
+		return jwkToECDSAPublicKey(jwk)
 	case "OKP":
 		return jwkToOKPPublicKey(jwk)
 	default:
@@ -125,8 +127,8 @@ func jwkToRSAPublicKey(jwk map[string]interface{}) (*rsa.PublicKey, error) {
 	return &rsa.PublicKey{N: n, E: int(e)}, nil
 }
 
-// JWKToECPublicKey converts a JWK to an EC public key.
-func JWKToECPublicKey(jwk map[string]interface{}) (*ecdh.PublicKey, error) {
+// jwkToECDSAPublicKey converts a JWK to an ECDSA public key for JWS signature verification.
+func jwkToECDSAPublicKey(jwk map[string]interface{}) (*ecdsa.PublicKey, error) {
 	crv, crvOK := jwk["crv"].(string)
 	xStr, xOK := jwk["x"].(string)
 	yStr, yOK := jwk["y"].(string)
@@ -134,9 +136,18 @@ func JWKToECPublicKey(jwk map[string]interface{}) (*ecdh.PublicKey, error) {
 		return nil, errors.New("JWK missing EC parameters")
 	}
 
-	curve, expectedKeySize, err := getECCurveInfo(crv)
-	if err != nil {
-		return nil, err
+	var curve elliptic.Curve
+	var ecdhCurve ecdh.Curve
+	var expectedKeySize int
+	switch crv {
+	case P256:
+		curve, ecdhCurve, expectedKeySize = elliptic.P256(), ecdh.P256(), 32
+	case P384:
+		curve, ecdhCurve, expectedKeySize = elliptic.P384(), ecdh.P384(), 48
+	case P521:
+		curve, ecdhCurve, expectedKeySize = elliptic.P521(), ecdh.P521(), 66
+	default:
+		return nil, fmt.Errorf("unsupported EC curve: %s", crv)
 	}
 
 	xBytes, err := base64.RawURLEncoding.DecodeString(xStr)
@@ -152,28 +163,20 @@ func JWKToECPublicKey(jwk map[string]interface{}) (*ecdh.PublicKey, error) {
 		return nil, errors.New("invalid EC coordinate length")
 	}
 
-	// Construct the uncompressed point encoding: 0x04 || x || y
-	uncompressed := make([]byte, 1+len(xBytes)+len(yBytes))
-	uncompressed[0] = 0x04 // uncompressed point marker
+	// Use crypto/ecdh to validate the point is on the curve.
+	uncompressed := make([]byte, 1+2*expectedKeySize)
+	uncompressed[0] = 0x04
 	copy(uncompressed[1:], xBytes)
-	copy(uncompressed[1+len(xBytes):], yBytes)
-
-	// NewPublicKey performs on-curve validation automatically
-	return curve.NewPublicKey(uncompressed)
-}
-
-// getECCurveInfo returns the elliptic curve and expected key size for a given curve name.
-func getECCurveInfo(crv string) (ecdh.Curve, int, error) {
-	switch crv {
-	case P256:
-		return ecdh.P256(), 32, nil
-	case P384:
-		return ecdh.P384(), 48, nil
-	case P521:
-		return ecdh.P521(), 66, nil
-	default:
-		return nil, 0, fmt.Errorf("unsupported EC curve: %s", crv)
+	copy(uncompressed[1+expectedKeySize:], yBytes)
+	if _, err := ecdhCurve.NewPublicKey(uncompressed); err != nil {
+		return nil, errors.New("point not on curve")
 	}
+
+	return &ecdsa.PublicKey{
+		Curve: curve,
+		X:     new(big.Int).SetBytes(xBytes),
+		Y:     new(big.Int).SetBytes(yBytes),
+	}, nil
 }
 
 // jwkToOKPPublicKey converts a JWK to an OKP public key.

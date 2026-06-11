@@ -19,6 +19,7 @@
 package idp
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -46,7 +47,7 @@ func GetPropertyValue(properties []cmodels.Property, name string) string {
 }
 
 // validateIDP validates the identity provider details.
-func validateIDP(idp *IDPDTO, logger *log.Logger) *serviceerror.ServiceError {
+func validateIDP(ctx context.Context, idp *IDPDTO, logger *log.Logger) *serviceerror.ServiceError {
 	if idp == nil {
 		return &ErrorIDPNil
 	}
@@ -64,7 +65,7 @@ func validateIDP(idp *IDPDTO, logger *log.Logger) *serviceerror.ServiceError {
 	}
 
 	// Validate and apply default properties based on IDP type
-	updatedProperties, svcErr := validateIDPProperties(idp.Type, idp.Properties, logger)
+	updatedProperties, svcErr := validateIDPProperties(ctx, idp.Type, idp.Properties, logger)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -74,11 +75,12 @@ func validateIDP(idp *IDPDTO, logger *log.Logger) *serviceerror.ServiceError {
 }
 
 // validateIDPProperties validates the properties of the identity provider based on its type.
-func validateIDPProperties(idpType IDPType, properties []cmodels.Property, logger *log.Logger) (
-	[]cmodels.Property, *serviceerror.ServiceError) {
+func validateIDPProperties(ctx context.Context, idpType IDPType, properties []cmodels.Property,
+	logger *log.Logger) ([]cmodels.Property, *serviceerror.ServiceError) {
 	config, exists := idpPropertyConfigs[idpType]
 	if !exists {
-		logger.Error("No property configuration found for IDP type", log.String("idpType", string(idpType)))
+		logger.Error(ctx, "No property configuration found for IDP type",
+			log.String("idpType", string(idpType)))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -143,7 +145,8 @@ func validateIDPProperties(idpType IDPType, properties []cmodels.Property, logge
 	// Apply default properties
 	for propName, defaultValue := range config.Defaults {
 		if _, exists := filteredPropsMap[propName]; !exists {
-			if err := createAndAppendProperty(filteredPropsMap, propName, defaultValue, false, logger); err != nil {
+			err := createAndAppendProperty(ctx, filteredPropsMap, propName, defaultValue, false, logger)
+			if err != nil {
 				return nil, err
 			}
 		}
@@ -151,7 +154,7 @@ func validateIDPProperties(idpType IDPType, properties []cmodels.Property, logge
 
 	// Ensure openid scope for OIDC and Google IDPs
 	if idpType == IDPTypeOIDC || idpType == IDPTypeGoogle {
-		if err := ensureOpenIDScope(filteredPropsMap, logger); err != nil {
+		if err := ensureOpenIDScope(ctx, filteredPropsMap, logger); err != nil {
 			return nil, err
 		}
 	}
@@ -160,10 +163,11 @@ func validateIDPProperties(idpType IDPType, properties []cmodels.Property, logge
 }
 
 // ensureOpenIDScope ensures that the openid scope is present in the scopes property.
-func ensureOpenIDScope(propertyMap map[string]cmodels.Property, logger *log.Logger) *serviceerror.ServiceError {
+func ensureOpenIDScope(ctx context.Context, propertyMap map[string]cmodels.Property,
+	logger *log.Logger) *serviceerror.ServiceError {
 	scopesProp, exists := propertyMap[PropScopes]
 	if !exists {
-		err := createAndAppendProperty(propertyMap, PropScopes, "openid", false, logger)
+		err := createAndAppendProperty(ctx, propertyMap, PropScopes, "openid", false, logger)
 		if err != nil {
 			return err
 		}
@@ -188,7 +192,7 @@ func ensureOpenIDScope(propertyMap map[string]cmodels.Property, logger *log.Logg
 	scopes = filteredScopes
 
 	if len(scopes) == 0 {
-		err := createAndAppendProperty(propertyMap, PropScopes, "openid", false, logger)
+		err := createAndAppendProperty(ctx, propertyMap, PropScopes, "openid", false, logger)
 		if err != nil {
 			return err
 		}
@@ -198,7 +202,7 @@ func ensureOpenIDScope(propertyMap map[string]cmodels.Property, logger *log.Logg
 		scopes = append(scopes, "openid")
 		updatedScopes := sysutils.StringifyStringArray(scopes, ",")
 		if err := createAndAppendProperty(
-			propertyMap, PropScopes, updatedScopes, scopesProp.IsSecret(), logger); err != nil {
+			ctx, propertyMap, PropScopes, updatedScopes, scopesProp.IsSecret(), logger); err != nil {
 			return err
 		}
 	}
@@ -207,12 +211,12 @@ func ensureOpenIDScope(propertyMap map[string]cmodels.Property, logger *log.Logg
 }
 
 // createAndAppendProperty creates a new property and appends it to the property map.
-func createAndAppendProperty(propertyMap map[string]cmodels.Property,
+func createAndAppendProperty(ctx context.Context, propertyMap map[string]cmodels.Property,
 	name, value string, isSecret bool, logger *log.Logger,
 ) *serviceerror.ServiceError {
 	prop, err := cmodels.NewProperty(name, value, isSecret)
 	if err != nil {
-		logger.Error("Failed to create property", log.String("propertyName", name), log.Error(err))
+		logger.Error(ctx, "Failed to create property", log.String("propertyName", name), log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	propertyMap[name] = *prop

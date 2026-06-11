@@ -52,6 +52,7 @@ const TechnologyBasedApplicationTemplateMetadata: ApplicationTemplateMetadata<Te
     titleKey: 'applications:onboarding.configure.stack.technology.react.title',
     descriptionKey: 'applications:onboarding.configure.stack.technology.react.description',
     template: ReactTemplate as ApplicationTemplate,
+    categories: ['web'],
   },
   {
     value: TechnologyApplicationTemplate.EXPRESS,
@@ -67,6 +68,7 @@ const TechnologyBasedApplicationTemplateMetadata: ApplicationTemplateMetadata<Te
     titleKey: 'applications:onboarding.configure.stack.technology.express.title',
     descriptionKey: 'applications:onboarding.configure.stack.technology.express.description',
     template: ExpressTemplate as ApplicationTemplate,
+    categories: ['backend'],
   },
   {
     value: TechnologyApplicationTemplate.NEXTJS,
@@ -99,6 +101,7 @@ const TechnologyBasedApplicationTemplateMetadata: ApplicationTemplateMetadata<Te
     titleKey: 'applications:onboarding.configure.stack.technology.nextjs.title',
     descriptionKey: 'applications:onboarding.configure.stack.technology.nextjs.description',
     template: NextJSTemplate as ApplicationTemplate,
+    categories: ['web', 'backend'],
   },
   {
     value: TechnologyApplicationTemplate.VANILLA_JS,
@@ -111,6 +114,7 @@ const TechnologyBasedApplicationTemplateMetadata: ApplicationTemplateMetadata<Te
     titleKey: 'applications:onboarding.configure.stack.technology.vanillaJs.title',
     descriptionKey: 'applications:onboarding.configure.stack.technology.vanillaJs.description',
     template: VanillaJSTemplate as ApplicationTemplate,
+    categories: ['web'],
   },
   {
     value: TechnologyApplicationTemplate.VUE,
@@ -123,6 +127,7 @@ const TechnologyBasedApplicationTemplateMetadata: ApplicationTemplateMetadata<Te
     titleKey: 'applications:onboarding.configure.stack.technology.vue.title',
     descriptionKey: 'applications:onboarding.configure.stack.technology.vue.description',
     template: VueTemplate as ApplicationTemplate,
+    categories: ['web'],
   },
   {
     value: TechnologyApplicationTemplate.NUXT,
@@ -137,6 +142,7 @@ const TechnologyBasedApplicationTemplateMetadata: ApplicationTemplateMetadata<Te
     titleKey: 'applications:onboarding.configure.stack.technology.nuxt.title',
     descriptionKey: 'applications:onboarding.configure.stack.technology.nuxt.description',
     template: NuxtTemplate as ApplicationTemplate,
+    categories: ['web', 'backend'],
   },
   {
     value: TechnologyApplicationTemplate.NODEJS,
@@ -155,6 +161,7 @@ const TechnologyBasedApplicationTemplateMetadata: ApplicationTemplateMetadata<Te
     titleKey: 'applications:onboarding.configure.stack.technology.nodejs.title',
     descriptionKey: 'applications:onboarding.configure.stack.technology.nodejs.description',
     template: NodeTemplate as ApplicationTemplate,
+    categories: ['backend'],
   },
 ];
 

@@ -403,7 +403,7 @@ func TestWriteSecurityError(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			writeSecurityError(w, tc.err)
+			writeSecurityError(context.Background(), w, tc.err)
 
 			assert.Equal(t, tc.expectedStatus, w.Code)
 			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))

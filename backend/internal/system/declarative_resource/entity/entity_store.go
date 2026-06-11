@@ -48,6 +48,7 @@ const (
 	KeyTypeTemplate           KeyType = "template"
 	KeyTypeEntity             KeyType = "entity"
 	KeyTypeInboundAuth        KeyType = "inbound-auth"
+	KeyTypeGroup              KeyType = "group"
 )
 
 // String returns the string representation of KeyType
@@ -61,7 +62,7 @@ func (kt KeyType) IsValid() bool {
 	case KeyTypeApplication, KeyTypeNotification, KeyTypeIDP, KeyTypeNotificationSender,
 		KeyTypeEntityType, KeyTypeOU, KeyTypeFlow, KeyTypeTranslation, KeyTypeTheme, KeyTypeLayout,
 		KeyTypeResourceServer, KeyTypeResource, KeyTypeAction, KeyTypeRole, KeyTypeUser, KeyTypeTemplate,
-		KeyTypeInboundAuth,
+		KeyTypeInboundAuth, KeyTypeGroup,
 		KeyTypeEntity:
 		return true
 	default:

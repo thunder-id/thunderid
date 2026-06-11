@@ -20,6 +20,7 @@ package authz
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -547,7 +548,7 @@ func (suite *AuthorizeHandlerTestSuite) TestRedirectToErrorPage_NilRequest() {
 
 func (suite *AuthorizeHandlerTestSuite) TestWriteAuthZResponseToErrorPage_WithState() {
 	rr := httptest.NewRecorder()
-	suite.handler.writeAuthZResponseToErrorPage(rr, "error_code", "error message", "test-state")
+	suite.handler.writeAuthZResponseToErrorPage(context.Background(), rr, "error_code", "error message", "test-state")
 
 	assert.Equal(suite.T(), http.StatusOK, rr.Code)
 	var resp AuthZPostResponse
@@ -558,7 +559,7 @@ func (suite *AuthorizeHandlerTestSuite) TestWriteAuthZResponseToErrorPage_WithSt
 
 func (suite *AuthorizeHandlerTestSuite) TestWriteAuthZResponseToErrorPage_NoState() {
 	rr := httptest.NewRecorder()
-	suite.handler.writeAuthZResponseToErrorPage(rr, "error_code", "error message", "")
+	suite.handler.writeAuthZResponseToErrorPage(context.Background(), rr, "error_code", "error message", "")
 
 	assert.Equal(suite.T(), http.StatusOK, rr.Code)
 	var resp AuthZPostResponse
@@ -571,7 +572,7 @@ func (suite *AuthorizeHandlerTestSuite) TestWriteAuthZResponseToErrorPage_NoStat
 func (suite *AuthorizeHandlerTestSuite) TestWriteAuthZResponse() {
 	rr := httptest.NewRecorder()
 
-	suite.handler.writeAuthZResponse(rr, "https://example.com/callback?code=abc123")
+	suite.handler.writeAuthZResponse(context.Background(), rr, "https://example.com/callback?code=abc123")
 
 	assert.Equal(suite.T(), http.StatusOK, rr.Code)
 	assert.Equal(suite.T(), "application/json", rr.Header().Get("Content-Type"))

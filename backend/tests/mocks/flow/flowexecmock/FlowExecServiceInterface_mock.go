@@ -145,6 +145,76 @@ func (_c *FlowExecServiceInterfaceMock_Execute_Call) RunAndReturn(run func(ctx c
 	return _c
 }
 
+// InitiateAndExecute provides a mock function for the type FlowExecServiceInterfaceMock
+func (_mock *FlowExecServiceInterfaceMock) InitiateAndExecute(ctx context.Context, initContext *flowexec.FlowInitContext) (*flowexec.FlowStep, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, initContext)
+
+	if len(ret) == 0 {
+		panic("no return value specified for InitiateAndExecute")
+	}
+
+	var r0 *flowexec.FlowStep
+	var r1 *serviceerror.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *flowexec.FlowInitContext) (*flowexec.FlowStep, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, initContext)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *flowexec.FlowInitContext) *flowexec.FlowStep); ok {
+		r0 = returnFunc(ctx, initContext)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*flowexec.FlowStep)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *flowexec.FlowInitContext) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, initContext)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// FlowExecServiceInterfaceMock_InitiateAndExecute_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'InitiateAndExecute'
+type FlowExecServiceInterfaceMock_InitiateAndExecute_Call struct {
+	*mock.Call
+}
+
+// InitiateAndExecute is a helper method to define mock.On call
+//   - ctx context.Context
+//   - initContext *flowexec.FlowInitContext
+func (_e *FlowExecServiceInterfaceMock_Expecter) InitiateAndExecute(ctx interface{}, initContext interface{}) *FlowExecServiceInterfaceMock_InitiateAndExecute_Call {
+	return &FlowExecServiceInterfaceMock_InitiateAndExecute_Call{Call: _e.mock.On("InitiateAndExecute", ctx, initContext)}
+}
+
+func (_c *FlowExecServiceInterfaceMock_InitiateAndExecute_Call) Run(run func(ctx context.Context, initContext *flowexec.FlowInitContext)) *FlowExecServiceInterfaceMock_InitiateAndExecute_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *flowexec.FlowInitContext
+		if args[1] != nil {
+			arg1 = args[1].(*flowexec.FlowInitContext)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *FlowExecServiceInterfaceMock_InitiateAndExecute_Call) Return(flowStep *flowexec.FlowStep, serviceError *serviceerror.ServiceError) *FlowExecServiceInterfaceMock_InitiateAndExecute_Call {
+	_c.Call.Return(flowStep, serviceError)
+	return _c
+}
+
+func (_c *FlowExecServiceInterfaceMock_InitiateAndExecute_Call) RunAndReturn(run func(ctx context.Context, initContext *flowexec.FlowInitContext) (*flowexec.FlowStep, *serviceerror.ServiceError)) *FlowExecServiceInterfaceMock_InitiateAndExecute_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // InitiateFlow provides a mock function for the type FlowExecServiceInterfaceMock
 func (_mock *FlowExecServiceInterfaceMock) InitiateFlow(ctx context.Context, initContext *flowexec.FlowInitContext) (string, *serviceerror.ServiceError) {
 	ret := _mock.Called(ctx, initContext)

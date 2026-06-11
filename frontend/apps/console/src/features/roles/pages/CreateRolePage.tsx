@@ -18,18 +18,8 @@
 
 import {useHasMultipleOUs} from '@thunderid/configure-organization-units';
 import {useLogger} from '@thunderid/logger/react';
-import {
-  Box,
-  Stack,
-  Typography,
-  Button,
-  IconButton,
-  LinearProgress,
-  Breadcrumbs,
-  Alert,
-  Snackbar,
-} from '@wso2/oxygen-ui';
-import {X, ChevronRight} from '@wso2/oxygen-ui-icons-react';
+import {Box, Stack, Typography, Button, IconButton, LinearProgress, Alert, Snackbar} from '@wso2/oxygen-ui';
+import {X} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useMemo} from 'react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -40,6 +30,7 @@ import ConfigureOrganizationUnit from '../components/create-role/ConfigureOrgani
 import useRoleCreate from '../contexts/RoleCreate/useRoleCreate';
 import type {CreateRoleRequest} from '../models/requests';
 import {RoleCreateFlowStep} from '../models/role-create-flow';
+import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 
 export default function CreateRolePage(): JSX.Element {
   const navigate = useNavigate();
@@ -81,11 +72,7 @@ export default function CreateRolePage(): JSX.Element {
 
   const handleClose = (): void => {
     if (createRole.isPending) return;
-    (async (): Promise<void> => {
-      await navigate(listUrl);
-    })().catch((_error: unknown) => {
-      logger.error('Failed to navigate back to roles list', {error: _error});
-    });
+    void navigate(listUrl);
   };
 
   const handleStepReadyChange = useCallback((step: RoleCreateFlowStep, isReady: boolean): void => {
@@ -207,34 +194,13 @@ export default function CreateRolePage(): JSX.Element {
               >
                 <X size={24} />
               </IconButton>
-              <Breadcrumbs separator={<ChevronRight size={16} />} aria-label="breadcrumb">
-                {getBreadcrumbSteps().map((step, index, array) => {
-                  const isLast = index === array.length - 1;
-                  return isLast ? (
-                    <Typography key={step} variant="h5" color="text.primary">
-                      {steps[step]?.label}
-                    </Typography>
-                  ) : (
-                    <Typography
-                      key={step}
-                      variant="h5"
-                      color="inherit"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => setCurrentStep(step)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setCurrentStep(step);
-                        }
-                      }}
-                      sx={{cursor: 'pointer', '&:hover': {textDecoration: 'underline'}}}
-                    >
-                      {steps[step]?.label}
-                    </Typography>
-                  );
-                })}
-              </Breadcrumbs>
+              <AppBreadcrumbs
+                items={getBreadcrumbSteps().map((step, index, array) => ({
+                  key: step,
+                  label: steps[step]?.label ?? step,
+                  onClick: index < array.length - 1 ? () => setCurrentStep(step) : undefined,
+                }))}
+              />
             </Stack>
           </Box>
 

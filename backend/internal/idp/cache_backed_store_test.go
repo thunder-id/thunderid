@@ -398,3 +398,31 @@ func (s *CacheBackedIDPStoreTestSuite) TestDeleteIdentityProvider_InnerDeleteErr
 	s.idCache.AssertNotCalled(s.T(), "Delete")
 	s.propertyCache.AssertNotCalled(s.T(), "Delete")
 }
+
+func (s *CacheBackedIDPStoreTestSuite) TestCacheIDP_SetError() {
+	idp := &IDPDTO{ID: "idp-set-err", Name: "Set Err IDP", Type: IDPTypeOIDC}
+
+	s.idCache.On("Set", mock.Anything, cache.CacheKey{Key: "idp-set-err"}, idp).
+		Return(errors.New("cache set failed"))
+
+	// The error is logged and swallowed; caching is best-effort.
+	s.cachedStore.cacheIDP(context.Background(), idp)
+
+	s.idCache.AssertCalled(s.T(), "Set", mock.Anything, cache.CacheKey{Key: "idp-set-err"}, idp)
+}
+
+func (s *CacheBackedIDPStoreTestSuite) TestInvalidateIDP_DeleteErrors() {
+	idp := makeIDPWithIssuer("idp-del-err", "Delete Err IDP", "https://idp.example.com")
+
+	s.idCache.On("Delete", mock.Anything, cache.CacheKey{Key: "idp-del-err"}).
+		Return(errors.New("cache delete failed"))
+	s.propertyCache.On("Delete", mock.Anything, cache.CacheKey{Key: PropIssuer + ":https://idp.example.com"}).
+		Return(errors.New("cache delete failed"))
+
+	// Errors are logged and swallowed; both invalidations are still attempted.
+	s.cachedStore.invalidateIDP(context.Background(), idp)
+
+	s.idCache.AssertCalled(s.T(), "Delete", mock.Anything, cache.CacheKey{Key: "idp-del-err"})
+	s.propertyCache.AssertCalled(s.T(), "Delete", mock.Anything,
+		cache.CacheKey{Key: PropIssuer + ":https://idp.example.com"})
+}

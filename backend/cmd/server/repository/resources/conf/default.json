@@ -241,5 +241,35 @@
   },
   "user_provider": {
     "type": "default"
+  },
+  "openid4vp": {
+    "client_id": "x509_hash:dev-placeholder",
+    "signing_key_id": "default-key",
+    "base_url": "https://localhost:8090",
+    "ephemeral_key_id": "vp-enc",
+    "response_enc_values": ["A128GCM"],
+    "request_audience": "https://self-issued.me/v2",
+    "request_validity_seconds": 300,
+    "state_ttl_seconds": 300,
+    "leeway_seconds": 30,
+    "key_binding_max_age_seconds": 300,
+    "result_token_validity_seconds": 300,
+    "presentation_definitions": [
+      {
+        "id": "eudi-pid",
+        "display_name": "EUDI Wallet PID",
+        "credential_id": "pid-sd-jwt",
+        "vct": "urn:eudi:pid:de:1",
+        "mandatory_claims": ["given_name", "family_name"],
+        "optional_claims": ["birthdate"],
+        "subject_claims": ["family_name", "given_name", "birthdate"],
+        "trusted_issuers": [
+          {
+            "issuer": "https://demo.pid-issuer.bundesdruckerei.de/c",
+            "cert_file": "repository/resources/security/signing.cert"
+          }
+        ]
+      }
+    ]
   }
 }

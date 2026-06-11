@@ -19,16 +19,17 @@
 package export
 
 import (
-	"github.com/stretchr/testify/mock"
-
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/mock"
 
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/application/model"
@@ -135,7 +136,7 @@ func (suite *HandlerTestSuite) TestGenerateAndSendZipResponse_Success() {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TestHandler"))
 
 	// Execute
-	err := suite.handler.generateAndSendZipResponse(w, logger, exportResponse)
+	err := suite.handler.generateAndSendZipResponse(context.Background(), w, logger, exportResponse)
 
 	// Assert no error
 	assert.NoError(suite.T(), err)
@@ -197,7 +198,7 @@ func (suite *HandlerTestSuite) testZipResponse(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TestHandler"))
 
 	// Execute
-	err := suite.handler.generateAndSendZipResponse(w, logger, exportResponse)
+	err := suite.handler.generateAndSendZipResponse(context.Background(), w, logger, exportResponse)
 
 	// Assert no error
 	assert.NoError(suite.T(), err)
@@ -260,7 +261,7 @@ func (suite *HandlerTestSuite) TestGenerateAndSendZipResponse_EmptyFiles() {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TestHandler"))
 
 	// Execute
-	err := suite.handler.generateAndSendZipResponse(w, logger, exportResponse)
+	err := suite.handler.generateAndSendZipResponse(context.Background(), w, logger, exportResponse)
 
 	// Assert no error (empty ZIP should be valid)
 	assert.NoError(suite.T(), err)
@@ -300,7 +301,7 @@ func (suite *HandlerTestSuite) TestGenerateAndSendZipResponse_LargeContent() {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "TestHandler"))
 
 	// Execute
-	err := suite.handler.generateAndSendZipResponse(w, logger, exportResponse)
+	err := suite.handler.generateAndSendZipResponse(context.Background(), w, logger, exportResponse)
 
 	// Assert no error
 	assert.NoError(suite.T(), err)
@@ -418,7 +419,7 @@ func TestGenerateAndSendZipResponse_Standalone(t *testing.T) {
 
 	// Execute
 	w := httptest.NewRecorder()
-	err = handler.generateAndSendZipResponse(w, logger, exportResponse)
+	err = handler.generateAndSendZipResponse(context.Background(), w, logger, exportResponse)
 
 	// Assert
 	assert.NoError(t, err)
@@ -738,7 +739,7 @@ func (suite *HandlerTestSuite) TestHandleError_ClientError() {
 	clientErr := &ErrorNoResourcesFound
 
 	// Execute
-	suite.handler.handleError(w, clientErr)
+	suite.handler.handleError(context.Background(), w, clientErr)
 
 	// Assert response
 	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
@@ -761,7 +762,7 @@ func (suite *HandlerTestSuite) TestHandleError_ServerError() {
 	serverErr := &serviceerror.InternalServerError
 
 	// Execute
-	suite.handler.handleError(w, serverErr)
+	suite.handler.handleError(context.Background(), w, serverErr)
 
 	// Assert response
 	assert.Equal(suite.T(), http.StatusInternalServerError, w.Code)
@@ -886,7 +887,7 @@ func BenchmarkGenerateAndSendZipResponse(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
-		_ = handler.generateAndSendZipResponse(w, logger, exportResponse)
+		_ = handler.generateAndSendZipResponse(context.Background(), w, logger, exportResponse)
 	}
 }
 

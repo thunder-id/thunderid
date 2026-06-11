@@ -76,7 +76,7 @@
                   "                        if (err) return reject('Execute flow failed: ' + err);",
                   "                        const execResp = res.json();",
                   "                        if (execResp.flowStatus !== 'COMPLETE' || !execResp.assertion) {",
-                  "                            return reject('Auth failed: ' + (execResp.failureReason || execResp.flowStatus));",
+                  "                            return reject('Auth failed: ' + (execResp.error?.message?.defaultValue || execResp.error?.description?.defaultValue || execResp.flowStatus));",
                   "                        }",
                   "                        console.log('✓ Step 3: Credentials verified');",
                   "",
@@ -3414,7 +3414,7 @@
                   "    pm.collectionVariables.set(\"auth_std_assertion\", resp.assertion);",
                   "    console.log(\"✓ Authentication complete, assertion obtained\");",
                   "} else {",
-                  "    console.log(\"✗ Authentication failed:\", resp.failureReason || resp.flowStatus);",
+                  "    console.log(\"✗ Authentication failed:\", resp.error?.message?.defaultValue || resp.error?.description?.defaultValue || resp.flowStatus);",
                   "}",
                   ""
                 ],

@@ -968,7 +968,12 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithPublicKey() {
 		suite.T().Run(tc.name, func(t *testing.T) {
 			token, pubKey, expectedAud, expectedIss := tc.setupFunc()
 
-			err := suite.jwtService.VerifyJWTWithPublicKey(token, pubKey, expectedAud, expectedIss)
+			err := suite.jwtService.VerifyJWTWithPublicKey(
+				context.Background(),
+				token,
+				pubKey,
+				expectedAud,
+				expectedIss)
 
 			if tc.expectError {
 				assert.NotNil(t, err)
@@ -1146,7 +1151,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTWithJWKS() {
 		suite.T().Run(tc.name, func(t *testing.T) {
 			token, jwksURL, expectedAud, expectedIss := tc.setupFunc()
 
-			err := suite.jwtService.VerifyJWTWithJWKS(token, jwksURL, expectedAud, expectedIss)
+			err := suite.jwtService.VerifyJWTWithJWKS(context.Background(), token, jwksURL, expectedAud, expectedIss)
 
 			if tc.expectError {
 				assert.NotNil(t, err)
@@ -1350,7 +1355,12 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTClaimsEdgeCases() {
 			token := tc.setupFunc(t)
 			publicKey := &suite.testPrivateKey.PublicKey
 
-			err := suite.jwtService.VerifyJWTWithPublicKey(token, publicKey, tc.expectedAud, tc.expectedIss)
+			err := suite.jwtService.VerifyJWTWithPublicKey(
+				context.Background(),
+				token,
+				publicKey,
+				tc.expectedAud,
+				tc.expectedIss)
 
 			if tc.expectError {
 				assert.NotNil(t, err)
@@ -1519,7 +1529,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKS() {
 	testServer := suite.mockJWKSServer()
 	defer testServer.Close()
 
-	err = suite.jwtService.VerifyJWTSignatureWithJWKS(token, testServer.URL)
+	err = suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, testServer.URL)
 	assert.Nil(suite.T(), err)
 }
 
@@ -1577,21 +1587,21 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSUsesCache() {
 	assert.Nil(suite.T(), genErr)
 
 	// 1. First call against serverA — cache miss, one fetch.
-	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(token, serverA.URL))
+	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, serverA.URL))
 	assert.Equal(suite.T(), int32(1), atomic.LoadInt32(&fetchCountA),
 		"first call to serverA should fetch JWKS once")
 	assert.Equal(suite.T(), int32(0), atomic.LoadInt32(&fetchCountB),
 		"serverB should not have been touched yet")
 
 	// 2. Second call against serverA — cache hit, no additional fetch.
-	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(token, serverA.URL))
+	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, serverA.URL))
 	assert.Equal(suite.T(), int32(1), atomic.LoadInt32(&fetchCountA),
 		"second call to serverA should hit the cache, not re-fetch")
 
 	// 3a. First call against serverB — must miss the cache (different URL key) and
 	//     fetch independently. A buggy cache that returns any entry would skip this
 	//     fetch and the count would stay at 0.
-	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(token, serverB.URL))
+	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, serverB.URL))
 	assert.Equal(suite.T(), int32(1), atomic.LoadInt32(&fetchCountB),
 		"first call to serverB should fetch independently (cache is keyed by URL)")
 	assert.Equal(suite.T(), int32(1), atomic.LoadInt32(&fetchCountA),
@@ -1599,7 +1609,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSUsesCache() {
 
 	// 3b. Going back to serverA must STILL be a cache hit — the serverB fetch must
 	//     not have evicted or overwritten serverA's cache entry.
-	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(token, serverA.URL))
+	assert.Nil(suite.T(), suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, serverA.URL))
 	assert.Equal(suite.T(), int32(1), atomic.LoadInt32(&fetchCountA),
 		"serverA's cache entry must survive an unrelated fetch of serverB")
 }
@@ -1620,7 +1630,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSInvalidToken() {
 
 	for _, tc := range testCases {
 		suite.T().Run(tc.name, func(t *testing.T) {
-			err := suite.jwtService.VerifyJWTSignatureWithJWKS(tc.token, testServer.URL)
+			err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), tc.token, testServer.URL)
 			assert.NotNil(t, err)
 		})
 	}
@@ -1636,7 +1646,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSKeyIDNotFound() 
 		"kid": "non-existent-key-id",
 	})
 
-	err := suite.jwtService.VerifyJWTSignatureWithJWKS(nonExistentKidJWT, testServer.URL)
+	err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), nonExistentKidJWT, testServer.URL)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), ErrorNoMatchingJWKFound, *err)
 }
@@ -1651,7 +1661,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSNoKeyID() {
 		// No kid field
 	})
 
-	err := suite.jwtService.VerifyJWTSignatureWithJWKS(noKidJWT, testServer.URL)
+	err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), noKidJWT, testServer.URL)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), ErrorDecodingJWTHeader, *err)
 }
@@ -1786,7 +1796,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSHTTPErrors() {
 
 			token := tc.setupToken()
 
-			err := suite.jwtService.VerifyJWTSignatureWithJWKS(token, testServer.URL)
+			err := suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, testServer.URL)
 			assert.NotNil(t, err)
 			assert.Equal(t, tc.expectedError, *err)
 		})
@@ -1799,7 +1809,7 @@ func (suite *JWTServiceTestSuite) TestVerifyJWTSignatureWithJWKSNetworkError() {
 		"test-subject", testIssuer, 3600, map[string]interface{}{"aud": testAudience}, TokenTypeJWT, "")
 	assert.Nil(suite.T(), err)
 
-	err = suite.jwtService.VerifyJWTSignatureWithJWKS(token, "http://localhost:99999/invalid")
+	err = suite.jwtService.VerifyJWTSignatureWithJWKS(context.Background(), token, "http://localhost:99999/invalid")
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), ErrorFailedToGetJWKS, *err)
 }

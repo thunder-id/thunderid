@@ -195,23 +195,35 @@ describe('RecoveryBox', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('shows flow error alert from onFlowChange with failureReason', () => {
+  it('shows flow error alert from onFlowChange with error', () => {
     render(<RecoveryBox />);
 
     expect(capturedOnFlowChange).toBeDefined();
     act(() => {
-      capturedOnFlowChange?.({failureReason: 'Invalid recovery code'});
+      capturedOnFlowChange?.({
+        error: {
+          code: 'FEE-60001',
+          message: {key: 'flows.errors.invalid_code', defaultValue: 'Invalid recovery code'},
+          description: {key: 'flows.errors.invalid_code.desc', defaultValue: 'Invalid recovery code'},
+        },
+      });
     });
 
     expect(screen.getByText('Invalid recovery code')).toBeInTheDocument();
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('clears flow error when onFlowChange has no failureReason', () => {
+  it('clears flow error when onFlowChange has no error', () => {
     render(<RecoveryBox />);
 
     act(() => {
-      capturedOnFlowChange?.({failureReason: 'Some error'});
+      capturedOnFlowChange?.({
+        error: {
+          code: 'FEE-60001',
+          message: {key: 'flows.errors.some', defaultValue: 'Some error'},
+          description: {key: 'flows.errors.some.desc', defaultValue: 'Some error'},
+        },
+      });
     });
     expect(screen.getByText('Some error')).toBeInTheDocument();
 
@@ -295,7 +307,13 @@ describe('RecoveryBox', () => {
     render(<RecoveryBox />);
 
     act(() => {
-      capturedOnFlowChange?.({failureReason: 'Account not found'});
+      capturedOnFlowChange?.({
+        error: {
+          code: 'FEE-60001',
+          message: {key: 'flows.errors.not_found', defaultValue: 'Account not found'},
+          description: {key: 'flows.errors.not_found.desc', defaultValue: 'Account not found'},
+        },
+      });
     });
 
     expect(screen.getByText('Account not found')).toBeInTheDocument();
@@ -309,7 +327,13 @@ describe('RecoveryBox', () => {
     render(<RecoveryBox />);
 
     act(() => {
-      capturedOnFlowChange?.({failureReason: 'Flow validation error'});
+      capturedOnFlowChange?.({
+        error: {
+          code: 'FEE-60001',
+          message: {key: 'flows.errors.validation', defaultValue: 'Flow validation error'},
+          description: {key: 'flows.errors.validation.desc', defaultValue: 'Flow validation error'},
+        },
+      });
     });
 
     expect(screen.getByText('Flow validation error')).toBeInTheDocument();

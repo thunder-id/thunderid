@@ -78,7 +78,7 @@ func (g *githubOAuthAuthnService) FetchUserInfo(ctx context.Context, idpID, acce
 		return nil, svcErr
 	}
 
-	userInfo, svcErr := g.internal.FetchUserInfoWithClientConfig(oAuthClientConfig, accessToken)
+	userInfo, svcErr := g.internal.FetchUserInfoWithClientConfig(ctx, oAuthClientConfig, accessToken)
 	if svcErr != nil {
 		return userInfo, svcErr
 	}
@@ -86,13 +86,13 @@ func (g *githubOAuthAuthnService) FetchUserInfo(ctx context.Context, idpID, acce
 	// If email is already present in the user info or email scope is not requested, return it directly.
 	email := authnoauth.GetStringUserClaimValue(userInfo, "email")
 	if email != "" || !g.shouldFetchEmail(oAuthClientConfig.Scopes) {
-		logger.Debug("Email is already present in the user info or email scope not requested")
+		logger.Debug(ctx, "Email is already present in the user info or email scope not requested")
 		authnoauth.ProcessSubClaim(userInfo)
 		return userInfo, nil
 	}
 
 	// Fetch primary email from the GitHub user emails endpoint.
-	primaryEmail, svcErr := g.fetchPrimaryEmail(oAuthClientConfig, accessToken)
+	primaryEmail, svcErr := g.fetchPrimaryEmail(ctx, oAuthClientConfig, accessToken)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -110,18 +110,18 @@ func (g *githubOAuthAuthnService) shouldFetchEmail(scopes []string) bool {
 }
 
 // fetchPrimaryEmail fetches the primary email of the user from the GitHub user emails endpoint.
-func (g *githubOAuthAuthnService) fetchPrimaryEmail(
+func (g *githubOAuthAuthnService) fetchPrimaryEmail(ctx context.Context,
 	oAuthClientConfig *authnoauth.OAuthClientConfig, accessToken string) (
 	string, *serviceerror.ServiceError) {
 	logger := g.logger
-	logger.Debug("Fetching primary email from GitHub user emails endpoint")
+	logger.Debug(ctx, "Fetching primary email from GitHub user emails endpoint")
 
 	if oAuthClientConfig.OAuthEndpoints.UserEmailEndpoint == "" {
-		logger.Error("User email endpoint is not configured in OAuth client config")
+		logger.Error(ctx, "User email endpoint is not configured in OAuth client config")
 		return "", &serviceerror.InternalServerError
 	}
 
-	req, svcErr := buildUserEmailRequest(oAuthClientConfig.OAuthEndpoints.UserEmailEndpoint, accessToken, logger)
+	req, svcErr := buildUserEmailRequest(ctx, oAuthClientConfig.OAuthEndpoints.UserEmailEndpoint, accessToken, logger)
 	if svcErr != nil {
 		return "", svcErr
 	}
@@ -143,8 +143,9 @@ func (g *githubOAuthAuthnService) fetchPrimaryEmail(
 }
 
 // GetInternalUser retrieves the internal user based on the external subject identifier.
-func (g *githubOAuthAuthnService) GetInternalUser(sub string) (*entityprovider.Entity, *serviceerror.ServiceError) {
-	return g.internal.GetInternalUser(sub)
+func (g *githubOAuthAuthnService) GetInternalUser(
+	ctx context.Context, sub string) (*entityprovider.Entity, *serviceerror.ServiceError) {
+	return g.internal.GetInternalUser(ctx, sub)
 }
 
 // GetOAuthClientConfig retrieves and validates the OAuth client configuration for the given identity provider ID.
@@ -159,7 +160,7 @@ func (g *githubOAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpI
 func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID, code string) (
 	*authncm.FederatedAuthResult, *serviceerror.ServiceError) {
 	logger := g.logger.With(log.String("idpId", idpID))
-	logger.Debug("Performing federated GitHub OAuth authentication")
+	logger.Debug(ctx, "Performing federated GitHub OAuth authentication")
 
 	tokenResp, svcErr := g.ExchangeCodeForToken(ctx, idpID, code, true)
 	if svcErr != nil {
@@ -178,7 +179,7 @@ func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID, code 
 		}
 	}
 	if sub == "" {
-		logger.Debug("sub claim not found in user info")
+		logger.Debug(ctx, "sub claim not found in user info")
 		return nil, &authncm.ErrorSubClaimNotFound
 	}
 
@@ -186,7 +187,7 @@ func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID, code 
 		Sub:    sub,
 		Claims: userInfo,
 	}
-	user, svcErr := g.GetInternalUser(sub)
+	user, svcErr := g.GetInternalUser(ctx, sub)
 	if svcErr != nil {
 		if svcErr.Code == authncm.ErrorUserNotFound.Code {
 			return result, nil

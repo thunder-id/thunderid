@@ -19,6 +19,7 @@
 package config
 
 import (
+	"context"
 	"net"
 	"net/url"
 	"strconv"
@@ -30,9 +31,10 @@ import (
 
 // ServerRuntime holds the runtime configuration for the server.
 type ServerRuntime struct {
-	ServerHome         string `yaml:"server_home"`
-	GateClientLoginURL *url.URL
-	Config             Config `yaml:"config"`
+	ServerHome            string `yaml:"server_home"`
+	GateClientLoginURL    *url.URL
+	GateClientCallbackURL *url.URL
+	Config                Config `yaml:"config"`
 }
 
 var (
@@ -47,6 +49,10 @@ func InitializeServerRuntime(serverHome string, config *Config) error {
 		if strings.TrimSpace(loginPath) == "" {
 			loginPath = "/signin"
 		}
+		callbackPath := config.GateClient.CallbackPath
+		if strings.TrimSpace(callbackPath) == "" {
+			callbackPath = "/callback"
+		}
 
 		portStr := strconv.Itoa(config.GateClient.Port)
 		hostWithPort := net.JoinHostPort(config.GateClient.Hostname, portStr)
@@ -58,7 +64,8 @@ func InitializeServerRuntime(serverHome string, config *Config) error {
 
 		parsedPath, err := url.Parse(loginPath)
 		if err != nil || parsedPath == nil {
-			log.GetLogger().Warn(
+			// Runtime initialization runs during application startup, outside any request.
+			log.GetLogger().Warn(context.Background(),
 				"Invalid gate client login path configured. Falling back to default '/signin'",
 				log.String("configuredPath", loginPath),
 				log.Error(err),
@@ -66,12 +73,25 @@ func InitializeServerRuntime(serverHome string, config *Config) error {
 			parsedPath = &url.URL{Path: "/signin"}
 		}
 
+		parsedCallbackPath, err := url.Parse(callbackPath)
+		if err != nil || parsedCallbackPath == nil {
+			// Runtime initialization runs during application startup, outside any request.
+			log.GetLogger().Warn(context.Background(),
+				"Invalid gate client callback path configured. Falling back to default '/callback'",
+				log.String("configuredPath", callbackPath),
+				log.Error(err),
+			)
+			parsedCallbackPath = &url.URL{Path: "/callback"}
+		}
+
 		parsedURL := baseURL.ResolveReference(parsedPath)
+		parsedCallbackURL := baseURL.ResolveReference(parsedCallbackPath)
 
 		runtimeConfig = &ServerRuntime{
-			ServerHome:         serverHome,
-			GateClientLoginURL: parsedURL,
-			Config:             *config,
+			ServerHome:            serverHome,
+			GateClientLoginURL:    parsedURL,
+			GateClientCallbackURL: parsedCallbackURL,
+			Config:                *config,
 		}
 	})
 	return nil

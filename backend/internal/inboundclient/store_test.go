@@ -112,7 +112,7 @@ func (suite *InboundClientStoreTestSuite) TestBuildInboundClientFromRow_Success(
 		"properties":                   string(blobBytes),
 	}
 
-	result, err := buildInboundClientFromRow(row)
+	result, err := buildInboundClientFromRow(context.Background(), row)
 
 	suite.NoError(err)
 	suite.NotNil(result)
@@ -138,7 +138,7 @@ func (suite *InboundClientStoreTestSuite) TestBuildInboundClientFromRow_InvalidI
 		"entity_id": 123, // Invalid type
 	}
 
-	result, err := buildInboundClientFromRow(row)
+	result, err := buildInboundClientFromRow(context.Background(), row)
 
 	suite.Error(err)
 	suite.Nil(result)
@@ -158,7 +158,7 @@ func (suite *InboundClientStoreTestSuite) TestBuildInboundClientFromRow_MinimalR
 		"properties":                   nil,
 	}
 
-	result, err := buildInboundClientFromRow(row)
+	result, err := buildInboundClientFromRow(context.Background(), row)
 
 	suite.NoError(err)
 	suite.NotNil(result)

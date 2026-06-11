@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -344,7 +344,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowSuccess() {
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful authentication")
-	ts.Require().Empty(completeFlowStep.FailureReason, "Failure reason should be empty for successful authentication")
+	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for successful authentication")
 
 	// Validate JWT assertion fields using common utility
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
@@ -384,7 +384,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowSuccessWithSingleRequest() {
 	ts.Require().Empty(flowStep.Data, "Flow should not require additional data after successful authentication")
 	ts.Require().NotEmpty(flowStep.Assertion,
 		"JWT assertion should be returned after successful authentication")
-	ts.Require().Empty(flowStep.FailureReason, "Failure reason should be empty for successful authentication")
+	ts.Require().Nil(flowStep.Error, "Error should be nil for successful authentication")
 
 	// Validate JWT assertion fields using common utility
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
@@ -453,7 +453,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowWithTwoStepInput() {
 	ts.Require().Equal("COMPLETE", completeFlowStep.FlowStatus, "Expected flow status to be COMPLETE")
 	ts.Require().NotEmpty(completeFlowStep.Assertion,
 		"JWT assertion should be returned after successful authentication")
-	ts.Require().Empty(completeFlowStep.FailureReason, "Failure reason should be empty for successful authentication")
+	ts.Require().Nil(completeFlowStep.Error, "Error should be nil for successful authentication")
 
 	// Validate JWT assertion fields using common utility
 	jwtClaims, err := testutils.ValidateJWTAssertionFields(
@@ -498,8 +498,8 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowInvalidCredentials() {
 		"Expected flow status to be INCOMPLETE for invalid credentials")
 	ts.Require().Equal("VIEW", completeFlowStep.Type, "Expected type to be VIEW for prompt re-display")
 	ts.Require().Empty(completeFlowStep.Assertion, "No JWT assertion should be returned for failed authentication")
-	ts.Require().NotEmpty(completeFlowStep.FailureReason,
-		"Failure reason should be provided for invalid credentials")
+	ts.Require().NotNil(completeFlowStep.Error,
+		"Error should be provided for invalid credentials")
 
 	// Verify both inputs are re-prompted (cleared after failure)
 	ts.Require().NotEmpty(completeFlowStep.Data, "Flow data should not be empty after re-prompt")
@@ -533,7 +533,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowRetryAfterInvalidCredentials(
 
 	// Verify we get INCOMPLETE (retryable) not ERROR
 	ts.Require().Equal("INCOMPLETE", retryFlowStep.FlowStatus, "Expected INCOMPLETE after invalid credentials")
-	ts.Require().NotEmpty(retryFlowStep.FailureReason, "Failure reason should be present")
+	ts.Require().NotNil(retryFlowStep.Error, "Error should be present")
 
 	// Step 3: Retry with valid credentials
 	validInputs := map[string]string{
@@ -551,7 +551,7 @@ func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowRetryAfterInvalidCredentials(
 	ts.Require().Equal("COMPLETE", successFlowStep.FlowStatus,
 		"Expected COMPLETE after retry with valid credentials")
 	ts.Require().NotEmpty(successFlowStep.Assertion, "JWT assertion should be returned on successful retry")
-	ts.Require().Empty(successFlowStep.FailureReason, "No failure reason on success")
+	ts.Require().Nil(successFlowStep.Error, "No error on success")
 }
 
 func (ts *BasicAuthFlowTestSuite) TestBasicAuthFlowInvalidAppID() {

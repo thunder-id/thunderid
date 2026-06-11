@@ -5,6 +5,7 @@
 package pkimock
 
 import (
+	"context"
 	"crypto"
 	"crypto/tls"
 	"crypto/x509"
@@ -41,8 +42,8 @@ func (_m *PKIServiceInterfaceMock) EXPECT() *PKIServiceInterfaceMock_Expecter {
 }
 
 // GetAllX509Certificates provides a mock function for the type PKIServiceInterfaceMock
-func (_mock *PKIServiceInterfaceMock) GetAllX509Certificates() (map[string]*x509.Certificate, *serviceerror.ServiceError) {
-	ret := _mock.Called()
+func (_mock *PKIServiceInterfaceMock) GetAllX509Certificates(ctx context.Context) (map[string]*x509.Certificate, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAllX509Certificates")
@@ -50,18 +51,18 @@ func (_mock *PKIServiceInterfaceMock) GetAllX509Certificates() (map[string]*x509
 
 	var r0 map[string]*x509.Certificate
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func() (map[string]*x509.Certificate, *serviceerror.ServiceError)); ok {
-		return returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (map[string]*x509.Certificate, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx)
 	}
-	if returnFunc, ok := ret.Get(0).(func() map[string]*x509.Certificate); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) map[string]*x509.Certificate); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(map[string]*x509.Certificate)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func() *serviceerror.ServiceError); ok {
-		r1 = returnFunc()
+	if returnFunc, ok := ret.Get(1).(func(context.Context) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -76,13 +77,20 @@ type PKIServiceInterfaceMock_GetAllX509Certificates_Call struct {
 }
 
 // GetAllX509Certificates is a helper method to define mock.On call
-func (_e *PKIServiceInterfaceMock_Expecter) GetAllX509Certificates() *PKIServiceInterfaceMock_GetAllX509Certificates_Call {
-	return &PKIServiceInterfaceMock_GetAllX509Certificates_Call{Call: _e.mock.On("GetAllX509Certificates")}
+//   - ctx context.Context
+func (_e *PKIServiceInterfaceMock_Expecter) GetAllX509Certificates(ctx interface{}) *PKIServiceInterfaceMock_GetAllX509Certificates_Call {
+	return &PKIServiceInterfaceMock_GetAllX509Certificates_Call{Call: _e.mock.On("GetAllX509Certificates", ctx)}
 }
 
-func (_c *PKIServiceInterfaceMock_GetAllX509Certificates_Call) Run(run func()) *PKIServiceInterfaceMock_GetAllX509Certificates_Call {
+func (_c *PKIServiceInterfaceMock_GetAllX509Certificates_Call) Run(run func(ctx context.Context)) *PKIServiceInterfaceMock_GetAllX509Certificates_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -92,7 +100,7 @@ func (_c *PKIServiceInterfaceMock_GetAllX509Certificates_Call) Return(stringToCe
 	return _c
 }
 
-func (_c *PKIServiceInterfaceMock_GetAllX509Certificates_Call) RunAndReturn(run func() (map[string]*x509.Certificate, *serviceerror.ServiceError)) *PKIServiceInterfaceMock_GetAllX509Certificates_Call {
+func (_c *PKIServiceInterfaceMock_GetAllX509Certificates_Call) RunAndReturn(run func(ctx context.Context) (map[string]*x509.Certificate, *serviceerror.ServiceError)) *PKIServiceInterfaceMock_GetAllX509Certificates_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -148,9 +156,62 @@ func (_c *PKIServiceInterfaceMock_GetCertThumbprint_Call) RunAndReturn(run func(
 	return _c
 }
 
-// GetPrivateKey provides a mock function for the type PKIServiceInterfaceMock
-func (_mock *PKIServiceInterfaceMock) GetPrivateKey(id string) (crypto.PrivateKey, *serviceerror.ServiceError) {
+// GetCertificateChain provides a mock function for the type PKIServiceInterfaceMock
+func (_mock *PKIServiceInterfaceMock) GetCertificateChain(id string) [][]byte {
 	ret := _mock.Called(id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetCertificateChain")
+	}
+
+	var r0 [][]byte
+	if returnFunc, ok := ret.Get(0).(func(string) [][]byte); ok {
+		r0 = returnFunc(id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([][]byte)
+		}
+	}
+	return r0
+}
+
+// PKIServiceInterfaceMock_GetCertificateChain_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCertificateChain'
+type PKIServiceInterfaceMock_GetCertificateChain_Call struct {
+	*mock.Call
+}
+
+// GetCertificateChain is a helper method to define mock.On call
+//   - id string
+func (_e *PKIServiceInterfaceMock_Expecter) GetCertificateChain(id interface{}) *PKIServiceInterfaceMock_GetCertificateChain_Call {
+	return &PKIServiceInterfaceMock_GetCertificateChain_Call{Call: _e.mock.On("GetCertificateChain", id)}
+}
+
+func (_c *PKIServiceInterfaceMock_GetCertificateChain_Call) Run(run func(id string)) *PKIServiceInterfaceMock_GetCertificateChain_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *PKIServiceInterfaceMock_GetCertificateChain_Call) Return(bytess [][]byte) *PKIServiceInterfaceMock_GetCertificateChain_Call {
+	_c.Call.Return(bytess)
+	return _c
+}
+
+func (_c *PKIServiceInterfaceMock_GetCertificateChain_Call) RunAndReturn(run func(id string) [][]byte) *PKIServiceInterfaceMock_GetCertificateChain_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetPrivateKey provides a mock function for the type PKIServiceInterfaceMock
+func (_mock *PKIServiceInterfaceMock) GetPrivateKey(ctx context.Context, id string) (crypto.PrivateKey, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetPrivateKey")
@@ -158,18 +219,18 @@ func (_mock *PKIServiceInterfaceMock) GetPrivateKey(id string) (crypto.PrivateKe
 
 	var r0 crypto.PrivateKey
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(string) (crypto.PrivateKey, *serviceerror.ServiceError)); ok {
-		return returnFunc(id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (crypto.PrivateKey, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) crypto.PrivateKey); ok {
-		r0 = returnFunc(id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) crypto.PrivateKey); ok {
+		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(crypto.PrivateKey)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *serviceerror.ServiceError); ok {
-		r1 = returnFunc(id)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -184,19 +245,25 @@ type PKIServiceInterfaceMock_GetPrivateKey_Call struct {
 }
 
 // GetPrivateKey is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
-func (_e *PKIServiceInterfaceMock_Expecter) GetPrivateKey(id interface{}) *PKIServiceInterfaceMock_GetPrivateKey_Call {
-	return &PKIServiceInterfaceMock_GetPrivateKey_Call{Call: _e.mock.On("GetPrivateKey", id)}
+func (_e *PKIServiceInterfaceMock_Expecter) GetPrivateKey(ctx interface{}, id interface{}) *PKIServiceInterfaceMock_GetPrivateKey_Call {
+	return &PKIServiceInterfaceMock_GetPrivateKey_Call{Call: _e.mock.On("GetPrivateKey", ctx, id)}
 }
 
-func (_c *PKIServiceInterfaceMock_GetPrivateKey_Call) Run(run func(id string)) *PKIServiceInterfaceMock_GetPrivateKey_Call {
+func (_c *PKIServiceInterfaceMock_GetPrivateKey_Call) Run(run func(ctx context.Context, id string)) *PKIServiceInterfaceMock_GetPrivateKey_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -207,7 +274,7 @@ func (_c *PKIServiceInterfaceMock_GetPrivateKey_Call) Return(privateKey crypto.P
 	return _c
 }
 
-func (_c *PKIServiceInterfaceMock_GetPrivateKey_Call) RunAndReturn(run func(id string) (crypto.PrivateKey, *serviceerror.ServiceError)) *PKIServiceInterfaceMock_GetPrivateKey_Call {
+func (_c *PKIServiceInterfaceMock_GetPrivateKey_Call) RunAndReturn(run func(ctx context.Context, id string) (crypto.PrivateKey, *serviceerror.ServiceError)) *PKIServiceInterfaceMock_GetPrivateKey_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -314,8 +381,8 @@ func (_c *PKIServiceInterfaceMock_GetTLSConfig_Call) RunAndReturn(run func() (*t
 }
 
 // GetX509Certificate provides a mock function for the type PKIServiceInterfaceMock
-func (_mock *PKIServiceInterfaceMock) GetX509Certificate(id string) (*x509.Certificate, *serviceerror.ServiceError) {
-	ret := _mock.Called(id)
+func (_mock *PKIServiceInterfaceMock) GetX509Certificate(ctx context.Context, id string) (*x509.Certificate, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetX509Certificate")
@@ -323,18 +390,18 @@ func (_mock *PKIServiceInterfaceMock) GetX509Certificate(id string) (*x509.Certi
 
 	var r0 *x509.Certificate
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(string) (*x509.Certificate, *serviceerror.ServiceError)); ok {
-		return returnFunc(id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*x509.Certificate, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string) *x509.Certificate); ok {
-		r0 = returnFunc(id)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *x509.Certificate); ok {
+		r0 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*x509.Certificate)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string) *serviceerror.ServiceError); ok {
-		r1 = returnFunc(id)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, id)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*serviceerror.ServiceError)
@@ -349,19 +416,25 @@ type PKIServiceInterfaceMock_GetX509Certificate_Call struct {
 }
 
 // GetX509Certificate is a helper method to define mock.On call
+//   - ctx context.Context
 //   - id string
-func (_e *PKIServiceInterfaceMock_Expecter) GetX509Certificate(id interface{}) *PKIServiceInterfaceMock_GetX509Certificate_Call {
-	return &PKIServiceInterfaceMock_GetX509Certificate_Call{Call: _e.mock.On("GetX509Certificate", id)}
+func (_e *PKIServiceInterfaceMock_Expecter) GetX509Certificate(ctx interface{}, id interface{}) *PKIServiceInterfaceMock_GetX509Certificate_Call {
+	return &PKIServiceInterfaceMock_GetX509Certificate_Call{Call: _e.mock.On("GetX509Certificate", ctx, id)}
 }
 
-func (_c *PKIServiceInterfaceMock_GetX509Certificate_Call) Run(run func(id string)) *PKIServiceInterfaceMock_GetX509Certificate_Call {
+func (_c *PKIServiceInterfaceMock_GetX509Certificate_Call) Run(run func(ctx context.Context, id string)) *PKIServiceInterfaceMock_GetX509Certificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
 		}
 		run(
 			arg0,
+			arg1,
 		)
 	})
 	return _c
@@ -372,7 +445,7 @@ func (_c *PKIServiceInterfaceMock_GetX509Certificate_Call) Return(certificate *x
 	return _c
 }
 
-func (_c *PKIServiceInterfaceMock_GetX509Certificate_Call) RunAndReturn(run func(id string) (*x509.Certificate, *serviceerror.ServiceError)) *PKIServiceInterfaceMock_GetX509Certificate_Call {
+func (_c *PKIServiceInterfaceMock_GetX509Certificate_Call) RunAndReturn(run func(ctx context.Context, id string) (*x509.Certificate, *serviceerror.ServiceError)) *PKIServiceInterfaceMock_GetX509Certificate_Call {
 	_c.Call.Return(run)
 	return _c
 }

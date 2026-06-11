@@ -56,21 +56,9 @@ Open `public/runtime.json` and set the application ID:
 
 ### 4. Start the Application
 
-**Pre-built (from distribution):**
-
-```bash
-# Linux/macOS
-sh start.sh
-
-# Windows
-.\start.ps1
-```
-
-**From source:**
-
 ```bash
 npm install
-npm run dev
+npm start
 ```
 
 > SSL certificates are required. Copy `server.key` and `server.cert` from your ThunderID distribution, or generate self-signed ones:

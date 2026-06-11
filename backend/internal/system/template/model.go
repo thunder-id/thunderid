@@ -42,6 +42,8 @@ const (
 	ScenarioOTP ScenarioType = "OTP"
 	// ScenarioPasswordRecovery represents the password recovery via email link scenario.
 	ScenarioPasswordRecovery ScenarioType = "PASSWORD_RECOVERY"
+	// ScenarioCIBANotification represents the CIBA backchannel authentication notification scenario.
+	ScenarioCIBANotification ScenarioType = "CIBA_NOTIFICATION"
 )
 
 // supportedScenarios contains all valid scenario types.
@@ -51,6 +53,7 @@ var supportedScenarios = map[ScenarioType]bool{
 	ScenarioSelfRegistration: true,
 	ScenarioOTP:              true,
 	ScenarioPasswordRecovery: true,
+	ScenarioCIBANotification: true,
 }
 
 // IsValidScenario checks if the given scenario type is supported.

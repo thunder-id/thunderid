@@ -31,7 +31,8 @@ import (
 )
 
 const (
-	testServerURL = "https://localhost:8095"
+	testServerURL                  = "https://localhost:8095"
+	systemResourceServerIdentifier = "https://localhost:8090/mcp"
 )
 
 var (
@@ -464,6 +465,22 @@ func (suite *ResourceServerAPITestSuite) TestCreateResourceServerWithVariousDeli
 		suite.Error(err, "Should reject %s delimiter", tc.description)
 		suite.Contains(err.Error(), "400", "Should return 400 for %s delimiter", tc.description)
 	}
+}
+
+func (suite *ResourceServerAPITestSuite) TestDefaultSystemResourceServerHasMCPIdentifier() {
+	list, err := listResourceServers(0, 100)
+	suite.Require().NoError(err)
+
+	var systemRS *ResourceServerResponse
+	for i := range list.ResourceServers {
+		if list.ResourceServers[i].Name == "System" {
+			systemRS = &list.ResourceServers[i]
+			break
+		}
+	}
+
+	suite.Require().NotNil(systemRS, "Default 'System' resource server should exist")
+	suite.Equal(systemResourceServerIdentifier, systemRS.Identifier)
 }
 
 // Helper functions

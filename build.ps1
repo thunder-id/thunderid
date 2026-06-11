@@ -121,22 +121,6 @@ if ([string]::IsNullOrEmpty($GO_ARCH)) {
 
 Write-Host "Using GO OS: $GO_OS and ARCH: $GO_ARCH"
 
-$SAMPLE_DIST_NODE_VERSION = "node18"
-$SAMPLE_DIST_OS = $GO_OS
-$SAMPLE_DIST_ARCH = $GO_ARCH
-
-# Transform OS for node packaging executor
-if ($SAMPLE_DIST_OS -eq "darwin") {
-    $SAMPLE_DIST_OS = "macos"
-}
-elseif ($SAMPLE_DIST_OS -eq "windows") {
-    $SAMPLE_DIST_OS = "win"
-}
-
-if ($SAMPLE_DIST_ARCH -eq "amd64") {
-    $SAMPLE_DIST_ARCH = "x64"
-}
-
 # --- Package Distribution details ---
 $GO_PACKAGE_OS = $GO_OS
 $GO_PACKAGE_ARCH = $GO_ARCH
@@ -164,29 +148,26 @@ $BINARY_NAME = $PRODUCT_NAME_LOWERCASE
 $PRODUCT_FOLDER = "${BINARY_NAME}-${PRODUCT_VERSION}-${GO_PACKAGE_OS}-${GO_PACKAGE_ARCH}"
 
 # --- Sample App Distribution details ---
-$SAMPLE_PACKAGE_OS = $SAMPLE_DIST_OS
-$SAMPLE_PACKAGE_ARCH = $SAMPLE_DIST_ARCH
 
 # React Vanilla Sample
-$VANILLA_SAMPLE_APP_SERVER_BINARY_NAME = "server"
 $vanillaPackageJson = Get-Content "samples/apps/react-vanilla-sample/package.json" -Raw | ConvertFrom-Json
 $VANILLA_SAMPLE_APP_VERSION = $vanillaPackageJson.version
-$VANILLA_SAMPLE_APP_FOLDER = "sample-app-react-vanilla-${VANILLA_SAMPLE_APP_VERSION}-${SAMPLE_PACKAGE_OS}-${SAMPLE_PACKAGE_ARCH}"
+$VANILLA_SAMPLE_APP_FOLDER = "sample-app-react-vanilla-${VANILLA_SAMPLE_APP_VERSION}"
 
 # React SDK Sample
 $reactSdkPackageJson = Get-Content "samples/apps/react-sdk-sample/package.json" -Raw | ConvertFrom-Json
 $REACT_SDK_SAMPLE_APP_VERSION = $reactSdkPackageJson.version
-$REACT_SDK_SAMPLE_APP_FOLDER = "sample-app-react-sdk-${REACT_SDK_SAMPLE_APP_VERSION}-${SAMPLE_PACKAGE_OS}-${SAMPLE_PACKAGE_ARCH}"
+$REACT_SDK_SAMPLE_APP_FOLDER = "sample-app-react-sdk-${REACT_SDK_SAMPLE_APP_VERSION}"
 
 # React API-based Sample
 $reactApiPackageJson = Get-Content "samples/apps/react-api-based-sample/package.json" -Raw | ConvertFrom-Json
 $REACT_API_SAMPLE_APP_VERSION = $reactApiPackageJson.version
-$REACT_API_SAMPLE_APP_FOLDER = "sample-app-react-api-based-${REACT_API_SAMPLE_APP_VERSION}-${SAMPLE_PACKAGE_OS}-${SAMPLE_PACKAGE_ARCH}"
+$REACT_API_SAMPLE_APP_FOLDER = "sample-app-react-api-based-${REACT_API_SAMPLE_APP_VERSION}"
 
 # Wayfinder Sample
 $agentIdPackageJson = Get-Content "samples/apps/wayfinder-sample/package.json" -Raw | ConvertFrom-Json
 $WAYFINDER_SAMPLE_APP_VERSION = $agentIdPackageJson.version
-$WAYFINDER_SAMPLE_APP_FOLDER = "sample-app-wayfinder-${WAYFINDER_SAMPLE_APP_VERSION}-${SAMPLE_PACKAGE_OS}-${SAMPLE_PACKAGE_ARCH}"
+$WAYFINDER_SAMPLE_APP_FOLDER = "sample-app-wayfinder-${WAYFINDER_SAMPLE_APP_VERSION}"
 
 # Directories
 $TARGET_DIR = Join-Path $SCRIPT_DIR "target"
@@ -212,6 +193,14 @@ $VANILLA_SAMPLE_APP_SERVER_DIR = Join-Path $VANILLA_SAMPLE_APP_DIR "server"
 $REACT_SDK_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/react-sdk-sample"
 $REACT_API_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/react-api-based-sample"
 $WAYFINDER_SAMPLE_APP_DIR = Join-Path $SAMPLE_BASE_DIR "apps/wayfinder-sample"
+
+# Quick start declarative bundles staged into the console's welcome feature so they're inlined
+# into the console JS bundle at build time.
+# Add a new bundle as a single line. Name may include "/" for grouping.
+$QUICKSTART_SAMPLE_BUNDLES = @(
+    @{ Name = "wayfinder"; Source = (Join-Path $WAYFINDER_SAMPLE_APP_DIR "thunderid-config") }
+)
+$QUICKSTART_BUNDLE_STAGE_DIR = Join-Path $FRONTEND_CONSOLE_APP_SOURCE_DIR "src/features/welcome/data/sample-bundles"
 
 # Default ports
 $GATE_APP_DEFAULT_PORT = 5190
@@ -454,7 +443,9 @@ function Build-Frontend {
     Write-Host "================================================================"
     Write-Host "Building frontend apps..."
     Ensure-Pnpm
-    
+
+    Sync-QuickstartBundles
+
     # Install dependencies
     try {
         Write-Host "Installing frontend dependencies..."
@@ -669,6 +660,25 @@ function Prepare-Frontend-For-Packaging {
     }
 
     Write-Host "================================================================"
+}
+
+function Sync-QuickstartBundles {
+    # Stage Quick start declarative bundles into the console's public dir.
+    Write-Host "Syncing quick start sample bundles to console welcome data dir..."
+    if (Test-Path $QUICKSTART_BUNDLE_STAGE_DIR) {
+        Remove-Item -Path $QUICKSTART_BUNDLE_STAGE_DIR -Recurse -Force
+    }
+    foreach ($bundle in $QUICKSTART_SAMPLE_BUNDLES) {
+        $dest_dir = Join-Path $QUICKSTART_BUNDLE_STAGE_DIR $bundle.Name
+        if (Test-Path $bundle.Source) {
+            Write-Host "  Staging '$($bundle.Name)' from $($bundle.Source)"
+            New-Item -Path $dest_dir -ItemType Directory -Force | Out-Null
+            Copy-Item -Path (Join-Path $bundle.Source "*") -Destination $dest_dir -Recurse -Force
+        }
+        else {
+            Write-Host "  Warning: Quick start bundle source not found at $($bundle.Source) (dest '$($bundle.Name)')"
+        }
+    }
 }
 
 function Package {
@@ -945,72 +955,17 @@ function Package-Sample-App {
 }
 
 function Package-Vanilla-Sample {
-    # Use appropriate binary name based on OS
-    $binary_name = $VANILLA_SAMPLE_APP_SERVER_BINARY_NAME
-    $executable_name = "$VANILLA_SAMPLE_APP_SERVER_BINARY_NAME-$SAMPLE_DIST_OS-$SAMPLE_DIST_ARCH"
+    Push-Location $VANILLA_SAMPLE_APP_DIR
+    & pnpm pack --pack-destination (Resolve-Path $DIST_DIR).Path
+    Pop-Location
 
-    if ($SAMPLE_DIST_OS -eq "win") {
-        $binary_name = "${VANILLA_SAMPLE_APP_SERVER_BINARY_NAME}.exe"
-        $executable_name = "${VANILLA_SAMPLE_APP_SERVER_BINARY_NAME}-${SAMPLE_DIST_OS}-${SAMPLE_DIST_ARCH}.exe"
+    $tgz = Get-ChildItem -Path $DIST_DIR -Filter "thunderid-react-vanilla-sample-*.tgz" | Select-Object -First 1
+    if (-not $tgz) {
+        throw "pnpm pack did not produce a tgz for react-vanilla-sample"
     }
 
-    $vanilla_sample_app_folder = Join-Path $DIST_DIR $VANILLA_SAMPLE_APP_FOLDER
-    New-Item -Path $vanilla_sample_app_folder -ItemType Directory -Force | Out-Null
-    $vanilla_sample_app_folder = (Resolve-Path -Path $vanilla_sample_app_folder).Path
-
-    # Copy the built app files
-    $serverAppSource = Join-Path $VANILLA_SAMPLE_APP_SERVER_DIR "app"
-    if (-not (Test-Path $serverAppSource)) {
-        Write-Host "Server app folder '$serverAppSource' not found; falling back to copying from '$VANILLA_SAMPLE_APP_DIR/dist'..."
-        New-Item -Path $VANILLA_SAMPLE_APP_SERVER_DIR -ItemType Directory -Force | Out-Null
-        New-Item -Path $serverAppSource -ItemType Directory -Force | Out-Null
-
-        $distFull = Resolve-Path -Path (Join-Path $VANILLA_SAMPLE_APP_DIR "dist") | Select-Object -ExpandProperty Path
-        Copy-Item -Path (Join-Path $distFull "*") -Destination $serverAppSource -Recurse -Force
-    }
-
-    Copy-Item -Path $serverAppSource -Destination $vanilla_sample_app_folder -Recurse -Force
-
-    Push-Location $VANILLA_SAMPLE_APP_SERVER_DIR
-    try {
-        New-Item -Path "executables" -ItemType Directory -Force | Out-Null
-
-        # Install dependencies to ensure pkg is available
-        & npm ci
-        if ($LASTEXITCODE -ne 0) {
-            throw "npm ci failed with exit code $LASTEXITCODE"
-        }
-
-        & npx pkg . -t $SAMPLE_DIST_NODE_VERSION-$SAMPLE_DIST_OS-$SAMPLE_DIST_ARCH -o executables/$VANILLA_SAMPLE_APP_SERVER_BINARY_NAME-$SAMPLE_DIST_OS-$SAMPLE_DIST_ARCH
-        if ($LASTEXITCODE -ne 0) {
-            throw "npx pkg failed with exit code $LASTEXITCODE"
-        }
-    }
-    finally {
-        Pop-Location
-    }
-
-    # Copy the server binary
-    Copy-Item -Path (Join-Path $VANILLA_SAMPLE_APP_SERVER_DIR "executables/$executable_name") -Destination (Join-Path $vanilla_sample_app_folder $binary_name) -Force
-
-    # Copy README and other necessary files
-    if (Test-Path (Join-Path $VANILLA_SAMPLE_APP_DIR "README.md")) {
-        Copy-Item -Path (Join-Path $VANILLA_SAMPLE_APP_DIR "README.md") -Destination $vanilla_sample_app_folder -Force
-    }
-
-    # Ensure the certificates exist in the sample app directory
-    Write-Host "=== Ensuring certificates exist in the React Vanilla sample distribution ==="
-    Ensure-Certificates -cert_dir $vanilla_sample_app_folder -cert_name_prefix "server"
-
-    # Copy the appropriate startup script based on the target OS
-    if ($SAMPLE_DIST_OS -eq "win") {
-        Write-Host "Including Windows start script (start.ps1)..."
-        Copy-Item -Path (Join-Path $VANILLA_SAMPLE_APP_SERVER_DIR "start.ps1") -Destination $vanilla_sample_app_folder -Force
-    }
-    else {
-        Write-Host "Including Unix start script (start.sh)..."
-        Copy-Item -Path (Join-Path $VANILLA_SAMPLE_APP_SERVER_DIR "start.sh") -Destination $vanilla_sample_app_folder -Force
-    }
+    tar xzf $tgz.FullName -C $DIST_DIR
+    Rename-Item -Path (Join-Path $DIST_DIR "package") -NewName $VANILLA_SAMPLE_APP_FOLDER
 
     Write-Host "Creating React Vanilla sample zip file..."
     $distAbs = (Resolve-Path -Path $DIST_DIR).Path
@@ -1020,45 +975,25 @@ function Package-Vanilla-Sample {
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($vanilla_sample_app_folder, $zipFile)
-
-    Remove-Item -Path $vanilla_sample_app_folder -Recurse -Force
+    [System.IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $DIST_DIR $VANILLA_SAMPLE_APP_FOLDER), $zipFile)
+    Remove-Item -Path (Join-Path $DIST_DIR $VANILLA_SAMPLE_APP_FOLDER) -Recurse -Force
+    Remove-Item -Path $tgz.FullName -Force
 
     Write-Host "✅ React Vanilla sample app packaged successfully as $zipFile"
 }
 
 function Package-React-SDK-Sample {
-    $react_sdk_sample_app_folder_t = Join-Path $DIST_DIR $REACT_SDK_SAMPLE_APP_FOLDER
-    New-Item -Path $react_sdk_sample_app_folder_t -ItemType Directory -Force | Out-Null
+    Push-Location $REACT_SDK_SAMPLE_APP_DIR
+    & pnpm pack --pack-destination (Resolve-Path $DIST_DIR).Path
+    Pop-Location
 
-    # Copy the built React app (dist folder)
-    if (Test-Path (Join-Path $REACT_SDK_SAMPLE_APP_DIR "dist")) {
-        Write-Host "Copying React SDK sample build output..."
-        Copy-Item -Path (Join-Path $REACT_SDK_SAMPLE_APP_DIR "dist") -Destination $react_sdk_sample_app_folder_t -Recurse -Force
-    }
-    else {
-        Write-Host "Warning: React SDK sample build output not found at $((Join-Path $REACT_SDK_SAMPLE_APP_DIR 'dist'))"
-        throw "React SDK sample build output not found"
+    $tgz = Get-ChildItem -Path $DIST_DIR -Filter "thunderid-react-sdk-sample-*.tgz" | Select-Object -First 1
+    if (-not $tgz) {
+        throw "pnpm pack did not produce a tgz for react-sdk-sample"
     }
 
-    # Copy README and other necessary files
-    if (Test-Path (Join-Path $REACT_SDK_SAMPLE_APP_DIR "README.md")) {
-        Copy-Item -Path (Join-Path $REACT_SDK_SAMPLE_APP_DIR "README.md") -Destination $react_sdk_sample_app_folder_t -Force
-    }
-
-    if (Test-Path (Join-Path $REACT_SDK_SAMPLE_APP_DIR ".env.example")) {
-        Copy-Item -Path (Join-Path $REACT_SDK_SAMPLE_APP_DIR ".env.example") -Destination $react_sdk_sample_app_folder_t -Force
-    }
-
-    # Copy the appropriate startup script based on the target OS
-    if ($SAMPLE_DIST_OS -eq "win") {
-        Write-Host "Including Windows start script (start.ps1)..."
-        Copy-Item -Path (Join-Path $REACT_SDK_SAMPLE_APP_DIR "start.ps1") -Destination $react_sdk_sample_app_folder_t -Force
-    }
-    else {
-        Write-Host "Including Unix start script (start.sh)..."
-        Copy-Item -Path (Join-Path $REACT_SDK_SAMPLE_APP_DIR "start.sh") -Destination $react_sdk_sample_app_folder_t -Force
-    }
+    tar xzf $tgz.FullName -C $DIST_DIR
+    Rename-Item -Path (Join-Path $DIST_DIR "package") -NewName $REACT_SDK_SAMPLE_APP_FOLDER
 
     Write-Host "Creating React SDK sample zip file..."
     $distAbs = (Resolve-Path -Path $DIST_DIR).Path
@@ -1068,45 +1003,25 @@ function Package-React-SDK-Sample {
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($react_sdk_sample_app_folder_t, $zipFile)
-
-    Remove-Item -Path $react_sdk_sample_app_folder_t -Recurse -Force
+    [System.IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $DIST_DIR $REACT_SDK_SAMPLE_APP_FOLDER), $zipFile)
+    Remove-Item -Path (Join-Path $DIST_DIR $REACT_SDK_SAMPLE_APP_FOLDER) -Recurse -Force
+    Remove-Item -Path $tgz.FullName -Force
 
     Write-Host "✅ React SDK sample app packaged successfully as $zipFile"
 }
 
 function Package-React-API-Based-Sample {
-    $react_api_sample_app_folder_t = Join-Path $DIST_DIR $REACT_API_SAMPLE_APP_FOLDER
-    New-Item -Path $react_api_sample_app_folder_t -ItemType Directory -Force | Out-Null
+    Push-Location $REACT_API_SAMPLE_APP_DIR
+    & pnpm pack --pack-destination (Resolve-Path $DIST_DIR).Path
+    Pop-Location
 
-    # Copy the built React app (dist folder)
-    if (Test-Path (Join-Path $REACT_API_SAMPLE_APP_DIR "dist")) {
-        Write-Host "Copying React API-based sample build output..."
-        Copy-Item -Path (Join-Path $REACT_API_SAMPLE_APP_DIR "dist") -Destination $react_api_sample_app_folder_t -Recurse -Force
-    }
-    else {
-        Write-Host "Warning: React API-based sample build output not found at $((Join-Path $REACT_API_SAMPLE_APP_DIR 'dist'))"
-        throw "React API-based sample build output not found"
+    $tgz = Get-ChildItem -Path $DIST_DIR -Filter "thunderid-react-api-based-sample-*.tgz" | Select-Object -First 1
+    if (-not $tgz) {
+        throw "pnpm pack did not produce a tgz for react-api-based-sample"
     }
 
-    # Copy README if it exists
-    if (Test-Path (Join-Path $REACT_API_SAMPLE_APP_DIR "README.md")) {
-        Copy-Item -Path (Join-Path $REACT_API_SAMPLE_APP_DIR "README.md") -Destination $react_api_sample_app_folder_t -Force
-    }
-
-    # Ensure the certificates exist in the sample app dist directory
-    Write-Host "=== Ensuring certificates exist in the React API-based sample distribution ==="
-    Ensure-Certificates -cert_dir (Join-Path $react_api_sample_app_folder_t "dist")
-
-    # Copy the appropriate startup script based on the target OS
-    if ($SAMPLE_DIST_OS -eq "win") {
-        Write-Host "Including Windows start script (start.ps1)..."
-        Copy-Item -Path (Join-Path $REACT_API_SAMPLE_APP_DIR "start.ps1") -Destination $react_api_sample_app_folder_t -Force
-    }
-    else {
-        Write-Host "Including Unix start script (start.sh)..."
-        Copy-Item -Path (Join-Path $REACT_API_SAMPLE_APP_DIR "start.sh") -Destination $react_api_sample_app_folder_t -Force
-    }
+    tar xzf $tgz.FullName -C $DIST_DIR
+    Rename-Item -Path (Join-Path $DIST_DIR "package") -NewName $REACT_API_SAMPLE_APP_FOLDER
 
     Write-Host "Creating React API-based sample zip file..."
     $distAbs = (Resolve-Path -Path $DIST_DIR).Path
@@ -1116,74 +1031,34 @@ function Package-React-API-Based-Sample {
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($react_api_sample_app_folder_t, $zipFile)
-
-    Remove-Item -Path $react_api_sample_app_folder_t -Recurse -Force
+    [System.IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $DIST_DIR $REACT_API_SAMPLE_APP_FOLDER), $zipFile)
+    Remove-Item -Path (Join-Path $DIST_DIR $REACT_API_SAMPLE_APP_FOLDER) -Recurse -Force
+    Remove-Item -Path $tgz.FullName -Force
 
     Write-Host "✅ React API-based sample app packaged successfully as $zipFile"
 }
 
 function Package-Wayfinder-Sample {
+    Push-Location $WAYFINDER_SAMPLE_APP_DIR
+    & pnpm pack --pack-destination (Resolve-Path $DIST_DIR).Path
+    Pop-Location
+
+    $tgz = Get-ChildItem -Path $DIST_DIR -Filter "thunderid-wayfinder-sample-*.tgz" | Select-Object -First 1
+    if (-not $tgz) {
+        throw "pnpm pack did not produce a tgz for wayfinder-sample"
+    }
+
+    tar xzf $tgz.FullName -C $DIST_DIR
+    Rename-Item -Path (Join-Path $DIST_DIR "package") -NewName $WAYFINDER_SAMPLE_APP_FOLDER
+
     $dist_folder = Join-Path $DIST_DIR $WAYFINDER_SAMPLE_APP_FOLDER
-    New-Item -Path $dist_folder -ItemType Directory -Force | Out-Null
 
-    # Frontend built ahead of time; api/mcp/ai-agent ship as source because
-    # pkg cannot bundle Node 22's node:sqlite binding and the chat agent
-    # needs runtime LLM keys from .env.
-    $frontendDist = Join-Path $WAYFINDER_SAMPLE_APP_DIR "frontend/dist"
-    if (-not (Test-Path $frontendDist)) {
-        throw "Wayfinder sample frontend build output not found at $frontendDist"
-    }
-    Write-Host "Copying Wayfinder sample frontend build output..."
-    $frontendDest = Join-Path $dist_folder "frontend"
-    New-Item -Path $frontendDest -ItemType Directory -Force | Out-Null
-    Copy-Item -Path $frontendDist -Destination $frontendDest -Recurse -Force
-    foreach ($item in @("package.json", "package-lock.json", "index.html", "vite.config.js", ".env.example", "README.md")) {
-        $src = Join-Path $WAYFINDER_SAMPLE_APP_DIR "frontend/$item"
-        if (Test-Path $src) { Copy-Item -Path $src -Destination $frontendDest -Force }
-    }
-    foreach ($subdir in @("src", "public")) {
-        $src = Join-Path $WAYFINDER_SAMPLE_APP_DIR "frontend/$subdir"
-        if (Test-Path $src) { Copy-Item -Path $src -Destination $frontendDest -Recurse -Force }
-    }
-
-    foreach ($svc in @("backend", "ai-agent")) {
-        $svcSrc = Join-Path $WAYFINDER_SAMPLE_APP_DIR $svc
-        $svcDest = Join-Path $dist_folder $svc
-        Write-Host "Copying Wayfinder sample $svc source..."
-        New-Item -Path $svcDest -ItemType Directory -Force | Out-Null
-        foreach ($item in @("package.json", "package-lock.json", "tsconfig.json", "README.md", ".env.example", "agent.ts")) {
-            $src = Join-Path $svcSrc $item
-            if (Test-Path $src) { Copy-Item -Path $src -Destination $svcDest -Force }
-        }
-        foreach ($subdir in @("src", "scripts")) {
-            $src = Join-Path $svcSrc $subdir
-            if (Test-Path $src) { Copy-Item -Path $src -Destination $svcDest -Recurse -Force }
+    foreach ($dir in @("frontend", "backend", "smtp-server", "ai-agent")) {
+        $envExample = Join-Path $dist_folder "$dir/.env.example"
+        if (Test-Path $envExample) {
+            Copy-Item -Path $envExample -Destination (Join-Path $dist_folder "$dir/.env") -Force
         }
     }
-
-    if (Test-Path (Join-Path $WAYFINDER_SAMPLE_APP_DIR "README.md")) {
-        Copy-Item -Path (Join-Path $WAYFINDER_SAMPLE_APP_DIR "README.md") -Destination $dist_folder -Force
-    }
-    if (Test-Path (Join-Path $WAYFINDER_SAMPLE_APP_DIR "package.json")) {
-        Copy-Item -Path (Join-Path $WAYFINDER_SAMPLE_APP_DIR "package.json") -Destination $dist_folder -Force
-    }
-
-    if ($SAMPLE_DIST_OS -eq "win") {
-        Write-Host "Including Windows start script (start.ps1)..."
-        Copy-Item -Path (Join-Path $WAYFINDER_SAMPLE_APP_DIR "start.ps1") -Destination $dist_folder -Force
-    }
-    else {
-        Write-Host "Including Unix start script (start.sh)..."
-        Copy-Item -Path (Join-Path $WAYFINDER_SAMPLE_APP_DIR "start.sh") -Destination $dist_folder -Force
-    }
-
-    $thunderConfig = Join-Path $WAYFINDER_SAMPLE_APP_DIR "thunderid-config"
-    if (-not (Test-Path $thunderConfig)) {
-        throw "thunderid-config directory not found at $thunderConfig"
-    }
-    Write-Host "Copying ThunderID config..."
-    Copy-Item -Path $thunderConfig -Destination $dist_folder -Recurse -Force
 
     Write-Host "Creating Wayfinder sample zip file..."
     $distAbs = (Resolve-Path -Path $DIST_DIR).Path
@@ -1194,8 +1069,8 @@ function Package-Wayfinder-Sample {
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.ZipFile]::CreateFromDirectory($dist_folder, $zipFile)
-
     Remove-Item -Path $dist_folder -Recurse -Force
+    Remove-Item -Path $tgz.FullName -Force
 
     Write-Host "✅ Wayfinder sample app packaged successfully as $zipFile"
 }
@@ -1924,7 +1799,9 @@ function Run-Frontend {
     Write-Host "================================================================"
     Write-Host "Running frontend apps..."
     Ensure-Pnpm
-    
+
+    Sync-QuickstartBundles
+
     # Install dependencies
     try {
         Write-Host "Installing frontend dependencies..."

@@ -19,6 +19,7 @@
 package clientauth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -586,7 +587,12 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_Success_PrivateKeyJWT() {
 	suite.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, testClientID).
 		Return(mockApp, nil).Once()
 	suite.mockJwtService.EXPECT().
-		VerifyJWTWithPublicKey(assertion, mock.Anything, "https://localhost:9443/oauth2/token", testClientID).
+		VerifyJWTWithPublicKey(
+			mock.Anything,
+			assertion,
+			mock.Anything,
+			"https://localhost:9443/oauth2/token",
+			testClientID).
 		Return(nil)
 
 	formData := url.Values{}
@@ -623,7 +629,12 @@ func (suite *ClientAuthTestSuite) TestAuthenticate_Success_PrivateKeyJWT_WithCli
 	suite.mockInboundClient.On("GetOAuthClientByClientID", mock.Anything, testClientID).
 		Return(mockApp, nil).Once()
 	suite.mockJwtService.EXPECT().
-		VerifyJWTWithPublicKey(assertion, mock.Anything, "https://localhost:9443/oauth2/token", testClientID).
+		VerifyJWTWithPublicKey(
+			mock.Anything,
+			assertion,
+			mock.Anything,
+			"https://localhost:9443/oauth2/token",
+			testClientID).
 		Return(nil)
 
 	formData := url.Values{}
@@ -975,7 +986,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_NilCertificate() {
 		Certificate: nil,
 	}
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client",
 		"some.jwt.token")
 	assert.NotNil(suite.T(), err)
@@ -994,11 +1005,11 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_JWKSURI_Success() 
 	assertion := buildFakeJWTWithSub("test-client")
 
 	suite.mockJwtService.EXPECT().
-		VerifyJWTWithJWKS(assertion, "https://example.com/.well-known/jwks.json",
+		VerifyJWTWithJWKS(mock.Anything, assertion, "https://example.com/.well-known/jwks.json",
 			"https://localhost:9443/oauth2/token", "test-client").
 		Return(nil)
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", assertion)
 	assert.Nil(suite.T(), err)
 }
@@ -1015,11 +1026,11 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_JWKSURI_Verificati
 	assertion := buildFakeJWTWithSub("test-client")
 
 	suite.mockJwtService.EXPECT().
-		VerifyJWTWithJWKS(assertion, "https://example.com/.well-known/jwks.json",
+		VerifyJWTWithJWKS(mock.Anything, assertion, "https://example.com/.well-known/jwks.json",
 			"https://localhost:9443/oauth2/token", "test-client").
 		Return(&serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "verification failed"}})
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", assertion)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "client assertion verification with JWKS URI failed")
@@ -1034,7 +1045,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidJWKSJSON() 
 		},
 	}
 
-	err := validateClientAssertion(oauthApp, suite.mockJwtService, testEndpointURL,
+	err := validateClientAssertion(context.Background(), oauthApp, suite.mockJwtService, testEndpointURL,
 		"test-client", "some.jwt.token")
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "invalid JWKS certificate format")
@@ -1050,7 +1061,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidJWTFormat()
 		},
 	}
 
-	err := validateClientAssertion(oauthApp, suite.mockJwtService, testEndpointURL,
+	err := validateClientAssertion(context.Background(), oauthApp, suite.mockJwtService, testEndpointURL,
 		"test-client", "invalid-jwt")
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "failed to decode header")
@@ -1068,7 +1079,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MissingKidInHeader
 
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "typ": "JWT"}, map[string]any{"sub": "test-client"})
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", fakeJWT)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "JWT header missing 'kid' claim")
@@ -1087,7 +1098,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_EmptyKidInHeader()
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "", "typ": "JWT"},
 		map[string]any{"sub": "test-client"})
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", fakeJWT)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "JWT header missing 'kid' claim")
@@ -1106,7 +1117,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_KidNotAString() {
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": 12345, "typ": "JWT"},
 		map[string]any{"sub": "test-client"})
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", fakeJWT)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "JWT header missing 'kid' claim")
@@ -1125,7 +1136,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_NoMatchingKidInJWK
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
 		map[string]any{"sub": "test-client"})
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", fakeJWT)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "no matching key found in JWKS")
@@ -1150,7 +1161,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_InvalidJWKCannotCo
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
 		map[string]any{"sub": "test-client"})
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", fakeJWT)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "failed to convert JWK to public key")
@@ -1170,14 +1181,19 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_VerificationFails(
 		map[string]any{"sub": "test-client"})
 
 	suite.mockJwtService.EXPECT().
-		VerifyJWTWithPublicKey(fakeJWT, mock.Anything, "https://localhost:9443/oauth2/token", "test-client").
+		VerifyJWTWithPublicKey(
+			mock.Anything,
+			fakeJWT,
+			mock.Anything,
+			"https://localhost:9443/oauth2/token",
+			"test-client").
 		Return(&serviceerror.ServiceError{
 			Code:  "JWT-00001",
 			Type:  serviceerror.ClientErrorType,
 			Error: i18ncore.I18nMessage{DefaultValue: "invalid_token"},
 		})
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", fakeJWT)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "client assertion verification failed")
@@ -1197,10 +1213,15 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_Success() {
 		map[string]any{"sub": "test-client"})
 
 	suite.mockJwtService.EXPECT().
-		VerifyJWTWithPublicKey(fakeJWT, mock.Anything, "https://localhost:9443/oauth2/token", "test-client").
+		VerifyJWTWithPublicKey(
+			mock.Anything,
+			fakeJWT,
+			mock.Anything,
+			"https://localhost:9443/oauth2/token",
+			"test-client").
 		Return(nil)
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", fakeJWT)
 	assert.Nil(suite.T(), err)
 }
@@ -1220,7 +1241,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_EmptyJWKSKeys() {
 	fakeJWT := buildTestJWT(map[string]any{"alg": "RS256", "kid": "test-kid", "typ": "JWT"},
 		map[string]any{"sub": "test-client"})
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", fakeJWT)
 	assert.NotNil(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "no matching key found in JWKS")
@@ -1253,10 +1274,15 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MultipleKeysMatche
 		map[string]any{"sub": "test-client"})
 
 	suite.mockJwtService.EXPECT().
-		VerifyJWTWithPublicKey(fakeJWT, mock.Anything, "https://localhost:9443/oauth2/token", "test-client").
+		VerifyJWTWithPublicKey(
+			mock.Anything,
+			fakeJWT,
+			mock.Anything,
+			"https://localhost:9443/oauth2/token",
+			"test-client").
 		Return(nil)
 
-	err := validateClientAssertion(
+	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", fakeJWT)
 	assert.Nil(suite.T(), err)
 }

@@ -19,6 +19,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -134,7 +135,7 @@ func (suite *CreateSecurityMiddlewareTestSuite) TestCreateSecurityMiddleware_Wit
 			}
 
 			// Execute
-			handler := createSecurityMiddleware(suite.logger, suite.mux, suite.mockJWTService)
+			handler := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService)
 
 			// Assert - handler is always returned now, regardless of skip security flag
 			assert.NotNil(suite.T(), handler, "Handler should always be non-nil")
@@ -148,9 +149,9 @@ func (suite *CreateSecurityMiddlewareTestSuite) TestCreateSecurityMiddleware_Wit
 // TestCreateSecurityMiddleware_MultipleInvocations tests that multiple calls work correctly
 func (suite *CreateSecurityMiddlewareTestSuite) TestCreateSecurityMiddleware_MultipleInvocations() {
 	// Execute multiple times
-	handler1 := createSecurityMiddleware(suite.logger, suite.mux, suite.mockJWTService)
-	handler2 := createSecurityMiddleware(suite.logger, suite.mux, suite.mockJWTService)
-	handler3 := createSecurityMiddleware(suite.logger, suite.mux, suite.mockJWTService)
+	handler1 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService)
+	handler2 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService)
+	handler3 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService)
 
 	// Assert - each call should return a new handler instance
 	assert.NotNil(suite.T(), handler1)
@@ -161,17 +162,17 @@ func (suite *CreateSecurityMiddlewareTestSuite) TestCreateSecurityMiddleware_Mul
 // TestCreateSecurityMiddleware_RuntimeToggle tests toggling security at runtime by changing environment variable
 func (suite *CreateSecurityMiddlewareTestSuite) TestCreateSecurityMiddleware_RuntimeToggle() {
 	// First call with security enabled
-	handler1 := createSecurityMiddleware(suite.logger, suite.mux, suite.mockJWTService)
+	handler1 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService)
 	assert.NotNil(suite.T(), handler1, "First handler should not be nil")
 
 	// Disable security
 	_ = os.Setenv("SKIP_SECURITY", "true")
-	handler2 := createSecurityMiddleware(suite.logger, suite.mux, suite.mockJWTService)
+	handler2 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService)
 	assert.NotNil(suite.T(), handler2, "Second handler should not be nil (skipSecurity is handled internally)")
 
 	// Re-enable security
 	_ = os.Unsetenv("SKIP_SECURITY")
-	handler3 := createSecurityMiddleware(suite.logger, suite.mux, suite.mockJWTService)
+	handler3 := createSecurityMiddleware(context.Background(), suite.logger, suite.mux, suite.mockJWTService)
 	assert.NotNil(suite.T(), handler3, "Third handler should not be nil after re-enabling security")
 }
 
@@ -195,7 +196,7 @@ func TestCreateHTTPServer_WithHTTPOnly(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	server := createHTTPServer(logger, cfg, mux, nil)
+	server := createHTTPServer(context.Background(), logger, cfg, mux, nil)
 
 	assert.Equal(t, "localhost:0", server.Addr)
 	assert.NotNil(t, server.Handler)
@@ -227,7 +228,7 @@ func TestCreateListener_Success(t *testing.T) {
 		netListen = originalListen
 	})
 
-	ln := createListener(logger, server)
+	ln := createListener(context.Background(), logger, server)
 
 	assert.Equal(t, 1, callCount)
 	assert.Equal(t, stubListener, ln)
@@ -249,7 +250,7 @@ func TestCreateListener_ExitsOnError(t *testing.T) {
 			Addr:              "invalid-address",
 			ReadHeaderTimeout: time.Second,
 		}
-		createListener(logger, server)
+		createListener(context.Background(), logger, server)
 		return
 	}
 
@@ -281,7 +282,7 @@ func TestCreateTLSListener_Success(t *testing.T) {
 		tlsListen = originalTLSListen
 	})
 
-	ln := createTLSListener(logger, server, tlsConfig)
+	ln := createTLSListener(context.Background(), logger, server, tlsConfig)
 
 	assert.Equal(t, 1, callCount)
 	assert.Equal(t, stubListener, ln)
@@ -303,7 +304,7 @@ func TestCreateTLSListener_ExitsOnError(t *testing.T) {
 			Addr:              "invalid-address",
 			ReadHeaderTimeout: time.Second,
 		}
-		createTLSListener(logger, server, &tls.Config{MinVersion: tls.VersionTLS12})
+		createTLSListener(context.Background(), logger, server, &tls.Config{MinVersion: tls.VersionTLS12})
 		return
 	}
 
@@ -322,7 +323,7 @@ func TestGetThunderHome_UsesFlagValue(t *testing.T) {
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{origArgs[0], "-serverHome", tmpDir}
 
-	got := getThunderHome(log.GetLogger())
+	got := getThunderHome(context.Background(), log.GetLogger())
 	assert.Equal(t, tmpDir, got)
 }
 
@@ -341,7 +342,7 @@ func TestGetThunderHome_DefaultsToCWD(t *testing.T) {
 	os.Args = []string{origArgs[0]}
 	_ = os.Chdir(tmpDir)
 
-	got := getThunderHome(log.GetLogger())
+	got := getThunderHome(context.Background(), log.GetLogger())
 	expectedResolved, err := filepath.EvalSymlinks(tmpDir)
 	assert.NoError(t, err)
 	gotResolved, err := filepath.EvalSymlinks(got)
@@ -567,7 +568,7 @@ func TestRegisterStaticFileHandlers(t *testing.T) {
 
 	t.Run("registers handlers for existing directories", func(t *testing.T) {
 		mux := http.NewServeMux()
-		registerStaticFileHandlers(logger, mux, tmpDir)
+		registerStaticFileHandlers(context.Background(), logger, mux, tmpDir)
 
 		// Test gate handler
 		req := httptest.NewRequest(http.MethodGet, "/gate/", nil)
@@ -584,11 +585,56 @@ func TestRegisterStaticFileHandlers(t *testing.T) {
 		assert.Contains(t, rr.Body.String(), "console app")
 	})
 
+	t.Run("serves js files as application/javascript", func(t *testing.T) {
+		jsContent := []byte("console.log('hello');")
+		requireWriteFile(t, filepath.Join(gateDir, "app.js"), jsContent)
+
+		mux := http.NewServeMux()
+		registerStaticFileHandlers(context.Background(), logger, mux, tmpDir)
+
+		req := httptest.NewRequest(http.MethodGet, "/gate/app.js", nil)
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "application/javascript; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("serves console js files as application/javascript", func(t *testing.T) {
+		jsContent := []byte("console.log('hello');")
+		requireWriteFile(t, filepath.Join(consoleDir, "app.js"), jsContent)
+
+		mux := http.NewServeMux()
+		registerStaticFileHandlers(context.Background(), logger, mux, tmpDir)
+
+		req := httptest.NewRequest(http.MethodGet, "/console/app.js", nil)
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "application/javascript; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
+	t.Run("serves mjs files as application/javascript", func(t *testing.T) {
+		mjsContent := []byte("export default {};")
+		requireWriteFile(t, filepath.Join(gateDir, "app.mjs"), mjsContent)
+
+		mux := http.NewServeMux()
+		registerStaticFileHandlers(context.Background(), logger, mux, tmpDir)
+
+		req := httptest.NewRequest(http.MethodGet, "/gate/app.mjs", nil)
+		rr := httptest.NewRecorder()
+		mux.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		assert.Equal(t, "application/javascript; charset=utf-8", rr.Header().Get("Content-Type"))
+	})
+
 	t.Run("handles missing directories gracefully", func(t *testing.T) {
 		emptyTmpDir := t.TempDir()
 		mux := http.NewServeMux()
 		// Should not panic
-		registerStaticFileHandlers(logger, mux, emptyTmpDir)
+		registerStaticFileHandlers(context.Background(), logger, mux, emptyTmpDir)
 	})
 }
 

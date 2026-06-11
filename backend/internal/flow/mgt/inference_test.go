@@ -19,6 +19,7 @@
 package flowmgt
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -62,7 +63,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_Success() {
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.NoError(err)
 	s.NotNil(regFlow)
@@ -119,7 +120,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.NoError(err)
 	s.NotNil(regFlow)
@@ -197,7 +198,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.NoError(err)
 	s.NotNil(regFlow)
@@ -234,7 +235,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithExistingPr
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.NoError(err)
 	s.NotNil(regFlow)
@@ -261,7 +262,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithExistingUs
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.NoError(err)
 	s.NotNil(regFlow)
@@ -289,7 +290,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_CleansAuthProp
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.NoError(err)
 	taskNode := s.getNode(regFlow.Nodes, "task")
@@ -310,7 +311,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_NoStartNode() 
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.Error(err)
 	s.Nil(regFlow)
@@ -328,7 +329,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_NoEndNode() {
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.Error(err)
 	s.Nil(regFlow)
@@ -354,7 +355,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithActions() 
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.NoError(err)
 	promptNode := s.getNode(regFlow.Nodes, "prompt")
@@ -381,7 +382,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithOnFailure(
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.NoError(err)
 	taskNode := s.getNode(regFlow.Nodes, "task")
@@ -437,7 +438,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithLayout() {
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.NoError(err)
 	s.NotNil(regFlow)
@@ -489,7 +490,7 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_NoSMS
 	}
 	initialCount := len(nodes)
 
-	service.insertPhoneInputPromptIfNeeded(&nodes, false)
+	service.insertPhoneInputPromptIfNeeded(context.Background(), &nodes, false)
 
 	s.Len(nodes, initialCount, "No node should be inserted when there is no SMS OTP send node")
 }
@@ -511,7 +512,7 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_SMSNo
 	}
 	initialCount := len(nodes)
 
-	service.insertPhoneInputPromptIfNeeded(&nodes, false)
+	service.insertPhoneInputPromptIfNeeded(context.Background(), &nodes, false)
 
 	s.Len(nodes, initialCount, "No node should be inserted for SMS verify mode")
 }
@@ -546,7 +547,7 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Phone
 	}
 	initialCount := len(nodes)
 
-	service.insertPhoneInputPromptIfNeeded(&nodes, false)
+	service.insertPhoneInputPromptIfNeeded(context.Background(), &nodes, false)
 
 	s.Len(nodes, initialCount, "No node should be inserted when PHONE_INPUT is already collected")
 }
@@ -567,7 +568,7 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Inser
 		{ID: "end", Type: "END"},
 	}
 
-	service.insertPhoneInputPromptIfNeeded(&nodes, false)
+	service.insertPhoneInputPromptIfNeeded(context.Background(), &nodes, false)
 
 	s.Len(nodes, 4, "Phone prompt node should be inserted")
 
@@ -602,7 +603,7 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Inser
 		{ID: "end", Type: "END"},
 	}
 
-	service.insertPhoneInputPromptIfNeeded(&nodes, true)
+	service.insertPhoneInputPromptIfNeeded(context.Background(), &nodes, true)
 
 	phonePrompt := s.getNode(nodes, phoneInputPromptNodeID)
 	s.NotNil(phonePrompt)
@@ -630,7 +631,7 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_UsesE
 		{ID: "end", Type: "END"},
 	}
 
-	service.insertPhoneInputPromptIfNeeded(&nodes, false)
+	service.insertPhoneInputPromptIfNeeded(context.Background(), &nodes, false)
 
 	s.Len(nodes, 4, "Phone prompt node should be inserted")
 
@@ -1325,7 +1326,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_InsertProvisio
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.Error(err)
 	s.Nil(regFlow)
@@ -1352,7 +1353,7 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_InsertUserType
 		},
 	}
 
-	regFlow, err := s.service.InferRegistrationFlow(authFlow)
+	regFlow, err := s.service.InferRegistrationFlow(context.Background(), authFlow)
 
 	s.Error(err)
 	s.Nil(regFlow)

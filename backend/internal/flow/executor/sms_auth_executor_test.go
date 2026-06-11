@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -330,7 +330,7 @@ func (suite *SMSAuthExecutorTestSuite) TestGetUserMobileNumber_NotFoundInAttribu
 	assert.NoError(suite.T(), err)
 	assert.Empty(suite.T(), mobileNumber)
 	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
-	assert.Equal(suite.T(), "Mobile number not found in user attributes or context", execResp.FailureReason)
+	assert.Contains(suite.T(), execResp.Error.ErrorDescription.DefaultValue, "mobile")
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
@@ -483,7 +483,8 @@ func (suite *SMSAuthExecutorTestSuite) TestInitiateOTP_RegistrationFlow_UserAlre
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, execResp.Status)
-	assert.Equal(suite.T(), "User already exists with the provided mobile number.", execResp.FailureReason)
+	assert.Contains(suite.T(), execResp.Error.ErrorDescription.DefaultValue,
+		"User already exists with the provided mobile number")
 	assert.Len(suite.T(), execResp.Inputs, 1)
 	assert.Equal(suite.T(), common.AttributeMobileNumber, execResp.Inputs[0].Identifier)
 	assert.Equal(suite.T(), common.InputTypePhone, execResp.Inputs[0].Type)
@@ -557,7 +558,7 @@ func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_EmptyOTP_Returns
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecUserInputRequired, execResp.Status,
 		"Empty OTP should return ExecUserInputRequired so the user can retry")
-	assert.Equal(suite.T(), failureReasonInvalidOTP, execResp.FailureReason)
+	assert.Equal(suite.T(), ErrInvalidOTP.Error.DefaultValue, execResp.Error.Error.DefaultValue)
 	assert.NotEmpty(suite.T(), execResp.Inputs, "Inputs must be populated for retry")
 	assert.Equal(suite.T(), userInputOTP, execResp.Inputs[0].Identifier)
 }
@@ -625,7 +626,7 @@ func (suite *SMSAuthExecutorTestSuite) TestGetAuthenticatedUser_Registration_OTP
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), common.ExecFailure, execResp.Status)
-	assert.Equal(suite.T(), "User already exists with the provided mobile number.", execResp.FailureReason)
+	assert.Equal(suite.T(), ErrUserAlreadyExists.Error.DefaultValue, execResp.Error.Error.DefaultValue)
 }
 
 // TestGetAuthenticatedUser_FetchFromStore_NilAttrsAfterUnmarshal verifies that when

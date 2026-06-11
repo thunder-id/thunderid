@@ -30,6 +30,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -76,6 +77,20 @@ func newAuthzError(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
 
 type GroupServiceTestSuite struct {
 	suite.Suite
+}
+
+func (suite *GroupServiceTestSuite) SetupSuite() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	}
+	config.ResetServerRuntime()
+	if err := config.InitializeServerRuntime("/tmp/test", testConfig); err != nil {
+		suite.Fail("Failed to initialize runtime", err)
+	}
+}
+
+func (suite *GroupServiceTestSuite) TearDownSuite() {
+	config.ResetServerRuntime()
 }
 
 func TestGroupServiceTestSuite(t *testing.T) {
@@ -1123,6 +1138,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				OUID:        "ou-new",
 			},
 			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				args.store.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", Name: "old", Description: "legacy",
 						OUID: "ou-old"}, nil).
@@ -1149,6 +1165,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				OUID: "ou-new",
 			},
 			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				args.store.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", Name: "old", OUID: "ou-old"}, nil).
 					Once()
@@ -1169,6 +1186,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				OUID: "ou",
 			},
 			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				args.store.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{}, ErrGroupNotFound).
 					Once()
@@ -1183,6 +1201,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				OUID: "ou",
 			},
 			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				args.store.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{}, errors.New("db error")).
 					Once()
@@ -1197,6 +1216,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				OUID: "ou-new",
 			},
 			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				args.store.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", Name: "name", OUID: "ou-old"}, nil).
 					Once()
@@ -1214,6 +1234,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				OUID: "ou",
 			},
 			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				args.store.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", Name: "old", OUID: "ou"}, nil).
 					Once()
@@ -1231,6 +1252,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				OUID: "ou",
 			},
 			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				args.store.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", Name: "old-name", OUID: "ou"}, nil).
 					Once()
@@ -1251,6 +1273,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				OUID: testOUID1,
 			},
 			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				args.store.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil).Once()
 			},
@@ -1278,6 +1301,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_UpdateGroup() {
 				OUID: testOUID2,
 			},
 			setup: func(args *setupArgs) {
+				args.store.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				args.store.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil).Once()
 				args.ou.On("IsOrganizationUnitExists", mock.Anything, testOUID2).
@@ -1377,6 +1401,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_DeleteGroup() {
 			name: "success",
 			id:   "grp-001",
 			setup: func(storeMock *groupStoreInterfaceMock) {
+				storeMock.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				storeMock.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001"}, nil).
 					Once()
@@ -1394,6 +1419,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_DeleteGroup() {
 			name: "get group error",
 			id:   "grp-001",
 			setup: func(storeMock *groupStoreInterfaceMock) {
+				storeMock.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				storeMock.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{}, errors.New("db error")).
 					Once()
@@ -1404,6 +1430,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_DeleteGroup() {
 			name: "delete error",
 			id:   "grp-001",
 			setup: func(storeMock *groupStoreInterfaceMock) {
+				storeMock.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				storeMock.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001"}, nil).
 					Once()
@@ -1417,6 +1444,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_DeleteGroup() {
 			name: "group not found",
 			id:   "grp-001",
 			setup: func(storeMock *groupStoreInterfaceMock) {
+				storeMock.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				storeMock.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{}, ErrGroupNotFound).
 					Once()
@@ -1427,6 +1455,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_DeleteGroup() {
 			name: "access denied",
 			id:   "grp-001",
 			setup: func(storeMock *groupStoreInterfaceMock) {
+				storeMock.On("IsGroupDeclarative", mock.Anything, "grp-001").Return(false, nil).Once()
 				storeMock.On("GetGroup", mock.Anything, "grp-001").
 					Return(GroupDAO{ID: "grp-001", OUID: testOUID1}, nil).Once()
 			},
@@ -2500,4 +2529,228 @@ func TestUpdateGroupMembers_OUValidationFailure(t *testing.T) {
 	require.Nil(t, result)
 	require.NotNil(t, svcErr)
 	require.Equal(t, serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func newScopedListAuthz(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authzMock.On("GetAccessibleResources", mock.Anything, security.ActionListGroups, security.ResourceTypeOU).
+		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{testOUID1}},
+			(*serviceerror.ServiceError)(nil))
+	return authzMock
+}
+
+func TestListGroupsByOUIDs_CountError(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupListCountByOUIDs", mock.Anything, []string{testOUID1}).
+		Return(0, errors.New("count fail")).Once()
+
+	service := &groupService{
+		authzService: newScopedListAuthz(t),
+		groupStore:   storeMock,
+	}
+
+	response, err := service.GetGroupList(context.Background(), 5, 0, false)
+	require.Nil(t, response)
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+func TestListGroupsByOUIDs_ListError(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupListCountByOUIDs", mock.Anything, []string{testOUID1}).
+		Return(2, nil).Once()
+	storeMock.On("GetGroupListByOUIDs", mock.Anything, []string{testOUID1}, 5, 0).
+		Return(nil, errors.New("list fail")).Once()
+
+	service := &groupService{
+		authzService: newScopedListAuthz(t),
+		groupStore:   storeMock,
+	}
+
+	response, err := service.GetGroupList(context.Background(), 5, 0, false)
+	require.Nil(t, response)
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+func TestUpdateGroup_IsDeclarativeError(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("IsGroupDeclarative", mock.Anything, "grp-001").
+		Return(false, errors.New("declarative check fail")).Once()
+
+	service := &groupService{
+		authzService:  newAllowAllAuthz(t),
+		groupStore:    storeMock,
+		transactioner: &stubTransactioner{},
+	}
+
+	group, err := service.UpdateGroup(context.Background(), "grp-001",
+		UpdateGroupRequest{Name: "name", OUID: "ou"})
+	require.Nil(t, group)
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+func TestDeleteGroup_IsDeclarativeError(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("IsGroupDeclarative", mock.Anything, "grp-001").
+		Return(false, errors.New("declarative check fail")).Once()
+
+	service := &groupService{
+		authzService:  newAllowAllAuthz(t),
+		groupStore:    storeMock,
+		transactioner: &stubTransactioner{},
+	}
+
+	err := service.DeleteGroup(context.Background(), "grp-001")
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+func TestResolveMembers_GetGroupsByIDsError(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"group-1"}).
+		Return(nil, errors.New("groups fetch fail")).Once()
+
+	service := &groupService{
+		groupStore: storeMock,
+	}
+	logger := log.GetLogger()
+
+	members := []Member{{ID: "group-1", Type: MemberTypeGroup}}
+	resolved, svcErr := service.resolveMembers(context.Background(), members, true, logger)
+	require.Nil(t, svcErr)
+	require.Len(t, resolved, 1)
+	require.Equal(t, "group-1", resolved[0].Display)
+}
+
+func TestResolveMembers_OrphanedEntityMember(t *testing.T) {
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
+		Return([]entity.Entity{}, nil).Once()
+
+	service := &groupService{
+		entityService: entitySvcMock,
+	}
+	logger := log.GetLogger()
+
+	members := []Member{{ID: "user-1", Type: memberTypeEntity}}
+	resolved, svcErr := service.resolveMembers(context.Background(), members, false, logger)
+	require.Nil(t, svcErr)
+	require.Empty(t, resolved)
+}
+
+func TestModifyGroupMembers_GetGroupError(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroup", mock.Anything, "grp-001").
+		Return(GroupDAO{}, errors.New("db error")).Once()
+
+	service := &groupService{
+		authzService:  newAllowAllAuthz(t),
+		groupStore:    storeMock,
+		transactioner: &stubTransactioner{},
+	}
+
+	group, err := service.AddGroupMembers(context.Background(), "grp-001",
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}})
+	require.Nil(t, group)
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+func TestModifyGroupMembers_InnerGroupNotFound(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+
+	storeMock.On("GetGroup", mock.Anything, "grp-001").
+		Return(GroupDAO{ID: "grp-001"}, nil).Once()
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+		Return([]entity.Entity{{ID: "usr-001", Category: entity.EntityCategoryUser}}, nil).Once()
+	storeMock.On("GetGroup", mock.Anything, "grp-001").
+		Return(GroupDAO{}, ErrGroupNotFound).Once()
+
+	service := &groupService{
+		authzService:  newAllowAllAuthz(t),
+		groupStore:    storeMock,
+		entityService: entitySvcMock,
+		transactioner: &stubTransactioner{},
+	}
+
+	group, err := service.AddGroupMembers(context.Background(), "grp-001",
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}})
+	require.Nil(t, group)
+	require.NotNil(t, err)
+	require.Equal(t, ErrorGroupNotFound.Code, err.Code)
+}
+
+func TestValidateEntityMembers_GetEntitiesError(t *testing.T) {
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+		Return(nil, errors.New("entity fetch fail")).Once()
+
+	service := &groupService{
+		authzService:  newAllowAllAuthz(t),
+		entityService: entitySvcMock,
+	}
+
+	err := service.validateEntityMembers(context.Background(),
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, security.ActionCreateGroup)
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+func TestValidateEntityMembers_TypeMismatch(t *testing.T) {
+	entitySvcMock := entitymock.NewEntityServiceInterfaceMock(t)
+	entitySvcMock.On("GetEntitiesByIDs", mock.Anything, []string{"usr-001"}).
+		Return([]entity.Entity{{ID: "usr-001", Category: entity.EntityCategoryApp}}, nil).Once()
+
+	service := &groupService{
+		authzService:  newAllowAllAuthz(t),
+		entityService: entitySvcMock,
+	}
+
+	err := service.validateEntityMembers(context.Background(),
+		[]Member{{ID: "usr-001", Type: MemberTypeUser}}, security.ActionCreateGroup)
+	require.NotNil(t, err)
+	require.Equal(t, ErrorInvalidMemberID.Code, err.Code)
+}
+
+func TestGetGroupsByIDs_StoreError(t *testing.T) {
+	storeMock := newGroupStoreInterfaceMock(t)
+	storeMock.On("GetGroupsByIDs", mock.Anything, []string{"grp-001"}).
+		Return(nil, errors.New("store fail")).Once()
+
+	service := &groupService{
+		groupStore: storeMock,
+	}
+
+	result, err := service.GetGroupsByIDs(context.Background(), []string{"grp-001"})
+	require.Nil(t, result)
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
+}
+
+func TestPopulateGroupOUHandles_ServiceError(t *testing.T) {
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testOUID1}).
+		Return((map[string]string)(nil), &serviceerror.ServiceError{Code: "OU-5000"}).Once()
+
+	service := &groupService{
+		ouService: ouServiceMock,
+	}
+	logger := log.GetLogger()
+
+	groups := []GroupBasic{{ID: "g1", OUID: testOUID1}}
+	service.populateGroupOUHandles(context.Background(), groups, logger)
+	require.Empty(t, groups[0].OUHandle)
+}
+
+func TestCheckGroupAccess_AuthzError(t *testing.T) {
+	service := &groupService{
+		authzService: newAuthzError(t),
+	}
+
+	err := service.checkGroupAccess(context.Background(), security.ActionReadGroup, testOUID1, "grp-001")
+	require.NotNil(t, err)
+	require.Equal(t, serviceerror.InternalServerError.Code, err.Code)
 }

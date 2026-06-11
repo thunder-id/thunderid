@@ -629,9 +629,15 @@ describe('UserInvitePage', () => {
 
       const {rerender} = render(<UserInvitePage />);
 
-      // Trigger onFlowChange with a failure reason
+      // Trigger onFlowChange with an error
       if (capturedOnFlowChange) {
-        capturedOnFlowChange({failureReason: 'User already exists'});
+        capturedOnFlowChange({
+          error: {
+            code: 'FEE-60005',
+            message: {key: 'flows.errors.user_exists', defaultValue: 'User already exists'},
+            description: {key: 'flows.errors.user_exists_desc', defaultValue: 'User already exists'},
+          },
+        });
       }
 
       // Re-render to reflect state change
@@ -677,7 +683,14 @@ describe('UserInvitePage', () => {
       render(<UserInvitePage />);
 
       if (capturedOnFlowChange) {
-        capturedOnFlowChange({failureReason: 'Flow not found', response: {status: 404, data: {code: 'FLM-1003'}}});
+        capturedOnFlowChange({
+          error: {
+            code: 'FLM-1003',
+            message: {key: 'flows.errors.not_found', defaultValue: 'Flow not found'},
+            description: {key: 'flows.errors.not_found.desc', defaultValue: 'Flow not found'},
+          },
+          response: {status: 404, data: {code: 'FLM-1003'}},
+        });
       }
 
       await waitFor(() => {
@@ -1031,7 +1044,7 @@ describe('UserInvitePage', () => {
   /* ----- Clearing flow error on reset ----- */
 
   describe('flow error reset', () => {
-    it('should clear flowError when onFlowChange receives null failureReason', async () => {
+    it('should clear flowError when onFlowChange receives no error', async () => {
       mockInviteUserRenderProps.components = [
         heading('Step'),
         block([textInput('name', 'Name'), submitAction('Next')]),
@@ -1041,7 +1054,13 @@ describe('UserInvitePage', () => {
 
       // First set an error
       if (capturedOnFlowChange) {
-        capturedOnFlowChange({failureReason: 'Some error'});
+        capturedOnFlowChange({
+          error: {
+            code: 'FEE-60001',
+            message: {key: 'flows.errors.some', defaultValue: 'Some error'},
+            description: {key: 'flows.errors.some.desc', defaultValue: 'Some error'},
+          },
+        });
       }
       rerender(<UserInvitePage />);
 
@@ -1051,7 +1070,7 @@ describe('UserInvitePage', () => {
 
       // Then clear it
       if (capturedOnFlowChange) {
-        capturedOnFlowChange({failureReason: null});
+        capturedOnFlowChange({});
       }
       rerender(<UserInvitePage />);
 

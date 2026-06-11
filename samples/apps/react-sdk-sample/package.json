@@ -1,41 +1,36 @@
 {
   "name": "@thunderid/react-sdk-sample",
   "private": true,
-  "version": "0.41.0",
+  "version": "0.43.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && npm run copy:certs",
-    "copy:certs": "test -f server.key && test -f server.cert && cp -f server.key server.cert dist/ || echo 'Warning: SSL certificates not found, skipping copy'",
+    "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "npm run dev"
   },
   "dependencies": {
-    "@thunderid/react": "0.0.5",
-    "@wso2/oxygen-ui": "0.0.1-alpha.10",
+    "@thunderid/react": "workspace:^",
+    "@wso2/oxygen-ui": "catalog:",
     "jwt-decode": "4.0.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react": "catalog:",
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@eslint/js": "9.39.0",
-    "@types/node": "20.19.24",
-    "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-basic-ssl": "2.1.0",
-    "@vitejs/plugin-react": "5.1.0",
-    "eslint": "9.39.0",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-basic-ssl": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "eslint": "catalog:",
     "eslint-plugin-react-hooks": "7.0.1",
     "eslint-plugin-react-refresh": "0.4.24",
-    "globals": "16.4.0",
-    "typescript": "5.9.3",
-    "typescript-eslint": "8.57.2",
-    "vite": "npm:rolldown-vite@7.2.5"
-  },
-  "pnpm": {
-    "overrides": {
-      "vite": "npm:rolldown-vite@7.2.5"
-    }
+    "globals": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vite": "catalog:"
   },
   "overrides": {
     "postcss": "8.5.10",

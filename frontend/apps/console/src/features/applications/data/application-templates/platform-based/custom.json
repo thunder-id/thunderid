@@ -1,0 +1,25 @@
+{
+  "id": "custom",
+  "displayName": "Custom",
+  "description": "Fully customizable application with all configuration options available",
+  "creationFlow": {
+    "steps": ["NAME", "ORGANIZATION_UNIT", "COMPLETE"]
+  },
+  "defaults": {
+    "name": "My Application",
+    "inboundAuthConfig": [
+      {
+        "type": "oauth2",
+        "config": {
+          "grantTypes": ["client_credentials"],
+          "responseTypes": [],
+          "redirectUris": [],
+          "pkceRequired": false,
+          "tokenEndpointAuthMethod": "client_secret_basic",
+          "publicClient": false
+        }
+      }
+    ],
+    "allowedUserTypes": []
+  }
+}

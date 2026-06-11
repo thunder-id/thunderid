@@ -52,6 +52,7 @@ func ClientAuthMiddleware(inboundClient inboundclient.InboundClientServiceInterf
 				}
 				// Write error response
 				utils.WriteJSONError(
+					ctx,
 					w,
 					authErr.ErrorCode,
 					authErr.ErrorDescription,

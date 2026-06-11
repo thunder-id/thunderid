@@ -19,6 +19,7 @@
 package oauth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -90,7 +91,7 @@ func parseIDPConfig(idp *idpPkg.IDPDTO) (*OAuthClientConfig, error) {
 }
 
 // buildTokenRequest constructs the HTTP request to exchange the authorization code for tokens.
-func buildTokenRequest(oAuthClientConfig *OAuthClientConfig, code string, logger *log.Logger) (
+func buildTokenRequest(ctx context.Context, oAuthClientConfig *OAuthClientConfig, code string, logger *log.Logger) (
 	*http.Request, *serviceerror.ServiceError) {
 	form := url.Values{}
 	form.Set(oauth2const.RequestParamClientID, oAuthClientConfig.ClientID)
@@ -102,7 +103,7 @@ func buildTokenRequest(oAuthClientConfig *OAuthClientConfig, code string, logger
 	httpReq, err := http.NewRequest(http.MethodPost, oAuthClientConfig.OAuthEndpoints.TokenEndpoint,
 		strings.NewReader(form.Encode()))
 	if err != nil {
-		logger.Error("Failed to create token request", log.Error(err))
+		logger.Error(ctx, "Failed to create token request", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -115,27 +116,28 @@ func buildTokenRequest(oAuthClientConfig *OAuthClientConfig, code string, logger
 // sendTokenRequest sends the token request to the identity provider and processes the response.
 func sendTokenRequest(httpReq *http.Request, httpClient httpservice.HTTPClientInterface, logger *log.Logger) (
 	*TokenResponse, *serviceerror.ServiceError) {
+	ctx := httpReq.Context()
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
-		logger.Error("Token request to identity provider failed", log.Error(err))
+		logger.Error(ctx, "Token request to identity provider failed", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.Error("Failed to close token response body", log.Error(closeErr))
+			logger.Error(ctx, "Failed to close token response body", log.Error(closeErr))
 		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		logger.Error("Token endpoint returned an error response",
+		logger.Error(ctx, "Token endpoint returned an error response",
 			log.Int("statusCode", resp.StatusCode), log.String("response", string(body)))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	var tokenResp TokenResponse
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		logger.Error("Failed to parse token response", log.Error(err))
+		logger.Error(ctx, "Failed to parse token response", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -143,11 +145,11 @@ func sendTokenRequest(httpReq *http.Request, httpClient httpservice.HTTPClientIn
 }
 
 // buildUserInfoRequest constructs the HTTP request to fetch user information from the identity provider.
-func buildUserInfoRequest(userInfoEndpoint string, accessToken string, logger *log.Logger) (
+func buildUserInfoRequest(ctx context.Context, userInfoEndpoint string, accessToken string, logger *log.Logger) (
 	*http.Request, *serviceerror.ServiceError) {
 	req, err := http.NewRequest(http.MethodGet, userInfoEndpoint, nil)
 	if err != nil {
-		logger.Error("Failed to create userinfo request", log.Error(err))
+		logger.Error(ctx, "Failed to create userinfo request", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -160,33 +162,34 @@ func buildUserInfoRequest(userInfoEndpoint string, accessToken string, logger *l
 // sendUserInfoRequest sends the user info request to the identity provider and processes the response.
 func sendUserInfoRequest(httpReq *http.Request, httpClient httpservice.HTTPClientInterface, logger *log.Logger) (
 	map[string]interface{}, *serviceerror.ServiceError) {
+	ctx := httpReq.Context()
 	resp, err := httpClient.Do(httpReq)
 	if err != nil {
-		logger.Error("Userinfo request to identity provider failed", log.Error(err))
+		logger.Error(ctx, "Userinfo request to identity provider failed", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.Error("Failed to close userinfo response body", log.Error(closeErr))
+			logger.Error(ctx, "Failed to close userinfo response body", log.Error(closeErr))
 		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		logger.Error("Userinfo endpoint returned an error response",
+		logger.Error(ctx, "Userinfo endpoint returned an error response",
 			log.Int("statusCode", resp.StatusCode), log.String("response", string(body)))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Error("Failed to read userinfo response body", log.Error(err))
+		logger.Error(ctx, "Failed to read userinfo response body", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	var userInfo map[string]interface{}
 	if err := json.Unmarshal(body, &userInfo); err != nil {
-		logger.Error("Failed to parse userinfo response", log.Error(err))
+		logger.Error(ctx, "Failed to parse userinfo response", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 

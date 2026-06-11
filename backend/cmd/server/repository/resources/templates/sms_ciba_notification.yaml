@@ -1,0 +1,6 @@
+id: "ciba-notification-sms"
+displayName: "CIBA Authentication Notification SMS"
+scenario: "CIBA_NOTIFICATION"
+type: "sms"
+contentType: "text/plain"
+body: "{{ctx(appName)}}: {{ctx(bindingMessage)}} Tap to approve: {{ctx(inviteLink)}}"

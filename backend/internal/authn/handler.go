@@ -19,6 +19,7 @@
 package authn
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/authn/common"
@@ -46,7 +47,7 @@ func (ah *authenticationHandler) HandleCredentialsAuthRequest(w http.ResponseWri
 	ctx := r.Context()
 	authRequestPtr, err := sysutils.DecodeJSONBody[AuthenticateWithCredentialsRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 	authRequest := *authRequestPtr
@@ -64,11 +65,11 @@ func (ah *authenticationHandler) HandleCredentialsAuthRequest(w http.ResponseWri
 	authResponse, svcErr := ah.authService.AuthenticateWithCredentials(
 		ctx, authRequest.Identifiers, authRequest.Credentials, skipAssertion, assertion)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
 }
 
 // HandleSendSMSOTPRequest handles the send SMS OTP authentication request.
@@ -76,14 +77,14 @@ func (ah *authenticationHandler) HandleSendSMSOTPRequest(w http.ResponseWriter, 
 	ctx := r.Context()
 	otpRequest, err := sysutils.DecodeJSONBody[SendOTPAuthRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
 	sessionToken, svcErr := ah.authService.SendOTP(ctx, otpRequest.SenderID, notifcommon.ChannelTypeSMS,
 		otpRequest.Recipient)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
@@ -91,7 +92,7 @@ func (ah *authenticationHandler) HandleSendSMSOTPRequest(w http.ResponseWriter, 
 		Status:       "SUCCESS",
 		SessionToken: sessionToken,
 	}
-	sysutils.WriteSuccessResponse(w, http.StatusOK, response)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
 }
 
 // HandleVerifySMSOTPRequest handles the verify SMS OTP authentication request.
@@ -99,18 +100,18 @@ func (ah *authenticationHandler) HandleVerifySMSOTPRequest(w http.ResponseWriter
 	ctx := r.Context()
 	otpRequest, err := sysutils.DecodeJSONBody[VerifyOTPAuthRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
 	authResponse, svcErr := ah.authService.VerifyOTP(ctx, otpRequest.SessionToken, otpRequest.SkipAssertion,
 		otpRequest.Assertion, otpRequest.OTP)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
 }
 
 // HandleGoogleAuthStartRequest handles the Google OAuth start authentication request.
@@ -118,18 +119,18 @@ func (ah *authenticationHandler) HandleGoogleAuthStartRequest(w http.ResponseWri
 	ctx := r.Context()
 	authRequest, err := sysutils.DecodeJSONBody[IDPAuthInitRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
 	authResponse, svcErr := ah.authService.StartIDPAuthentication(ctx, idp.IDPTypeGoogle, authRequest.IDPID)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
 	response := IDPAuthInitResponseDTO(*authResponse)
-	sysutils.WriteSuccessResponse(w, http.StatusOK, response)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, response)
 }
 
 // HandleGoogleAuthFinishRequest handles the Google OAuth finish authentication request.
@@ -137,18 +138,18 @@ func (ah *authenticationHandler) HandleGoogleAuthFinishRequest(w http.ResponseWr
 	ctx := r.Context()
 	authRequest, err := sysutils.DecodeJSONBody[IDPAuthFinishRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
 	authResponse, svcErr := ah.authService.FinishIDPAuthentication(ctx, idp.IDPTypeGoogle, authRequest.SessionToken,
 		authRequest.SkipAssertion, authRequest.Assertion, authRequest.Code)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
 }
 
 // HandleGithubAuthStartRequest handles the GitHub OAuth start authentication request.
@@ -156,18 +157,18 @@ func (ah *authenticationHandler) HandleGithubAuthStartRequest(w http.ResponseWri
 	ctx := r.Context()
 	authRequest, err := sysutils.DecodeJSONBody[IDPAuthInitRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
 	authResponse, svcErr := ah.authService.StartIDPAuthentication(ctx, idp.IDPTypeGitHub, authRequest.IDPID)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
 	responseDTO := IDPAuthInitResponseDTO(*authResponse)
-	sysutils.WriteSuccessResponse(w, http.StatusOK, responseDTO)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, responseDTO)
 }
 
 // HandleGithubAuthFinishRequest handles the GitHub OAuth finish authentication request.
@@ -175,18 +176,18 @@ func (ah *authenticationHandler) HandleGithubAuthFinishRequest(w http.ResponseWr
 	ctx := r.Context()
 	authRequest, err := sysutils.DecodeJSONBody[IDPAuthFinishRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
 	authResponse, svcErr := ah.authService.FinishIDPAuthentication(ctx, idp.IDPTypeGitHub, authRequest.SessionToken,
 		authRequest.SkipAssertion, authRequest.Assertion, authRequest.Code)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
 }
 
 // HandleStandardOAuthStartRequest handles the standard OAuth start authentication request.
@@ -194,18 +195,18 @@ func (ah *authenticationHandler) HandleStandardOAuthStartRequest(w http.Response
 	ctx := r.Context()
 	authRequest, err := sysutils.DecodeJSONBody[IDPAuthInitRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
 	authResponse, svcErr := ah.authService.StartIDPAuthentication(ctx, idp.IDPTypeOAuth, authRequest.IDPID)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
 	responseDTO := IDPAuthInitResponseDTO(*authResponse)
-	sysutils.WriteSuccessResponse(w, http.StatusOK, responseDTO)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, responseDTO)
 }
 
 // HandleStandardOAuthFinishRequest handles the standard OAuth finish authentication request.
@@ -213,18 +214,18 @@ func (ah *authenticationHandler) HandleStandardOAuthFinishRequest(w http.Respons
 	ctx := r.Context()
 	authRequest, err := sysutils.DecodeJSONBody[IDPAuthFinishRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
 	authResponse, svcErr := ah.authService.FinishIDPAuthentication(ctx, idp.IDPTypeOAuth, authRequest.SessionToken,
 		authRequest.SkipAssertion, authRequest.Assertion, authRequest.Code)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
 }
 
 // HandlePasskeyRegisterStartRequest handles the passkey start registration request.
@@ -232,7 +233,7 @@ func (ah *authenticationHandler) HandlePasskeyRegisterStartRequest(w http.Respon
 	ctx := r.Context()
 	regRequest, err := sysutils.DecodeJSONBody[PasskeyRegisterStartRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
@@ -245,11 +246,11 @@ func (ah *authenticationHandler) HandlePasskeyRegisterStartRequest(w http.Respon
 		regRequest.Attestation,
 	)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, regResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, regResponse)
 }
 
 // HandlePasskeyRegisterFinishRequest handles the passkey finish registration request.
@@ -257,7 +258,7 @@ func (ah *authenticationHandler) HandlePasskeyRegisterFinishRequest(w http.Respo
 	ctx := r.Context()
 	regRequest, err := sysutils.DecodeJSONBody[PasskeyRegisterFinishRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
@@ -268,11 +269,11 @@ func (ah *authenticationHandler) HandlePasskeyRegisterFinishRequest(w http.Respo
 		regRequest.CredentialName,
 	)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, regResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, regResponse)
 }
 
 // HandlePasskeyStartRequest handles the passkey start authentication request.
@@ -280,7 +281,7 @@ func (ah *authenticationHandler) HandlePasskeyStartRequest(w http.ResponseWriter
 	ctx := r.Context()
 	authRequest, err := sysutils.DecodeJSONBody[PasskeyStartRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
@@ -290,11 +291,11 @@ func (ah *authenticationHandler) HandlePasskeyStartRequest(w http.ResponseWriter
 		authRequest.RelyingPartyID,
 	)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, authResponse)
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, authResponse)
 }
 
 // HandlePasskeyFinishRequest handles the passkey finish authentication request.
@@ -302,7 +303,7 @@ func (ah *authenticationHandler) HandlePasskeyFinishRequest(w http.ResponseWrite
 	ctx := r.Context()
 	authRequest, err := sysutils.DecodeJSONBody[PasskeyFinishRequestDTO](r)
 	if err != nil {
-		sysutils.WriteErrorResponse(w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, common.APIErrorInvalidRequestFormat)
 		return
 	}
 
@@ -316,15 +317,18 @@ func (ah *authenticationHandler) HandlePasskeyFinishRequest(w http.ResponseWrite
 		authRequest.Assertion,
 	)
 	if svcErr != nil {
-		ah.handleServiceError(w, svcErr)
+		ah.handleServiceError(ctx, w, svcErr)
 		return
 	}
 
-	sysutils.WriteSuccessResponse(w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, AuthenticationResponseDTO(*authResponse))
 }
 
 // handleServiceError converts service errors to appropriate HTTP responses.
-func (ah *authenticationHandler) handleServiceError(w http.ResponseWriter, svcErr *serviceerror.ServiceError) {
+func (
+	ah *authenticationHandler) handleServiceError(ctx context.Context,
+	w http.ResponseWriter,
+	svcErr *serviceerror.ServiceError) {
 	status := http.StatusInternalServerError
 	if svcErr.Type == serviceerror.ClientErrorType {
 		switch svcErr.Code {
@@ -342,5 +346,5 @@ func (ah *authenticationHandler) handleServiceError(w http.ResponseWriter, svcEr
 		Message:     svcErr.Error,
 		Description: svcErr.ErrorDescription,
 	}
-	sysutils.WriteErrorResponse(w, status, errorResp)
+	sysutils.WriteErrorResponse(ctx, w, status, errorResp)
 }

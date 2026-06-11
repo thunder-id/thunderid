@@ -20,8 +20,10 @@
 // It defines a common interface and implementations for sending emails via various transports.
 package email
 
+import "context"
+
 // EmailClientInterface defines the interface for sending emails.
 type EmailClientInterface interface {
 	// Send sends an email using the provided EmailData.
-	Send(emailData EmailData) error
+	Send(ctx context.Context, emailData EmailData) error
 }

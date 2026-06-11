@@ -20,6 +20,7 @@ package idp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -29,6 +30,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
@@ -510,9 +512,58 @@ func (s *IDPHandlerTestSuite) TestWriteServiceErrorResponse() {
 	for _, tc := range testCases {
 		s.Run(tc.name, func() {
 			rr := httptest.NewRecorder()
-			writeServiceErrorResponse(rr, &tc.serviceError)
+			writeServiceErrorResponse(context.Background(), rr, &tc.serviceError)
 
 			s.Equal(tc.expectedStatus, rr.Code)
 		})
 	}
+}
+
+// initConfigWithTestCryptoKey initializes the server runtime with the shared
+// test crypto key so that secret property encryption works in tests.
+func initConfigWithTestCryptoKey() {
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("/tmp/test", &config.Config{
+		Crypto: config.CryptoConfig{
+			Encryption: config.EncryptionConfig{
+				Key: testCryptoKey,
+			},
+		},
+	})
+}
+
+func (s *IDPHandlerTestSuite) TestHandleIDPPostRequest_WithSecretProperty() {
+	initConfigWithTestCryptoKey()
+	defer config.ResetServerRuntime()
+
+	reqBody := idpRequest{
+		Name: "Secret IDP",
+		Type: "OIDC",
+		Properties: []cmodels.PropertyDTO{
+			{Name: "client_secret", Value: "s3cret", IsSecret: true},
+		},
+	}
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest(http.MethodPost, "/identity-providers", bytes.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	secretProp, err := cmodels.NewProperty("client_secret", "s3cret", true)
+	s.NoError(err)
+	s.mockService.On("CreateIdentityProvider", mock.Anything, mock.Anything).
+		Return(&IDPDTO{
+			ID:         "idp-123",
+			Name:       "Secret IDP",
+			Type:       IDPTypeOIDC,
+			Properties: []cmodels.Property{*secretProp},
+		}, (*serviceerror.ServiceError)(nil))
+
+	s.handler.HandleIDPPostRequest(rr, req)
+
+	s.Equal(http.StatusCreated, rr.Code)
+
+	// Secret property values must be masked in the response.
+	var response idpResponse
+	s.NoError(json.NewDecoder(rr.Body).Decode(&response))
+	s.Len(response.Properties, 1)
+	s.Equal("******", response.Properties[0].Value)
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -70,12 +70,23 @@ interface ActionPrompt {
     label?: string;
 }
 
+interface FlowErrorMessage {
+    key?: string;
+    defaultValue?: string;
+}
+
+interface FlowError {
+    code?: string;
+    message?: FlowErrorMessage;
+    description?: FlowErrorMessage;
+}
+
 // Define the interface for the authentication response
 interface AuthResponse {
     flowStatus?: string;
     assertion?: string;
     challengeToken?: string;
-    failureReason?: string;
+    error?: FlowError;
     type?: string;
     data?: {
         actions?: ActionPrompt[];
@@ -90,6 +101,10 @@ interface AuthResponse {
     };
     executionId?: string;
 }
+
+const getFlowErrorMessage = (error?: FlowError, fallback?: string): string => {
+    return error?.message?.defaultValue ?? error?.description?.defaultValue ?? fallback ?? 'An error occurred.';
+};
 
 const isConnectionFailure = (error: Error) => {
     const message = error.message?.toLowerCase() || '';
@@ -283,7 +298,8 @@ const LoginPage = () => {
         setExecutionId(data.executionId || '');
         setChallengeToken(data.challengeToken || '');
         if (data.flowStatus && data.flowStatus == 'ERROR') {
-            if (isMobileLogin && data?.failureReason && data.failureReason.includes("User not found")) {
+            const flowErrorMsg = getFlowErrorMessage(data.error);
+            if (isMobileLogin && flowErrorMsg.includes("User not found")) {
                 console.log("User not found, prompting registration");
                 setPromptRegistration(true);
                 setError(false);
@@ -298,7 +314,7 @@ const LoginPage = () => {
                     ? 'Registration failed. Please check your information.'
                     : 'Login failed. Please check your credentials.';
             setError(true);
-            setErrorMessage(data.failureReason || defaultMessage);
+            setErrorMessage(getFlowErrorMessage(data.error, defaultMessage));
             setLoading(false);
 
             // The server invalidates the flow session on ERROR, so clear stale state
@@ -315,11 +331,11 @@ const LoginPage = () => {
 
         // Clear previous state, but preserve error if it exists in the new response
         clearToken();
-        const hasNewError = !!data.failureReason;
-        
+        const hasNewError = !!data.error;
+
         if (hasNewError) {
              setError(true);
-             setErrorMessage(data.failureReason || '');
+             setErrorMessage(getFlowErrorMessage(data.error));
         } else {
              setError(false);
              setConnectionError(false);
@@ -382,7 +398,7 @@ const LoginPage = () => {
                 // This is a decision screen - multiple actions to choose from
                 setNeedsDecision(true);
                 setAvailableActions(data.data.actions);
-            } else if (data.data?.actions && data.data.actions.length === 1 && !data.failureReason) {
+            } else if (data.data?.actions && data.data.actions.length === 1 && !data.error) {
                 // Single action without inputs - auto-execute it to continue the flow
                 // This handles intermediate steps like "send_sms" that don't need user input
                 const singleAction = data.data.actions[0];
@@ -465,11 +481,11 @@ const LoginPage = () => {
                     setToken(data.assertion);
                     setError(false);
                 } else if (data.flowStatus && data.flowStatus === 'ERROR') {
-                    const defaultMessage = isSignupMode 
-                        ? 'Registration failed. Please check your information.' 
+                    const defaultMessage = isSignupMode
+                        ? 'Registration failed. Please check your information.'
                         : 'Login failed. Please check your credentials.';
                     setError(true);
-                    setErrorMessage(data.failureReason || defaultMessage);
+                    setErrorMessage(getFlowErrorMessage(data.error, defaultMessage));
                 } else if (data.type === "VIEW") {
                     // Check for passkey creation options in additionalData - check this first
                     if (data.data?.additionalData?.passkeyCreationOptions) {
@@ -564,7 +580,7 @@ const LoginPage = () => {
 
                 if (data.flowStatus === 'ERROR') {
                     setError(true);
-                    setErrorMessage(data.failureReason || 'Failed to start recovery. Please try again.');
+                    setErrorMessage(getFlowErrorMessage(data.error, 'Failed to start recovery. Please try again.'));
                 } else if (data.type === 'VIEW' && data.data?.inputs) {
                     data.data.inputs.forEach((input: AuthInput) => {
                         setInputs(prev => [...prev, input]);
@@ -625,7 +641,7 @@ const LoginPage = () => {
                     setError(false);
                 } else if (data.flowStatus && data.flowStatus === 'ERROR') {
                     setError(true);
-                    setErrorMessage(data.failureReason || 'Registration failed. Please check your information.');
+                    setErrorMessage(getFlowErrorMessage(data.error, 'Registration failed. Please check your information.'));
                 } else if (data.type === "VIEW") {
                     // Check for passkey creation options in additionalData - check this first
                     if (data.data?.additionalData?.passkeyCreationOptions) {

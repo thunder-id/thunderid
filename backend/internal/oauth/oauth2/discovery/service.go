@@ -66,6 +66,9 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		IntrospectionEndpoint:                      ds.getIntrospectionEndpoint(),
 		PushedAuthorizationRequestEndpoint:         ds.getPAREndpoint(),
 		RequirePushedAuthorizationRequests:         ds.isGlobalPARRequired(),
+		BackchannelAuthenticationEndpoint:          ds.getBackchannelAuthenticationEndpoint(),
+		BackchannelTokenDeliveryModesSupported:     []string{"poll"},
+		BackchannelUserCodeParameterSupported:      false,
 		ScopesSupported:                            ds.getSupportedScopes(),
 		ResponseTypesSupported:                     ds.getSupportedResponseTypes(),
 		GrantTypesSupported:                        ds.getSupportedGrantTypes(),
@@ -157,6 +160,10 @@ func (ds *discoveryService) getPAREndpoint() string {
 	return ds.baseURL + constants.OAuth2PAREndpoint
 }
 
+func (ds *discoveryService) getBackchannelAuthenticationEndpoint() string {
+	return ds.baseURL + constants.OAuth2BackchannelAuthEndpoint
+}
+
 func (ds *discoveryService) isGlobalPARRequired() bool {
 	return config.GetServerRuntime().Config.OAuth.PAR.RequirePAR
 }
@@ -178,7 +185,8 @@ func (ds *discoveryService) getSupportedSubjectTypes() []string {
 func (ds *discoveryService) getSupportedSigningAlgorithms(ctx context.Context) ([]string, error) {
 	keys, err := ds.cryptoProvider.GetPublicKeys(ctx, kmprovider.PublicKeyFilter{})
 	if err != nil {
-		log.GetLogger().Error("Failed to retrieve public keys for signing algorithm discovery", log.Error(err))
+		log.GetLogger().Error(ctx,
+			"Failed to retrieve public keys for signing algorithm discovery", log.Error(err))
 		return nil, err
 	}
 	result := make([]string, 0, len(keys))
@@ -191,7 +199,8 @@ func (ds *discoveryService) getSupportedSigningAlgorithms(ctx context.Context) (
 	}
 	if len(result) == 0 {
 		err = errors.New("no valid signing algorithms found")
-		log.GetLogger().Error("No valid signing algorithms found in registered public keys", log.Error(err))
+		log.GetLogger().Error(ctx,
+			"No valid signing algorithms found in registered public keys", log.Error(err))
 		return nil, err
 	}
 	return result, nil

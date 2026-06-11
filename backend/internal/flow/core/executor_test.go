@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -238,14 +238,14 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 
 func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 	tests := []struct {
-		name               string
-		prerequisites      []common.Input
-		authenticatedUser  authncm.AuthenticatedUser
-		userInputs         map[string]string
-		runtimeData        map[string]string
-		expectedValid      bool
-		expectedStatus     common.ExecutorStatus
-		expectedFailReason string
+		name              string
+		prerequisites     []common.Input
+		authenticatedUser authncm.AuthenticatedUser
+		userInputs        map[string]string
+		runtimeData       map[string]string
+		expectedValid     bool
+		expectedStatus    common.ExecutorStatus
+		expectError       bool
 	}{
 		{
 			"No prerequisites",
@@ -255,7 +255,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			map[string]string{},
 			true,
 			"",
-			"",
+			false,
 		},
 		{
 			"UserID prerequisite met via authenticated user",
@@ -265,7 +265,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			map[string]string{},
 			true,
 			"",
-			"",
+			false,
 		},
 		{
 			"UserID prerequisite not met",
@@ -275,7 +275,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			map[string]string{},
 			false,
 			common.ExecFailure,
-			"Prerequisite not met: userID",
+			true,
 		},
 		{
 			"Other prerequisite met via user input",
@@ -285,7 +285,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			map[string]string{},
 			true,
 			"",
-			"",
+			false,
 		},
 		{
 			"Other prerequisite met via runtime data",
@@ -295,7 +295,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			map[string]string{"token": "abc123"},
 			true,
 			"",
-			"",
+			false,
 		},
 		{
 			"Prerequisite not met",
@@ -305,7 +305,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			map[string]string{},
 			false,
 			common.ExecFailure,
-			"Prerequisite not met: apiKey",
+			true,
 		},
 		{
 			"Optional prerequisite not met",
@@ -315,7 +315,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			map[string]string{},
 			true,
 			"",
-			"",
+			false,
 		},
 		{
 			"Prerequisite met via forwarded data (string)",
@@ -325,7 +325,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			map[string]string{},
 			true,
 			"",
-			"",
+			false,
 		},
 		{
 			"Prerequisite not met via forwarded data (non-string)",
@@ -335,7 +335,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			map[string]string{},
 			false,
 			common.ExecFailure,
-			"Prerequisite not met: email",
+			true,
 		},
 	}
 
@@ -366,7 +366,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 
 			s.Equal(tt.expectedValid, result)
 			s.Equal(tt.expectedStatus, execResp.Status)
-			s.Equal(tt.expectedFailReason, execResp.FailureReason)
+			s.Equal(tt.expectError, execResp.Error != nil)
 		})
 	}
 }

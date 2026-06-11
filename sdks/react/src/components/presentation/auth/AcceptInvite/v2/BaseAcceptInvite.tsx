@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -17,7 +17,7 @@
  */
 
 import {cx} from '@emotion/css';
-import {FlowMetadataResponse, Preferences} from '@thunderid/browser';
+import {FlowExecutionError, FlowMetadataResponse, Preferences} from '@thunderid/browser';
 import {FC, ReactElement, ReactNode, useCallback, useContext, useEffect, useRef, useState} from 'react';
 import useStyles from './BaseAcceptInvite.styles';
 import ComponentRendererContext, {
@@ -50,8 +50,8 @@ export interface AcceptInviteFlowResponse {
     };
     redirectURL?: string;
   };
+  error?: FlowExecutionError;
   executionId: string;
-  failureReason?: string;
   flowStatus: 'INCOMPLETE' | 'COMPLETE' | 'ERROR';
   type?: 'VIEW' | 'REDIRECTION';
 }
@@ -60,6 +60,11 @@ export interface AcceptInviteFlowResponse {
  * Render props for custom UI rendering of AcceptInvite.
  */
 export interface BaseAcceptInviteRenderProps {
+  /**
+   * Additional data from the current flow step (e.g. consentPrompt for consent nodes).
+   */
+  additionalData: Record<string, any>;
+
   /**
    * Flow components from the current step.
    */
@@ -328,9 +333,7 @@ const BaseAcceptInvite: FC<BaseAcceptInviteProps> = ({
    */
   const handleError: any = useCallback(
     (error: any) => {
-      // Extract error message from response failureReason or use extractErrorMessage
-      const errorMessage: string =
-        error?.failureReason || extractErrorMessage(error, t, 'components.acceptInvite.errors.generic');
+      const errorMessage: string = extractErrorMessage(error, t, 'components.acceptInvite.errors.generic');
 
       // Set the API error state
       setApiError(error instanceof Error ? error : new Error(errorMessage));
@@ -513,7 +516,38 @@ const BaseAcceptInvite: FC<BaseAcceptInviteProps> = ({
 
       try {
         // Build payload with form values
-        const inputs: any = data || formValues;
+        const inputs: any = {...(data || formValues)};
+
+        // Auto-compile consent_decisions if we are on a consent prompt step.
+        // Mirrors the same logic in SignIn to ensure the server receives a
+        // properly structured JSON payload rather than individual checkbox keys.
+        const currentAdditionalData = (currentFlow?.data?.additionalData as Record<string, any>) ?? {};
+        if (currentAdditionalData['consentPrompt']) {
+          try {
+            const raw: any = currentAdditionalData['consentPrompt'];
+            const purposes: any[] = typeof raw === 'string' ? JSON.parse(raw) : raw.purposes || raw;
+            const isDeny = component?.variant?.toLowerCase() !== 'primary';
+            const decisions = {
+              purposes: purposes.map((p: any) => ({
+                approved: !isDeny,
+                purposeName: p.purposeName,
+                elements: [
+                  ...(p.essential || []).map((e: any) => ({approved: !isDeny, name: e.name})),
+                  ...(p.optional || []).map((e: any) => {
+                    const key = `__consent_opt__${p.purposeId}__${e.name}`;
+                    return {approved: isDeny ? false : inputs[key] !== 'false', name: e.name};
+                  }),
+                ],
+              })),
+            };
+            inputs['consent_decisions'] = JSON.stringify(decisions);
+            Object.keys(inputs).forEach((k: string) => {
+              if (k.startsWith('__consent_opt__')) delete inputs[k];
+            });
+          } catch {
+            // Leave inputs as-is if consent building fails
+          }
+        }
 
         const payload: Record<string, any> = {
           executionId: currentFlow.executionId,
@@ -565,6 +599,11 @@ const BaseAcceptInvite: FC<BaseAcceptInviteProps> = ({
         setCurrentFlow(response);
         setFormErrors({});
         setTouchedFields({});
+
+        // Display error from INCOMPLETE response
+        if (response?.error) {
+          handleError(response);
+        }
       } catch (err) {
         handleError(err);
       } finally {
@@ -643,6 +682,11 @@ const BaseAcceptInvite: FC<BaseAcceptInviteProps> = ({
 
         // Token is valid, show the password form
         setCurrentFlow(response);
+
+        // Display error from INCOMPLETE response
+        if (response?.error) {
+          handleError(response);
+        }
       } catch (err) {
         setIsTokenInvalid(true);
         handleError(err);
@@ -687,9 +731,11 @@ const BaseAcceptInvite: FC<BaseAcceptInviteProps> = ({
   const components: any = currentFlow?.data?.components || currentFlow?.data?.meta?.components || [];
   const {title, subtitle} = extractHeadings(components);
   const componentsWithoutHeadings: any = filterHeadings(components);
+  const additionalData: Record<string, any> = (currentFlow?.data?.additionalData as Record<string, any>) ?? {};
 
   // Render props
   const renderProps: BaseAcceptInviteRenderProps = {
+    additionalData,
     components,
     error: apiError,
     executionId,

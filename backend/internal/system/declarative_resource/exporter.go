@@ -50,7 +50,7 @@ type ResourceExporter interface {
 
 	// ValidateResource validates the resource and extracts its name
 	// Returns: resource name, export error
-	ValidateResource(resource interface{}, id string, logger *log.Logger) (string, *ExportError)
+	ValidateResource(ctx context.Context, resource interface{}, id string, logger *log.Logger) (string, *ExportError)
 
 	// GetResourceRules returns the parameterization rules for this resource type
 	GetResourceRules() *ResourceRules
@@ -83,9 +83,10 @@ func CreateTypeError(resourceType, resourceID string) *ExportError {
 }
 
 // ValidateResourceName validates that a resource name is not empty and returns an error if it is.
-func ValidateResourceName(name, resourceType, resourceID, errorCode string, logger *log.Logger) *ExportError {
+func ValidateResourceName(
+	ctx context.Context, name, resourceType, resourceID, errorCode string, logger *log.Logger) *ExportError {
 	if name == "" {
-		logger.Warn(resourceType+" missing name, skipping export",
+		logger.Warn(ctx, resourceType+" missing name, skipping export",
 			log.String("resourceID", resourceID))
 		return &ExportError{
 			ResourceType: resourceType,

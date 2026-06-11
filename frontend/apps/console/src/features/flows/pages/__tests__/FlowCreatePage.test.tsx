@@ -190,6 +190,17 @@ describe('FlowCreatePage', () => {
       expect(screen.getByText('Template')).toBeInTheDocument();
     });
 
+    it('navigates back to Type step when Flow Type breadcrumb is clicked on Template step', () => {
+      render(<FlowCreatePage />);
+
+      navigateToTemplateStep();
+
+      // "Flow Type" is the first (non-last) breadcrumb — clicking it calls setCurrentStep
+      fireEvent.click(screen.getByRole('button', {name: 'Flow Type'}));
+
+      expect(screen.getByTestId('select-flow-type')).toBeInTheDocument();
+    });
+
     it('should show Back button on the Template step', () => {
       render(<FlowCreatePage />);
 

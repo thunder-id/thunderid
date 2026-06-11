@@ -147,7 +147,7 @@ func (s *ApplicationExporterTestSuite) TestValidateResource_Success() {
 		Name: "Valid App",
 	}
 
-	name, err := s.exporter.ValidateResource(app, "app1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), app, "app1", s.logger)
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Valid App", name)
@@ -156,7 +156,7 @@ func (s *ApplicationExporterTestSuite) TestValidateResource_Success() {
 func (s *ApplicationExporterTestSuite) TestValidateResource_InvalidType() {
 	invalidResource := "not an application"
 
-	name, err := s.exporter.ValidateResource(invalidResource, "app1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), invalidResource, "app1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)
@@ -171,7 +171,7 @@ func (s *ApplicationExporterTestSuite) TestValidateResource_EmptyName() {
 		Name: "",
 	}
 
-	name, err := s.exporter.ValidateResource(app, "app1", s.logger)
+	name, err := s.exporter.ValidateResource(context.Background(), app, "app1", s.logger)
 
 	assert.Empty(s.T(), name)
 	assert.NotNil(s.T(), err)

@@ -110,16 +110,18 @@ func (suite *HandlerTestSuite) TestHandleResourceServerPostRequest_Success() {
 	reqBody := CreateResourceServerRequest{
 		Name:        "test-rs",
 		Description: "Test",
+		Type:        ResourceServerTypeMCP,
 		OUID:        "ou-123",
 	}
 
 	suite.mockService.On("CreateResourceServer", mock.Anything,
 		mock.MatchedBy(func(rs ResourceServer) bool {
-			return rs.Name == "test-rs"
+			return rs.Name == "test-rs" && rs.Type == ResourceServerTypeMCP
 		})).Return(&ResourceServer{
 		ID:          "rs-123",
 		Name:        "test-rs",
 		Description: "Test",
+		Type:        ResourceServerTypeMCP,
 		OUID:        "ou-123",
 	}, nil)
 
@@ -135,6 +137,7 @@ func (suite *HandlerTestSuite) TestHandleResourceServerPostRequest_Success() {
 	suite.NoError(err)
 	suite.Equal("rs-123", resp.ID)
 	suite.Equal("test-rs", resp.Name)
+	suite.Equal(ResourceServerTypeMCP, resp.Type)
 }
 
 func (suite *HandlerTestSuite) TestHandleResourceServerPostRequest_InvalidJSON() {
@@ -164,6 +167,26 @@ func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_Success() {
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	suite.NoError(err)
 	suite.Equal("rs-123", resp.ID)
+}
+
+func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_DefaultsTypeToCustom() {
+	suite.mockService.On("GetResourceServer", mock.Anything,
+		"rs-123").Return(&ResourceServer{
+		ID:   "rs-123",
+		Name: "legacy-rs",
+	}, nil)
+
+	req := httptest.NewRequest("GET", "/resource-servers/rs-123", nil)
+	req.SetPathValue("id", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerGetRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	var resp ResourceServerResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	suite.NoError(err)
+	suite.Equal(ResourceServerTypeCustom, resp.Type)
 }
 
 func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_NotFound() {

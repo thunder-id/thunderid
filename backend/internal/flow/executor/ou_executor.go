@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -26,6 +26,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -76,7 +77,7 @@ func newOUExecutor(
 // Execute executes the ou creation logic.
 func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug("Executing OU creation executor")
+	logger.Debug(ctx.Context, "Executing OU creation executor")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -84,14 +85,14 @@ func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, e
 	}
 
 	if !o.ValidatePrerequisites(ctx, execResp) {
-		logger.Debug("Prerequisites validation failed for OU creation")
+		logger.Debug(ctx.Context, "Prerequisites validation failed for OU creation")
 		execResp.Status = common.ExecFailure
-		execResp.FailureReason = "Prerequisites validation failed for OU creation"
+		execResp.Error = &ErrOUCreationPrereqFailed
 		return execResp, nil
 	}
 
 	if !o.HasRequiredInputs(ctx, execResp) {
-		logger.Debug("Required inputs for OU creation is not provided")
+		logger.Debug(ctx.Context, "Required inputs for OU creation is not provided")
 		execResp.Status = common.ExecUserInputRequired
 		return execResp, nil
 	}
@@ -99,7 +100,8 @@ func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, e
 	// Create the OU using the OU service.
 	ouRequest, err := o.getOrganizationUnitRequest(ctx)
 	if err != nil {
-		logger.Error("Failed to build organization unit request", log.String("error", err.Error()))
+		logger.Error(ctx.Context, "Failed to build organization unit request",
+			log.String("error", err.Error()))
 		return nil, err
 	}
 	createdOU, svcErr := o.ouService.CreateOrganizationUnit(ctx.Context, ouRequest)
@@ -110,30 +112,34 @@ func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, e
 
 			switch svcErr.Code {
 			case ou.ErrorOrganizationUnitNameConflict.Code:
-				execResp.FailureReason = "An organization unit with the same name already exists."
+				execResp.Error = &ErrOUNameConflict
 			case ou.ErrorOrganizationUnitHandleConflict.Code:
-				execResp.FailureReason = "An organization unit with the same handle already exists."
+				execResp.Error = &ErrOUHandleConflict
 			default:
-				execResp.FailureReason = "Failed to create organization unit: " + svcErr.ErrorDescription.DefaultValue
+				execResp.Error = serviceerror.CustomServiceError(ErrOUCreationFailed, i18ncore.I18nMessage{
+					Key:          ErrOUCreationFailed.ErrorDescription.Key,
+					DefaultValue: "Failed to create organization unit:" + svcErr.ErrorDescription.DefaultValue,
+				})
 			}
 
 			return execResp, nil
 		}
 
-		logger.Error("Error occurred while creating organization unit: ", log.String("errorCode", svcErr.Code),
+		logger.Error(ctx.Context, "Error occurred while creating organization unit: ",
+			log.String("errorCode", svcErr.Code),
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 		return nil, errors.New("failed to create organization unit")
 	}
 
 	if createdOU.ID == "" {
-		logger.Error("Organization unit creation failed: received empty OU ID")
+		logger.Error(ctx.Context, "Organization unit creation failed: received empty OU ID")
 		return nil, errors.New("failed to create organization unit")
 	}
 
 	// Set the created OU ID in the runtime data for further use in the flow.
 	execResp.RuntimeData[ouIDKey] = createdOU.ID
 
-	logger.Debug("Organization unit created successfully", log.String(ouIDKey, createdOU.ID))
+	logger.Debug(ctx.Context, "Organization unit created successfully", log.String(ouIDKey, createdOU.ID))
 	execResp.Status = common.ExecComplete
 	return execResp, nil
 }

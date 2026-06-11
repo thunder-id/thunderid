@@ -80,10 +80,11 @@ func initializeTestRuntime(root string) error {
 			Issuer: "magiclink-svc",
 		},
 		GateClient: config.GateClientConfig{
-			Hostname:  "localhost",
-			Port:      8090,
-			Scheme:    "https",
-			LoginPath: "/gate/signin",
+			Hostname:     "localhost",
+			Port:         8090,
+			Scheme:       "https",
+			LoginPath:    "/gate/signin",
+			CallbackPath: "/gate/callback",
 		},
 	}
 	return config.InitializeServerRuntime(root, testConfig)
@@ -325,18 +326,18 @@ func (suite *MagicLinkServiceTestSuite) TestGetAuthenticatorMetadata() {
 func (suite *MagicLinkServiceTestSuite) TestBuildMagicLinkURLUsesQueryParams() {
 	service := suite.service.(*magicLinkAuthnService)
 
-	result := service.buildMagicLinkURL("", testToken, map[string]string{"id": testExecutionID})
+	result := service.buildMagicLinkURL(context.Background(), "", testToken, map[string]string{"id": testExecutionID})
 	parsedURL, err := url.Parse(result)
 
 	suite.Require().NoError(err)
-	suite.Equal("/gate/signin", parsedURL.Path)
+	suite.Equal("/gate/callback", parsedURL.Path)
 	suite.Equal(testExecutionID, parsedURL.Query().Get("id"))
 	suite.Equal(testToken, parsedURL.Query().Get("token"))
 }
 
 func (suite *MagicLinkServiceTestSuite) TestBuildMagicLinkURLUsesQueryParamsForCustomURL() {
 	service := suite.service.(*magicLinkAuthnService)
-	result := service.buildMagicLinkURL("https://example.com/signin?tenant=alpha", testToken,
+	result := service.buildMagicLinkURL(context.Background(), "https://example.com/signin?tenant=alpha", testToken,
 		map[string]string{"id": testExecutionID})
 	parsedURL, err := url.Parse(result)
 
@@ -349,8 +350,8 @@ func (suite *MagicLinkServiceTestSuite) TestBuildMagicLinkURLUsesQueryParamsForC
 func (suite *MagicLinkServiceTestSuite) TestBuildMagicLinkURLDefaultURLIsNotMutated() {
 	service := suite.service.(*magicLinkAuthnService)
 
-	result1 := service.buildMagicLinkURL("", "token-aaa", map[string]string{"id": "flow-aaa"})
-	result2 := service.buildMagicLinkURL("", "token-bbb", map[string]string{"id": "flow-bbb"})
+	result1 := service.buildMagicLinkURL(context.Background(), "", "token-aaa", map[string]string{"id": "flow-aaa"})
+	result2 := service.buildMagicLinkURL(context.Background(), "", "token-bbb", map[string]string{"id": "flow-bbb"})
 
 	parsedURL1, err1 := url.Parse(result1)
 	parsedURL2, err2 := url.Parse(result2)
