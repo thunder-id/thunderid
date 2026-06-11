@@ -66,6 +66,15 @@ const UserCreatePage = lazy(() => import('@thunderid/configure-users').then((m) 
 const UserEditPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserEditPage})));
 const UserInvitePage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UserInvitePage})));
 const UsersListPage = lazy(() => import('@thunderid/configure-users').then((m) => ({default: m.UsersListPage})));
+const ResourceServersListPage = lazy(() =>
+  import('@thunderid/configure-resource-servers').then((m) => ({default: m.ResourceServersListPage})),
+);
+const ResourceServerEditPage = lazy(() =>
+  import('@thunderid/configure-resource-servers').then((m) => ({default: m.ResourceServerEditPage})),
+);
+const CreateResourceServerPage = lazy(() =>
+  import('@thunderid/configure-resource-servers').then((m) => ({default: m.CreateResourceServerPage})),
+);
 
 const AgentCreatePage = lazy(() => import('./features/agents/pages/AgentCreatePage'));
 const AgentEditPage = lazy(() => import('./features/agents/pages/AgentEditPage'));
@@ -136,6 +145,8 @@ export default function App(): JSX.Element {
               <Route path="agents" element={<AgentsListPage />} />
               <Route path="agents/:agentId" element={<AgentEditPage />} />
               <Route path="flows" element={<FlowsListPage />} />
+              <Route path="resource-servers" element={<ResourceServersListPage />} />
+              <Route path="resource-servers/:resourceServerId" element={<ResourceServerEditPage />} />
             </Route>
             {/* Organization Units - wrapped in OrganizationUnitProvider to preserve tree state across navigation */}
             <Route
@@ -235,6 +246,16 @@ export default function App(): JSX.Element {
               }
             >
               <Route index element={<AgentCreatePage />} />
+            </Route>
+            <Route
+              path="/resource-servers/create"
+              element={
+                <ProtectedRoute>
+                  <FullScreenLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<CreateResourceServerPage />} />
             </Route>
             <Route
               path="/flows/create"

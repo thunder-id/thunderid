@@ -73,14 +73,21 @@ vi.mock('../features/applications/pages/ApplicationCreatePage', () => ({
   default: () => <div data-testid="application-create-page">Application Create Page</div>,
 }));
 
+vi.mock('@thunderid/configure-resource-servers', () => ({
+  ResourceServersListPage: () => <div data-testid="resource-servers-list-page">Resource Servers List Page</div>,
+  ResourceServerEditPage: () => <div data-testid="resource-server-edit-page">Resource Server Edit Page</div>,
+  CreateResourceServerPage: () => <div data-testid="create-resource-server-page">Create Resource Server Page</div>,
+}));
+
 vi.mock('../layouts/DashboardLayout', async () => {
   const {Outlet} = await import('react-router');
   return {default: () => <Outlet />};
 });
 
-vi.mock('../layouts/FullScreenLayout', () => ({
-  default: () => <div data-testid="full-screen-layout">Full Screen Layout</div>,
-}));
+vi.mock('../layouts/FullScreenLayout', async () => {
+  const {Outlet} = await import('react-router');
+  return {default: () => <Outlet />};
+});
 
 vi.mock('../features/welcome/components/WelcomeRedirect', () => ({
   default: () => null,
@@ -101,6 +108,30 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('translations-edit-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads ResourceServersListPage lazily at /resource-servers', async () => {
+    window.history.pushState({}, '', '/resource-servers');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('resource-servers-list-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads ResourceServerEditPage lazily at /resource-servers/:id', async () => {
+    window.history.pushState({}, '', '/resource-servers/rs-123');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('resource-server-edit-page')).toBeInTheDocument();
+    });
+  });
+
+  it('loads CreateResourceServerPage lazily at /resource-servers/create', async () => {
+    window.history.pushState({}, '', '/resource-servers/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('create-resource-server-page')).toBeInTheDocument();
     });
   });
 });

@@ -66,6 +66,7 @@
     "@thunderid/configure-users": "workspace:^",
     "@thunderid/configure-organization-units": "workspace:^",
     "@thunderid/configure-translations": "workspace:^",
+    "@thunderid/configure-resource-servers": "workspace:^",
     "@thunderid/utils": "workspace:^",
     "@wso2/oxygen-ui": "catalog:",
     "@wso2/oxygen-ui-icons-react": "catalog:",

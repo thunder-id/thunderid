@@ -755,9 +755,22 @@ const sidebars: SidebarsConfig = {
           collapsed: true,
           items: [
             {
-              type: 'doc',
-              id: 'guides/key-concepts/authentication/passwordless/passkeys',
-              label: 'Passkeys',
+              type: 'category',
+              label: 'Passwordless',
+              collapsible: true,
+              collapsed: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'guides/key-concepts/authentication/passwordless/passkeys',
+                  label: 'Passkeys',
+                },
+                {
+                  type: 'doc',
+                  id: 'guides/key-concepts/authentication/passwordless/magiclink',
+                  label: 'Magic Link',
+                },
+              ],
             },
             {
               type: 'doc',
