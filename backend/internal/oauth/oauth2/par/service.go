@@ -149,7 +149,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 
 	randomKey, err := s.store.Store(ctx, parRequest, expiresIn)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to store pushed authorization request", log.Error(err))
+		s.logger.Error(ctx, "Failed to store pushed authorization request", log.Error(err))
 		return nil, oauth2const.ErrorServerError, "Failed to process pushed authorization request"
 	}
 
@@ -180,7 +180,7 @@ func (s *parService) ResolvePushedAuthorizationRequest(
 
 	parRequest, found, err := s.store.Consume(ctx, randomKey)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to consume PAR request", log.Error(err))
+		s.logger.Error(ctx, "Failed to consume PAR request", log.Error(err))
 		return nil, ErrPARResolutionFailed
 	}
 	if !found {
@@ -190,7 +190,7 @@ func (s *parService) ResolvePushedAuthorizationRequest(
 	// Verify client_id binding: the client making the authorization request must match
 	// the client that pushed the authorization request.
 	if parRequest.ClientID != clientID {
-		s.logger.DebugWithContext(ctx, "Client ID mismatch for PAR request",
+		s.logger.Debug(ctx, "Client ID mismatch for PAR request",
 			log.String("expected", parRequest.ClientID),
 			log.String("actual", clientID))
 		return nil, errClientIDMismatch

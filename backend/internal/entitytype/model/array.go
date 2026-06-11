@@ -56,13 +56,13 @@ func (p *array) isUnique() bool {
 func (p *array) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	arrayValue, ok := value.([]interface{})
 	if !ok {
-		logger.DebugWithContext(ctx, "Expected array but got different type",
+		logger.Debug(ctx, "Expected array but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}
 
 	if p.required && len(arrayValue) == 0 {
-		logger.DebugWithContext(ctx, "Array property is required but empty", log.String("property", path))
+		logger.Debug(ctx, "Array property is required but empty", log.String("property", path))
 		return false, nil
 	}
 

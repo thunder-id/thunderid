@@ -163,7 +163,7 @@ func (s *notificationStore) getSender(ctx context.Context, query dbmodel.DBQuery
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 	if len(results) == 0 {
-		logger.DebugWithContext(ctx, "Notification sender not found", log.String("identifier", identifier))
+		logger.Debug(ctx, "Notification sender not found", log.String("identifier", identifier))
 		return nil, nil
 	}
 	if len(results) > 1 {
@@ -234,7 +234,7 @@ func (s *notificationStore) deleteSender(ctx context.Context, id string) error {
 		return fmt.Errorf("failed to execute delete query: %w", err)
 	}
 	if rowsAffected == 0 {
-		logger.DebugWithContext(ctx, "No sender found to delete", log.String("id", id))
+		logger.Debug(ctx, "No sender found to delete", log.String("id", id))
 	}
 
 	return nil

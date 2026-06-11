@@ -82,7 +82,7 @@ func (e *openid4vpVerifier) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 	}
 
 	if e.service == nil {
-		logger.ErrorWithContext(ctx.Context, "OpenID4VP verifier service is not configured")
+		logger.Error(ctx.Context, "OpenID4VP verifier service is not configured")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrOpenID4VPNotConfigured
 		return execResp, nil
@@ -102,7 +102,7 @@ func (e *openid4vpVerifier) initiate(
 	definitionID := presentationDefinitionID(ctx)
 	init, err := e.service.Initiate(ctx.Context, definitionID)
 	if err != nil {
-		logger.ErrorWithContext(ctx.Context, "Failed to initiate OpenID4VP request",
+		logger.Error(ctx.Context, "Failed to initiate OpenID4VP request",
 			log.String("definitionID", definitionID), log.Error(err))
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrOpenID4VPInitiateFailed
@@ -139,7 +139,7 @@ func (e *openid4vpVerifier) poll(
 ) (*common.ExecutorResponse, error) {
 	rs, err := e.service.Result(ctx.Context, state)
 	if err != nil {
-		logger.DebugWithContext(ctx.Context, "OpenID4VP request state not found or expired", log.Error(err))
+		logger.Debug(ctx.Context, "OpenID4VP request state not found or expired", log.Error(err))
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrOpenID4VPExpired
 		return execResp, nil
@@ -157,7 +157,7 @@ func (e *openid4vpVerifier) poll(
 		}
 		execResp.Status = common.ExecComplete
 	case openid4vp.StatusFailed:
-		logger.DebugWithContext(ctx.Context, "OpenID4VP presentation verification failed",
+		logger.Debug(ctx.Context, "OpenID4VP presentation verification failed",
 			log.String("reason", rs.FailureReason))
 		execResp.Status = common.ExecFailure
 		execResp.Error = serviceerror.CustomServiceError(ErrOpenID4VPVerificationFailed,
@@ -191,7 +191,7 @@ func (e *openid4vpVerifier) resolveUserType(
 			if svcErr.Type == serviceerror.ClientErrorType {
 				continue
 			}
-			logger.ErrorWithContext(ctx.Context, "Failed to retrieve user type", log.String("userType", name))
+			logger.Error(ctx.Context, "Failed to retrieve user type", log.String("userType", name))
 			return
 		}
 		if et.AllowSelfRegistration {
@@ -232,7 +232,7 @@ func (e *openid4vpVerifier) resolveLocalUser(ctx context.Context,
 	if err != nil || userID == nil || *userID == "" {
 		return false
 	}
-	logger.DebugWithContext(ctx, "Found existing local account for EUDI credential",
+	logger.Debug(ctx, "Found existing local account for EUDI credential",
 		log.MaskedString(log.LoggerKeyUserID, *userID))
 	execResp.AuthenticatedUser.UserID = *userID
 	return true

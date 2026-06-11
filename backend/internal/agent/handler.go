@@ -68,7 +68,7 @@ func (h *agentHandler) HandleAgentListRequest(w http.ResponseWriter, r *http.Req
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
-	logger.DebugWithContext(ctx, "Agent list returned",
+	logger.Debug(ctx, "Agent list returned",
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", resp.TotalResults), log.Int("count", resp.Count))
 }

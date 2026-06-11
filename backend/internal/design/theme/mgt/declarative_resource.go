@@ -114,7 +114,7 @@ func (e *themeExporter) ValidateResource(ctx context.Context,
 	}
 
 	if len(theme.Theme) == 0 {
-		logger.WarnWithContext(ctx, "Theme has no theme configuration",
+		logger.Warn(ctx, "Theme has no theme configuration",
 			log.String("themeID", id), log.String("displayName", theme.DisplayName))
 	}
 

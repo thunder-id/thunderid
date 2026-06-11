@@ -33,6 +33,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/consentmock"
@@ -1975,4 +1976,55 @@ func (s *EntityTypeServiceTestSuite) TestGetAttributes_NonCredential_StoreError_
 	s.Require().NotNil(svcErr)
 	s.Require().Equal(serviceerror.InternalServerError, *svcErr)
 	s.Require().Nil(attrs)
+}
+
+// TestGetCompiledSchemaForEntityType_CompileError verifies that a stored schema which fails to
+// compile surfaces as an internal server error through ValidateEntity.
+func TestGetCompiledSchemaForEntityType_CompileError(t *testing.T) {
+	storeMock := newEntityTypeStoreInterfaceMock(t)
+	storeMock.
+		On("GetEntityTypeByName", context.Background(), TypeCategoryUser, "employee").
+		Return(EntityType{
+			Name:   "employee",
+			Schema: json.RawMessage(`{"email":{"type":"banana"}}`),
+		}, nil).
+		Once()
+
+	service := &entityTypeService{
+		entityTypeStore: storeMock,
+		transactioner:   &mockTransactioner{},
+	}
+
+	ok, svcErr := service.ValidateEntity(
+		context.Background(), TypeCategoryUser, "employee", json.RawMessage(`{}`), false)
+
+	require.False(t, ok)
+	require.NotNil(t, svcErr)
+	require.Equal(t, serviceerror.InternalServerError, *svcErr)
+}
+
+// TestEnsureOrganizationUnitExists_NilOUService verifies that a missing OU service yields an
+// internal server error.
+func TestEnsureOrganizationUnitExists_NilOUService(t *testing.T) {
+	service := &entityTypeService{ouService: nil}
+
+	svcErr := service.ensureOrganizationUnitExists(
+		context.Background(), testOUID1, TypeCategoryUser, log.GetLogger())
+
+	require.NotNil(t, svcErr)
+	require.Equal(t, serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+// TestPopulateEntityTypeOUHandles_HandleResolutionError verifies that populateEntityTypeOUHandles
+// returns early without setting handles when the OU service fails.
+func TestPopulateEntityTypeOUHandles_HandleResolutionError(t *testing.T) {
+	ouServiceMock := oumock.NewOrganizationUnitServiceInterfaceMock(t)
+	ouServiceMock.On("GetOrganizationUnitHandlesByIDs", mock.Anything, []string{testOUID1}).
+		Return(map[string]string(nil), &serviceerror.InternalServerError).Once()
+
+	service := &entityTypeService{ouService: ouServiceMock}
+	schemas := []EntityTypeListItem{{ID: "s1", Name: "Schema1", OUID: testOUID1}}
+
+	service.populateEntityTypeOUHandles(context.Background(), schemas, log.GetLogger())
+	require.Empty(t, schemas[0].OUHandle)
 }

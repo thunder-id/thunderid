@@ -61,7 +61,7 @@ func (rh *designResolveHandler) HandleResolveRequest(w http.ResponseWriter, r *h
 
 	utils.WriteSuccessResponse(ctx, w, http.StatusOK, designResponse)
 
-	rh.logger.DebugWithContext(ctx, "Successfully resolved design configuration",
+	rh.logger.Debug(ctx, "Successfully resolved design configuration",
 		log.String("type", string(resolveType)),
 		log.String("id", id))
 }

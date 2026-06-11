@@ -102,7 +102,7 @@ func (c *smtpClient) Send(ctx context.Context, emailData EmailData) error {
 		return err
 	}
 
-	logger.DebugWithContext(ctx, "Sending email via SMTP",
+	logger.Debug(ctx, "Sending email via SMTP",
 		log.MaskedString("from", c.config.from),
 		log.Int("recipientCount", len(emailData.To)))
 
@@ -116,7 +116,7 @@ func (c *smtpClient) Send(ctx context.Context, emailData EmailData) error {
 		return err
 	}
 
-	logger.DebugWithContext(ctx, "Email sent successfully")
+	logger.Debug(ctx, "Email sent successfully")
 	return nil
 }
 
@@ -257,7 +257,7 @@ func (c *smtpClient) sendViaSMTP(ctx context.Context, serverAddress string, reci
 
 	if err := client.Quit(); err != nil {
 		log.GetLogger().With(log.String(log.LoggerKeyComponentName, smtpLoggerComponentName)).
-			ErrorWithContext(ctx, "Failed to gracefully close SMTP client", log.Error(err))
+			Error(ctx, "Failed to gracefully close SMTP client", log.Error(err))
 	}
 
 	return nil

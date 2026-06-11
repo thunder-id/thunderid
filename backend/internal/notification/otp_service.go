@@ -69,7 +69,7 @@ func newOTPService(notifSenderSvc NotificationSenderMgtSvcInterface,
 func (s *otpService) SendOTP(
 	ctx context.Context, otpDTO common.SendOTPDTO) (*common.SendOTPResultDTO, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService"))
-	logger.DebugWithContext(ctx, "Sending OTP", log.MaskedString("recipient", otpDTO.Recipient),
+	logger.Debug(ctx, "Sending OTP", log.MaskedString("recipient", otpDTO.Recipient),
 		log.String("channel", otpDTO.Channel), log.String("senderId", otpDTO.SenderID))
 
 	if err := s.validateOTPSendRequest(otpDTO); err != nil {
@@ -92,7 +92,7 @@ func (s *otpService) SendOTP(
 
 	otp, err := s.generateOTP()
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to generate OTP", log.Error(err))
+		logger.Error(ctx, "Failed to generate OTP", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -117,11 +117,11 @@ func (s *otpService) SendOTP(
 
 	sessionToken, err := s.createSessionToken(ctx, sessionData)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to create session token", log.Error(err))
+		logger.Error(ctx, "Failed to create session token", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "OTP sent successfully", log.MaskedString("recipient", otpDTO.Recipient))
+	logger.Debug(ctx, "OTP sent successfully", log.MaskedString("recipient", otpDTO.Recipient))
 
 	return &common.SendOTPResultDTO{
 		SessionToken: sessionToken,
@@ -132,7 +132,7 @@ func (s *otpService) SendOTP(
 func (s *otpService) VerifyOTP(
 	ctx context.Context, otpDTO common.VerifyOTPDTO) (*common.VerifyOTPResultDTO, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService"))
-	logger.DebugWithContext(ctx, "Verifying OTP")
+	logger.Debug(ctx, "Verifying OTP")
 
 	if err := s.validateOTPVerifyRequest(otpDTO); err != nil {
 		return nil, err
@@ -146,7 +146,7 @@ func (s *otpService) VerifyOTP(
 	// Check if OTP has expired
 	currentTime := time.Now().UnixMilli()
 	if currentTime > sessionData.ExpiryTime {
-		logger.DebugWithContext(ctx, "OTP has expired")
+		logger.Debug(ctx, "OTP has expired")
 		return &common.VerifyOTPResultDTO{
 			Status:    common.OTPVerifyStatusInvalid,
 			Recipient: sessionData.Recipient,
@@ -156,7 +156,7 @@ func (s *otpService) VerifyOTP(
 	// Verify OTP value by comparing hashes
 	providedOTPHash := cryptolib.GenerateThumbprintFromString(otpDTO.OTPCode)
 	if providedOTPHash != sessionData.OTPValue {
-		logger.DebugWithContext(ctx, "Invalid OTP provided")
+		logger.Debug(ctx, "Invalid OTP provided")
 		return &common.VerifyOTPResultDTO{
 			Status:    common.OTPVerifyStatusInvalid,
 			Recipient: sessionData.Recipient,
@@ -259,7 +259,7 @@ func (s *otpService) sendSMSOTP(ctx context.Context, recipient, otp string,
 	templateData := template.TemplateData{"otp": otp, "expiryMinutes": expiryMinutes}
 	rendered, svcErr := s.templateService.Render(ctx, template.ScenarioOTP, template.TemplateTypeSMS, templateData)
 	if svcErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to render SMS OTP template", log.String("error", svcErr.Code))
+		logger.Error(ctx, "Failed to render SMS OTP template", log.String("error", svcErr.Code))
 		return &serviceerror.InternalServerError
 	}
 
@@ -274,7 +274,7 @@ func (s *otpService) sendSMSOTP(ctx context.Context, recipient, otp string,
 
 	notifData := common.NotificationData{Recipient: recipient, Body: rendered.Body}
 	if err := _client.Send(ctx, common.ChannelTypeSMS, notifData); err != nil {
-		logger.ErrorWithContext(ctx, "Failed to send SMS OTP", log.Error(err))
+		logger.Error(ctx, "Failed to send SMS OTP", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 
@@ -308,7 +308,7 @@ func (s *otpService) verifyAndDecodeSessionToken(ctx context.Context, token stri
 	jwtConfig := config.GetServerRuntime().Config.JWT
 	svcErr := s.jwtService.VerifyJWT(ctx, token, "otp-svc", jwtConfig.Issuer)
 	if svcErr != nil {
-		logger.DebugWithContext(ctx, "Invalid session token", log.String("error", svcErr.Error.DefaultValue))
+		logger.Debug(ctx, "Invalid session token", log.String("error", svcErr.Error.DefaultValue))
 		return nil, &ErrorInvalidSessionToken
 	}
 

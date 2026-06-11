@@ -59,7 +59,7 @@ func (h *cibaHandler) HandleBackchannelAuthRequest(w http.ResponseWriter, r *htt
 	// Get authenticated client from context (set by ClientAuthMiddleware).
 	clientInfo := clientauth.GetOAuthClient(r.Context())
 	if clientInfo == nil {
-		h.logger.ErrorWithContext(r.Context(),
+		h.logger.Error(r.Context(),
 			"OAuth client not found in context - ClientAuthMiddleware must be applied")
 		utils.WriteJSONError(r.Context(), w, oauth2const.ErrorServerError, "Something went wrong",
 			http.StatusInternalServerError, nil)

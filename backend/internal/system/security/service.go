@@ -75,14 +75,14 @@ func newSecurityService(authenticators []AuthenticatorInterface, publicPaths []s
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	if skipSecurity {
-		logger.WarnWithContext(ctx, "============================================================")
-		logger.WarnWithContext(ctx, "|       WARNING: SECURITY ENFORCEMENT DISABLED             |")
-		logger.WarnWithContext(ctx, "|                                                          |")
-		logger.WarnWithContext(ctx, "|        SKIP_SECURITY is set to 'true'            |")
-		logger.WarnWithContext(ctx, "|  This is NOT RECOMMENDED for production environments!    |")
-		logger.WarnWithContext(ctx, "| Endpoints accessible without auth, but tokens processed  |")
-		logger.WarnWithContext(ctx, "|                                                          |")
-		logger.WarnWithContext(ctx, "============================================================")
+		logger.Warn(ctx, "============================================================")
+		logger.Warn(ctx, "|       WARNING: SECURITY ENFORCEMENT DISABLED             |")
+		logger.Warn(ctx, "|                                                          |")
+		logger.Warn(ctx, "|        SKIP_SECURITY is set to 'true'            |")
+		logger.Warn(ctx, "|  This is NOT RECOMMENDED for production environments!    |")
+		logger.Warn(ctx, "| Endpoints accessible without auth, but tokens processed  |")
+		logger.Warn(ctx, "|                                                          |")
+		logger.Warn(ctx, "============================================================")
 	}
 
 	return &securityService{
@@ -175,7 +175,7 @@ func (s *securityService) getRequiredPermissionForAPI(method, path string) strin
 // isPublicPath checks if the given request path matches any of the configured public path patterns.
 func (s *securityService) isPublicPath(ctx context.Context, requestPath string) bool {
 	if len(requestPath) > maxPublicPathLength {
-		s.logger.WarnWithContext(ctx, "Path length exceeds maximum allowed length",
+		s.logger.Warn(ctx, "Path length exceeds maximum allowed length",
 			log.Int("limit", maxPublicPathLength),
 			log.Int("length", len(requestPath)))
 		return false
@@ -205,7 +205,7 @@ func (s *securityService) handleAuthError(
 	}
 
 	if skipSecurity {
-		s.logger.DebugWithContext(ctx,
+		s.logger.Debug(ctx,
 			"Proceeding without authentication/authorization enforcement as skipSecurity is enabled",
 			log.Error(err),
 			log.String("path", path))

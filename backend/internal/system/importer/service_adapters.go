@@ -49,7 +49,7 @@ func (s *importService) resolveImportOUHandle(
 ) (string, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ImportService"))
 	if ouID != "" && ouHandle != "" {
-		logger.WarnWithContext(ctx, "Both ou_id and ou_handle provided; ou_handle ignored",
+		logger.Warn(ctx, "Both ou_id and ou_handle provided; ou_handle ignored",
 			log.String("resourceType", resourceType),
 			log.String("resourceID", resourceID),
 			log.String("resourceName", resourceName))
@@ -1000,7 +1000,7 @@ func normalizeAgentOAuthConfigForImport(ctx context.Context, req *agentmodel.Age
 	if oauthConfig.PublicClient &&
 		oauthConfig.TokenEndpointAuthMethod == oauth2const.TokenEndpointAuthMethodNone &&
 		oauthConfig.ClientSecret != "" {
-		log.GetLogger().DebugWithContext(ctx,
+		log.GetLogger().Debug(ctx,
 			"Dropping client_secret for public agent import with token endpoint auth method 'none'",
 			log.String("agentID", req.ID),
 			log.String("name", req.Name),

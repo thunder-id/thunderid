@@ -62,3 +62,14 @@ passkey:
 consent:
   enabled: true
   base_url: "http://localhost:9090/api/v1"
+
+# This is a sample email client configuration. Update it with real SMTP server details for production use.
+email:
+  smtp:
+    host: "127.0.0.1"
+    port: 2525
+    username: "dev"
+    password: "dev"
+    from_address: "noreply@thunderid.dev"
+    enable_start_tls: false
+    enable_authentication: true

@@ -46,13 +46,13 @@ func Initialize() ObservabilityServiceInterface {
 	// Service construction runs during application startup, outside any request.
 	ctx := context.Background()
 
-	logger.DebugWithContext(ctx, "Initializing observability service")
+	logger.Debug(ctx, "Initializing observability service")
 
 	// Get configuration
 	cfg := config.GetServerRuntime().Config.Observability
 
 	if !cfg.Enabled {
-		logger.DebugWithContext(ctx, "Observability is disabled in configuration")
+		logger.Debug(ctx, "Observability is disabled in configuration")
 		// Return a disabled service (handles all operations as no-ops)
 		return &Service{
 			logger: logger,
@@ -65,7 +65,7 @@ func Initialize() ObservabilityServiceInterface {
 
 	// Log initialization status
 	activeSubscribers := svc.GetActiveSubscribers()
-	logger.DebugWithContext(ctx, "Observability service initialized successfully",
+	logger.Debug(ctx, "Observability service initialized successfully",
 		log.Int("activeSubscribers", len(activeSubscribers)))
 
 	return svc

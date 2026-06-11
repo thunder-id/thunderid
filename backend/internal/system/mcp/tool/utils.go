@@ -36,7 +36,7 @@ func GenerateSchema[T any](modifiers ...func(*jsonschema.Schema)) *jsonschema.Sc
 	schema, err := jsonschema.For[T](&jsonschema.ForOptions{})
 	if err != nil {
 		// Schema generation runs during MCP tool registration at startup, outside any request.
-		log.GetLogger().ErrorWithContext(context.Background(), "Failed to generate schema",
+		log.GetLogger().Error(context.Background(), "Failed to generate schema",
 			log.String("type", fmt.Sprintf("%T", *new(T))),
 			log.Error(err))
 		return nil

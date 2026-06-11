@@ -65,7 +65,7 @@ func InitializeServerRuntime(serverHome string, config *Config) error {
 		parsedPath, err := url.Parse(loginPath)
 		if err != nil || parsedPath == nil {
 			// Runtime initialization runs during application startup, outside any request.
-			log.GetLogger().WarnWithContext(context.Background(),
+			log.GetLogger().Warn(context.Background(),
 				"Invalid gate client login path configured. Falling back to default '/signin'",
 				log.String("configuredPath", loginPath),
 				log.Error(err),
@@ -75,7 +75,8 @@ func InitializeServerRuntime(serverHome string, config *Config) error {
 
 		parsedCallbackPath, err := url.Parse(callbackPath)
 		if err != nil || parsedCallbackPath == nil {
-			log.GetLogger().Warn(
+			// Runtime initialization runs during application startup, outside any request.
+			log.GetLogger().Warn(context.Background(),
 				"Invalid gate client callback path configured. Falling back to default '/callback'",
 				log.String("configuredPath", callbackPath),
 				log.Error(err),

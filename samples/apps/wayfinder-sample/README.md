@@ -71,6 +71,9 @@ wayfinder-sample/
 ├── backend/           Node server backed by SQLite. Hosts both the REST API
 │                      (/api/*) and the MCP server (/mcp), validates JWTs,
 │                      enforces scopes per route and per MCP tool.
+├── smtp-server/       Sample SMTP server with a web inbox UI.
+│                      Captures emails sent by ThunderID flows (recovery,
+│                      onboarding, CIBA). No external email relay required.
 ├── ai-agent/          HTTP Wayfinder Concierge API (LangChain + Claude/Gemini).
 ├── thunderid-config/  Importable YAML config for ThunderID setup.
 └── README.md
@@ -167,23 +170,25 @@ After the import, update `deployment.yaml` with two additions and restart the se
     user_onboarding_flow_handle: "wayfinder-onboarding-flow"
   ```
 
-- Configure SMTP so recovery and invitation emails can be delivered. Replace the placeholders with your SMTP relay credentials:
+- Configure SMTP so recovery and invitation emails can be delivered. The sample ships with a built-in local SMTP server (`smtp-server/`) that listens on `127.0.0.1:2525` — no external relay required. The defaults below match its credentials exactly, so no further editing is needed for local development:
 
   ```yaml
   email:
     smtp:
-      host: "<smtp-host>"
-      port: <smtp-port>
-      username: "<smtp-username>"
-      password: "<smtp-password>"
-      from_address: "<from-address>"
-      enable_start_tls: true
+      host: "127.0.0.1"
+      port: 2525
+      username: "dev"
+      password: "dev"
+      from_address: "noreply@thunderid.dev"
+      enable_start_tls: false
       enable_authentication: true
   ```
 
+  Once the sample is running, open `http://localhost:8788` to view captured emails in the inbox UI.
+
 ## Configure the Sample
 
-`backend/`, `ai-agent/`, and `frontend/` each ship with a `.env.example` listing only the variables you actually need to set. In each of those folders, copy it to `.env` and fill the placeholders.
+`backend/`, `smtp-server/`, `ai-agent/`, and `frontend/` each ship with a `.env.example` listing only the variables you actually need to set. In each of those folders, copy it to `.env` and fill the placeholders. The `smtp-server/.env.example` defaults already match the `email.smtp` settings in `deployment.yaml`, so it works as-is.
 
 The only placeholder you must replace is in `ai-agent/.env`:
 
@@ -196,12 +201,15 @@ The agent secret defaults to `wayfinder-agent-secret` (matching `thunderid.env`)
 From the sample root, install all workspace dependencies:
 
 ```bash
-cd backend  && npm install && npm run seed && npm start   # http://localhost:8787 (REST + /mcp)
-cd ai-agent && npm install && npm start                   # http://localhost:8790/chat
-cd frontend && npm install && npm run dev                 # http://localhost:5173
+cd backend     && npm install && npm run seed && npm start   # http://localhost:8787 (REST + /mcp)
+cd smtp-server && npm install && npm run dev                 # SMTP :2525 | Inbox http://localhost:8788
+cd ai-agent    && npm install && npm start                   # http://localhost:8790/chat
+cd frontend    && npm install && npm run dev                 # http://localhost:5173
 ```
 
 The Wayfinder server hosts both the REST API on `/api/*` and the MCP server on `/mcp`. `npm run seed` initializes the local SQLite database with sample flights, hotels, and trips. Run it once on first setup.
+
+The SMTP server captures all emails sent by ThunderID (password recovery, staff invitations, CIBA upgrade notifications) and displays them at `http://localhost:8788`. It accepts any username/password, matching the `deployment.yaml` defaults (`dev` / `dev`).
 
 ## Try It
 

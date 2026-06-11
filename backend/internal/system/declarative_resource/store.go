@@ -121,7 +121,7 @@ func (s *GenericFileBasedStore) ClearByType() error {
 // LogTypeAssertionError logs a type assertion error.
 func LogTypeAssertionError(resourceType, id string) {
 	// Declarative resource ID extraction runs during startup loading, outside any request.
-	log.GetLogger().ErrorWithContext(context.Background(), "Type assertion failed while retrieving resource",
+	log.GetLogger().Error(context.Background(), "Type assertion failed while retrieving resource",
 		log.String("resourceType", resourceType),
 		log.String("id", id))
 }

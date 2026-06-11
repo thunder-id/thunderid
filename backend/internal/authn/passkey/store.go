@@ -65,19 +65,19 @@ func (s *sessionStore) storeSession(
 	ctx context.Context, sessionKey string, session *sessionData, expirySeconds int64) error {
 	dbClient, err := s.dbProvider.GetRuntimeDBClient()
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to get database client", log.Error(err))
+		s.logger.Error(ctx, "Failed to get database client", log.Error(err))
 		return err
 	}
 
 	// Serialize session data to JSON
 	jsonDataBytes, err := s.serializeSessionData(session)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to marshal session data to JSON", log.Error(err))
+		s.logger.Error(ctx, "Failed to marshal session data to JSON", log.Error(err))
 		return err
 	}
 
 	if s.logger.IsDebugEnabled() {
-		s.logger.DebugWithContext(ctx, "Storing session data",
+		s.logger.Debug(ctx, "Storing session data",
 			log.MaskedString("sessionKey", sessionKey),
 			log.String("jsonDataLength", fmt.Sprintf("%d bytes", len(jsonDataBytes))))
 	}
@@ -85,11 +85,11 @@ func (s *sessionStore) storeSession(
 	expiryTime := time.Now().UTC().Add(time.Duration(expirySeconds) * time.Second)
 	_, err = dbClient.Execute(queryInsertSession, sessionKey, jsonDataBytes, expiryTime, s.deploymentID)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to insert WebAuthn session", log.Error(err))
+		s.logger.Error(ctx, "Failed to insert WebAuthn session", log.Error(err))
 		return err
 	}
 
-	s.logger.DebugWithContext(ctx, "WebAuthn session stored successfully",
+	s.logger.Debug(ctx, "WebAuthn session stored successfully",
 		log.MaskedString("sessionKey", sessionKey))
 
 	return nil
@@ -103,7 +103,7 @@ func (s *sessionStore) retrieveSession(ctx context.Context, sessionKey string) (
 
 	dbClient, err := s.dbProvider.GetRuntimeDBClient()
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to get database client", log.Error(err))
+		s.logger.Error(ctx, "Failed to get database client", log.Error(err))
 		return nil, err
 	}
 
@@ -111,12 +111,12 @@ func (s *sessionStore) retrieveSession(ctx context.Context, sessionKey string) (
 	now := time.Now().UTC()
 	results, err := dbClient.Query(queryGetSession, sessionKey, now, s.deploymentID)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to query WebAuthn session", log.Error(err))
+		s.logger.Error(ctx, "Failed to query WebAuthn session", log.Error(err))
 		return nil, err
 	}
 
 	if len(results) == 0 {
-		s.logger.DebugWithContext(ctx, "WebAuthn session not found or expired",
+		s.logger.Debug(ctx, "WebAuthn session not found or expired",
 			log.MaskedString("sessionKey", sessionKey))
 		return nil, nil
 	}
@@ -124,18 +124,18 @@ func (s *sessionStore) retrieveSession(ctx context.Context, sessionKey string) (
 	row := results[0]
 
 	if s.logger.IsDebugEnabled() {
-		s.logger.DebugWithContext(ctx, "Retrieved session row from database",
+		s.logger.Debug(ctx, "Retrieved session row from database",
 			log.MaskedString("sessionKey", sessionKey),
 			log.String("rowKeys", fmt.Sprintf("%v", getMapKeys(row))))
 	}
 
 	sessionData, err := s.buildSessionDataFromResultRow(ctx, row)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to build session data from result", log.Error(err))
+		s.logger.Error(ctx, "Failed to build session data from result", log.Error(err))
 		return nil, err
 	}
 
-	s.logger.DebugWithContext(ctx, "WebAuthn session retrieved successfully",
+	s.logger.Debug(ctx, "WebAuthn session retrieved successfully",
 		log.MaskedString("sessionKey", sessionKey))
 
 	return sessionData, nil
@@ -149,17 +149,17 @@ func (s *sessionStore) deleteSession(ctx context.Context, sessionKey string) err
 
 	dbClient, err := s.dbProvider.GetRuntimeDBClient()
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to get database client", log.Error(err))
+		s.logger.Error(ctx, "Failed to get database client", log.Error(err))
 		return err
 	}
 
 	_, err = dbClient.Execute(queryDeleteSession, sessionKey, s.deploymentID)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to delete WebAuthn session", log.Error(err))
+		s.logger.Error(ctx, "Failed to delete WebAuthn session", log.Error(err))
 		return err
 	}
 
-	s.logger.DebugWithContext(ctx, "WebAuthn session deleted successfully",
+	s.logger.Debug(ctx, "WebAuthn session deleted successfully",
 		log.MaskedString("sessionKey", sessionKey))
 
 	return nil
@@ -225,14 +225,14 @@ func (s *sessionStore) buildSessionDataFromResultRow(ctx context.Context,
 	} else if val, ok := row[dbColumnSessionData].([]byte); ok && len(val) > 0 {
 		payloadJSON = string(val)
 	} else {
-		s.logger.ErrorWithContext(ctx, "SESSION_DATA is missing or of unexpected type",
+		s.logger.Error(ctx, "SESSION_DATA is missing or of unexpected type",
 			log.String("type", fmt.Sprintf("%T", row[dbColumnSessionData])))
 		return nil, fmt.Errorf("SESSION_DATA is missing or invalid")
 	}
 
 	var jsonData map[string]interface{}
 	if err := json.Unmarshal([]byte(payloadJSON), &jsonData); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to unmarshal session payload JSON",
+		s.logger.Error(ctx, "Failed to unmarshal session payload JSON",
 			log.Error(err))
 		return nil, err
 	}
@@ -253,7 +253,7 @@ func (s *sessionStore) buildSessionDataFromResultRow(ctx context.Context,
 	if userIDStr, ok := jsonData[jsonKeyUserID].(string); ok && userIDStr != "" {
 		userIDBytes, err := base64.StdEncoding.DecodeString(userIDStr)
 		if err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to decode UserID from session data", log.Error(err))
+			s.logger.Error(ctx, "Failed to decode UserID from session data", log.Error(err))
 			return nil, err
 		}
 		sessionData.UserID = userIDBytes

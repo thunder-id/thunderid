@@ -69,7 +69,7 @@ func processEvent(
 	// Format the event
 	formattedData, err := fmtr.Format(evt)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to format event",
+		logger.Error(ctx, "Failed to format event",
 			log.String("eventType", evt.Type),
 			log.String("eventID", evt.EventID),
 			log.Error(err))
@@ -78,14 +78,14 @@ func processEvent(
 
 	// Write using adapter
 	if err := adapter.Write(formattedData); err != nil {
-		logger.ErrorWithContext(ctx, fmt.Sprintf("Failed to write event to %s", outputType),
+		logger.Error(ctx, fmt.Sprintf("Failed to write event to %s", outputType),
 			log.String("eventType", evt.Type),
 			log.String("eventID", evt.EventID),
 			log.Error(err))
 		return fmt.Errorf("failed to write to %s: %w", outputType, err)
 	}
 
-	logger.DebugWithContext(ctx, fmt.Sprintf("Event processed successfully to %s", outputType),
+	logger.Debug(ctx, fmt.Sprintf("Event processed successfully to %s", outputType),
 		log.String("eventType", evt.Type),
 		log.String("eventID", evt.EventID),
 		log.String("traceID", evt.TraceID))

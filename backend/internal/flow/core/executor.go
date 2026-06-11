@@ -97,7 +97,7 @@ func (e *executor) HasRequiredInputs(ctx *NodeContext, execResp *common.Executor
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "Executor"),
 		log.String(log.LoggerKeyExecutorName, e.GetName()),
 		log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Checking inputs for the executor")
+	logger.Debug(ctx.Context, "Checking inputs for the executor")
 
 	requiredData := e.GetRequiredInputs(ctx)
 
@@ -140,7 +140,7 @@ func (e *executor) ValidatePrerequisites(ctx *NodeContext, execResp *common.Exec
 		if _, ok := ctx.UserInputs[prerequisite.Identifier]; !ok {
 			if _, ok := ctx.RuntimeData[prerequisite.Identifier]; !ok {
 				if value, ok := ctx.ForwardedData[prerequisite.Identifier]; !ok {
-					logger.DebugWithContext(ctx.Context, "Prerequisite not met for the executor",
+					logger.Debug(ctx.Context, "Prerequisite not met for the executor",
 						log.String("identifier", prerequisite.Identifier))
 					execResp.Status = common.ExecFailure
 					execResp.Error = serviceerror.CustomServiceError(ErrExecutorPrerequisiteNotMet,
@@ -152,7 +152,7 @@ func (e *executor) ValidatePrerequisites(ctx *NodeContext, execResp *common.Exec
 				} else {
 					// ForwardedData found but verify it's a string value
 					if _, isString := value.(string); !isString {
-						logger.DebugWithContext(ctx.Context,
+						logger.Debug(ctx.Context,
 							"Prerequisite not met for the executor (non-string in ForwardedData)",
 							log.String("identifier", prerequisite.Identifier))
 						execResp.Status = common.ExecFailure

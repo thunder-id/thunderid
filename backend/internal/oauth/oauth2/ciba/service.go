@@ -109,7 +109,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 
 	authReqID, err := utils.GenerateUUIDv7()
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to generate auth_req_id", log.Error(err))
+		s.logger.Error(ctx, "Failed to generate auth_req_id", log.Error(err))
 		return nil, &CIBAError{
 			Code:    oauth2const.ErrorServerError,
 			Message: "Failed to process backchannel authentication request",
@@ -171,7 +171,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 		},
 	})
 	if flowErr != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to initiate and execute CIBA authentication flow",
+		s.logger.Error(ctx, "Failed to initiate and execute CIBA authentication flow",
 			log.String("error_code", flowErr.Code))
 		return nil, &CIBAError{
 			Code:    oauth2const.ErrorServerError,
@@ -192,7 +192,7 @@ func (s *cibaService) InitiateBackchannelAuth(
 		ExpiryTime:     now.Add(time.Duration(expiresIn) * time.Second),
 	}
 	if storeErr := s.store.Add(ctx, cibaRequest); storeErr != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to store CIBA authentication request", log.Error(storeErr))
+		s.logger.Error(ctx, "Failed to store CIBA authentication request", log.Error(storeErr))
 		return nil, &CIBAError{
 			Code:    oauth2const.ErrorServerError,
 			Message: "Failed to process backchannel authentication request",
@@ -223,7 +223,7 @@ func (s *cibaService) HandleCallback(ctx context.Context, authReqID, assertion s
 				Message: "Invalid auth_req_id",
 			}
 		}
-		s.logger.ErrorWithContext(ctx, "Failed to retrieve CIBA authentication request", log.Error(err))
+		s.logger.Error(ctx, "Failed to retrieve CIBA authentication request", log.Error(err))
 		return &CIBAError{
 			Code:    oauth2const.ErrorServerError,
 			Message: "Failed to process backchannel authentication callback",
@@ -248,7 +248,7 @@ func (s *cibaService) HandleCallback(ctx context.Context, authReqID, assertion s
 	expectedAud := s.resolveExpectedAudience(ctx, record.ClientID)
 
 	if verifyErr := s.jwtService.VerifyJWT(ctx, assertion, expectedAud, ""); verifyErr != nil {
-		s.logger.DebugWithContext(ctx, "Assertion verification failed",
+		s.logger.Debug(ctx, "Assertion verification failed",
 			log.String("error", verifyErr.Error.DefaultValue))
 		return &CIBAError{
 			Code:    oauth2const.ErrorInvalidRequest,
@@ -258,7 +258,7 @@ func (s *cibaService) HandleCallback(ctx context.Context, authReqID, assertion s
 
 	claims, authTime, decodeErr := decodeAttributesFromAssertion(assertion)
 	if decodeErr != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to decode assertion claims", log.Error(decodeErr))
+		s.logger.Error(ctx, "Failed to decode assertion claims", log.Error(decodeErr))
 		return &CIBAError{
 			Code:    oauth2const.ErrorServerError,
 			Message: "Failed to process backchannel authentication callback",
@@ -270,7 +270,7 @@ func (s *cibaService) HandleCallback(ctx context.Context, authReqID, assertion s
 	// record prevents an assertion minted for one CIBA request from authorizing another (e.g. a
 	// narrow-scope authentication being replayed against a broader-scope request for the same user).
 	if claims.cibaAuthReqID == "" || claims.cibaAuthReqID != record.AuthReqID {
-		s.logger.DebugWithContext(ctx, "Assertion is not bound to the backchannel authentication request",
+		s.logger.Debug(ctx, "Assertion is not bound to the backchannel authentication request",
 			log.MaskedString("auth_req_id", authReqID))
 		return &CIBAError{
 			Code:    oauth2const.ErrorAccessDenied,
@@ -282,7 +282,7 @@ func (s *cibaService) HandleCallback(ctx context.Context, authReqID, assertion s
 	// It was not pre-resolved at request initiation; the flow's identifying executor
 	// resolves it from the login_hint during server-side execution.
 	if claims.userID == "" {
-		s.logger.DebugWithContext(ctx, "Assertion subject is missing",
+		s.logger.Debug(ctx, "Assertion subject is missing",
 			log.MaskedString("auth_req_id", authReqID))
 		return &CIBAError{
 			Code:    oauth2const.ErrorAccessDenied,
@@ -304,7 +304,7 @@ func (s *cibaService) HandleCallback(ctx context.Context, authReqID, assertion s
 
 	if markErr := s.store.MarkAuthenticated(ctx, authReqID, claims.userID, authorizedScopes,
 		claims.attributeCacheID, claims.completedACR, authTime); markErr != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to mark CIBA authentication request as authenticated",
+		s.logger.Error(ctx, "Failed to mark CIBA authentication request as authenticated",
 			log.Error(markErr))
 		return &CIBAError{
 			Code:    oauth2const.ErrorServerError,
@@ -321,7 +321,7 @@ func (s *cibaService) HandleCallback(ctx context.Context, authReqID, assertion s
 func (s *cibaService) resolveExpectedAudience(ctx context.Context, clientID string) string {
 	app, err := s.inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil {
-		s.logger.WarnWithContext(ctx, "Failed to resolve client for audience validation; skipping audience check",
+		s.logger.Warn(ctx, "Failed to resolve client for audience validation; skipping audience check",
 			log.Error(err))
 		return ""
 	}

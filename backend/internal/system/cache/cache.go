@@ -56,7 +56,7 @@ func (c *Cache[T]) Set(ctx context.Context, key CacheKey, value T) error {
 
 	if c.IsEnabled() && c.cacheImpl.IsEnabled() {
 		if err := c.cacheImpl.Set(ctx, key, value); err != nil {
-			logger.WarnWithContext(ctx, "Failed to set value in the cache",
+			logger.Warn(ctx, "Failed to set value in the cache",
 				log.String("key", key.ToString()), log.Error(err))
 		}
 	}
@@ -83,7 +83,7 @@ func (c *Cache[T]) Delete(ctx context.Context, key CacheKey) error {
 
 	if c.IsEnabled() && c.cacheImpl.IsEnabled() {
 		if err := c.cacheImpl.Delete(ctx, key); err != nil {
-			logger.WarnWithContext(ctx, "Failed to delete value from the cache",
+			logger.Warn(ctx, "Failed to delete value from the cache",
 				log.String("key", key.ToString()), log.Error(err))
 		}
 	}
@@ -97,10 +97,10 @@ func (c *Cache[T]) Clear(ctx context.Context) error {
 		log.String("cacheName", c.cacheName))
 
 	if c.IsEnabled() && c.cacheImpl.IsEnabled() {
-		logger.DebugWithContext(ctx, "Clearing all entries in the cache")
+		logger.Debug(ctx, "Clearing all entries in the cache")
 
 		if err := c.cacheImpl.Clear(ctx); err != nil {
-			logger.WarnWithContext(ctx, "Failed to clear the cache", log.Error(err))
+			logger.Warn(ctx, "Failed to clear the cache", log.Error(err))
 		}
 	}
 

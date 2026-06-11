@@ -55,7 +55,7 @@ func (p *object) isUnique() bool {
 func (p *object) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	valueMap, ok := value.(map[string]interface{})
 	if !ok {
-		logger.DebugWithContext(ctx, "Expected object but got different type",
+		logger.Debug(ctx, "Expected object but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}
@@ -87,7 +87,7 @@ func (p *object) validateValue(ctx context.Context, value interface{}, path stri
 	// Reject any nested keys not declared in the object schema.
 	for key := range valueMap {
 		if _, declared := p.properties[key]; !declared {
-			logger.DebugWithContext(ctx, "Attribute not defined in schema",
+			logger.Debug(ctx, "Attribute not defined in schema",
 				log.String("attribute", path+"."+key))
 			return false, nil
 		}
@@ -104,7 +104,7 @@ func (p *object) validateUniqueness(ctx context.Context,
 ) (bool, error) {
 	valueMap, ok := value.(map[string]interface{})
 	if !ok {
-		logger.DebugWithContext(ctx, "Expected object but got different type",
+		logger.Debug(ctx, "Expected object but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}

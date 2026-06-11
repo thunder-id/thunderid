@@ -67,11 +67,11 @@ func Initialize(observabilityConfig config.ObservabilityConfig) ([]SubscriberInt
 	factories := getAllFactories()
 
 	if len(factories) == 0 {
-		logger.WarnWithContext(ctx, "No subscriber factories registered, observability will have no outputs")
+		logger.Warn(ctx, "No subscriber factories registered, observability will have no outputs")
 		return []SubscriberInterface{}, nil
 	}
 
-	logger.DebugWithContext(ctx, "Initializing subscribers from registry",
+	logger.Debug(ctx, "Initializing subscribers from registry",
 		log.Int("factoryCount", len(factories)))
 
 	activeSubscribers := make([]SubscriberInterface, 0, len(factories))
@@ -79,13 +79,13 @@ func Initialize(observabilityConfig config.ObservabilityConfig) ([]SubscriberInt
 
 	// Iterate through all registered factories
 	for name, factory := range factories {
-		logger.DebugWithContext(ctx, "Processing subscriber factory",
+		logger.Debug(ctx, "Processing subscriber factory",
 			log.String("subscriberType", name))
 
 		// Create subscriber instance
 		instance := factory()
 		if instance == nil {
-			logger.ErrorWithContext(ctx, "Factory returned nil instance",
+			logger.Error(ctx, "Factory returned nil instance",
 				log.String("subscriberType", name))
 			initErrors = append(initErrors, fmt.Errorf("factory %s returned nil instance", name))
 			continue
@@ -93,14 +93,14 @@ func Initialize(observabilityConfig config.ObservabilityConfig) ([]SubscriberInt
 
 		// Check if subscriber is enabled in configuration
 		if !instance.IsEnabled() {
-			logger.DebugWithContext(ctx, "Subscriber disabled in configuration, skipping",
+			logger.Debug(ctx, "Subscriber disabled in configuration, skipping",
 				log.String("subscriberType", name))
 			continue
 		}
 
 		// Initialize the subscriber (setup resources, validate config, etc.)
 		if err := instance.Initialize(); err != nil {
-			logger.ErrorWithContext(ctx, "Failed to initialize subscriber",
+			logger.Error(ctx, "Failed to initialize subscriber",
 				log.String("subscriberType", name),
 				log.Error(err))
 
@@ -112,26 +112,26 @@ func Initialize(observabilityConfig config.ObservabilityConfig) ([]SubscriberInt
 			}
 
 			// In lenient mode, log and continue
-			logger.WarnWithContext(ctx, "Continuing subscriber initialization despite error (lenient mode)",
+			logger.Warn(ctx, "Continuing subscriber initialization despite error (lenient mode)",
 				log.String("subscriberType", name))
 			continue
 		}
 
 		// Successfully initialized - add to active list
 		activeSubscribers = append(activeSubscribers, instance)
-		logger.DebugWithContext(ctx, "Subscriber initialized successfully",
+		logger.Debug(ctx, "Subscriber initialized successfully",
 			log.String("subscriberType", name),
 			log.String("subscriberID", instance.GetID()))
 	}
 
-	logger.DebugWithContext(ctx, "Subscriber initialization complete",
+	logger.Debug(ctx, "Subscriber initialization complete",
 		log.Int("total", len(factories)),
 		log.Int("active", len(activeSubscribers)),
 		log.Int("errors", len(initErrors)))
 
 	// If we have errors but reached here, we're in lenient mode
 	if len(initErrors) > 0 && observabilityConfig.FailureMode != "strict" {
-		logger.WarnWithContext(ctx, "Some subscribers failed to initialize but continuing in lenient mode",
+		logger.Warn(ctx, "Some subscribers failed to initialize but continuing in lenient mode",
 			log.Int("failedCount", len(initErrors)))
 	}
 

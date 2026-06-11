@@ -103,18 +103,18 @@ func (s *oidcAuthnService) ExchangeCodeForToken(ctx context.Context, idpID, code
 func (s *oidcAuthnService) ValidateTokenResponse(ctx context.Context, idpID string,
 	tokenResp *authnoauth.TokenResponse, validateIDToken bool) *serviceerror.ServiceError {
 	logger := s.logger
-	logger.DebugWithContext(ctx, "Validating token response")
+	logger.Debug(ctx, "Validating token response")
 
 	if tokenResp == nil {
-		logger.DebugWithContext(ctx, "Empty token response received from identity provider")
+		logger.Debug(ctx, "Empty token response received from identity provider")
 		return &authnoauth.ErrorInvalidTokenResponse
 	}
 	if tokenResp.AccessToken == "" {
-		logger.DebugWithContext(ctx, "Access token is empty in the token response")
+		logger.Debug(ctx, "Access token is empty in the token response")
 		return &authnoauth.ErrorInvalidTokenResponse
 	}
 	if tokenResp.IDToken == "" {
-		logger.DebugWithContext(ctx, "ID token is empty in the token response")
+		logger.Debug(ctx, "ID token is empty in the token response")
 		return &authnoauth.ErrorInvalidTokenResponse
 	}
 
@@ -134,10 +134,10 @@ func (s *oidcAuthnService) ValidateTokenResponse(ctx context.Context, idpID stri
 // is called with validateResponse set to true.
 func (s *oidcAuthnService) ValidateIDToken(ctx context.Context, idpID, idToken string) *serviceerror.ServiceError {
 	logger := s.logger.With(log.String("idpId", idpID))
-	logger.DebugWithContext(ctx, "Validating ID token")
+	logger.Debug(ctx, "Validating ID token")
 
 	if strings.TrimSpace(idToken) == "" {
-		logger.DebugWithContext(ctx, "ID token is empty")
+		logger.Debug(ctx, "ID token is empty")
 		return &ErrorInvalidIDToken
 	}
 
@@ -150,12 +150,12 @@ func (s *oidcAuthnService) ValidateIDToken(ctx context.Context, idpID, idToken s
 	if oAuthClientConfig.OAuthEndpoints.JwksEndpoint != "" {
 		err := s.jwtService.VerifyJWTWithJWKS(ctx, idToken, oAuthClientConfig.OAuthEndpoints.JwksEndpoint, "", "")
 		if err != nil {
-			logger.DebugWithContext(ctx, "ID token signature validation failed",
+			logger.Debug(ctx, "ID token signature validation failed",
 				log.String("error", err.Error.DefaultValue))
 			return &ErrorInvalidIDTokenSignature
 		}
 	} else {
-		logger.DebugWithContext(ctx, "Skipping ID token signature validation as JWKS endpoint is not configured")
+		logger.Debug(ctx, "Skipping ID token signature validation as JWKS endpoint is not configured")
 	}
 
 	// TODO: Should mandate ID token validation when the support is available through a IDP configuration.
@@ -169,16 +169,16 @@ func (s *oidcAuthnService) ValidateIDToken(ctx context.Context, idpID, idToken s
 func (s *oidcAuthnService) GetIDTokenClaims(ctx context.Context, idToken string) (
 	map[string]interface{}, *serviceerror.ServiceError) {
 	logger := s.logger
-	logger.DebugWithContext(ctx, "Extracting claims from ID token")
+	logger.Debug(ctx, "Extracting claims from ID token")
 
 	if strings.TrimSpace(idToken) == "" {
-		logger.DebugWithContext(ctx, "ID token is empty")
+		logger.Debug(ctx, "ID token is empty")
 		return nil, &ErrorInvalidIDToken
 	}
 
 	claims, err := jwt.DecodeJWTPayload(idToken)
 	if err != nil {
-		logger.DebugWithContext(ctx, "Failed to decode ID token payload", log.Error(err))
+		logger.Debug(ctx, "Failed to decode ID token payload", log.Error(err))
 		return nil, &ErrorInvalidIDToken
 	}
 
@@ -203,7 +203,7 @@ func (s *oidcAuthnService) GetInternalUser(
 func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string) (
 	*authncm.FederatedAuthResult, *serviceerror.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
-	logger.DebugWithContext(ctx, "Performing federated OIDC authentication")
+	logger.Debug(ctx, "Performing federated OIDC authentication")
 
 	tokenResp, svcErr := s.ExchangeCodeForToken(ctx, idpID, code, true)
 	if svcErr != nil {
@@ -223,7 +223,7 @@ func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string)
 		}
 	}
 	if sub == "" {
-		logger.DebugWithContext(ctx, "sub claim not found in ID token")
+		logger.Debug(ctx, "sub claim not found in ID token")
 		return nil, &authncm.ErrorSubClaimNotFound
 	}
 
@@ -239,7 +239,7 @@ func (s *oidcAuthnService) Authenticate(ctx context.Context, idpID, code string)
 					}
 				}
 			} else {
-				logger.DebugWithContext(ctx, "UserInfo sub mismatch, skipping attribute merge")
+				logger.Debug(ctx, "UserInfo sub mismatch, skipping attribute merge")
 			}
 		}
 	}

@@ -62,10 +62,10 @@ func newServiceWithConfig() *Service {
 
 	// Check if observability is disabled
 
-	logger.DebugWithContext(ctx, "Initializing observability service")
+	logger.Debug(ctx, "Initializing observability service")
 	config := config.GetServerRuntime().Config.Observability
 	if !config.Enabled {
-		logger.DebugWithContext(ctx, "Observability is disabled in configuration")
+		logger.Debug(ctx, "Observability is disabled in configuration")
 		return &Service{
 			logger: logger,
 			config: config,
@@ -85,7 +85,7 @@ func newServiceWithConfig() *Service {
 	subscribers, err := subscriber.Initialize(config)
 	if err != nil {
 		// This only happens in strict mode
-		logger.ErrorWithContext(ctx, "Failed to initialize subscribers in strict mode", log.Error(err))
+		logger.Error(ctx, "Failed to initialize subscribers in strict mode", log.Error(err))
 		// In strict mode, we could return an error service, but for now we continue
 		// with no subscribers (observability will be disabled)
 		return svc
@@ -94,11 +94,11 @@ func newServiceWithConfig() *Service {
 	// Subscribe all initialized subscribers to the publisher
 	for _, sub := range subscribers {
 		pub.Subscribe(sub)
-		logger.DebugWithContext(ctx, "Subscriber subscribed to publisher",
+		logger.Debug(ctx, "Subscriber subscribed to publisher",
 			log.String("subscriberID", sub.GetID()))
 	}
 
-	logger.DebugWithContext(ctx, "Observability service initialized successfully",
+	logger.Debug(ctx, "Observability service initialized successfully",
 		log.Int("activeSubscribers", len(subscribers)))
 	return svc
 }
@@ -112,14 +112,14 @@ func (s *Service) RegisterSubscriber(sub subscriber.SubscriberInterface) {
 
 	// Skip registration if service is not enabled or has no publisher
 	if !s.config.Enabled || s.publisher == nil {
-		s.logger.DebugWithContext(ctx, "Subscriber registration skipped - service not enabled",
+		s.logger.Debug(ctx, "Subscriber registration skipped - service not enabled",
 			log.String("subscriberType", fmt.Sprintf("%T", sub)))
 		return
 	}
 
 	// Check if subscriber is enabled in config
 	if !sub.IsEnabled() {
-		s.logger.DebugWithContext(ctx, "Subscriber registration skipped - disabled by config",
+		s.logger.Debug(ctx, "Subscriber registration skipped - disabled by config",
 			log.String("subscriberType", fmt.Sprintf("%T", sub)))
 		return
 	}
@@ -127,12 +127,12 @@ func (s *Service) RegisterSubscriber(sub subscriber.SubscriberInterface) {
 	// Initialize the subscriber
 	if err := sub.Initialize(); err != nil {
 		if s.config.FailureMode == "strict" {
-			s.logger.ErrorWithContext(ctx, "Failed to initialize subscriber in strict mode",
+			s.logger.Error(ctx, "Failed to initialize subscriber in strict mode",
 				log.String("subscriberType", fmt.Sprintf("%T", sub)),
 				log.Error(err))
 			// In strict mode, we could panic or store error for later retrieval
 		} else {
-			s.logger.WarnWithContext(ctx, "Failed to initialize subscriber, skipping",
+			s.logger.Warn(ctx, "Failed to initialize subscriber, skipping",
 				log.String("subscriberType", fmt.Sprintf("%T", sub)),
 				log.Error(err))
 		}
@@ -142,7 +142,7 @@ func (s *Service) RegisterSubscriber(sub subscriber.SubscriberInterface) {
 	// Subscribe to publisher (publisher now owns the subscriber list)
 	s.publisher.Subscribe(sub)
 
-	s.logger.DebugWithContext(ctx, "Subscriber registered and activated successfully",
+	s.logger.Debug(ctx, "Subscriber registered and activated successfully",
 		log.String("subscriberType", fmt.Sprintf("%T", sub)),
 		log.String("subscriberID", sub.GetID()))
 }
@@ -161,7 +161,7 @@ func (s *Service) PublishEvent(ctx context.Context, evt *event.Event) {
 
 	// Only log if event is not nil (avoid panic on evt.Type access)
 	if evt != nil {
-		s.logger.DebugWithContext(ctx, "Event published",
+		s.logger.Debug(ctx, "Event published",
 			log.String("eventType", evt.Type),
 			log.String("eventID", evt.EventID),
 			log.String("traceID", evt.TraceID))
@@ -205,7 +205,7 @@ func (s *Service) Shutdown() {
 	// Shutdown runs during application teardown, outside any request.
 	ctx := context.Background()
 
-	s.logger.DebugWithContext(ctx, "Shutting down observability service")
+	s.logger.Debug(ctx, "Shutting down observability service")
 
 	if s.publisher != nil {
 		// Publisher handles all subscriber cleanup (unsubscribe, close)
@@ -214,5 +214,5 @@ func (s *Service) Shutdown() {
 		// Set publisher to nil to mark service as disabled
 		s.publisher = nil
 	}
-	s.logger.DebugWithContext(ctx, "Observability service shutdown complete")
+	s.logger.Debug(ctx, "Observability service shutdown complete")
 }

@@ -16,10 +16,6 @@ Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) bef
 [Add Account Recovery](../../customer-identity#add-account-recovery) covers the requirements story behind this use case.
 :::
 
-## Set Up Account Recovery
-
-Recovery emails require a working SMTP connection. See [Email Configuration](/docs/next/guides/getting-started/configuration#email-configuration) to configure and enable it, then restart <ProductName /> for the changes to take effect.
-
 ## Pick Your Pattern
 
 <details open>
@@ -32,7 +28,7 @@ In the redirect-based pattern, the consumer app sends the user to <ProductName /
 1. Open <WayFinderSampleUrl /> and select **Sign in**. The browser navigates to <ProductName />.
 2. On the <ProductName /> sign-in page, select **Forgot password?**.
 3. Enter `john.doe` as the username and submit. <ProductName /> runs the recovery flow and sends a recovery email to `john.doe@example.com`.
-4. Open the email in John's inbox and open the link inside.
+4. Open the recovery email from the inbox at <WayFinderMailUrl /> and open the link inside.
 5. <ProductName /> renders a **Set new password** screen. Enter a new password and submit.
 6. <ProductName /> shows a confirmation and returns John to Wayfinder. Select **Sign in** again and sign in with the new password.
 

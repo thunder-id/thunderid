@@ -110,7 +110,7 @@ func authenticate(
 
 	case constants.TokenEndpointAuthMethodPrivateKeyJWT:
 		if clientAssertionType != constants.SupportedClientAssertionType {
-			logger.DebugWithContext(ctx, "Invalid client assertion: unsupported client assertion type")
+			logger.Debug(ctx, "Invalid client assertion: unsupported client assertion type")
 			return nil, errInvalidClientAssertion
 		}
 		extracted, err := extractClientIDFromAssertion(ctx, clientAssertion)
@@ -132,7 +132,7 @@ func authenticate(
 
 	oauthApp, err := inboundClient.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to retrieve OAuth client",
+		logger.Error(ctx, "Failed to retrieve OAuth client",
 			log.Error(err), log.MaskedString("clientID", clientID))
 		return nil, errInvalidClientCredentials
 	}
@@ -150,7 +150,7 @@ func authenticate(
 	case constants.TokenEndpointAuthMethodPrivateKeyJWT:
 		if err := validateClientAssertion(ctx, oauthApp, jwtService, endpointURL, clientID,
 			clientAssertion); err != nil {
-			logger.DebugWithContext(ctx, "Invalid client assertion: "+err.Error())
+			logger.Debug(ctx, "Invalid client assertion: "+err.Error())
 			return nil, errInvalidClientAssertion
 		}
 	case constants.TokenEndpointAuthMethodClientSecretBasic,
@@ -160,7 +160,7 @@ func authenticate(
 			map[string]interface{}{"clientSecret": clientSecret},
 			nil, nil, authnprovidermgr.AuthUser{})
 		if authnErr != nil {
-			logger.DebugWithContext(ctx, "Client secret authentication failed",
+			logger.Debug(ctx, "Client secret authentication failed",
 				log.MaskedString("clientID", clientID))
 			return nil, errInvalidClientCredentials
 		}
@@ -217,14 +217,14 @@ func extractClientIDFromAssertion(ctx context.Context, assertion string) (string
 
 	payload, err := jwt.DecodeJWTPayload(assertion)
 	if err != nil {
-		logger.DebugWithContext(ctx, "Invalid client assertion: failed to decode jwt")
+		logger.Debug(ctx, "Invalid client assertion: failed to decode jwt")
 		return "", errInvalidClientAssertion
 	}
 
 	subject, ok := payload["sub"].(string)
 
 	if !ok || subject == "" {
-		logger.DebugWithContext(ctx, "Invalid client assertion: missing 'sub' claim or 'sub' claim is not a string")
+		logger.Debug(ctx, "Invalid client assertion: missing 'sub' claim or 'sub' claim is not a string")
 		return "", errInvalidClientAssertion
 	}
 

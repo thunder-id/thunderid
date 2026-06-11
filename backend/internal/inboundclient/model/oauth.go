@@ -303,7 +303,7 @@ func ValidateRedirectURI(ctx context.Context, redirectURIs []string, redirectURI
 
 	parsedRedirectURI, err := utils.ParseURL(redirectURI)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to parse redirect URI", log.Error(err))
+		logger.Error(ctx, "Failed to parse redirect URI", log.Error(err))
 		return fmt.Errorf("invalid redirect URI: %s", err.Error())
 	}
 	if parsedRedirectURI.Fragment != "" {

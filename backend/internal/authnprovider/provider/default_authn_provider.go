@@ -429,7 +429,7 @@ func newClientError(code, msg, desc string) *serviceerror.ServiceError {
 
 func (p *defaultAuthnProvider) logAndReturnServerError(
 	ctx context.Context, msg string, fields ...log.Field) *serviceerror.ServiceError {
-	p.logger.ErrorWithContext(ctx, msg, fields...)
+	p.logger.Error(ctx, msg, fields...)
 	err := serviceerror.InternalServerError
 	return &err
 }

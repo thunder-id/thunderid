@@ -98,7 +98,7 @@ func (rs *roleService) GetRoleList(ctx context.Context, limit, offset int) (*Rol
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ResultLimitExceededInCompositeMode
 		}
-		logger.ErrorWithContext(ctx, "Failed to get role count", log.Error(err))
+		logger.Error(ctx, "Failed to get role count", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -107,7 +107,7 @@ func (rs *roleService) GetRoleList(ctx context.Context, limit, offset int) (*Rol
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ResultLimitExceededInCompositeMode
 		}
-		logger.ErrorWithContext(ctx, "Failed to list roles", log.Error(err))
+		logger.Error(ctx, "Failed to list roles", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -124,7 +124,7 @@ func (rs *roleService) GetRoleList(ctx context.Context, limit, offset int) (*Rol
 		}
 		ouHandles, svcErr := rs.ouService.GetOrganizationUnitHandlesByIDs(ctx, ouIDs)
 		if svcErr != nil {
-			logger.WarnWithContext(ctx, "Failed to resolve OU handles for roles, skipping", log.Any("error", svcErr))
+			logger.Warn(ctx, "Failed to resolve OU handles for roles, skipping", log.Any("error", svcErr))
 		} else {
 			for i := range roles {
 				roles[i].OUHandle = ouHandles[roles[i].OUID]
@@ -148,11 +148,11 @@ func (rs *roleService) CreateRole(
 	ctx context.Context, role RoleCreationDetail,
 ) (*RoleWithPermissionsAndAssignments, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Creating role", log.String("name", role.Name))
+	logger.Debug(ctx, "Creating role", log.String("name", role.Name))
 
 	// Check if role creation is allowed (not in declarative-only mode)
 	if isDeclarativeModeEnabled() {
-		logger.DebugWithContext(ctx, "Cannot create role in declarative-only mode")
+		logger.Debug(ctx, "Cannot create role in declarative-only mode")
 		return nil, &ErrorDeclarativeModeCreateNotAllowed
 	}
 
@@ -166,10 +166,10 @@ func (rs *roleService) CreateRole(
 	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, role.OUID)
 	if svcErr != nil {
 		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
-			logger.DebugWithContext(ctx, "Organization unit not found", log.String("ouID", role.OUID))
+			logger.Debug(ctx, "Organization unit not found", log.String("ouID", role.OUID))
 			return nil, &ErrorOrganizationUnitNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to validate organization unit",
+		logger.Error(ctx, "Failed to validate organization unit",
 			log.String("error", svcErr.Error.DefaultValue))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -191,11 +191,11 @@ func (rs *roleService) CreateRole(
 	// Check if role name already exists in the organization unit
 	nameExists, err := rs.roleStore.CheckRoleNameExists(ctx, role.OUID, role.Name)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to check role name existence", log.Error(err))
+		logger.Error(ctx, "Failed to check role name existence", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	if nameExists {
-		logger.DebugWithContext(ctx, "Role name already exists in organization unit",
+		logger.Debug(ctx, "Role name already exists in organization unit",
 			log.String("name", role.Name), log.String("ouID", role.OUID))
 		return nil, &ErrorRoleNameConflict
 	}
@@ -204,17 +204,17 @@ func (rs *roleService) CreateRole(
 	if id == "" {
 		id, err = utils.GenerateUUIDv7()
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to generate UUID", log.Error(err))
+			logger.Error(ctx, "Failed to generate UUID", log.Error(err))
 			return nil, &serviceerror.InternalServerError
 		}
 	} else {
 		_, err = rs.roleStore.GetRole(ctx, id)
 		if err != nil && !errors.Is(err, ErrRoleNotFound) {
-			logger.ErrorWithContext(ctx, "Failed to check role ID existence", log.Error(err))
+			logger.Error(ctx, "Failed to check role ID existence", log.Error(err))
 			return nil, &serviceerror.InternalServerError
 		}
 		if err == nil {
-			logger.DebugWithContext(ctx, "Role ID already exists", log.String("id", id))
+			logger.Debug(ctx, "Role ID already exists", log.String("id", id))
 			return nil, &ErrorRoleIDConflict
 		}
 	}
@@ -237,11 +237,11 @@ func (rs *roleService) CreateRole(
 	})
 
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to create role", log.Error(err))
+		logger.Error(ctx, "Failed to create role", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully created role", log.String("id", id), log.String("name", role.Name))
+	logger.Debug(ctx, "Successfully created role", log.String("id", id), log.String("name", role.Name))
 	return serviceRole, nil
 }
 
@@ -249,7 +249,7 @@ func (rs *roleService) CreateRole(
 func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 	*RoleWithPermissions, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Retrieving role", log.String("id", id))
+	logger.Debug(ctx, "Retrieving role", log.String("id", id))
 
 	if id == "" {
 		return nil, &ErrorMissingRoleID
@@ -258,22 +258,22 @@ func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 	role, err := rs.roleStore.GetRole(ctx, id)
 	if err != nil {
 		if errors.Is(err, ErrRoleNotFound) {
-			logger.DebugWithContext(ctx, "Role not found", log.String("id", id))
+			logger.Debug(ctx, "Role not found", log.String("id", id))
 			return nil, &ErrorRoleNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
+		logger.Error(ctx, "Failed to retrieve role", log.String("id", id), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, role.OUID)
 	if svcErr != nil {
-		logger.WarnWithContext(ctx, "Failed to resolve OU handle for role, skipping",
+		logger.Warn(ctx, "Failed to resolve OU handle for role, skipping",
 			log.String("id", id), log.Any("error", svcErr))
 	} else {
 		role.OUHandle = ou.Handle
 	}
 
-	logger.DebugWithContext(ctx, "Successfully retrieved role",
+	logger.Debug(ctx, "Successfully retrieved role",
 		log.String("id", role.ID), log.String("name", role.Name))
 	return &role, nil
 }
@@ -282,7 +282,7 @@ func (rs *roleService) GetRoleWithPermissions(ctx context.Context, id string) (
 func (rs *roleService) UpdateRoleWithPermissions(
 	ctx context.Context, id string, role RoleUpdateDetail) (*RoleWithPermissions, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Updating role", log.String("id", id), log.String("name", role.Name))
+	logger.Debug(ctx, "Updating role", log.String("id", id), log.String("name", role.Name))
 
 	if id == "" {
 		return nil, &ErrorMissingRoleID
@@ -299,17 +299,17 @@ func (rs *roleService) UpdateRoleWithPermissions(
 
 	exists, err := rs.roleStore.IsRoleExist(ctx, id)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
+		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	if !exists {
-		logger.DebugWithContext(ctx, "Role not found", log.String("id", id))
+		logger.Debug(ctx, "Role not found", log.String("id", id))
 		return nil, &ErrorRoleNotFound
 	}
 
 	// Check if role is declarative - cannot modify declarative roles
 	if rs.isRoleDeclarative(ctx, id) {
-		logger.DebugWithContext(ctx, "Cannot modify declarative role", log.String("id", id))
+		logger.Debug(ctx, "Cannot modify declarative role", log.String("id", id))
 		return nil, &ErrorImmutableRole
 	}
 
@@ -317,10 +317,10 @@ func (rs *roleService) UpdateRoleWithPermissions(
 	ou, svcErr := rs.ouService.GetOrganizationUnit(ctx, role.OUID)
 	if svcErr != nil {
 		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
-			logger.DebugWithContext(ctx, "Organization unit not found", log.String("ouID", role.OUID))
+			logger.Debug(ctx, "Organization unit not found", log.String("ouID", role.OUID))
 			return nil, &ErrorOrganizationUnitNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to validate organization unit",
+		logger.Error(ctx, "Failed to validate organization unit",
 			log.String("error", svcErr.Error.DefaultValue))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -328,11 +328,11 @@ func (rs *roleService) UpdateRoleWithPermissions(
 	// Check if role name already exists in the organization unit (excluding the current role)
 	nameExists, err := rs.roleStore.CheckRoleNameExistsExcludingID(ctx, role.OUID, role.Name, id)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to check role name existence", log.Error(err))
+		logger.Error(ctx, "Failed to check role name existence", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	if nameExists {
-		logger.DebugWithContext(ctx, "Role name already exists in organization unit",
+		logger.Debug(ctx, "Role name already exists in organization unit",
 			log.String("name", role.Name), log.String("ouID", role.OUID))
 		return nil, &ErrorRoleNameConflict
 	}
@@ -342,11 +342,11 @@ func (rs *roleService) UpdateRoleWithPermissions(
 	})
 
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to update role", log.Error(err))
+		logger.Error(ctx, "Failed to update role", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully updated role", log.String("id", id), log.String("name", role.Name))
+	logger.Debug(ctx, "Successfully updated role", log.String("id", id), log.String("name", role.Name))
 	return &RoleWithPermissions{
 		ID:          id,
 		Name:        role.Name,
@@ -360,7 +360,7 @@ func (rs *roleService) UpdateRoleWithPermissions(
 // DeleteRole delete the specified role by its id.
 func (rs *roleService) DeleteRole(ctx context.Context, id string) *serviceerror.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Deleting role", log.String("id", id))
+	logger.Debug(ctx, "Deleting role", log.String("id", id))
 
 	if id == "" {
 		return &ErrorMissingRoleID
@@ -368,17 +368,17 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *serviceerror.
 
 	exists, err := rs.roleStore.IsRoleExist(ctx, id)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
+		logger.Error(ctx, "Failed to check role existence", log.String("id", id), log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	if !exists {
-		logger.DebugWithContext(ctx, "Role not found", log.String("id", id))
+		logger.Debug(ctx, "Role not found", log.String("id", id))
 		return nil
 	}
 
 	// Check if role is declarative - cannot delete declarative roles
 	if rs.isRoleDeclarative(ctx, id) {
-		logger.DebugWithContext(ctx, "Cannot delete declarative role", log.String("id", id))
+		logger.Debug(ctx, "Cannot delete declarative role", log.String("id", id))
 		return &ErrorImmutableRole
 	}
 
@@ -392,11 +392,11 @@ func (rs *roleService) DeleteRole(ctx context.Context, id string) *serviceerror.
 		return rs.roleStore.DeleteRole(txCtx, id)
 	})
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to delete role", log.String("id", id), log.Error(err))
+		logger.Error(ctx, "Failed to delete role", log.String("id", id), log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully deleted role", log.String("id", id))
+	logger.Debug(ctx, "Successfully deleted role", log.String("id", id))
 	return nil
 }
 
@@ -405,7 +405,7 @@ func (rs *roleService) GetAuthorizedPermissions(
 	ctx context.Context, entityID string, groups []string, requestedPermissions []string,
 ) ([]string, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Authorizing permissions",
+	logger.Debug(ctx, "Authorizing permissions",
 		log.MaskedString(log.LoggerKeyUserID, entityID), log.Int("groupCount", len(groups)))
 
 	// Handle nil groups slice
@@ -426,14 +426,14 @@ func (rs *roleService) GetAuthorizedPermissions(
 	// Get authorized permissions from store
 	authorizedPermissions, err := rs.roleStore.GetAuthorizedPermissions(ctx, entityID, groups, requestedPermissions)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to get authorized permissions",
+		logger.Error(ctx, "Failed to get authorized permissions",
 			log.MaskedString(log.LoggerKeyUserID, entityID),
 			log.Int("groupCount", len(groups)),
 			log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Retrieved authorized permissions",
+	logger.Debug(ctx, "Retrieved authorized permissions",
 		log.MaskedString(log.LoggerKeyUserID, entityID),
 		log.Int("groupCount", len(groups)),
 		log.Int("requestedCount", len(requestedPermissions)),
@@ -447,7 +447,7 @@ func (rs *roleService) GetUserRoles(
 	ctx context.Context, entityID string, groupIDs []string,
 ) ([]string, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Getting entity roles",
+	logger.Debug(ctx, "Getting entity roles",
 		log.MaskedString("entityID", entityID), log.Int("groupCount", len(groupIDs)))
 
 	if groupIDs == nil {
@@ -460,7 +460,7 @@ func (rs *roleService) GetUserRoles(
 
 	roles, err := rs.roleStore.GetUserRoles(ctx, entityID, groupIDs)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to get entity roles",
+		logger.Error(ctx, "Failed to get entity roles",
 			log.MaskedString("entityID", entityID), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -486,7 +486,7 @@ func (rs *roleService) ResolveRoleOUHandle(
 ) *serviceerror.ServiceError {
 	if role.OUID != "" && role.OUHandle != "" {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-		logger.WarnWithContext(ctx, "Both ou_id and ou_handle provided for role; ou_handle ignored",
+		logger.Warn(ctx, "Both ou_id and ou_handle provided for role; ou_handle ignored",
 			log.String("roleID", role.ID), log.String("name", role.Name))
 		return nil
 	}
@@ -587,7 +587,7 @@ func (rs *roleService) validatePermissions(
 	// Validate each resource server's permissions
 	for _, resPerm := range permissions {
 		if resPerm.ResourceServerID == "" {
-			logger.DebugWithContext(ctx, "Empty resource server ID")
+			logger.Debug(ctx, "Empty resource server ID")
 			return &ErrorInvalidPermissions
 		}
 
@@ -603,7 +603,7 @@ func (rs *roleService) validatePermissions(
 		)
 
 		if svcErr != nil {
-			logger.ErrorWithContext(ctx, "Failed to validate permissions",
+			logger.Error(ctx, "Failed to validate permissions",
 				log.String("resourceServerId", resPerm.ResourceServerID),
 				log.String("error", svcErr.Error.DefaultValue))
 			return &serviceerror.InternalServerError
@@ -611,7 +611,7 @@ func (rs *roleService) validatePermissions(
 
 		// If any permissions are invalid, return error
 		if len(invalidPerms) > 0 {
-			logger.DebugWithContext(ctx, "Invalid permissions found",
+			logger.Debug(ctx, "Invalid permissions found",
 				log.String("resourceServerId", resPerm.ResourceServerID),
 				log.Any("invalidPermissions", invalidPerms),
 				log.Int("count", len(invalidPerms)))
@@ -638,7 +638,7 @@ func (rs *roleService) isRoleDeclarative(ctx context.Context, roleID string) boo
 		// Log at Warn level and fail open - treat as non-declarative on error
 		// RISK: In composite mode, this could allow modification of declarative roles if the check fails
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-		logger.WarnWithContext(ctx, "Failed to check if role is declarative",
+		logger.Warn(ctx, "Failed to check if role is declarative",
 			log.String("roleID", roleID), log.Error(err))
 		return false
 	}

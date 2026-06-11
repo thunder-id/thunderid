@@ -51,7 +51,7 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 	result, svcErr := m.provider.Authenticate(ctx, identifiers, credentials, metadata)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ServerErrorType {
-			m.logger.ErrorWithContext(ctx, "provider returned server error during authentication",
+			m.logger.Error(ctx, "provider returned server error during authentication",
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
 			return AuthUser{}, nil, &serviceerror.InternalServerError
 		}
@@ -105,12 +105,12 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 func (m *authnProviderManager) GetUserAvailableAttributes(ctx context.Context,
 	authUser AuthUser) (*authnprovidercm.AttributesResponse, *serviceerror.ServiceError) {
 	if !authUser.IsAuthenticated() {
-		m.logger.ErrorWithContext(ctx, "GetUserAvailableAttributes called with unauthenticated authUser")
+		m.logger.Error(ctx, "GetUserAvailableAttributes called with unauthenticated authUser")
 		return nil, &serviceerror.InternalServerError
 	}
 	data, ok := authUser.getProviderData(defaultProvider)
 	if !ok {
-		m.logger.ErrorWithContext(ctx, "GetUserAvailableAttributes: no provider data found for default provider")
+		m.logger.Error(ctx, "GetUserAvailableAttributes: no provider data found for default provider")
 		return nil, &serviceerror.InternalServerError
 	}
 	return data.attributes, nil
@@ -122,12 +122,12 @@ func (m *authnProviderManager) GetUserAttributes(ctx context.Context,
 	metadata *authnprovidercm.GetAttributesMetadata,
 	authUser AuthUser) (AuthUser, *authnprovidercm.AttributesResponse, *serviceerror.ServiceError) {
 	if !authUser.IsAuthenticated() {
-		m.logger.ErrorWithContext(ctx, "GetUserAttributes called with unauthenticated authUser")
+		m.logger.Error(ctx, "GetUserAttributes called with unauthenticated authUser")
 		return AuthUser{}, nil, &serviceerror.InternalServerError
 	}
 	data, ok := authUser.getProviderData(defaultProvider)
 	if !ok {
-		m.logger.ErrorWithContext(ctx, "GetUserAttributes: no provider data found for default provider")
+		m.logger.Error(ctx, "GetUserAttributes: no provider data found for default provider")
 		return AuthUser{}, nil, &serviceerror.InternalServerError
 	}
 	if data.isAttributeValuesIncluded {
@@ -136,7 +136,7 @@ func (m *authnProviderManager) GetUserAttributes(ctx context.Context,
 	result, svcErr := m.provider.GetAttributes(ctx, data.token, requestedAttributes, metadata)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ServerErrorType {
-			m.logger.ErrorWithContext(ctx, "provider returned server error while fetching attributes",
+			m.logger.Error(ctx, "provider returned server error while fetching attributes",
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
 			return AuthUser{}, nil, &serviceerror.InternalServerError
 		}

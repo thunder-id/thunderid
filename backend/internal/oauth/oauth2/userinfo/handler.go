@@ -141,7 +141,7 @@ func (h *userInfoHandler) writeUserInfoResponse(ctx context.Context, w http.Resp
 		utils.WriteSuccessResponse(ctx, w, http.StatusOK, result.JSONBody)
 	}
 
-	h.logger.DebugWithContext(ctx, "UserInfo response sent successfully")
+	h.logger.Debug(ctx, "UserInfo response sent successfully")
 }
 
 // writeServiceErrorResponse writes a service error response. The dpop flag selects
@@ -165,7 +165,7 @@ func (h *userInfoHandler) writeServiceErrorResponse(ctx context.Context,
 	}
 
 	if statusCode == http.StatusInternalServerError {
-		h.logger.ErrorWithContext(ctx, "Internal server error processing userinfo request",
+		h.logger.Error(ctx, "Internal server error processing userinfo request",
 			log.String("errorCode", svcErr.Code),
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 		utils.WriteJSONError(ctx, w, constants.ErrorServerError,

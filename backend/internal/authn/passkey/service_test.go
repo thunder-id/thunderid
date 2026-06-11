@@ -1405,3 +1405,274 @@ func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_ValidateLogin_Re
 	suite.NotNil(err)
 	suite.True(err.Code == ErrorInvalidSignature.Code || err.Code == ErrorInvalidAuthenticatorResponse.Code)
 }
+
+// validAttestationCredentialID is a real credential ID matching validAttestationObject below.
+//
+//nolint:gosec,lll // Test fixture credential identifier, not a real credential.
+const validAttestationCredentialID = "6xrtBhJQW6QU4tOaB4rrHaS2Ks0yDDL_q8jDC16DEjZ-VLVf4kCRkvl2xp2D71sTPYns-exsHQHTy3G-zJRK8g"
+
+// validAttestationObject is a real "none" attestation object that parses successfully.
+//
+//nolint:lll // Real WebAuthn attestation fixture.
+const validAttestationObject = "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVjEdKbqkhPJnC90siSSsyDPQCYqlMGpUKA5fyklC2CEHvBBAAAAAAAAAAAAAAAAAAAAAAAAAAAAQOsa7QYSUFukFOLTmgeK6x2ktirNMgwy_6vIwwtegxI2flS1X-JAkZL5dsadg-9bEz2J7PnsbB0B08txvsyUSvKlAQIDJiABIVggLKF5xS0_BntttUIrm2Z2tgZ4uQDwllbdIfrrBMABCNciWCDHwin8Zdkr56iSIh0MrB5qZiEzYLQpEOREhMUkY6q4Vw"
+
+// validAttestationClientDataJSON is the clientDataJSON matching validAttestationObject.
+//
+//nolint:lll // Real WebAuthn clientDataJSON fixture.
+const validAttestationClientDataJSON = "eyJjaGFsbGVuZ2UiOiJXOEd6RlU4cEdqaG9SYldyTERsYW1BZnFfeTRTMUNaRzFWdW9lUkxBUnJFIiwib3JpZ2luIjoiaHR0cHM6Ly93ZWJhdXRobi5pbyIsInR5cGUiOiJ3ZWJhdXRobi5jcmVhdGUifQ"
+
+func (suite *WebAuthnServiceTestSuite) TestStartRegistration_WebAuthnInitError() {
+	req := &PasskeyRegistrationStartRequest{
+		UserID:         testUserID,
+		RelyingPartyID: "%zz",
+	}
+
+	testEntity := &entity.Entity{
+		ID:       testUserID,
+		Category: entity.EntityCategoryUser,
+		Type:     "person",
+	}
+
+	suite.mockEntityService.On("GetEntity", mock.Anything, testUserID).
+		Return(testEntity, nil).Once()
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return(nil, nil).Once()
+
+	result, svcErr := suite.service.StartRegistration(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_WebAuthnInitError() {
+	req := &PasskeyAuthenticationStartRequest{
+		UserID:         testUserID,
+		RelyingPartyID: "%zz",
+	}
+
+	result, svcErr := suite.service.StartAuthentication(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestStartAuthentication_UsernameStoreSessionError() {
+	mockCredential := webauthnCredential{
+		ID:        []byte("credential123"),
+		PublicKey: []byte("publickey123"),
+		Authenticator: authenticator{
+			AAGUID:    []byte("aaguid123"),
+			SignCount: 5,
+		},
+	}
+	credentialJSON, _ := json.Marshal(mockCredential)
+
+	testEntity := &entity.Entity{
+		ID:       testUserID,
+		Category: entity.EntityCategoryUser,
+		Type:     "person",
+	}
+
+	suite.mockEntityService.On("GetEntity", mock.Anything, testUserID).
+		Return(testEntity, nil).Once()
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return([]entity.StoredCredential{{Value: string(credentialJSON)}}, nil).Once()
+
+	suite.mockSessionStore.On("storeSession",
+		mock.Anything, mock.AnythingOfType("string"),
+		mock.Anything,
+		mock.AnythingOfType("int64")).
+		Return(assert.AnError).Once()
+
+	req := &PasskeyAuthenticationStartRequest{
+		UserID:         testUserID,
+		RelyingPartyID: testRelyingPartyID,
+	}
+	result, svcErr := suite.service.StartAuthentication(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_WebAuthnInitError() {
+	sessionData := &sessionData{
+		Challenge:      "W8GzFU8pGjhoRbWrLDlamAfq_y4S1CZG1VuoeRLARrE",
+		UserID:         []byte(testUserID),
+		RelyingPartyID: "%zz",
+	}
+
+	testEntity := &entity.Entity{
+		ID:       testUserID,
+		Category: entity.EntityCategoryUser,
+		Type:     "person",
+	}
+
+	suite.mockSessionStore.On("retrieveSession", mock.Anything, testSessionToken).
+		Return(sessionData, nil).Once()
+	suite.mockEntityService.On("GetEntity", mock.Anything, testUserID).
+		Return(testEntity, nil).Once()
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return(nil, nil).Once()
+
+	req := &PasskeyRegistrationFinishRequest{
+		SessionToken:      testSessionToken,
+		CredentialID:      validAttestationCredentialID,
+		CredentialType:    "public-key",
+		ClientDataJSON:    validAttestationClientDataJSON,
+		AttestationObject: validAttestationObject,
+	}
+	result, svcErr := suite.service.FinishRegistration(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_RetrieveSessionStoreError() {
+	suite.mockSessionStore.On("retrieveSession", mock.Anything, testSessionToken).
+		Return(nil, assert.AnError).Once()
+
+	req := &PasskeyRegistrationFinishRequest{
+		SessionToken:      testSessionToken,
+		CredentialID:      validAttestationCredentialID,
+		CredentialType:    "public-key",
+		ClientDataJSON:    validAttestationClientDataJSON,
+		AttestationObject: validAttestationObject,
+	}
+	result, svcErr := suite.service.FinishRegistration(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_CreateCredentialError() {
+	sessionData := &sessionData{
+		Challenge:      "W8GzFU8pGjhoRbWrLDlamAfq_y4S1CZG1VuoeRLARrE",
+		UserID:         []byte(testUserID),
+		RelyingPartyID: testRelyingPartyID,
+	}
+
+	testEntity := &entity.Entity{
+		ID:       testUserID,
+		Category: entity.EntityCategoryUser,
+		Type:     "person",
+	}
+
+	suite.mockSessionStore.On("retrieveSession", mock.Anything, testSessionToken).
+		Return(sessionData, nil).Once()
+	suite.mockEntityService.On("GetEntity", mock.Anything, testUserID).
+		Return(testEntity, nil).Once()
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return(nil, nil).Once()
+
+	req := &PasskeyRegistrationFinishRequest{
+		SessionToken:      testSessionToken,
+		CredentialID:      validAttestationCredentialID,
+		CredentialType:    "public-key",
+		ClientDataJSON:    validAttestationClientDataJSON,
+		AttestationObject: validAttestationObject,
+	}
+	result, svcErr := suite.service.FinishRegistration(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorInvalidAttestationResponse.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_UsernamelessMissingUserHandle() {
+	sessionData := &sessionData{
+		Challenge:      "challenge123",
+		UserID:         nil,
+		RelyingPartyID: testRelyingPartyID,
+	}
+
+	suite.mockSessionStore.On("retrieveSession", mock.Anything, testSessionToken).
+		Return(sessionData, nil).Once()
+
+	req := &PasskeyAuthenticationFinishRequest{
+		CredentialID:      testCredentialID,
+		CredentialType:    "public-key",
+		ClientDataJSON:    "clientDataJSON",
+		AuthenticatorData: "authenticatorData",
+		Signature:         "signature",
+		UserHandle:        "",
+		SessionToken:      testSessionToken,
+	}
+	result, svcErr := suite.service.FinishAuthentication(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorInvalidAuthenticatorResponse.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_UsernamelessInvalidUserHandle() {
+	sessionData := &sessionData{
+		Challenge:      "challenge123",
+		UserID:         nil,
+		RelyingPartyID: testRelyingPartyID,
+	}
+
+	suite.mockSessionStore.On("retrieveSession", mock.Anything, testSessionToken).
+		Return(sessionData, nil).Once()
+
+	req := &PasskeyAuthenticationFinishRequest{
+		CredentialID:      testCredentialID,
+		CredentialType:    "public-key",
+		ClientDataJSON:    "clientDataJSON",
+		AuthenticatorData: "authenticatorData",
+		Signature:         "signature",
+		UserHandle:        "!!!@@@",
+		SessionToken:      testSessionToken,
+	}
+	result, svcErr := suite.service.FinishAuthentication(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(ErrorInvalidAuthenticatorResponse.Code, svcErr.Code)
+}
+
+func (suite *WebAuthnServiceTestSuite) TestFinishAuthentication_WebAuthnInitError() {
+	sessionData := &sessionData{
+		Challenge:      "challenge123",
+		UserID:         []byte(testUserID),
+		RelyingPartyID: "%zz",
+	}
+
+	mockCredential := webauthnCredential{
+		ID:        []byte("credential123"),
+		PublicKey: []byte("publickey123"),
+	}
+	credentialJSON, _ := json.Marshal(mockCredential)
+
+	testEntity := &entity.Entity{
+		ID:       testUserID,
+		Category: entity.EntityCategoryUser,
+		Type:     "person",
+	}
+
+	suite.mockSessionStore.On("retrieveSession", mock.Anything, testSessionToken).
+		Return(sessionData, nil).Once()
+	suite.mockEntityService.On("GetEntity", mock.Anything, testUserID).
+		Return(testEntity, nil).Once()
+	suite.mockEntityService.On("GetCredentialsByType", mock.Anything, testUserID, "passkey").
+		Return([]entity.StoredCredential{{Value: string(credentialJSON)}}, nil).Once()
+
+	req := &PasskeyAuthenticationFinishRequest{
+		CredentialID:      testCredentialID,
+		CredentialType:    "public-key",
+		ClientDataJSON:    "clientDataJSON",
+		AuthenticatorData: "authenticatorData",
+		Signature:         "signature",
+		UserHandle:        "",
+		SessionToken:      testSessionToken,
+	}
+	result, svcErr := suite.service.FinishAuthentication(context.Background(), req)
+
+	suite.Nil(result)
+	suite.NotNil(svcErr)
+	suite.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
+}

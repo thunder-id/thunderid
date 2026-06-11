@@ -88,7 +88,7 @@ func SubstituteFilePaths(content []byte, baseDir string) ([]byte, error) {
 			path = sub[2]
 		}
 		if path == "" {
-			logger.WarnWithContext(ctx, "Empty file path in placeholder", log.String("placeholder", match))
+			logger.Warn(ctx, "Empty file path in placeholder", log.String("placeholder", match))
 			return ""
 		}
 
@@ -99,7 +99,7 @@ func SubstituteFilePaths(content []byte, baseDir string) ([]byte, error) {
 
 		data, err := readFileContent(path)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to read file content", log.String("filePath", path), log.Error(err))
+			logger.Error(ctx, "Failed to read file content", log.String("filePath", path), log.Error(err))
 			isError = true
 			return ""
 		}

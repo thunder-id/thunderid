@@ -87,7 +87,7 @@ func newApplicationService(
 
 func (as *applicationService) deleteEntityCompensation(ctx context.Context, appID string) {
 	if delErr := as.entityProvider.DeleteEntity(appID); delErr != nil {
-		as.logger.ErrorWithContext(ctx, "Failed to delete entity during compensation", log.Error(delErr),
+		as.logger.Error(ctx, "Failed to delete entity during compensation", log.Error(delErr),
 			log.String("appID", appID))
 	}
 }
@@ -128,7 +128,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 
 	appEntity, sysCredsJSON, buildErr := buildAppEntity(appID, app, clientID, clientSecret)
 	if buildErr != nil {
-		as.logger.ErrorWithContext(ctx, "Failed to build entity for create", log.Error(buildErr))
+		as.logger.Error(ctx, "Failed to build entity for create", log.Error(buildErr))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -137,7 +137,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return nil, svcErr
 		}
-		as.logger.ErrorWithContext(ctx, "Failed to create application entity",
+		as.logger.Error(ctx, "Failed to create application entity",
 			log.String("appID", appID), log.Error(epErr))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -150,7 +150,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 		if svcErr := as.translateInboundClientError(ctx, err); svcErr != nil {
 			return nil, svcErr
 		}
-		as.logger.ErrorWithContext(ctx, "Failed to create application", log.Error(err), log.String("appID", appID))
+		as.logger.Error(ctx, "Failed to create application", log.Error(err), log.String("appID", appID))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -209,7 +209,7 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 		var err error
 		appID, err = sysutils.GenerateUUIDv7()
 		if err != nil {
-			as.logger.ErrorWithContext(ctx, "Failed to generate UUID", log.Error(err))
+			as.logger.Error(ctx, "Failed to generate UUID", log.Error(err))
 			return nil, nil, &serviceerror.InternalServerError
 		}
 	}
@@ -234,7 +234,7 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 		if svcErr := as.translateInboundClientError(ctx, err); svcErr != nil {
 			return nil, nil, svcErr
 		}
-		as.logger.ErrorWithContext(ctx, "Inbound client validation failed", log.Error(err))
+		as.logger.Error(ctx, "Inbound client validation failed", log.Error(err))
 		return nil, nil, &serviceerror.InternalServerError
 	}
 	processedDTO.AuthFlowID = inboundClient.AuthFlowID
@@ -249,14 +249,14 @@ func (as *applicationService) GetApplicationList(
 	ctx context.Context) (*model.ApplicationListResponse, *serviceerror.ServiceError) {
 	totalResults, epErr := as.entityProvider.GetEntityListCount(entityprovider.EntityCategoryApp, nil)
 	if epErr != nil {
-		as.logger.ErrorWithContext(ctx, "Failed to count application entities", log.Error(epErr))
+		as.logger.Error(ctx, "Failed to count application entities", log.Error(epErr))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	entities, epErr := as.entityProvider.GetEntityList(
 		entityprovider.EntityCategoryApp, serverconst.MaxCompositeStoreRecords, 0, nil)
 	if epErr != nil {
-		as.logger.ErrorWithContext(ctx, "Failed to list application entities", log.Error(epErr))
+		as.logger.Error(ctx, "Failed to list application entities", log.Error(epErr))
 		return nil, &serviceerror.InternalServerError
 	}
 	if len(entities) == 0 {
@@ -273,7 +273,7 @@ func (as *applicationService) GetApplicationList(
 		if errors.Is(err, inboundclient.ErrCompositeResultLimitExceeded) {
 			return nil, &ErrorResultLimitExceeded
 		}
-		as.logger.ErrorWithContext(ctx, "Failed to list inbound clients", log.Error(err))
+		as.logger.Error(ctx, "Failed to list inbound clients", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -292,7 +292,7 @@ func (as *applicationService) GetApplicationList(
 	for i := range entities {
 		cfg := configMap[entities[i].ID]
 		if cfg == nil {
-			as.logger.WarnWithContext(ctx, "Application entity has no inbound-client row; skipping in list",
+			as.logger.Warn(ctx, "Application entity has no inbound-client row; skipping in list",
 				log.String("appID", entities[i].ID))
 			continue
 		}
@@ -315,7 +315,7 @@ func (as *applicationService) GetOAuthApplication(
 
 	client, err := as.inboundClientService.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil {
-		as.logger.ErrorWithContext(ctx, "Failed to retrieve OAuth client", log.Error(err),
+		as.logger.Error(ctx, "Failed to retrieve OAuth client", log.Error(err),
 			log.MaskedString("clientID", clientID))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -325,7 +325,7 @@ func (as *applicationService) GetOAuthApplication(
 
 	entity, epErr := as.entityProvider.GetEntity(client.ID)
 	if epErr != nil && epErr.Code != entityprovider.ErrorCodeEntityNotFound {
-		as.logger.ErrorWithContext(ctx, "Failed to load entity for OAuth client",
+		as.logger.Error(ctx, "Failed to load entity for OAuth client",
 			log.String("entityID", client.ID), log.Error(epErr))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -385,7 +385,7 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 		if svcErr := as.translateInboundClientError(ctx, err); svcErr != nil {
 			return nil, svcErr
 		}
-		as.logger.ErrorWithContext(ctx, "Failed to update application", log.Error(err), log.String("appID", appID))
+		as.logger.Error(ctx, "Failed to update application", log.Error(err), log.String("appID", appID))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -434,7 +434,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 
 	sysAttrsJSON, marshalErr := buildSystemAttributes(app, clientID)
 	if marshalErr != nil {
-		as.logger.ErrorWithContext(ctx, "Failed to build entity system attributes for update", log.Error(marshalErr))
+		as.logger.Error(ctx, "Failed to build entity system attributes for update", log.Error(marshalErr))
 		return &serviceerror.InternalServerError
 	}
 
@@ -442,7 +442,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return svcErr
 		}
-		as.logger.ErrorWithContext(ctx, "Failed to update entity system attributes",
+		as.logger.Error(ctx, "Failed to update entity system attributes",
 			log.String("appID", appID), log.Error(epErr))
 		return &serviceerror.InternalServerError
 	}
@@ -457,7 +457,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 			if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 				return svcErr
 			}
-			as.logger.ErrorWithContext(ctx, "Failed to clear entity system credentials",
+			as.logger.Error(ctx, "Failed to clear entity system credentials",
 				log.String("appID", appID), log.Error(epErr))
 			return &serviceerror.InternalServerError
 		}
@@ -469,7 +469,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 
 	sysCredsJSON, marshalErr := buildSystemCredentials(inboundAuthConfig.OAuthConfig.ClientSecret)
 	if marshalErr != nil {
-		as.logger.ErrorWithContext(ctx, "Failed to build entity system credentials for update", log.Error(marshalErr))
+		as.logger.Error(ctx, "Failed to build entity system credentials for update", log.Error(marshalErr))
 		return &serviceerror.InternalServerError
 	}
 
@@ -477,7 +477,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return svcErr
 		}
-		as.logger.ErrorWithContext(ctx, "Failed to update entity system credentials",
+		as.logger.Error(ctx, "Failed to update entity system credentials",
 			log.String("appID", appID), log.Error(epErr))
 		return &serviceerror.InternalServerError
 	}
@@ -513,7 +513,7 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 
 	if existing, epErr := as.entityProvider.GetEntity(appID); epErr != nil {
 		if epErr.Code != entityprovider.ErrorCodeEntityNotFound {
-			as.logger.ErrorWithContext(ctx, "Failed to load entity before delete",
+			as.logger.Error(ctx, "Failed to load entity before delete",
 				log.String("appID", appID), log.Error(epErr))
 			return &serviceerror.InternalServerError
 		}
@@ -529,7 +529,7 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		if svcErr := as.translateInboundClientError(ctx, appErr); svcErr != nil {
 			return svcErr
 		}
-		as.logger.ErrorWithContext(ctx, "Failed to delete application", log.Error(appErr), log.String("appID", appID))
+		as.logger.Error(ctx, "Failed to delete application", log.Error(appErr), log.String("appID", appID))
 		return &serviceerror.InternalServerError
 	}
 
@@ -538,7 +538,7 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return svcErr
 		}
-		as.logger.ErrorWithContext(ctx, "Failed to delete application entity",
+		as.logger.Error(ctx, "Failed to delete application entity",
 			log.String("appID", appID), log.Error(epErr))
 		return &serviceerror.InternalServerError
 	}
@@ -556,7 +556,7 @@ func (as *applicationService) isIdentifierTaken(
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return false, nil
 		}
-		as.logger.ErrorWithContext(ctx, "Failed to check identifier availability",
+		as.logger.Error(ctx, "Failed to check identifier availability",
 			log.String("key", key), log.String("value", value), log.Error(epErr))
 		return false, &serviceerror.InternalServerError
 	}
@@ -586,7 +586,7 @@ func (as *applicationService) getApplication(
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			entity = nil
 		} else {
-			as.logger.ErrorWithContext(ctx, "Failed to get entity for application",
+			as.logger.Error(ctx, "Failed to get entity for application",
 				log.String("appID", appID), log.Error(epErr))
 			return nil, &serviceerror.InternalServerError
 		}
@@ -598,7 +598,7 @@ func (as *applicationService) getApplication(
 
 	oauthProfile, err := as.inboundClientService.GetOAuthProfileByEntityID(ctx, appID)
 	if err != nil && !errors.Is(err, inboundclient.ErrInboundClientNotFound) {
-		as.logger.ErrorWithContext(ctx, "Failed to get OAuth profile for application",
+		as.logger.Error(ctx, "Failed to get OAuth profile for application",
 			log.String("appID", appID), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -925,7 +925,7 @@ func (as *applicationService) validateApplicationFields(
 	// Resolve ou_handle to an ID when the direct ID is absent.
 	// If both are provided, ou_id wins and a warning is logged.
 	if app.OUID != "" && app.OUHandle != "" {
-		as.logger.WarnWithContext(ctx, "Both ou_id and ou_handle provided for application; ou_handle ignored",
+		as.logger.Warn(ctx, "Both ou_id and ou_handle provided for application; ou_handle ignored",
 			log.String("appID", app.ID), log.String("name", app.Name))
 	} else if app.OUID == "" && app.OUHandle != "" {
 		ou, svcErr := as.ouService.GetOrganizationUnitByPath(ctx, app.OUHandle)
@@ -1342,7 +1342,7 @@ func translateCertValidationError(err error) *serviceerror.ServiceError {
 func (as *applicationService) translateCertOperationError(ctx context.Context,
 	err *inboundclient.CertOperationError) *serviceerror.ServiceError {
 	if !err.IsClientError() {
-		as.logger.ErrorWithContext(ctx, "Certificate operation failed",
+		as.logger.Error(ctx, "Certificate operation failed",
 			log.Any("operation", err.Operation),
 			log.Any("refType", err.RefType),
 			log.Any("serviceError", err.Underlying))
@@ -1453,7 +1453,7 @@ func generateAndAssignClientID(
 ) *serviceerror.ServiceError {
 	generatedClientID, err := oauthutils.GenerateOAuth2ClientID()
 	if err != nil {
-		log.GetLogger().ErrorWithContext(ctx, "Failed to generate OAuth client ID", log.Error(err))
+		log.GetLogger().Error(ctx, "Failed to generate OAuth client ID", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	inboundAuthConfig.OAuthConfig.ClientID = generatedClientID
@@ -1487,7 +1487,7 @@ func resolveClientSecret(
 
 	generatedClientSecret, err := oauthutils.GenerateOAuth2ClientSecret()
 	if err != nil {
-		log.GetLogger().ErrorWithContext(ctx, "Failed to generate OAuth client secret", log.Error(err))
+		log.GetLogger().Error(ctx, "Failed to generate OAuth client secret", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 
@@ -1775,7 +1775,7 @@ func (as *applicationService) mapStoreError(ctx context.Context, err error) *ser
 	if errors.Is(err, inboundclient.ErrInboundClientNotFound) {
 		return &ErrorApplicationNotFound
 	}
-	as.logger.ErrorWithContext(ctx, "Failed to retrieve application", log.Error(err))
+	as.logger.Error(ctx, "Failed to retrieve application", log.Error(err))
 	return &serviceerror.InternalServerError
 }
 
@@ -1789,7 +1789,7 @@ func (as *applicationService) deleteLocalizedVariants(ctx context.Context, appID
 	for _, field := range []string{"name", "logo_uri", "tos_uri", "policy_uri"} {
 		if svcErr := as.i18nService.DeleteTranslationsByKey(
 			ctx, AppI18nNamespace(), AppI18nKey(appID, field)); svcErr != nil {
-			as.logger.ErrorWithContext(ctx, "Failed to delete localized variant on app deletion",
+			as.logger.Error(ctx, "Failed to delete localized variant on app deletion",
 				log.String("appID", appID),
 				log.String("field", field),
 				log.String("namespace", AppI18nNamespace()))
@@ -1823,7 +1823,7 @@ func (as *applicationService) cleanupStaleI18nKeys(
 		if isI18nRef(f.old) && !isI18nRef(f.updated) {
 			if svcErr := as.i18nService.DeleteTranslationsByKey(
 				ctx, AppI18nNamespace(), AppI18nKey(appID, f.field)); svcErr != nil {
-				as.logger.ErrorWithContext(ctx, "Failed to delete stale i18n key",
+				as.logger.Error(ctx, "Failed to delete stale i18n key",
 					log.String("appID", appID),
 					log.String("field", f.field),
 					log.String("namespace", AppI18nNamespace()))

@@ -284,14 +284,14 @@ func (s *importService) ImportResources(
 
 	resolvedContent, err := resolveTemplate(request.Content, request.Variables)
 	if err != nil {
-		log.GetLogger().WarnWithContext(ctx, "Import template resolution failed", log.String("error", err.Error()))
+		log.GetLogger().Warn(ctx, "Import template resolution failed", log.String("error", err.Error()))
 		return nil, serviceerror.CustomServiceError(ErrorTemplateResolutionFailed,
 			core.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
 	}
 
 	docs, err := parseDocuments(resolvedContent)
 	if err != nil {
-		log.GetLogger().WarnWithContext(ctx, "Import YAML parsing failed", log.String("error", err.Error()))
+		log.GetLogger().Warn(ctx, "Import YAML parsing failed", log.String("error", err.Error()))
 		return nil, serviceerror.CustomServiceError(ErrorInvalidYAMLContent,
 			core.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
 	}
@@ -780,10 +780,10 @@ func (s *importService) importApplication(
 			)
 		}
 
-		log.GetLogger().WarnWithContext(ctx, "Application import create failed", failureLogFields...)
+		log.GetLogger().Warn(ctx, "Application import create failed", failureLogFields...)
 
 		if svcErr.Code == invalidOAuthConfigurationCode {
-			log.GetLogger().DebugWithContext(ctx,
+			log.GetLogger().Debug(ctx,
 				"Application import failed due to invalid OAuth configuration", failureLogFields...)
 		}
 
@@ -896,7 +896,7 @@ func normalizeOAuthConfigForImport(ctx context.Context, appDTO *appmodel.Applica
 	if oauthConfig.PublicClient &&
 		oauthConfig.TokenEndpointAuthMethod == oauth2const.TokenEndpointAuthMethodNone &&
 		oauthConfig.ClientSecret != "" {
-		log.GetLogger().DebugWithContext(ctx,
+		log.GetLogger().Debug(ctx,
 			"Dropping client_secret for public client import with token endpoint auth method 'none'",
 			log.String("appID", appDTO.ID),
 			log.String("name", appDTO.Name),

@@ -123,7 +123,7 @@ func (ts *tokenService) ProcessTokenRequest(
 				ErrorDescription: "Unsupported grant type",
 			}
 		}
-		logger.ErrorWithContext(ctx, "Failed to get grant handler", log.Error(handlerErr))
+		logger.Error(ctx, "Failed to get grant handler", log.Error(handlerErr))
 		publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
 			500, "Failed to get grant handler", startTime)
 		return nil, &model.ErrorResponse{
@@ -197,12 +197,12 @@ func (ts *tokenService) ProcessTokenRequest(
 	// Issue refresh token if applicable.
 	if (grantType == constants.GrantTypeAuthorizationCode || grantType == constants.GrantTypeCIBA) &&
 		oauthApp.IsAllowedGrantType(constants.GrantTypeRefreshToken) {
-		logger.DebugWithContext(ctx, "Issuing refresh token for the token request",
+		logger.Debug(ctx, "Issuing refresh token for the token request",
 			log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
 
 		refreshGrantHandler, handlerErr := ts.grantHandlerProvider.GetGrantHandler(constants.GrantTypeRefreshToken)
 		if handlerErr != nil {
-			logger.ErrorWithContext(ctx, "Failed to get refresh grant handler", log.Error(handlerErr))
+			logger.Error(ctx, "Failed to get refresh grant handler", log.Error(handlerErr))
 			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
 				500, "Failed to get refresh grant handler", startTime)
 			return nil, &model.ErrorResponse{
@@ -212,7 +212,7 @@ func (ts *tokenService) ProcessTokenRequest(
 		}
 		refreshGrantHandlerTyped, ok := refreshGrantHandler.(granthandlers.RefreshTokenGrantHandlerInterface)
 		if !ok {
-			logger.ErrorWithContext(ctx, "Failed to cast refresh grant handler",
+			logger.Error(ctx, "Failed to cast refresh grant handler",
 				log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
 			publishTokenIssuanceFailedEvent(ts.observabilitySvc, ctx, clientID, grantTypeStr, scopeStr,
 				500, "Internal Server Error", startTime)
@@ -264,7 +264,7 @@ func (ts *tokenService) ProcessTokenRequest(
 		}
 	}
 
-	logger.DebugWithContext(ctx, "Token generated successfully",
+	logger.Debug(ctx, "Token generated successfully",
 		log.String("client_id", clientID), log.String("grant_type", grantTypeStr))
 
 	ts.publishTokenIssuedEvent(ctx, clientID, grantTypeStr, scopes, startTime)

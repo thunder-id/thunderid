@@ -48,6 +48,7 @@ vi.mock('react-i18next', () => ({
     <span>
       {i18nKey}
       {components?.a}
+      {components?.mail}
     </span>
   ),
   useTranslation: () => ({
@@ -228,6 +229,31 @@ describe('TryoutSecuringApplicationPage', () => {
     await user.click(screen.getByText('common:welcome.applicationTryout.scenarios.tabs.profile'));
 
     expect(screen.getByText('common:welcome.applicationTryout.scenarios.profile.description')).toBeInTheDocument();
+  });
+
+  it('shows recovery scenario with sample-app and mail-inbox links when recovery tab is clicked', async () => {
+    const user = userEvent.setup();
+    render(<TryoutSecuringApplicationPage />);
+
+    await user.click(screen.getByText('common:welcome.applicationTryout.scenarios.tabs.recovery'));
+
+    expect(screen.getByText('common:welcome.applicationTryout.scenarios.recovery.description')).toBeInTheDocument();
+    const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'));
+    expect(hrefs).toContain('http://localhost:5173');
+    expect(hrefs).toContain('http://localhost:8788');
+  });
+
+  it('shows onboard scenario with a mail-inbox link when onboard tab is clicked', async () => {
+    const user = userEvent.setup();
+    render(<TryoutSecuringApplicationPage />);
+
+    await user.click(screen.getByText('common:welcome.applicationTryout.scenarios.tabs.onboard'));
+
+    expect(
+      screen.getByText('common:welcome.applicationTryout.scenarios.onboard.description:ThunderID'),
+    ).toBeInTheDocument();
+    const hrefs = screen.getAllByRole('link').map((a) => a.getAttribute('href'));
+    expect(hrefs).toContain('http://localhost:8788');
   });
 
   describe('credential interactions', () => {

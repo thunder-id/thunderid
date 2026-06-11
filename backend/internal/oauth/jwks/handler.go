@@ -52,7 +52,7 @@ func (h *jwksHandler) HandleJWKSRequest(w http.ResponseWriter, r *http.Request) 
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, jwksResponse)
-	logger.DebugWithContext(ctx, "JWKS response successfully sent")
+	logger.Debug(ctx, "JWKS response successfully sent")
 }
 
 // logAndWriteError logs server errors and writes an appropriate error response to the HTTP response writer.
@@ -61,7 +61,7 @@ func (h *jwksHandler) logAndWriteError(ctx context.Context, w http.ResponseWrite
 	statusCode := http.StatusBadRequest
 	if svcErr.Type == serviceerror.ServerErrorType {
 		statusCode = http.StatusInternalServerError
-		logger.ErrorWithContext(ctx, "Failed to retrieve JWKS", log.String("error_code", svcErr.Code))
+		logger.Error(ctx, "Failed to retrieve JWKS", log.String("error_code", svcErr.Code))
 	}
 
 	errResp := apierror.ErrorResponse{

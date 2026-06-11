@@ -53,7 +53,7 @@ func getEntityTypeStoreMode() serverconst.StoreMode {
 			msg := fmt.Sprintf(
 				"Invalid entity type store mode: %s, falling back to global declarative resources setting", mode)
 			// Store-mode resolution runs during startup config loading, outside any request.
-			log.GetLogger().WarnWithContext(context.Background(), msg)
+			log.GetLogger().Warn(context.Background(), msg)
 		}
 	}
 

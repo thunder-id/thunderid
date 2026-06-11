@@ -62,7 +62,7 @@ func (h *parHandler) HandlePARRequest(w http.ResponseWriter, r *http.Request) {
 	// Client authentication is handled by the ClientAuthMiddleware.
 	clientInfo := clientauth.GetOAuthClient(ctx)
 	if clientInfo == nil {
-		h.logger.ErrorWithContext(ctx, "OAuth client not found in context - ClientAuthMiddleware must be applied")
+		h.logger.Error(ctx, "OAuth client not found in context - ClientAuthMiddleware must be applied")
 		utils.WriteJSONError(ctx, w, oauth2const.ErrorServerError,
 			"Something went wrong", http.StatusInternalServerError, nil)
 		return
@@ -80,7 +80,7 @@ func (h *parHandler) HandlePARRequest(w http.ResponseWriter, r *http.Request) {
 	if errCode != "" {
 		statusCode := http.StatusBadRequest
 		if errCode == oauth2const.ErrorServerError {
-			h.logger.ErrorWithContext(ctx, "Internal server error verifying DPoP header",
+			h.logger.Error(ctx, "Internal server error verifying DPoP header",
 				log.MaskedString("clientID", clientInfo.ClientID),
 				log.String("errorCode", errCode),
 				log.String("errorDescription", errDesc),
@@ -88,7 +88,7 @@ func (h *parHandler) HandlePARRequest(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusInternalServerError
 		}
 		if errCode == oauth2const.ErrorInvalidDPoPProof {
-			h.logger.DebugWithContext(ctx, "DPoP proof rejected at PAR",
+			h.logger.Debug(ctx, "DPoP proof rejected at PAR",
 				log.MaskedString("clientID", clientInfo.ClientID),
 				log.String("error", errDesc))
 			errDesc = "Invalid DPoP proof"
@@ -110,7 +110,7 @@ func (h *parHandler) HandlePARRequest(w http.ResponseWriter, r *http.Request) {
 	if errCode != "" {
 		statusCode := http.StatusBadRequest
 		if errCode == oauth2const.ErrorServerError {
-			h.logger.ErrorWithContext(ctx, "Internal server error processing pushed authorization request",
+			h.logger.Error(ctx, "Internal server error processing pushed authorization request",
 				log.MaskedString("clientID", clientInfo.ClientID),
 				log.String("errorCode", errCode),
 				log.String("errorDescription", errDesc),
@@ -134,7 +134,7 @@ func (h *parHandler) verifyDPoPHeader(ctx context.Context, r *http.Request) (str
 		return "", oauth2const.ErrorInvalidDPoPProof, "Multiple DPoP headers"
 	}
 	if h.dpopVerifier == nil {
-		h.logger.ErrorWithContext(ctx, "DPoP verifier is not configured")
+		h.logger.Error(ctx, "DPoP verifier is not configured")
 		return "", oauth2const.ErrorServerError, "Something went wrong"
 	}
 	result, err := h.dpopVerifier.Verify(ctx, dpop.VerifyParams{

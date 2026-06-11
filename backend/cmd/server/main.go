@@ -65,14 +65,14 @@ func main() {
 
 	cfg := initThunderConfigurations(ctx, logger, serverHome)
 	if cfg == nil {
-		logger.FatalWithContext(ctx, "Failed to initialize configurations")
+		logger.Fatal(ctx, "Failed to initialize configurations")
 	}
 
 	// Install the CORS allowed-origins matcher used by the HTTP middleware.
 	// Compilation errors are already surfaced by config validation; this call
 	// rebuilds the rules and installs them as the cors package singleton.
 	if err := cors.InitializeMatcher(cfg.CORS.AllowedOrigins); err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize CORS matcher", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize CORS matcher", log.Error(err))
 	}
 
 	// Initialize the cache manager.
@@ -84,7 +84,7 @@ func main() {
 	// Create a new HTTP multiplexer.
 	mux := http.NewServeMux()
 	if mux == nil {
-		logger.FatalWithContext(ctx, "Failed to initialize multiplexer")
+		logger.Fatal(ctx, "Failed to initialize multiplexer")
 	}
 
 	// Register the services.
@@ -101,7 +101,7 @@ func main() {
 	server := createHTTPServer(ctx, logger, cfg, mux, jwtService)
 	var ln net.Listener
 	if cfg.Server.HTTPOnly {
-		logger.InfoWithContext(ctx, "TLS is not enabled, starting server without TLS")
+		logger.Info(ctx, "TLS is not enabled, starting server without TLS")
 		ln = createListener(ctx, logger, server)
 	} else {
 		tlsConfig := loadCertConfig(ctx, logger, runtimeCryptoSvc)
@@ -110,21 +110,21 @@ func main() {
 
 	serverURL := config.GetServerURL(&cfg.Server)
 	consoleURL := fmt.Sprintf("%s/console", strings.TrimSuffix(serverURL, "/"))
-	logger.InfoWithContext(ctx, "ThunderID Server URL", log.String("url", serverURL))
-	logger.InfoWithContext(ctx, "ThunderID Console URL", log.String("url", consoleURL))
+	logger.Info(ctx, "ThunderID Server URL", log.String("url", serverURL))
+	logger.Info(ctx, "ThunderID Console URL", log.String("url", consoleURL))
 
 	// Start server in a goroutine
 	go func() {
 		startupDuration := time.Since(startupStartedAt)
-		logger.InfoWithContext(ctx, "ThunderID Server started", log.String("startup_time", startupDuration.String()))
+		logger.Info(ctx, "ThunderID Server started", log.String("startup_time", startupDuration.String()))
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
-			logger.FatalWithContext(ctx, "Failed to serve requests", log.Error(err))
+			logger.Fatal(ctx, "Failed to serve requests", log.Error(err))
 		}
 	}()
 
 	// Wait for shutdown signal
 	<-sigChan
-	logger.InfoWithContext(ctx, "Shutting down server...")
+	logger.Info(ctx, "Shutting down server...")
 	gracefulShutdown(ctx, logger, server, cacheManager)
 }
 
@@ -136,14 +136,14 @@ func getThunderHome(ctx context.Context, logger *log.Logger) string {
 	flag.Parse()
 
 	if *projectHomeFlag != "" {
-		logger.InfoWithContext(ctx, "Using serverHome from command line argument",
+		logger.Info(ctx, "Using serverHome from command line argument",
 			log.String("serverHome", *projectHomeFlag))
 		projectHome = *projectHomeFlag
 	} else {
 		// If no command line argument is provided, use the current working directory.
 		dir, dirErr := os.Getwd()
 		if dirErr != nil {
-			logger.FatalWithContext(ctx, "Failed to get current working directory", log.Error(dirErr))
+			logger.Fatal(ctx, "Failed to get current working directory", log.Error(dirErr))
 		}
 		projectHome = dir
 	}
@@ -158,12 +158,12 @@ func initThunderConfigurations(ctx context.Context, logger *log.Logger, serverHo
 	defaultConfigPath := path.Join(serverHome, "repository/resources/conf/default.json")
 	cfg, err := config.LoadConfig(configFilePath, defaultConfigPath, serverHome)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to load configurations", log.Error(err))
+		logger.Fatal(ctx, "Failed to load configurations", log.Error(err))
 	}
 
 	// Initialize runtime configurations.
 	if err := config.InitializeServerRuntime(serverHome, cfg); err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize server runtime", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize server runtime", log.Error(err))
 	}
 
 	return cfg
@@ -173,7 +173,7 @@ func initThunderConfigurations(ctx context.Context, logger *log.Logger, serverHo
 func loadCertConfig(ctx context.Context, logger *log.Logger, runtimeSvc kmprovider.RuntimeCryptoProvider) *tls.Config {
 	mat, err := runtimeSvc.GetTLSMaterial(ctx)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to load TLS material", log.Error(err))
+		logger.Fatal(ctx, "Failed to load TLS material", log.Error(err))
 	}
 	// #nosec G402 -- MinVersion is set to TLS 1.2 or higher by GetTLSMaterial
 	return &tls.Config{
@@ -211,7 +211,7 @@ func createHTTPServer(ctx context.Context, logger *log.Logger, cfg *config.Confi
 func createListener(ctx context.Context, logger *log.Logger, server *http.Server) net.Listener {
 	ln, err := netListen("tcp", server.Addr)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to start HTTP listener", log.Error(err))
+		logger.Fatal(ctx, "Failed to start HTTP listener", log.Error(err))
 	}
 	return ln
 }
@@ -221,7 +221,7 @@ func createTLSListener(ctx context.Context, logger *log.Logger, server *http.Ser
 	tlsConfig *tls.Config) net.Listener {
 	ln, err := tlsListen("tcp", server.Addr, tlsConfig)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to start TLS listener", log.Error(err))
+		logger.Fatal(ctx, "Failed to start TLS listener", log.Error(err))
 	}
 	return ln
 }
@@ -230,7 +230,7 @@ func createSecurityMiddleware(ctx context.Context, logger *log.Logger, mux *http
 	jwtService jwt.JWTServiceInterface) http.Handler {
 	middlewareFunc, err := security.Initialize(jwtService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize security middleware", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize security middleware", log.Error(err))
 	}
 	return middlewareFunc(mux)
 }
@@ -247,9 +247,9 @@ func gracefulShutdown(
 
 	// Shutdown HTTP server
 	if err := server.Shutdown(ctx); err != nil {
-		logger.ErrorWithContext(ctx, "Error during server shutdown", log.Error(err))
+		logger.Error(ctx, "Error during server shutdown", log.Error(err))
 	} else {
-		logger.DebugWithContext(ctx, "HTTP server shutdown completed")
+		logger.Debug(ctx, "HTTP server shutdown completed")
 	}
 
 	// Shutdown services
@@ -258,17 +258,17 @@ func gracefulShutdown(
 	// Close database connections
 	dbCloser := provider.GetDBProviderCloser()
 	if err := dbCloser.Close(); err != nil {
-		logger.ErrorWithContext(ctx, "Error closing database connections", log.Error(err))
+		logger.Error(ctx, "Error closing database connections", log.Error(err))
 	} else {
-		logger.DebugWithContext(ctx, "Database connections closed successfully")
+		logger.Debug(ctx, "Database connections closed successfully")
 	}
 
 	if cacheManager != nil {
 		cacheManager.Close()
-		logger.DebugWithContext(ctx, "Cache manager closed successfully")
+		logger.Debug(ctx, "Cache manager closed successfully")
 	}
 
-	logger.InfoWithContext(ctx, "Server shutdown completed")
+	logger.Info(ctx, "Server shutdown completed")
 }
 
 // registerStaticFileHandlers registers static file handlers for frontend applications.
@@ -283,21 +283,21 @@ func registerStaticFileHandlers(ctx context.Context, logger *log.Logger, mux *ht
 	// Serve gate application from /gate
 	gateDir := path.Join(serverHome, "apps", "gate")
 	if directoryExists(gateDir) {
-		logger.DebugWithContext(ctx, "Registering static file handler for Gate application",
+		logger.Debug(ctx, "Registering static file handler for Gate application",
 			log.String("path", "/gate/"), log.String("directory", gateDir))
 		mux.Handle("/gate/", createStaticFileHandler("/gate/", gateDir, logger))
 	} else {
-		logger.WarnWithContext(ctx, "Gate application directory not found", log.String("directory", gateDir))
+		logger.Warn(ctx, "Gate application directory not found", log.String("directory", gateDir))
 	}
 
 	// Serve console application from /console
 	consoleDir := path.Join(serverHome, "apps", "console")
 	if directoryExists(consoleDir) {
-		logger.DebugWithContext(ctx, "Registering static file handler for Console application",
+		logger.Debug(ctx, "Registering static file handler for Console application",
 			log.String("path", "/console/"), log.String("directory", consoleDir))
 		mux.Handle("/console/", createStaticFileHandler("/console/", consoleDir, logger))
 	} else {
-		logger.WarnWithContext(ctx, "Console application directory not found", log.String("directory", consoleDir))
+		logger.Warn(ctx, "Console application directory not found", log.String("directory", consoleDir))
 	}
 }
 
@@ -330,7 +330,7 @@ func createStaticFileHandler(routePrefix, directory string, logger *log.Logger) 
 			// For SPA routing, serve index.html for non-existent files
 			indexPath := path.Join(directory, "index.html")
 			if fileExists(indexPath) {
-				logger.DebugWithContext(r.Context(), "Serving index.html for SPA routing",
+				logger.Debug(r.Context(), "Serving index.html for SPA routing",
 					log.String("requested_path", r.URL.Path),
 					log.String("route_prefix", routePrefix))
 				// Set no-cache headers for index.html

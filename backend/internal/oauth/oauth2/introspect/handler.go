@@ -61,7 +61,7 @@ func (h *tokenIntrospectionHandler) HandleIntrospect(w http.ResponseWriter, r *h
 
 	response, err := h.service.IntrospectToken(ctx, token, tokenTypeHint)
 	if err != nil {
-		h.logger.ErrorWithContext(ctx, "Failed to introspect token", log.Error(err))
+		h.logger.Error(ctx, "Failed to introspect token", log.Error(err))
 		sysutils.WriteJSONError(ctx, w, constants.ErrorServerError,
 			"An unexpected error occurred while processing the request",
 			http.StatusInternalServerError, nil)

@@ -82,7 +82,7 @@ func newProvisioningExecutor(
 // Execute executes the user provisioning logic based on the inputs provided.
 func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Executing user provisioning executor")
+	logger.Debug(ctx.Context, "Executing user provisioning executor")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -93,7 +93,7 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 	if ctx.FlowType == common.FlowTypeAuthentication {
 		eligible, ok := ctx.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning]
 		if !ok || eligible != dataValueTrue {
-			logger.DebugWithContext(ctx.Context, "User is not eligible for provisioning, skipping execution")
+			logger.Debug(ctx.Context, "User is not eligible for provisioning, skipping execution")
 			execResp.Status = common.ExecComplete
 			return execResp, nil
 		}
@@ -104,7 +104,7 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 			return execResp, nil
 		}
 
-		logger.DebugWithContext(ctx.Context, "Required inputs for provisioning executor is not provided")
+		logger.Debug(ctx.Context, "Required inputs for provisioning executor is not provided")
 		execResp.Status = common.ExecUserInputRequired
 		return execResp, nil
 	}
@@ -114,7 +114,7 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 		return nil, err
 	}
 	if len(identifyingAttrs) == 0 && len(credentialAttrs) == 0 {
-		logger.DebugWithContext(ctx.Context, "No user attributes provided for provisioning")
+		logger.Debug(ctx.Context, "No user attributes provided for provisioning")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrProvisioningUserAttrsMissing
 		return execResp, nil
@@ -122,7 +122,7 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 
 	userID, err := p.IdentifyUser(ctx.Context, identifyingAttrs, execResp)
 	if err != nil {
-		logger.ErrorWithContext(ctx.Context, "Failed to identify user", log.Error(err))
+		logger.Error(ctx.Context, "Failed to identify user", log.Error(err))
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrFailedToIdentifyUser
 		return execResp, nil
@@ -161,24 +161,24 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 	}
 	createdEntity, err := p.createUserInStore(ctx, userAttributes)
 	if err != nil {
-		logger.ErrorWithContext(ctx.Context, "Failed to create user in the store", log.Error(err))
+		logger.Error(ctx.Context, "Failed to create user in the store", log.Error(err))
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrProvisioningFailed
 		return execResp, nil
 	}
 	if createdEntity == nil || createdEntity.ID == "" {
-		logger.ErrorWithContext(ctx.Context, "Created user is nil or has no ID")
+		logger.Error(ctx.Context, "Created user is nil or has no ID")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrProvisioningFailed
 		return execResp, nil
 	}
 
-	logger.DebugWithContext(ctx.Context, "User created successfully",
+	logger.Debug(ctx.Context, "User created successfully",
 		log.MaskedString(log.LoggerKeyUserID, createdEntity.ID))
 
 	// Assign user to groups and roles
 	if err := p.assignGroupsAndRoles(ctx, createdEntity.ID); err != nil {
-		logger.ErrorWithContext(ctx.Context, "Failed to assign groups and roles to provisioned user",
+		logger.Error(ctx.Context, "Failed to assign groups and roles to provisioned user",
 			log.MaskedString(log.LoggerKeyUserID, createdEntity.ID),
 			log.Error(err))
 		execResp.Status = common.ExecFailure
@@ -197,13 +197,13 @@ func (p *provisioningExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorR
 // Returns true if provisioning should proceed (cross-OU case), false if execution should stop.
 func (p *provisioningExecutor) handleExistingUser(ctx *core.NodeContext, userID string,
 	execResp *common.ExecutorResponse, logger *log.Logger) (bool, error) {
-	logger.DebugWithContext(ctx.Context, "User already exists", log.MaskedString(log.LoggerKeyUserID, userID))
+	logger.Debug(ctx.Context, "User already exists", log.MaskedString(log.LoggerKeyUserID, userID))
 
 	// If it's a registration flow, check if proceeding with an existing user
 	if ctx.FlowType == common.FlowTypeRegistration {
 		existing, ok := ctx.RuntimeData[common.RuntimeKeySkipProvisioning]
 		if ok && existing == dataValueTrue {
-			logger.DebugWithContext(ctx.Context,
+			logger.Debug(ctx.Context,
 				"Proceeding with an existing user in registration flow, skipping execution")
 			execResp.RuntimeData[userAttributeUserID] = userID
 			execResp.Status = common.ExecComplete
@@ -247,7 +247,7 @@ func (p *provisioningExecutor) handleExistingUser(ctx *core.NodeContext, userID 
 		return false, nil
 	}
 
-	logger.DebugWithContext(ctx.Context, "Existing user is in a different OU, proceeding with cross-OU provisioning",
+	logger.Debug(ctx.Context, "Existing user is in a different OU, proceeding with cross-OU provisioning",
 		log.String("existingOUID", existingUser.OUID),
 		log.String("targetOUID", targetOUID))
 	return true, nil
@@ -259,7 +259,7 @@ func (p *provisioningExecutor) buildProvisioningResponse(ctx *core.NodeContext, 
 	retAttributes := make(map[string]interface{})
 	if len(createdEntity.Attributes) > 0 {
 		if err := json.Unmarshal(createdEntity.Attributes, &retAttributes); err != nil {
-			logger.ErrorWithContext(ctx.Context, "Failed to unmarshal user attributes", log.Error(err))
+			logger.Error(ctx.Context, "Failed to unmarshal user attributes", log.Error(err))
 			return err
 		}
 	}
@@ -299,13 +299,13 @@ func (p *provisioningExecutor) resolveAmbiguousUserForProvisioning(ctx *core.Nod
 			return nil, fmt.Errorf("ambiguous user search returned an entity with missing OUID")
 		}
 		if m.OUID == targetOUID {
-			logger.DebugWithContext(ctx.Context, "Ambiguous user has a match in the target OU",
+			logger.Debug(ctx.Context, "Ambiguous user has a match in the target OU",
 				log.MaskedString(log.LoggerKeyUserID, m.ID))
 			return &m.ID, nil
 		}
 	}
 
-	logger.DebugWithContext(ctx.Context, "Ambiguous user has no match in target OU",
+	logger.Debug(ctx.Context, "Ambiguous user has no match in target OU",
 		log.Int("matchCount", len(matches)))
 	return nil, nil
 }
@@ -321,7 +321,7 @@ func (p *provisioningExecutor) resolveAmbiguousUserForProvisioning(ctx *core.Nod
 func (p *provisioningExecutor) HasRequiredInputs(ctx *core.NodeContext,
 	execResp *common.ExecutorResponse) bool {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Checking inputs for the provisioning executor")
+	logger.Debug(ctx.Context, "Checking inputs for the provisioning executor")
 
 	if execResp.RuntimeData == nil {
 		execResp.RuntimeData = make(map[string]string)
@@ -337,7 +337,7 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *core.NodeContext,
 	// Fetch all schema attributes (credential and non-credential) in a single call.
 	allSchemaAttrs, err := p.fetchSchemaAttributes(ctx, true, true)
 	if err != nil {
-		logger.WarnWithContext(ctx.Context, "Failed to fetch schema attributes for provisioning", log.Any("error", err))
+		logger.Warn(ctx.Context, "Failed to fetch schema attributes for provisioning", log.Any("error", err))
 		execResp.Status = common.ExecFailure
 		return false
 	}
@@ -374,7 +374,7 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *core.NodeContext,
 		execResp.ForwardedData = make(map[string]interface{})
 	}
 	execResp.ForwardedData[common.ForwardedDataKeyInputs] = toForward
-	logger.DebugWithContext(ctx.Context, "Schema attributes are missing, requesting via prompt",
+	logger.Debug(ctx.Context, "Schema attributes are missing, requesting via prompt",
 		log.Int("missingCount", len(allSchemaMissing)))
 	return false
 }
@@ -576,7 +576,7 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 func (p *provisioningExecutor) createUserInStore(nodeCtx *core.NodeContext,
 	userAttributes map[string]interface{}) (*entityprovider.Entity, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, nodeCtx.ExecutionID))
-	logger.DebugWithContext(nodeCtx.Context, "Creating the user account")
+	logger.Debug(nodeCtx.Context, "Creating the user account")
 
 	ouID := p.getOUID(nodeCtx)
 	if ouID == "" {
@@ -606,7 +606,7 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *core.NodeContext,
 		return nil, fmt.Errorf("failed to create user in the store: %s", svcErr.Message)
 	}
 	if retEntity != nil && retEntity.ID != "" {
-		logger.DebugWithContext(nodeCtx.Context, "User account created successfully",
+		logger.Debug(nodeCtx.Context, "User account created successfully",
 			log.MaskedString(log.LoggerKeyUserID, retEntity.ID))
 	}
 
@@ -652,11 +652,11 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 
 	// Skip if no group or role configured
 	if groupID == "" && roleID == "" {
-		logger.DebugWithContext(ctx.Context, "No group or role configured for assignment, skipping")
+		logger.Debug(ctx.Context, "No group or role configured for assignment, skipping")
 		return nil
 	}
 
-	logger.DebugWithContext(ctx.Context, "Assigning group and role to provisioned user",
+	logger.Debug(ctx.Context, "Assigning group and role to provisioned user",
 		log.MaskedString(log.LoggerKeyUserID, userID),
 		log.String("groupID", groupID),
 		log.String("roleID", roleID))
@@ -684,7 +684,7 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 		return roleErr
 	}
 
-	logger.DebugWithContext(ctx.Context, "Successfully assigned group and role",
+	logger.Debug(ctx.Context, "Successfully assigned group and role",
 		log.MaskedString(log.LoggerKeyUserID, userID))
 	return nil
 }
@@ -734,7 +734,7 @@ func (p *provisioningExecutor) assignToGroup(
 	groupID string,
 	logger *log.Logger,
 ) error {
-	logger.DebugWithContext(ctx, "Adding user to group",
+	logger.Debug(ctx, "Adding user to group",
 		log.MaskedString(log.LoggerKeyUserID, userID),
 		log.String("groupID", groupID))
 
@@ -747,14 +747,14 @@ func (p *provisioningExecutor) assignToGroup(
 
 	_, svcErr := p.groupService.AddGroupMembers(ctx, groupID, members)
 	if svcErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to add user to group",
+		logger.Error(ctx, "Failed to add user to group",
 			log.String("groupID", groupID),
 			log.MaskedString(log.LoggerKeyUserID, userID),
 			log.String("error", svcErr.Error.DefaultValue))
 		return fmt.Errorf("failed to add user to group: %s", svcErr.Error.DefaultValue)
 	}
 
-	logger.DebugWithContext(ctx, "Successfully added user to group",
+	logger.Debug(ctx, "Successfully added user to group",
 		log.MaskedString(log.LoggerKeyUserID, userID),
 		log.String("groupID", groupID))
 	return nil
@@ -764,13 +764,13 @@ func (p *provisioningExecutor) assignToGroup(
 func (p *provisioningExecutor) assignToRole(
 	ctx context.Context, userID string, roleID string, logger *log.Logger) error {
 	if p.roleAssignmentService == nil {
-		logger.ErrorWithContext(ctx, "Role assignment service is not configured",
+		logger.Error(ctx, "Role assignment service is not configured",
 			log.String("roleID", roleID),
 			log.MaskedString(log.LoggerKeyUserID, userID))
 		return fmt.Errorf("role assignment service not configured")
 	}
 
-	logger.DebugWithContext(ctx, "Adding user to role",
+	logger.Debug(ctx, "Adding user to role",
 		log.MaskedString(log.LoggerKeyUserID, userID),
 		log.String("roleID", roleID))
 
@@ -784,14 +784,14 @@ func (p *provisioningExecutor) assignToRole(
 
 	svcErr := p.roleAssignmentService.AddAssignments(ctx, roleID, assignments)
 	if svcErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to add role assignment",
+		logger.Error(ctx, "Failed to add role assignment",
 			log.String("roleID", roleID),
 			log.MaskedString(log.LoggerKeyUserID, userID),
 			log.String("error", svcErr.Error.DefaultValue))
 		return fmt.Errorf("failed to assign role: %s", svcErr.Error.DefaultValue)
 	}
 
-	logger.DebugWithContext(ctx, "Successfully assigned role",
+	logger.Debug(ctx, "Successfully assigned role",
 		log.MaskedString(log.LoggerKeyUserID, userID),
 		log.String("roleID", roleID))
 	return nil

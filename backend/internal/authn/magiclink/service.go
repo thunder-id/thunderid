@@ -84,7 +84,7 @@ func (s *magicLinkAuthnService) GenerateMagicLink(ctx context.Context,
 	queryParams map[string]string,
 	additionalClaims map[string]interface{},
 	magicLinkURL string) (string, *serviceerror.ServiceError) {
-	s.logger.DebugWithContext(ctx, "Generating magic link", log.MaskedString("subject", subject))
+	s.logger.Debug(ctx, "Generating magic link", log.MaskedString("subject", subject))
 
 	if subject == "" {
 		return "", &ErrorTokenGenerationFailed
@@ -116,7 +116,7 @@ func (s *magicLinkAuthnService) GenerateMagicLink(ctx context.Context,
 	}
 
 	verifyURL := s.buildMagicLinkURL(ctx, magicLinkURL, token, queryParams)
-	s.logger.DebugWithContext(ctx, "Magic link generated successfully",
+	s.logger.Debug(ctx, "Magic link generated successfully",
 		log.MaskedString("subject", subject))
 
 	return verifyURL, nil
@@ -127,7 +127,7 @@ func (s *magicLinkAuthnService) GenerateMagicLink(ctx context.Context,
 // allowing callers to handle registration flows.
 func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
 	token string, subjectAttribute string) (*MagicLinkAuthnResult, *serviceerror.ServiceError) {
-	s.logger.DebugWithContext(ctx, "Authenticating with magic link token")
+	s.logger.Debug(ctx, "Authenticating with magic link token")
 
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -158,7 +158,7 @@ func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
 		return nil, resolveErr
 	}
 
-	s.logger.DebugWithContext(ctx, "Magic link authentication successful", log.String("userId", user.ID))
+	s.logger.Debug(ctx, "Magic link authentication successful", log.String("userId", user.ID))
 	return &MagicLinkAuthnResult{InternalEntity: user}, nil
 }
 
@@ -170,7 +170,7 @@ func (s *magicLinkAuthnService) verifyToken(ctx context.Context, token string) *
 		if verifyErr.Code == jwt.ErrorTokenExpired.Code {
 			return &ErrorExpiredToken
 		}
-		s.logger.DebugWithContext(ctx, "Invalid magic link token", log.String("errorCode", verifyErr.Code))
+		s.logger.Debug(ctx, "Invalid magic link token", log.String("errorCode", verifyErr.Code))
 		return &ErrorInvalidToken
 	}
 	return nil
@@ -181,13 +181,13 @@ func (s *magicLinkAuthnService) verifyToken(ctx context.Context, token string) *
 func (s *magicLinkAuthnService) extractSubject(ctx context.Context, token string) (string, *serviceerror.ServiceError) {
 	payload, decodeErr := jwt.DecodeJWTPayload(token)
 	if decodeErr != nil {
-		s.logger.DebugWithContext(ctx, "Failed to decode magic link token payload", log.Error(decodeErr))
+		s.logger.Debug(ctx, "Failed to decode magic link token payload", log.Error(decodeErr))
 		return "", &ErrorInvalidToken
 	}
 
 	subject := utils.ConvertInterfaceValueToString(payload["sub"])
 	if subject == "" {
-		s.logger.DebugWithContext(ctx, "Subject claim not found or invalid")
+		s.logger.Debug(ctx, "Subject claim not found or invalid")
 		return "", &ErrorMalformedTokenClaims
 	}
 
@@ -229,7 +229,7 @@ func (s *magicLinkAuthnService) buildMagicLinkURL(ctx context.Context, magicLink
 	if magicLinkURL != "" && strings.TrimSpace(magicLinkURL) != "" {
 		u, err = url.Parse(strings.TrimSpace(magicLinkURL))
 		if err != nil {
-			s.logger.DebugWithContext(ctx,
+			s.logger.Debug(ctx,
 				"Failed to parse custom magic link URL; falling back to default configuration",
 				log.Error(err))
 		}
@@ -259,7 +259,7 @@ func (s *magicLinkAuthnService) handleEntityProviderError(ctx context.Context,
 	if upErr.Code == entityprovider.ErrorCodeSystemError {
 		return &serviceerror.InternalServerError
 	}
-	s.logger.DebugWithContext(ctx, "User provider returned an error while resolving user",
+	s.logger.Debug(ctx, "User provider returned an error while resolving user",
 		log.String("description", upErr.Description))
 	return &ErrorClientErrorWhileResolvingUser
 }

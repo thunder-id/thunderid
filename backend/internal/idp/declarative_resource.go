@@ -105,7 +105,7 @@ func (e *idpExporter) ValidateResource(ctx context.Context,
 	}
 
 	if len(idpDTO.Properties) == 0 {
-		logger.WarnWithContext(ctx, "Identity provider has no properties",
+		logger.Warn(ctx, "Identity provider has no properties",
 			log.String("idpID", id), log.String("name", idpDTO.Name))
 	}
 

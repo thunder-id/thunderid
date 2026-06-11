@@ -82,7 +82,7 @@ func (drs *designResolveService) ResolveDesign(
 
 	// Get the application by ID
 	if drs.applicationService == nil {
-		drs.logger.ErrorWithContext(ctx, "Application service is not available")
+		drs.logger.Error(ctx, "Application service is not available")
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -108,14 +108,14 @@ func (drs *designResolveService) ResolveDesign(
 	// Get theme configuration if available
 	if app.ThemeID != "" {
 		if drs.themeMgtService == nil {
-			drs.logger.ErrorWithContext(ctx, "Theme management service is not available")
+			drs.logger.Error(ctx, "Theme management service is not available")
 			return nil, &serviceerror.InternalServerError
 		}
 
 		themeConfig, svcErr := drs.themeMgtService.GetTheme(ctx, app.ThemeID)
 		if svcErr != nil {
 			if svcErr.Code == thememgt.ErrorThemeNotFound.Code {
-				drs.logger.ErrorWithContext(ctx, "Data integrity issue: application references non-existent theme",
+				drs.logger.Error(ctx, "Data integrity issue: application references non-existent theme",
 					log.String("applicationId", id),
 					log.String("themeId", app.ThemeID))
 				return nil, &serviceerror.InternalServerError
@@ -129,14 +129,14 @@ func (drs *designResolveService) ResolveDesign(
 	// Get layout configuration if available
 	if app.LayoutID != "" {
 		if drs.layoutMgtService == nil {
-			drs.logger.ErrorWithContext(ctx, "Layout management service is not available")
+			drs.logger.Error(ctx, "Layout management service is not available")
 			return nil, &serviceerror.InternalServerError
 		}
 
 		layoutConfig, svcErr := drs.layoutMgtService.GetLayout(ctx, app.LayoutID)
 		if svcErr != nil {
 			if svcErr.Code == layoutmgt.ErrorLayoutNotFound.Code {
-				drs.logger.ErrorWithContext(ctx, "Data integrity issue: application references non-existent layout",
+				drs.logger.Error(ctx, "Data integrity issue: application references non-existent layout",
 					log.String("applicationId", id),
 					log.String("layoutId", app.LayoutID))
 				return nil, &serviceerror.InternalServerError
@@ -147,7 +147,7 @@ func (drs *designResolveService) ResolveDesign(
 		designResponse.Layout = layoutConfig.Layout
 	}
 
-	drs.logger.DebugWithContext(ctx, "Successfully resolved design configuration",
+	drs.logger.Debug(ctx, "Successfully resolved design configuration",
 		log.String("type", string(resolveType)),
 		log.String("id", id),
 		log.String("themeId", app.ThemeID),

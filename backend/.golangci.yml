@@ -96,14 +96,6 @@ issues:
   exclude-use-default: false
   exclude-dirs:
     - tests/mocks
-  exclude-rules:
-    # Temporary during the correlation-ID log migration (issue #2038):
-    # suppress deprecation errors for the old non-context log methods until
-    # all call sites are migrated to the *Context variants. Remove this rule
-    # before deleting the deprecated methods so any stragglers fail loudly.
-    - linters:
-        - staticcheck
-      text: 'Use (Info|Debug|Warn|Error)WithContext instead\. Refs #2038'
 
 output:
   show-stats: true

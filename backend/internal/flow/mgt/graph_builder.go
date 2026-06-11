@@ -72,13 +72,13 @@ func (b *graphBuilder) GetGraph(ctx context.Context, flow *CompleteFlowDefinitio
 	logger := b.logger.With(log.String("flowID", flow.ID))
 	// Check cache first
 	if cachedGraph, ok := b.graphCache.Get(ctx, flow.ID); ok {
-		logger.DebugWithContext(ctx, "Graph retrieved from cache")
+		logger.Debug(ctx, "Graph retrieved from cache")
 		return cachedGraph, nil
 	}
 
 	graph, err := b.buildGraph(ctx, flow)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to build graph", log.Error(err))
+		logger.Error(ctx, "Failed to build graph", log.Error(err))
 		return nil, serviceerror.CustomServiceError(ErrorGraphBuildFailure, i18ncore.I18nMessage{
 			Key:          "error.flowmgtservice.graph_build_failure_description",
 			DefaultValue: err.Error(),
@@ -87,9 +87,9 @@ func (b *graphBuilder) GetGraph(ctx context.Context, flow *CompleteFlowDefinitio
 
 	// Cache the built graph
 	if cacheErr := b.graphCache.Set(ctx, flow.ID, graph); cacheErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to cache graph", log.Error(cacheErr))
+		logger.Error(ctx, "Failed to cache graph", log.Error(cacheErr))
 	}
-	logger.DebugWithContext(ctx, "Graph built and cached successfully")
+	logger.Debug(ctx, "Graph built and cached successfully")
 
 	return graph, nil
 }
@@ -101,10 +101,10 @@ func (b *graphBuilder) InvalidateCache(ctx context.Context, flowID string) {
 	}
 
 	if err := b.graphCache.Invalidate(ctx, flowID); err != nil {
-		b.logger.ErrorWithContext(ctx, "Failed to delete graph from cache",
+		b.logger.Error(ctx, "Failed to delete graph from cache",
 			log.String("flowID", flowID), log.Error(err))
 	}
-	b.logger.DebugWithContext(ctx, "Graph cache invalidated", log.String("flowID", flowID))
+	b.logger.Debug(ctx, "Graph cache invalidated", log.String("flowID", flowID))
 }
 
 // buildGraph converts a CompleteFlowDefinition to a core.GraphInterface for execution.
@@ -266,12 +266,12 @@ func (b *graphBuilder) configureNodeInputs(ctx context.Context, nodeDef *NodeDef
 
 	executorNode, ok := node.(core.ExecutorBackedNodeInterface)
 	if !ok {
-		logger.DebugWithContext(ctx, "Node is not executor-backed; skipping input configuration")
+		logger.Debug(ctx, "Node is not executor-backed; skipping input configuration")
 		return
 	}
 
 	if nodeDef.Executor == nil || len(nodeDef.Executor.Inputs) == 0 {
-		logger.DebugWithContext(ctx, "No inputs defined for executor; setting empty input list")
+		logger.Debug(ctx, "No inputs defined for executor; setting empty input list")
 		executorNode.SetInputs([]common.Input{})
 		return
 	}
@@ -347,13 +347,13 @@ func (b *graphBuilder) configureNodePrompts(ctx context.Context, nodeDef *NodeDe
 	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
 
 	if len(nodeDef.Prompts) == 0 {
-		logger.DebugWithContext(ctx, "No prompts to configure for this node")
+		logger.Debug(ctx, "No prompts to configure for this node")
 		return nil
 	}
 
 	promptNode, ok := node.(core.PromptNodeInterface)
 	if !ok {
-		logger.DebugWithContext(ctx, "Node is not a prompt node; skipping prompt configuration")
+		logger.Debug(ctx, "Node is not a prompt node; skipping prompt configuration")
 		return nil
 	}
 
@@ -420,7 +420,7 @@ func (b *graphBuilder) configureDisplayOnlyProperties(
 			nodeDef.ID)
 	}
 
-	logger.DebugWithContext(ctx, "Configuring display-only next for prompt node", log.String("next", nodeDef.Next))
+	logger.Debug(ctx, "Configuring display-only next for prompt node", log.String("next", nodeDef.Next))
 	promptNode.SetNextNode(nodeDef.Next)
 
 	if nodeDef.Message != "" {
@@ -475,13 +475,13 @@ func (b *graphBuilder) configureNodeExecutor(
 	logger := b.logger.With(log.String("nodeID", nodeDef.ID))
 
 	if nodeDef.Executor == nil {
-		logger.DebugWithContext(ctx, "No executor to configure for this node")
+		logger.Debug(ctx, "No executor to configure for this node")
 		return nil
 	}
 
 	executableNode, ok := node.(core.ExecutorBackedNodeInterface)
 	if !ok {
-		logger.DebugWithContext(ctx, "Node does not support executors; skipping executor configuration")
+		logger.Debug(ctx, "Node does not support executors; skipping executor configuration")
 		return nil
 	}
 

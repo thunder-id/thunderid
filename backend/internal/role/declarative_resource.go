@@ -165,7 +165,7 @@ func loadDeclarativeResources(
 			}
 			// Log error and return empty string if type assertion fails
 			// Declarative resource loading runs during startup, outside any request.
-			log.GetLogger().ErrorWithContext(context.Background(),
+			log.GetLogger().Error(context.Background(),
 				"IDExtractor: type assertion failed for RoleWithPermissionsAndAssignments")
 			return ""
 		},

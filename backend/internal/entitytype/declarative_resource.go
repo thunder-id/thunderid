@@ -107,7 +107,7 @@ func (e *entityTypeExporter) ValidateResource(ctx context.Context,
 	}
 
 	if len(schema.Schema) == 0 {
-		logger.WarnWithContext(ctx, "Entity type has no schema definition",
+		logger.Warn(ctx, "Entity type has no schema definition",
 			log.String("schemaID", id), log.String("name", schema.Name))
 	}
 

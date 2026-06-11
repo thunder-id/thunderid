@@ -139,74 +139,33 @@ func (l *Logger) IsDebugEnabled() bool {
 	return l.internal.Handler().Enabled(context.Background(), slog.LevelDebug)
 }
 
-// Info logs an informational message with custom fields.
-//
-// Deprecated: Info does not propagate the request context, so log entries
-// miss the trace ID (correlation ID). Use InfoWithContext instead. Refs #2038.
-func (l *Logger) Info(msg string, fields ...Field) {
-	l.internal.Info(msg, convertFields(fields)...)
-}
-
-// Debug logs a debug message with custom fields.
-//
-// Deprecated: Debug does not propagate the request context, so log entries
-// miss the trace ID (correlation ID). Use DebugWithContext instead. Refs #2038.
-func (l *Logger) Debug(msg string, fields ...Field) {
-	l.internal.Debug(msg, convertFields(fields)...)
-}
-
-// Warn logs a warning message with custom fields.
-//
-// Deprecated: Warn does not propagate the request context, so log entries
-// miss the trace ID (correlation ID). Use WarnWithContext instead. Refs #2038.
-func (l *Logger) Warn(msg string, fields ...Field) {
-	l.internal.Warn(msg, convertFields(fields)...)
-}
-
-// Error logs an error message with custom fields.
-//
-// Deprecated: Error does not propagate the request context, so log entries
-// miss the trace ID (correlation ID). Use ErrorWithContext instead. Refs #2038.
-func (l *Logger) Error(msg string, fields ...Field) {
-	l.internal.Error(msg, convertFields(fields)...)
-}
-
-// InfoWithContext logs an informational message with custom fields, automatically
+// Info logs an informational message with custom fields, automatically
 // including the trace ID (correlation ID) from the context if present.
-func (l *Logger) InfoWithContext(ctx context.Context, msg string, fields ...Field) {
+func (l *Logger) Info(ctx context.Context, msg string, fields ...Field) {
 	l.internal.InfoContext(ctx, msg, convertFields(fields)...)
 }
 
-// DebugWithContext logs a debug message with custom fields, automatically
+// Debug logs a debug message with custom fields, automatically
 // including the trace ID (correlation ID) from the context if present.
-func (l *Logger) DebugWithContext(ctx context.Context, msg string, fields ...Field) {
+func (l *Logger) Debug(ctx context.Context, msg string, fields ...Field) {
 	l.internal.DebugContext(ctx, msg, convertFields(fields)...)
 }
 
-// WarnWithContext logs a warning message with custom fields, automatically
+// Warn logs a warning message with custom fields, automatically
 // including the trace ID (correlation ID) from the context if present.
-func (l *Logger) WarnWithContext(ctx context.Context, msg string, fields ...Field) {
+func (l *Logger) Warn(ctx context.Context, msg string, fields ...Field) {
 	l.internal.WarnContext(ctx, msg, convertFields(fields)...)
 }
 
-// ErrorWithContext logs an error message with custom fields, automatically
+// Error logs an error message with custom fields, automatically
 // including the trace ID (correlation ID) from the context if present.
-func (l *Logger) ErrorWithContext(ctx context.Context, msg string, fields ...Field) {
+func (l *Logger) Error(ctx context.Context, msg string, fields ...Field) {
 	l.internal.ErrorContext(ctx, msg, convertFields(fields)...)
 }
 
-// Fatal logs a fatal message with custom fields and exits the application.
-//
-// Deprecated: Fatal does not propagate the request context, so log entries
-// miss the trace ID (correlation ID). Use FatalWithContext instead. Refs #2038.
-func (l *Logger) Fatal(msg string, fields ...Field) {
-	l.internal.Error(msg, convertFields(fields)...)
-	os.Exit(1)
-}
-
-// FatalWithContext logs a fatal message with custom fields and exits the application,
+// Fatal logs a fatal message with custom fields and exits the application,
 // automatically including the trace ID (correlation ID) from the context if present.
-func (l *Logger) FatalWithContext(ctx context.Context, msg string, fields ...Field) {
+func (l *Logger) Fatal(ctx context.Context, msg string, fields ...Field) {
 	l.internal.ErrorContext(ctx, msg, convertFields(fields)...)
 	os.Exit(1)
 }

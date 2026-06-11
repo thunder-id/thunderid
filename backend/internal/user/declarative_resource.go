@@ -158,7 +158,7 @@ func (e *userExporter) ValidateResource(ctx context.Context,
 	}
 
 	if username == "" {
-		logger.WarnWithContext(ctx, "USER_VALIDATION_ERROR: Missing username",
+		logger.Warn(ctx, "USER_VALIDATION_ERROR: Missing username",
 			log.MaskedString(log.LoggerKeyUserID, id))
 		return "", &declarativeresource.ExportError{
 			ResourceType: resourceTypeUser,

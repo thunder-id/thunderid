@@ -57,14 +57,14 @@ func (p *number) getDisplayName() string {
 func (p *number) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	numberValue, ok := convertToFloat64(value)
 	if !ok {
-		logger.DebugWithContext(ctx, "Expected number but got different type",
+		logger.Debug(ctx, "Expected number but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}
 
 	if p.enum != nil {
 		if _, exists := p.enum[numberValue]; !exists {
-			logger.DebugWithContext(ctx, "Value not in enum", log.String("property", path),
+			logger.Debug(ctx, "Value not in enum", log.String("property", path),
 				log.String("value", fmt.Sprintf("%v", value)))
 			return false, nil
 		}

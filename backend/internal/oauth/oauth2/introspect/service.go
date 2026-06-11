@@ -65,7 +65,7 @@ func (s *tokenIntrospectionService) IntrospectToken(
 
 	_, payload, err := jwt.DecodeJWT(token)
 	if err != nil {
-		logger.DebugWithContext(ctx, "Failed to decode JWT", log.Error(err))
+		logger.Debug(ctx, "Failed to decode JWT", log.Error(err))
 		return &IntrospectResponse{
 			Active: false,
 		}, nil
@@ -80,7 +80,7 @@ func (s *tokenIntrospectionService) IntrospectToken(
 // validateToken verifies the signature and validity of the token.
 func (s *tokenIntrospectionService) validateToken(ctx context.Context, logger *log.Logger, token string) bool {
 	if err := s.jwtService.VerifyJWT(ctx, token, "", ""); err != nil {
-		logger.DebugWithContext(ctx, "Failed to verify refresh token", log.String("error", err.Error.DefaultValue))
+		logger.Debug(ctx, "Failed to verify refresh token", log.String("error", err.Error.DefaultValue))
 		return false
 	}
 	return true

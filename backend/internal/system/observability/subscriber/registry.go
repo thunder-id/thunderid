@@ -59,7 +59,7 @@ func RegisterSubscriberFactory(name string, factory SubscriberFactory) {
 	if _, exists := factoryRegistry[name]; exists {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SubscriberRegistry"))
 		// Factory registration runs during package init, outside any request.
-		logger.WarnWithContext(context.Background(), "Subscriber factory already registered, replacing",
+		logger.Warn(context.Background(), "Subscriber factory already registered, replacing",
 			log.String("subscriberType", name))
 	}
 

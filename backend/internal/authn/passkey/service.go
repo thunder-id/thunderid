@@ -88,7 +88,7 @@ func (w *passkeyService) StartRegistration(
 	}
 
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Starting passkey credential registration",
+	logger.Debug(ctx, "Starting passkey credential registration",
 		log.MaskedString("userID", req.UserID),
 		log.String("relyingPartyID", req.RelyingPartyID))
 
@@ -116,7 +116,7 @@ func (w *passkeyService) StartRegistration(
 		rpDisplayName = req.RelyingPartyID
 	}
 
-	logger.DebugWithContext(ctx, "Retrieved existing credentials",
+	logger.Debug(ctx, "Retrieved existing credentials",
 		log.MaskedString("entityID", req.UserID),
 		log.Int("credentialCount", len(credentials)))
 
@@ -127,7 +127,7 @@ func (w *passkeyService) StartRegistration(
 	rpOrigins := getConfiguredOrigins()
 	webAuthnService, err := newDefaultWebAuthnService(req.RelyingPartyID, rpDisplayName, rpOrigins)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
+		logger.Error(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -138,18 +138,18 @@ func (w *passkeyService) StartRegistration(
 	// The WebAuthn service will generate challenge and set timeout automatically
 	options, sessionData, err := webAuthnService.BeginRegistration(webAuthnUser, registrationOptions)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to begin passkey registration", log.String("error", err.Error()))
+		logger.Error(ctx, "Failed to begin passkey registration", log.String("error", err.Error()))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	// Store session data in cache with TTL
 	sessionToken, svcErr := w.storeSessionData(ctx, sessionData)
 	if svcErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to store session data", log.String("error", svcErr.Error.DefaultValue))
+		logger.Error(ctx, "Failed to store session data", log.String("error", svcErr.Error.DefaultValue))
 		return nil, svcErr
 	}
 
-	logger.DebugWithContext(ctx, "Passkey credential creation options generated successfully",
+	logger.Debug(ctx, "Passkey credential creation options generated successfully",
 		log.MaskedString("userID", req.UserID),
 		log.Int("credentialsCount", len(credentials)))
 
@@ -176,11 +176,11 @@ func (w *passkeyService) StartRegistration(
 func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyRegistrationFinishRequest) (
 	*PasskeyRegistrationFinishData, *serviceerror.ServiceError) {
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Finishing passkey credential registration")
+	logger.Debug(ctx, "Finishing passkey credential registration")
 
 	// Validate input
 	if svcErr := validateRegistrationFinishRequest(req); svcErr != nil {
-		logger.DebugWithContext(ctx, "Registration finish request validation failed")
+		logger.Debug(ctx, "Registration finish request validation failed")
 		return nil, svcErr
 	}
 
@@ -190,7 +190,7 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 		credentialType = "public-key"
 	}
 
-	logger.DebugWithContext(ctx, "Parsing attestation response",
+	logger.Debug(ctx, "Parsing attestation response",
 		log.String("credentialID", req.CredentialID),
 		log.String("credentialType", credentialType),
 		log.Int("clientDataJSONLen", len(req.ClientDataJSON)),
@@ -205,21 +205,21 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 		req.AttestationObject,
 	)
 	if err != nil {
-		logger.DebugWithContext(ctx, "Failed to parse attestation response",
+		logger.Debug(ctx, "Failed to parse attestation response",
 			log.String("error", err.Error()),
 			log.String("credentialID", req.CredentialID),
 			log.String("credentialType", credentialType))
 		return nil, &ErrorInvalidAttestationResponse
 	}
 
-	logger.DebugWithContext(ctx, "Successfully parsed attestation response",
+	logger.Debug(ctx, "Successfully parsed attestation response",
 		log.String("credentialID", parsedCredential.ID),
 		log.String("credentialType", parsedCredential.Type))
 
 	// Retrieve session data from cache
 	sessionData, userID, relyingPartyID, svcErr := w.retrieveSessionData(ctx, req.SessionToken)
 	if svcErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to retrieve session data", log.String("error", svcErr.Error.DefaultValue))
+		logger.Error(ctx, "Failed to retrieve session data", log.String("error", svcErr.Error.DefaultValue))
 		return nil, svcErr
 	}
 
@@ -236,7 +236,7 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 	}
 	credentials := w.decodePasskeyCredentials(ctx, userID, entries)
 
-	logger.DebugWithContext(ctx, "Retrieved existing credentials for entity",
+	logger.Debug(ctx, "Retrieved existing credentials for entity",
 		log.MaskedString("entityID", userID),
 		log.Int("credentialCount", len(credentials)))
 
@@ -247,14 +247,14 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 	rpOrigins := getConfiguredOrigins()
 	webAuthnService, err := newDefaultWebAuthnService(relyingPartyID, relyingPartyID, rpOrigins)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
+		logger.Error(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	// Verify the credential using WebAuthn service
 	credential, err := webAuthnService.CreateCredential(webAuthnUser, *sessionData, parsedCredential)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to verify and create credential", log.String("error", err.Error()))
+		logger.Error(ctx, "Failed to verify and create credential", log.String("error", err.Error()))
 		return nil, &ErrorInvalidAttestationResponse
 	}
 
@@ -269,7 +269,7 @@ func (w *passkeyService) FinishRegistration(ctx context.Context, req *PasskeyReg
 
 	// Store credential in database using user service
 	if err := w.storePasskeyCredential(ctx, userID, credential); err != nil {
-		logger.ErrorWithContext(ctx, "Failed to store credential in database", log.Error(err))
+		logger.Error(ctx, "Failed to store credential in database", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -296,10 +296,10 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 	isUsernameless := strings.TrimSpace(req.UserID) == ""
 
 	if isUsernameless {
-		logger.DebugWithContext(ctx, "Starting usernameless passkey authentication",
+		logger.Debug(ctx, "Starting usernameless passkey authentication",
 			log.String("relyingPartyID", req.RelyingPartyID))
 	} else {
-		logger.DebugWithContext(ctx, "Starting passkey authentication",
+		logger.Debug(ctx, "Starting passkey authentication",
 			log.MaskedString("userID", req.UserID),
 			log.String("relyingPartyID", req.RelyingPartyID))
 	}
@@ -313,7 +313,7 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 	rpOrigins := getConfiguredOrigins()
 	webAuthnService, err := newDefaultWebAuthnService(req.RelyingPartyID, req.RelyingPartyID, rpOrigins)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
+		logger.Error(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -324,7 +324,7 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 		// Usernameless flow: Use discoverable credentials
 		options, sessionData, err = webAuthnService.BeginDiscoverableLogin()
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to begin usernameless passkey login", log.String("error", err.Error()))
+			logger.Error(ctx, "Failed to begin usernameless passkey login", log.String("error", err.Error()))
 			return nil, &serviceerror.InternalServerError
 		}
 	} else {
@@ -340,12 +340,12 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 		}
 		credentials := w.decodePasskeyCredentials(ctx, req.UserID, entries)
 
-		logger.DebugWithContext(ctx, "Retrieved credentials for authentication",
+		logger.Debug(ctx, "Retrieved credentials for authentication",
 			log.MaskedString("entityID", req.UserID),
 			log.Int("credentialCount", len(credentials)))
 
 		if len(credentials) == 0 {
-			logger.DebugWithContext(ctx, "No credentials found for entity", log.MaskedString("entityID", req.UserID))
+			logger.Debug(ctx, "No credentials found for entity", log.MaskedString("entityID", req.UserID))
 			return nil, &ErrorNoCredentialsFound
 		}
 
@@ -356,7 +356,7 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 		// The WebAuthn service will generate challenge and set timeout automatically
 		options, sessionData, err = webAuthnService.BeginLogin(webAuthnUser)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to begin passkey login", log.String("error", err.Error()))
+			logger.Error(ctx, "Failed to begin passkey login", log.String("error", err.Error()))
 			return nil, &serviceerror.InternalServerError
 		}
 	}
@@ -364,7 +364,7 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 	// Store session data in cache with TTL
 	sessionToken, svcErr := w.storeSessionData(ctx, sessionData)
 	if svcErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to store session data", log.String("error", svcErr.Error.DefaultValue))
+		logger.Error(ctx, "Failed to store session data", log.String("error", svcErr.Error.DefaultValue))
 		return nil, svcErr
 	}
 
@@ -388,7 +388,7 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyAuthenticationFinishRequest) (
 	*common.AuthenticationResponse, *serviceerror.ServiceError) {
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Finishing passkey authentication")
+	logger.Debug(ctx, "Finishing passkey authentication")
 
 	// Validate input
 	if svcErr := validateAuthenticationFinishRequest(req); svcErr != nil {
@@ -398,7 +398,7 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	// Retrieve session data from cache
 	sessionData, sessionUserID, relyingPartyID, svcErr := w.retrieveSessionData(ctx, req.SessionToken)
 	if svcErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to retrieve session data", log.String("error", svcErr.Error.DefaultValue))
+		logger.Error(ctx, "Failed to retrieve session data", log.String("error", svcErr.Error.DefaultValue))
 		return nil, svcErr
 	}
 
@@ -410,7 +410,7 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	if isUsernameless {
 		// Usernameless flow: Resolve user from userHandle in the authentication response
 		if req.UserHandle == "" {
-			logger.ErrorWithContext(ctx, "UserHandle is required for usernameless authentication")
+			logger.Error(ctx, "UserHandle is required for usernameless authentication")
 			return nil, &ErrorInvalidAuthenticatorResponse
 		}
 
@@ -420,18 +420,18 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 			// Try RawURLEncoding if standard encoding fails
 			userHandleBytes, err = base64.RawURLEncoding.DecodeString(req.UserHandle)
 			if err != nil {
-				logger.ErrorWithContext(ctx, "Failed to decode userHandle", log.Error(err))
+				logger.Error(ctx, "Failed to decode userHandle", log.Error(err))
 				return nil, &ErrorInvalidAuthenticatorResponse
 			}
 		}
 
 		userID = string(userHandleBytes)
-		logger.DebugWithContext(ctx, "Resolved userID from userHandle for usernameless authentication",
+		logger.Debug(ctx, "Resolved userID from userHandle for usernameless authentication",
 			log.MaskedString("userID", userID))
 	} else {
 		// Username-based flow: Use userID from session
 		userID = sessionUserID
-		logger.DebugWithContext(ctx, "Processing passkey authentication",
+		logger.Debug(ctx, "Processing passkey authentication",
 			log.MaskedString("userID", userID),
 			log.String("relyingPartyID", relyingPartyID))
 	}
@@ -448,12 +448,12 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	}
 	credentials := w.decodePasskeyCredentials(ctx, userID, entries)
 
-	logger.DebugWithContext(ctx, "Retrieved credentials for authentication verification",
+	logger.Debug(ctx, "Retrieved credentials for authentication verification",
 		log.MaskedString("entityID", userID),
 		log.Int("credentialCount", len(credentials)))
 
 	if len(credentials) == 0 {
-		logger.DebugWithContext(ctx, "No credentials found for entity", log.MaskedString("entityID", userID))
+		logger.Debug(ctx, "No credentials found for entity", log.MaskedString("entityID", userID))
 		return nil, &ErrorNoCredentialsFound
 	}
 
@@ -464,7 +464,7 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	rpOrigins := getConfiguredOrigins()
 	webAuthnService, err := newDefaultWebAuthnService(relyingPartyID, relyingPartyID, rpOrigins)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
+		logger.Error(ctx, "Failed to initialize WebAuthn service", log.String("error", err.Error()))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -472,7 +472,7 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	parsedResponse, err := parseAssertionResponse(req.CredentialID, req.CredentialType,
 		req.ClientDataJSON, req.AuthenticatorData, req.Signature, req.UserHandle)
 	if err != nil {
-		logger.DebugWithContext(ctx, "Failed to parse assertion response", log.String("error", err.Error()))
+		logger.Debug(ctx, "Failed to parse assertion response", log.String("error", err.Error()))
 		return nil, &ErrorInvalidAuthenticatorResponse
 	}
 
@@ -487,29 +487,29 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 
 		_, credential, err = webAuthnService.ValidatePasskeyLogin(userHandler, *sessionData, parsedResponse)
 		if err != nil {
-			logger.DebugWithContext(ctx, "Failed to validate passkey assertion", log.String("error", err.Error()))
+			logger.Debug(ctx, "Failed to validate passkey assertion", log.String("error", err.Error()))
 			return nil, &ErrorInvalidSignature
 		}
 	} else {
 		// Username-based flow: Use ValidateLogin with specific user
 		credential, err = webAuthnService.ValidateLogin(webAuthnUser, *sessionData, parsedResponse)
 		if err != nil {
-			logger.DebugWithContext(ctx, "Failed to validate WebAuthn assertion", log.String("error", err.Error()))
+			logger.Debug(ctx, "Failed to validate WebAuthn assertion", log.String("error", err.Error()))
 			return nil, &ErrorInvalidSignature
 		}
 	}
 
-	logger.DebugWithContext(ctx, "Passkey authentication verified successfully",
+	logger.Debug(ctx, "Passkey authentication verified successfully",
 		log.String("credentialID", base64.StdEncoding.EncodeToString(credential.ID)),
 		log.Any("signCount", credential.Authenticator.SignCount))
 
 	// Update credential in database to prevent replay attacks
 	if err := w.updatePasskeyCredential(ctx, userID, credential); err != nil {
-		logger.ErrorWithContext(ctx, "Failed to update credential sign count in database", log.Error(err))
+		logger.Error(ctx, "Failed to update credential sign count in database", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Updated credential sign count in database",
+	logger.Debug(ctx, "Updated credential sign count in database",
 		log.MaskedString("userID", userID),
 		log.String("credentialID", base64.StdEncoding.EncodeToString(credential.ID)),
 		log.Any("newSignCount", credential.Authenticator.SignCount))
@@ -524,7 +524,7 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 		OUID: coreEntity.OUID,
 	}
 
-	logger.DebugWithContext(ctx, "Passkey authentication completed successfully",
+	logger.Debug(ctx, "Passkey authentication completed successfully",
 		log.MaskedString("entityID", userID))
 
 	return authResponse, nil
@@ -539,10 +539,10 @@ func (w *passkeyService) getEntity(
 	e, err := w.entityService.GetEntity(ctx, entityID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
-			logger.DebugWithContext(ctx, "Entity not found", log.MaskedString("entityID", entityID))
+			logger.Debug(ctx, "Entity not found", log.MaskedString("entityID", entityID))
 			return nil, &ErrorUserNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to retrieve entity", log.Error(err))
+		logger.Error(ctx, "Failed to retrieve entity", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	return e, nil
@@ -558,10 +558,10 @@ func (w *passkeyService) getStoredPasskeyEntries(
 	entries, err := w.entityService.GetCredentialsByType(ctx, entityID, passkeyCredentialType)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
-			logger.DebugWithContext(ctx, "Entity not found", log.MaskedString("entityID", entityID))
+			logger.Debug(ctx, "Entity not found", log.MaskedString("entityID", entityID))
 			return nil, &ErrorUserNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to retrieve passkey credentials", log.Error(err))
+		logger.Error(ctx, "Failed to retrieve passkey credentials", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	return entries, nil
@@ -577,12 +577,12 @@ func (w *passkeyService) decodePasskeyCredentials(ctx context.Context,
 	credentials := make([]webauthnCredential, 0, len(entries))
 	for _, entry := range entries {
 		if entry.Value == "" {
-			logger.ErrorWithContext(ctx, "Empty credential value", log.MaskedString("entityID", entityID))
+			logger.Error(ctx, "Empty credential value", log.MaskedString("entityID", entityID))
 			continue
 		}
 		var credential webauthnCredential
 		if err := json.Unmarshal([]byte(entry.Value), &credential); err != nil {
-			logger.ErrorWithContext(ctx, "Failed to unmarshal passkey credential",
+			logger.Error(ctx, "Failed to unmarshal passkey credential",
 				log.MaskedString("entityID", entityID),
 				log.Error(err))
 			continue
@@ -600,7 +600,7 @@ func (w *passkeyService) storePasskeyCredential(
 
 	credentialJSON, err := json.Marshal(credential)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to marshal credential",
+		logger.Error(ctx, "Failed to marshal credential",
 			log.MaskedString("entityID", entityID),
 			log.Error(err))
 		return fmt.Errorf("failed to marshal credential: %w", err)
@@ -622,13 +622,13 @@ func (w *passkeyService) storePasskeyCredential(
 		return fmt.Errorf("failed to marshal passkey credentials: %w", err)
 	}
 	if err := w.entityService.UpdateSystemCredentials(ctx, entityID, payload); err != nil {
-		logger.ErrorWithContext(ctx, "Failed to update passkey credentials",
+		logger.Error(ctx, "Failed to update passkey credentials",
 			log.MaskedString("entityID", entityID),
 			log.Error(err))
 		return fmt.Errorf("failed to update passkey credentials: %w", err)
 	}
 
-	logger.DebugWithContext(ctx, "Successfully stored passkey credential in database",
+	logger.Debug(ctx, "Successfully stored passkey credential in database",
 		log.MaskedString("entityID", entityID),
 		log.String("credentialID", base64.StdEncoding.EncodeToString(credential.ID)))
 
@@ -653,7 +653,7 @@ func (w *passkeyService) updatePasskeyCredential(
 	for _, entry := range existingEntries {
 		var credential webauthnCredential
 		if err := json.Unmarshal([]byte(entry.Value), &credential); err != nil {
-			logger.WarnWithContext(ctx, "Failed to unmarshal credential, keeping original",
+			logger.Warn(ctx, "Failed to unmarshal credential, keeping original",
 				log.MaskedString("entityID", entityID),
 				log.Error(err))
 			updatedEntries = append(updatedEntries, entry)
@@ -663,7 +663,7 @@ func (w *passkeyService) updatePasskeyCredential(
 		if string(credential.ID) == string(updatedCredential.ID) {
 			credentialJSON, marshalErr := json.Marshal(updatedCredential)
 			if marshalErr != nil {
-				logger.ErrorWithContext(ctx, "Failed to marshal updated credential",
+				logger.Error(ctx, "Failed to marshal updated credential",
 					log.MaskedString("entityID", entityID),
 					log.Error(marshalErr))
 				return fmt.Errorf("failed to marshal updated credential: %w", marshalErr)
@@ -675,7 +675,7 @@ func (w *passkeyService) updatePasskeyCredential(
 			})
 			found = true
 
-			logger.DebugWithContext(ctx, "Updated credential in memory",
+			logger.Debug(ctx, "Updated credential in memory",
 				log.MaskedString("entityID", entityID),
 				log.String("credentialID", base64.StdEncoding.EncodeToString(updatedCredential.ID)),
 				log.Any("newSignCount", updatedCredential.Authenticator.SignCount))
@@ -685,7 +685,7 @@ func (w *passkeyService) updatePasskeyCredential(
 	}
 
 	if !found {
-		logger.WarnWithContext(ctx, "Passkey credential not found for update",
+		logger.Warn(ctx, "Passkey credential not found for update",
 			log.MaskedString("entityID", entityID),
 			log.String("credentialID", base64.StdEncoding.EncodeToString(updatedCredential.ID)))
 		return fmt.Errorf("credential not found for update")
@@ -698,13 +698,13 @@ func (w *passkeyService) updatePasskeyCredential(
 		return fmt.Errorf("failed to marshal passkey credentials: %w", err)
 	}
 	if err := w.entityService.UpdateSystemCredentials(ctx, entityID, payload); err != nil {
-		logger.ErrorWithContext(ctx, "Failed to update credentials",
+		logger.Error(ctx, "Failed to update credentials",
 			log.MaskedString("entityID", entityID),
 			log.Error(err))
 		return fmt.Errorf("failed to update passkey credentials: %w", err)
 	}
 
-	logger.DebugWithContext(ctx, "Successfully updated passkey credential in database",
+	logger.Debug(ctx, "Successfully updated passkey credential in database",
 		log.MaskedString("entityID", entityID),
 		log.String("credentialID", base64.StdEncoding.EncodeToString(updatedCredential.ID)),
 		log.Any("newSignCount", updatedCredential.Authenticator.SignCount))

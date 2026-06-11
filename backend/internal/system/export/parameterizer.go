@@ -1047,7 +1047,7 @@ func (p *parameterizer) convertStructPathsToYAMLPaths(
 		yamlPath := p.convertPathToYAMLPath(objType, path)
 		converted.Variables[i] = yamlPath
 		// Debug log to help troubleshoot path resolution
-		logger.DebugWithContext(ctx, "Converted variable path",
+		logger.Debug(ctx, "Converted variable path",
 			log.String("original", path),
 			log.String("yaml", yamlPath))
 	}
@@ -1056,7 +1056,7 @@ func (p *parameterizer) convertStructPathsToYAMLPaths(
 		yamlPath := p.convertPathToYAMLPath(objType, path)
 		converted.ArrayVariables[i] = yamlPath
 		// Debug log to help troubleshoot path resolution
-		logger.DebugWithContext(ctx, "Converted array variable path",
+		logger.Debug(ctx, "Converted array variable path",
 			log.String("original", path),
 			log.String("yaml", yamlPath))
 	}

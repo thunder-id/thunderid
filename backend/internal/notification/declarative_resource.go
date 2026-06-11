@@ -107,7 +107,7 @@ func (e *notificationSenderExporter) ValidateResource(ctx context.Context,
 	}
 
 	if len(sender.Properties) == 0 {
-		logger.WarnWithContext(ctx, "Notification sender has no properties",
+		logger.Warn(ctx, "Notification sender has no properties",
 			log.String("senderID", id), log.String("name", sender.Name))
 	}
 

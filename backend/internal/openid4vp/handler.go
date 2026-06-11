@@ -97,7 +97,7 @@ func (h *openID4VPHandler) HandleRequestObject(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	if _, werr := w.Write([]byte(jar)); werr != nil {
-		log.GetLogger().ErrorWithContext(r.Context(), "Failed to write request object response", log.Error(werr))
+		log.GetLogger().Error(r.Context(), "Failed to write request object response", log.Error(werr))
 	}
 }
 
@@ -144,7 +144,7 @@ func (h *openID4VPHandler) HandleInitiate(w http.ResponseWriter, r *http.Request
 			writeServiceErrorResponse(r.Context(), w, &ErrorUnknownDefinition)
 			return
 		}
-		log.GetLogger().ErrorWithContext(r.Context(), "Failed to initiate OpenID4VP transaction", log.Error(err))
+		log.GetLogger().Error(r.Context(), "Failed to initiate OpenID4VP transaction", log.Error(err))
 		writeServiceErrorResponse(r.Context(), w, toServiceError(err))
 		return
 	}
@@ -195,7 +195,7 @@ func (h *openID4VPHandler) HandleStatus(w http.ResponseWriter, r *http.Request) 
 		})
 	case StatusCompleted:
 		if h.issuer == nil {
-			log.GetLogger().ErrorWithContext(r.Context(), "Result token issuer not configured")
+			log.GetLogger().Error(r.Context(), "Result token issuer not configured")
 			writeServiceErrorResponse(r.Context(), w, &serviceerror.InternalServerError)
 			return
 		}
@@ -206,7 +206,7 @@ func (h *openID4VPHandler) HandleStatus(w http.ResponseWriter, r *http.Request) 
 		token, tokenErr := h.issuer.issueResultToken(
 			r.Context(), rpID, rs, int64(h.resultTokenValidity.Seconds()))
 		if tokenErr != nil {
-			log.GetLogger().ErrorWithContext(r.Context(), "Failed to issue result token", log.Error(tokenErr))
+			log.GetLogger().Error(r.Context(), "Failed to issue result token", log.Error(tokenErr))
 			writeServiceErrorResponse(r.Context(), w, &serviceerror.InternalServerError)
 			return
 		}

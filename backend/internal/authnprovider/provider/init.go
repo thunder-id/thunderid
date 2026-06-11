@@ -69,7 +69,7 @@ func initializeRestAuthnProvider() AuthnProviderInterface {
 	timeout := time.Duration(authnProviderConfig.Rest.Timeout) * time.Second
 	if baseURL == "" {
 		// Provider initialization runs during application startup, outside any request.
-		log.GetLogger().FatalWithContext(context.Background(), "AuthnProvider Rest BaseURL is required but found empty")
+		log.GetLogger().Fatal(context.Background(), "AuthnProvider Rest BaseURL is required but found empty")
 	}
 	if timeout == 0 {
 		timeout = 10 * time.Second

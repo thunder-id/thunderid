@@ -51,7 +51,7 @@ func getThemeStoreMode() serverconst.StoreMode {
 			logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ThemeMgtConfig"))
 			// Store mode is resolved at server startup, outside any request,
 			// so there is no request context (or trace ID) to propagate.
-			logger.WarnWithContext(context.Background(), "Unrecognized theme store configuration value",
+			logger.Warn(context.Background(), "Unrecognized theme store configuration value",
 				log.String("raw_value", cfg.Theme.Store),
 				log.String("normalized_value", string(mode)),
 				log.String("fallback", "global declarative_resources setting"))

@@ -49,7 +49,7 @@ func (s *templateService) GetTemplateByScenario(
 	scenario ScenarioType,
 	tmplType TemplateType,
 ) (*TemplateDTO, *serviceerror.ServiceError) {
-	s.logger.DebugWithContext(ctx, "Retrieving template by scenario and type",
+	s.logger.Debug(ctx, "Retrieving template by scenario and type",
 		log.String("scenario", string(scenario)),
 		log.String("type", string(tmplType)))
 	tmpl, err := s.store.GetTemplateByScenario(ctx, scenario, tmplType)
@@ -57,7 +57,7 @@ func (s *templateService) GetTemplateByScenario(
 		if errors.Is(err, errTemplateNotFound) {
 			return nil, &ErrorTemplateNotFound
 		}
-		s.logger.ErrorWithContext(ctx, "Failed to retrieve template by scenario",
+		s.logger.Error(ctx, "Failed to retrieve template by scenario",
 			log.String("scenario", string(scenario)),
 			log.Error(err))
 		return nil, &serviceerror.InternalServerError
@@ -73,7 +73,7 @@ func (s *templateService) Render(
 	tmplType TemplateType,
 	data TemplateData,
 ) (*RenderedTemplate, *serviceerror.ServiceError) {
-	s.logger.DebugWithContext(ctx, "Rendering template", log.String("scenario", string(scenario)))
+	s.logger.Debug(ctx, "Rendering template", log.String("scenario", string(scenario)))
 	tmpl, svcErr := s.GetTemplateByScenario(ctx, scenario, tmplType)
 	if svcErr != nil {
 		return nil, svcErr
@@ -100,12 +100,12 @@ func (s *templateService) Render(
 		IsHTML:  tmpl.ContentType == "text/html",
 	}
 
-	s.logger.DebugWithContext(ctx, "Template rendered successfully",
+	s.logger.Debug(ctx, "Template rendered successfully",
 		log.String("scenario", string(scenario)),
 		log.String("templateID", tmpl.ID))
 
 	if tmpl.Type == TemplateTypeSMS && len(rendered.Body) > 160 {
-		s.logger.WarnWithContext(ctx,
+		s.logger.Warn(ctx,
 			"Rendered SMS body exceeds 160 characters; message may be split into multiple segments",
 			log.Int("length", len(rendered.Body)))
 	}

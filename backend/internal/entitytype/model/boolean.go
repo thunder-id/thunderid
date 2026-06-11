@@ -55,7 +55,7 @@ func (p *boolean) isUnique() bool {
 func (p *boolean) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	_, ok := value.(bool)
 	if !ok {
-		logger.DebugWithContext(ctx, "Expected boolean but got different type",
+		logger.Debug(ctx, "Expected boolean but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}

@@ -79,7 +79,7 @@ func validateIDPProperties(ctx context.Context, idpType IDPType, properties []cm
 	logger *log.Logger) ([]cmodels.Property, *serviceerror.ServiceError) {
 	config, exists := idpPropertyConfigs[idpType]
 	if !exists {
-		logger.ErrorWithContext(ctx, "No property configuration found for IDP type",
+		logger.Error(ctx, "No property configuration found for IDP type",
 			log.String("idpType", string(idpType)))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -216,7 +216,7 @@ func createAndAppendProperty(ctx context.Context, propertyMap map[string]cmodels
 ) *serviceerror.ServiceError {
 	prop, err := cmodels.NewProperty(name, value, isSecret)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to create property", log.String("propertyName", name), log.Error(err))
+		logger.Error(ctx, "Failed to create property", log.String("propertyName", name), log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	propertyMap[name] = *prop

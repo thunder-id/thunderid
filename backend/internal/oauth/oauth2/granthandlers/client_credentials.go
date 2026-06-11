@@ -112,7 +112,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			if groupErr != nil {
 				// Ignore unimplemented providers to preserve existing behavior.
 				if groupErr.Code != entityprovider.ErrorCodeNotImplemented {
-					logger.ErrorWithContext(ctx, "Failed to resolve app group memberships",
+					logger.Error(ctx, "Failed to resolve app group memberships",
 						log.String("appID", oauthApp.ID), log.String("error", groupErr.Error()))
 					return nil, &model.ErrorResponse{
 						Error:            constants.ErrorServerError,
@@ -134,7 +134,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 			RequestedPermissions: scopes,
 		})
 		if svcErr != nil {
-			logger.ErrorWithContext(ctx, "Failed to get authorized permissions for app",
+			logger.Error(ctx, "Failed to get authorized permissions for app",
 				log.String("appID", oauthApp.ID), log.String("error", svcErr.Error.DefaultValue))
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,

@@ -198,10 +198,10 @@ func (s *cacheBackedStore) cacheCertificate(ctx context.Context, cert *Certifica
 			Key: cert.ID,
 		}
 		if err := s.certByIDCache.Set(ctx, idCacheKey, cert); err != nil {
-			logger.ErrorWithContext(ctx, "Failed to cache certificate by ID", log.Error(err),
+			logger.Error(ctx, "Failed to cache certificate by ID", log.Error(err),
 				log.String("certID", cert.ID))
 		} else {
-			logger.DebugWithContext(ctx, "Certificate cached by ID", log.String("certID", cert.ID))
+			logger.Debug(ctx, "Certificate cached by ID", log.String("certID", cert.ID))
 		}
 	}
 
@@ -209,10 +209,10 @@ func (s *cacheBackedStore) cacheCertificate(ctx context.Context, cert *Certifica
 	if cert.RefType != "" && cert.RefID != "" {
 		refCacheKey := getCertByReferenceCacheKey(cert.RefType, cert.RefID)
 		if err := s.certByReferenceCache.Set(ctx, refCacheKey, cert); err != nil {
-			logger.ErrorWithContext(ctx, "Failed to cache certificate by reference", log.Error(err),
+			logger.Error(ctx, "Failed to cache certificate by reference", log.Error(err),
 				log.String("refType", string(cert.RefType)), log.String("refID", cert.RefID))
 		} else {
-			logger.DebugWithContext(ctx, "Certificate cached by reference", log.String("refType", string(cert.RefType)),
+			logger.Debug(ctx, "Certificate cached by reference", log.String("refType", string(cert.RefType)),
 				log.String("refID", cert.RefID))
 		}
 	}
@@ -229,10 +229,10 @@ func (s *cacheBackedStore) invalidateCertificateCache(ctx context.Context, id st
 			Key: id,
 		}
 		if err := s.certByIDCache.Delete(ctx, idCacheKey); err != nil {
-			logger.ErrorWithContext(ctx, "Failed to invalidate certificate cache by ID", log.Error(err),
+			logger.Error(ctx, "Failed to invalidate certificate cache by ID", log.Error(err),
 				log.String("certID", id))
 		} else {
-			logger.DebugWithContext(ctx, "Certificate cache invalidated by ID", log.String("certID", id))
+			logger.Debug(ctx, "Certificate cache invalidated by ID", log.String("certID", id))
 		}
 	}
 
@@ -240,10 +240,10 @@ func (s *cacheBackedStore) invalidateCertificateCache(ctx context.Context, id st
 	if refType != "" && refID != "" {
 		refCacheKey := getCertByReferenceCacheKey(refType, refID)
 		if err := s.certByReferenceCache.Delete(ctx, refCacheKey); err != nil {
-			logger.ErrorWithContext(ctx, "Failed to invalidate certificate cache by reference", log.Error(err),
+			logger.Error(ctx, "Failed to invalidate certificate cache by reference", log.Error(err),
 				log.String("refType", string(refType)), log.String("refID", refID))
 		} else {
-			logger.DebugWithContext(ctx, "Certificate cache invalidated by reference",
+			logger.Debug(ctx, "Certificate cache invalidated by reference",
 				log.String("refType", string(refType)),
 				log.String("refID", refID))
 		}

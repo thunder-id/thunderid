@@ -49,7 +49,7 @@ func newFlowInferenceService() flowInferenceServiceInterface {
 // InferRegistrationFlow creates a registration flow definition from an authentication flow
 func (s *flowInferenceService) InferRegistrationFlow(
 	ctx context.Context, authFlow *FlowDefinition) (*FlowDefinition, error) {
-	s.logger.DebugWithContext(ctx, "Inferring registration flow from authentication flow",
+	s.logger.Debug(ctx, "Inferring registration flow from authentication flow",
 		log.String("authFlowName", authFlow.Name))
 
 	regFlowName := s.generateRegistrationFlowName(authFlow.Name)
@@ -67,9 +67,9 @@ func (s *flowInferenceService) InferRegistrationFlow(
 		if err := s.insertProvisioningNode(ctx, &regNodes, hasLayout); err != nil {
 			return nil, err
 		}
-		s.logger.DebugWithContext(ctx, "Inserted provisioning node into registration flow")
+		s.logger.Debug(ctx, "Inserted provisioning node into registration flow")
 	} else {
-		s.logger.DebugWithContext(ctx, "Provisioning node already exists, skipping insertion")
+		s.logger.Debug(ctx, "Provisioning node already exists, skipping insertion")
 	}
 
 	startNodeID, err := s.findStartNode(regNodes)
@@ -89,9 +89,9 @@ func (s *flowInferenceService) InferRegistrationFlow(
 		// Append the prompt node to the flow
 		regNodes = append(regNodes, userTypePromptNode)
 
-		s.logger.DebugWithContext(ctx, "Inserted user type resolver node with prompt into registration flow")
+		s.logger.Debug(ctx, "Inserted user type resolver node with prompt into registration flow")
 	} else {
-		s.logger.DebugWithContext(ctx, "User type resolver node already exists, skipping insertion")
+		s.logger.Debug(ctx, "User type resolver node already exists, skipping insertion")
 	}
 
 	// Insert phone input prompt if SMS OTP send nodes are present
@@ -312,14 +312,14 @@ func (s *flowInferenceService) insertProvisioningNode(
 	var targetNodeID string
 	if hasAuthAssert {
 		targetNodeID = authAssertNodeID
-		s.logger.DebugWithContext(ctx, "Found AuthAssertExecutor, inserting provisioning node before it")
+		s.logger.Debug(ctx, "Found AuthAssertExecutor, inserting provisioning node before it")
 	} else {
 		endNodeID, err := s.findEndNode(*nodes)
 		if err != nil {
 			return err
 		}
 		targetNodeID = endNodeID
-		s.logger.DebugWithContext(ctx, "No AuthAssertExecutor found, inserting provisioning node before END")
+		s.logger.Debug(ctx, "No AuthAssertExecutor found, inserting provisioning node before END")
 	}
 
 	provisioningNode := s.createProvisioningNode(targetNodeID, includeLayout)
@@ -565,7 +565,7 @@ func (s *flowInferenceService) insertPhoneInputPromptIfNeeded(
 
 	// If phone input already collected by an existing prompt, no need to insert another prompt
 	if hasPhoneInputPrompt {
-		s.logger.DebugWithContext(ctx, "Phone input already collected in the flow, skipping insertion")
+		s.logger.Debug(ctx, "Phone input already collected in the flow, skipping insertion")
 		return
 	}
 
@@ -586,12 +586,12 @@ func (s *flowInferenceService) insertPhoneInputPromptIfNeeded(
 
 	err := s.insertNodeBefore(nodes, phonePromptNode, smsSendNodeID)
 	if err != nil {
-		s.logger.WarnWithContext(ctx, "Failed to insert phone input prompt before SMS send node",
+		s.logger.Warn(ctx, "Failed to insert phone input prompt before SMS send node",
 			log.String("nodeID", smsSendNodeID), log.Error(err))
 		return
 	}
 
-	s.logger.DebugWithContext(ctx, "Inserted phone input prompt before SMS send node",
+	s.logger.Debug(ctx, "Inserted phone input prompt before SMS send node",
 		log.String("smsNodeID", smsSendNodeID))
 }
 

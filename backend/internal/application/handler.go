@@ -201,7 +201,7 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 	// TODO: Need to refactor when supporting other/multiple inbound auth types.
 	if len(appDTO.InboundAuthConfig) > 0 {
 		if appDTO.InboundAuthConfig[0].Type != inboundmodel.OAuthInboundAuthType {
-			logger.ErrorWithContext(ctx, "Unsupported inbound authentication type returned",
+			logger.Error(ctx, "Unsupported inbound authentication type returned",
 				log.String("type", string(appDTO.InboundAuthConfig[0].Type)))
 
 			errResp := apierror.ErrorResponse{
@@ -214,7 +214,7 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 		}
 
 		if appDTO.InboundAuthConfig[0].OAuthConfig == nil {
-			logger.ErrorWithContext(ctx, "OAuth application configuration is nil")
+			logger.Error(ctx, "OAuth application configuration is nil")
 
 			errResp := apierror.ErrorResponse{
 				Code:        serviceerror.InternalServerError.Code,
@@ -228,7 +228,7 @@ func (ah *applicationHandler) HandleApplicationGetRequest(w http.ResponseWriter,
 		returnInboundAuthConfigs := make([]inboundmodel.InboundAuthConfig, 0, len(appDTO.InboundAuthConfig))
 		for _, config := range appDTO.InboundAuthConfig {
 			if config.OAuthConfig == nil {
-				logger.ErrorWithContext(ctx, "OAuth application configuration is nil")
+				logger.Error(ctx, "OAuth application configuration is nil")
 				errResp := apierror.ErrorResponse{
 					Code:        serviceerror.InternalServerError.Code,
 					Message:     serviceerror.InternalServerError.Error,
@@ -414,21 +414,21 @@ func (ah *applicationHandler) processInboundAuthConfig(
 	returnApp *model.ApplicationCompleteResponse) bool {
 	if len(appDTO.InboundAuthConfig) > 0 {
 		if appDTO.InboundAuthConfig[0].Type != inboundmodel.OAuthInboundAuthType {
-			logger.ErrorWithContext(ctx, "Unsupported inbound authentication type returned",
+			logger.Error(ctx, "Unsupported inbound authentication type returned",
 				log.String("type", string(appDTO.InboundAuthConfig[0].Type)))
 
 			return false
 		}
 
 		if appDTO.InboundAuthConfig[0].OAuthConfig == nil {
-			logger.ErrorWithContext(ctx, "OAuth application configuration is nil")
+			logger.Error(ctx, "OAuth application configuration is nil")
 			return false
 		}
 
 		returnInboundAuthConfigs := make([]inboundmodel.InboundAuthConfigWithSecret, 0, len(appDTO.InboundAuthConfig))
 		for _, config := range appDTO.InboundAuthConfig {
 			if config.OAuthConfig == nil {
-				logger.ErrorWithContext(ctx, "OAuth application configuration is nil")
+				logger.Error(ctx, "OAuth application configuration is nil")
 				return false
 			}
 			redirectURIs := config.OAuthConfig.RedirectURIs
@@ -495,7 +495,7 @@ func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWr
 
 	if statusCode == http.StatusInternalServerError {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationHandler"))
-		logger.ErrorWithContext(ctx, "Internal server error processing application request",
+		logger.Error(ctx, "Internal server error processing application request",
 			log.String("method", r.Method),
 			log.String("path", r.URL.Path),
 			log.String("error_code", svcErr.Code),

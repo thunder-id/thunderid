@@ -194,7 +194,7 @@ func loadDeclarativeResources(
 				return v.ID
 			}
 			// Declarative resource loading runs during startup, outside any request.
-			log.GetLogger().ErrorWithContext(context.Background(),
+			log.GetLogger().Error(context.Background(),
 				"IDExtractor: type assertion failed for groupDeclarativeResource")
 			return ""
 		},

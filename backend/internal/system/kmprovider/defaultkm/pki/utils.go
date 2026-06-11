@@ -56,11 +56,11 @@ func LoadTLSConfig(cfg *config.Config, certFilePath string, keyFilePath string) 
 
 	cert, err := tls.LoadX509KeyPair(certFilePath, keyFilePath)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to load X509 key pair", log.Error(err))
+		logger.Error(ctx, "Failed to load X509 key pair", log.Error(err))
 		return nil, err
 	}
 
-	logger.DebugWithContext(ctx, "Successfully loaded TLS certificate",
+	logger.Debug(ctx, "Successfully loaded TLS certificate",
 		log.String("certFile", certFilePath),
 		log.String("keyFile", keyFilePath))
 

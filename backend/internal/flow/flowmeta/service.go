@@ -122,7 +122,7 @@ func (fms *flowMetaService) GetFlowMetadata(
 	fms.populateDesignMetadata(ctx, metaType, id, ouID, response)
 	fms.populateI18nMetadata(ctx, response, lang, ns)
 
-	fms.logger.DebugWithContext(ctx, "Successfully retrieved flow metadata",
+	fms.logger.Debug(ctx, "Successfully retrieved flow metadata",
 		log.String("type", string(metaType)),
 		log.String("id", id))
 
@@ -173,7 +173,7 @@ func (fms *flowMetaService) populateTypeMetadata(
 		if errors.Is(err, inboundclient.ErrInboundClientNotFound) {
 			return "", &ErrorApplicationNotFound
 		}
-		fms.logger.ErrorWithContext(ctx, "Failed to get inbound client", log.String("appID", id), log.Error(err))
+		fms.logger.Error(ctx, "Failed to get inbound client", log.String("appID", id), log.Error(err))
 		return "", &ErrorApplicationFetchFailed
 	}
 	if client == nil {
@@ -182,7 +182,7 @@ func (fms *flowMetaService) populateTypeMetadata(
 
 	entity, epErr := fms.entityProvider.GetEntity(id)
 	if epErr != nil && epErr.Code != entityprovider.ErrorCodeEntityNotFound {
-		fms.logger.ErrorWithContext(ctx, "Failed to get entity", log.String("appID", id), log.Error(epErr))
+		fms.logger.Error(ctx, "Failed to get entity", log.String("appID", id), log.Error(epErr))
 		return "", &ErrorApplicationFetchFailed
 	}
 
@@ -196,7 +196,7 @@ func (fms *flowMetaService) populateTypeMetadata(
 			return "", &ErrorOUNotFound
 		}
 
-		fms.logger.ErrorWithContext(ctx, "Failed to get root organization unit",
+		fms.logger.Error(ctx, "Failed to get root organization unit",
 			log.String("error", ouErr.Error.DefaultValue),
 			log.String("code", ouErr.Code))
 		return "", &ErrorOUFetchFailed
@@ -224,7 +224,7 @@ func (fms *flowMetaService) populateOUMetadata(
 			return &ErrorOUNotFound
 		}
 
-		fms.logger.ErrorWithContext(ctx, "Failed to get organization unit",
+		fms.logger.Error(ctx, "Failed to get organization unit",
 			log.String("ouID", ouID),
 			log.String("error", svcErr.Error.DefaultValue),
 			log.String("code", svcErr.Code))
@@ -261,7 +261,7 @@ func (fms *flowMetaService) populateDesignMetadata(
 
 	designResp, svcErr := fms.designResolve.ResolveDesign(ctx, designType, designID)
 	if svcErr != nil {
-		fms.logger.DebugWithContext(ctx, "Failed to get design configuration",
+		fms.logger.Debug(ctx, "Failed to get design configuration",
 			log.String("type", string(designType)),
 			log.String("id", designID),
 			log.String("error", svcErr.Error.DefaultValue))
@@ -284,7 +284,7 @@ func (fms *flowMetaService) populateI18nMetadata(
 	ctx context.Context, response *FlowMetadataResponse, lang string, ns string) {
 	i18nResp, i18nErr := fms.i18nService.ResolveTranslations(ctx, lang, ns)
 	if i18nErr != nil {
-		fms.logger.DebugWithContext(ctx, "Failed to get i18n translations",
+		fms.logger.Debug(ctx, "Failed to get i18n translations",
 			log.String("language", lang),
 			log.String("namespace", ns),
 			log.String("error", i18nErr.Error.DefaultValue))
@@ -296,7 +296,7 @@ func (fms *flowMetaService) populateI18nMetadata(
 
 	languages, i18nErr := fms.i18nService.ListLanguages(ctx)
 	if i18nErr != nil {
-		fms.logger.DebugWithContext(ctx, "Failed to list languages",
+		fms.logger.Debug(ctx, "Failed to list languages",
 			log.String("error", i18nErr.Error.DefaultValue))
 		response.I18n.Languages = []string{i18nmgt.SystemLanguage}
 		return

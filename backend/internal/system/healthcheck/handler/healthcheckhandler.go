@@ -44,7 +44,7 @@ func NewHealthCheckHandler(svc service.HealthCheckServiceInterface) *HealthCheck
 func (hch *HealthCheckHandler) HandleLivenessRequest(w http.ResponseWriter, r *http.Request) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "HealthCheckHandler"))
 	w.WriteHeader(http.StatusOK)
-	logger.DebugWithContext(r.Context(), "Health Check Liveness response sent")
+	logger.Debug(r.Context(), "Health Check Liveness response sent")
 }
 
 // HandleReadinessRequest handles the health check readiness request.
@@ -56,15 +56,15 @@ func (hch *HealthCheckHandler) HandleReadinessRequest(w http.ResponseWriter, r *
 
 	statusCode := http.StatusOK
 	if serverstatus.Status != model.StatusUp {
-		logger.ErrorWithContext(ctx, "Readiness check failed",
+		logger.Error(ctx, "Readiness check failed",
 			log.String("serverstatus", string(serverstatus.Status)))
 		statusCode = http.StatusServiceUnavailable
 	} else {
-		logger.DebugWithContext(ctx, "Readiness check passed",
+		logger.Debug(ctx, "Readiness check passed",
 			log.String("serverstatus", string(serverstatus.Status)))
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, statusCode, serverstatus)
 
-	logger.DebugWithContext(ctx, "Health Check Readiness response sent")
+	logger.Debug(ctx, "Health Check Readiness response sent")
 }

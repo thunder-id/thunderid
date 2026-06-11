@@ -178,7 +178,7 @@ func (s *cacheBackedEntityStore) IdentifyEntity(ctx context.Context,
 
 			if err := s.entityIDByIdentifierCache.Set(ctx,
 				compositeKey, entityID); err != nil {
-				s.logger.ErrorWithContext(ctx, "Failed to cache entity ID by identifier",
+				s.logger.Error(ctx, "Failed to cache entity ID by identifier",
 					log.String("key", filterKey), log.String("value", val), log.Error(err))
 			}
 			return entityID, nil
@@ -277,7 +277,7 @@ func (s *cacheBackedEntityStore) parseEntityAttributes(ctx context.Context, enti
 		}
 		var attrs map[string]interface{}
 		if err := json.Unmarshal(raw, &attrs); err != nil {
-			s.logger.WarnWithContext(ctx, "Failed to unmarshal entity attributes for cache key resolution",
+			s.logger.Warn(ctx, "Failed to unmarshal entity attributes for cache key resolution",
 				log.String("entityID", entity.ID), log.Error(err))
 			continue
 		}
@@ -300,7 +300,7 @@ func (s *cacheBackedEntityStore) cacheEntityIDByIdentifiers(ctx context.Context,
 		}
 		if err := s.entityIDByIdentifierCache.Set(ctx,
 			identifierCacheKey(key, val), &entity.ID); err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to cache entity ID by identifier",
+			s.logger.Error(ctx, "Failed to cache entity ID by identifier",
 				log.String("key", key), log.String("value", val), log.Error(err))
 		}
 	}
@@ -316,7 +316,7 @@ func (s *cacheBackedEntityStore) invalidateIdentifierCache(ctx context.Context, 
 	} else {
 		fetched, err := s.store.GetEntity(ctx, entityID)
 		if err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to fetch entity for identifier cache invalidation",
+			s.logger.Error(ctx, "Failed to fetch entity for identifier cache invalidation",
 				log.String("entityID", entityID), log.Error(err))
 			return
 		}
@@ -330,7 +330,7 @@ func (s *cacheBackedEntityStore) invalidateIdentifierCache(ctx context.Context, 
 		}
 		if err := s.entityIDByIdentifierCache.Delete(ctx,
 			identifierCacheKey(key, val)); err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to invalidate identifier cache",
+			s.logger.Error(ctx, "Failed to invalidate identifier cache",
 				log.String("key", key), log.String("value", val), log.Error(err))
 		}
 	}
@@ -341,7 +341,7 @@ func (s *cacheBackedEntityStore) cacheEntityByID(ctx context.Context, entity *En
 		return
 	}
 	if err := s.entityByIDCache.Set(ctx, cache.CacheKey{Key: entity.ID}, entity); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to cache entity by ID",
+		s.logger.Error(ctx, "Failed to cache entity by ID",
 			log.String("entityID", entity.ID), log.Error(err))
 	}
 }
@@ -353,7 +353,7 @@ func (s *cacheBackedEntityStore) cacheEntityWithCredentialsByID(ctx context.Cont
 	}
 	if err := s.entityWithCredentialsByIDCache.Set(ctx,
 		cache.CacheKey{Key: ewc.Entity.ID}, ewc); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to cache entity with credentials by ID",
+		s.logger.Error(ctx, "Failed to cache entity with credentials by ID",
 			log.String("entityID", ewc.Entity.ID), log.Error(err))
 	}
 }
@@ -363,11 +363,11 @@ func (s *cacheBackedEntityStore) invalidateEntityByID(ctx context.Context, entit
 		return
 	}
 	if err := s.entityByIDCache.Delete(ctx, cache.CacheKey{Key: entityID}); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to invalidate entity cache by ID",
+		s.logger.Error(ctx, "Failed to invalidate entity cache by ID",
 			log.String("entityID", entityID), log.Error(err))
 	}
 	if err := s.entityWithCredentialsByIDCache.Delete(ctx, cache.CacheKey{Key: entityID}); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to invalidate entity with credentials cache by ID",
+		s.logger.Error(ctx, "Failed to invalidate entity with credentials cache by ID",
 			log.String("entityID", entityID), log.Error(err))
 	}
 }

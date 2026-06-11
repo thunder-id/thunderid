@@ -117,7 +117,7 @@ func getEvictionPolicy(cacheConfig config.CacheConfig, cacheProperty config.Cach
 		return evictionPolicyLFU
 	default:
 		// Cache infrastructure logging has no request scope, so context.Background() is used.
-		log.GetLogger().WarnWithContext(context.Background(), "Unknown eviction policy, defaulting to LRU")
+		log.GetLogger().Warn(context.Background(), "Unknown eviction policy, defaulting to LRU")
 		return evictionPolicyLRU
 	}
 }
@@ -149,7 +149,7 @@ func newInMemoryCache[T any](name string, enabled bool,
 		log.String("name", name))
 
 	if !enabled {
-		logger.WarnWithContext(ctx, "In-memory cache is disabled, returning empty cache")
+		logger.Warn(ctx, "In-memory cache is disabled, returning empty cache")
 		return &inMemoryCache[T]{
 			name:    name,
 			enabled: false,
@@ -160,7 +160,7 @@ func newInMemoryCache[T any](name string, enabled bool,
 	size := getCacheSize(cacheConfig, cacheProperty)
 	evictionPolicy := getEvictionPolicy(cacheConfig, cacheProperty)
 
-	logger.DebugWithContext(ctx, "Initializing In-memory cache", log.String("evictionPolicy", string(evictionPolicy)),
+	logger.Debug(ctx, "Initializing In-memory cache", log.String("evictionPolicy", string(evictionPolicy)),
 		log.Int("size", size), log.Any("ttl", ttl))
 
 	lfuHeapInstance := &lfuHeap{}
@@ -238,11 +238,11 @@ func (c *inMemoryCache[T]) Set(ctx context.Context, key CacheKey, value T) error
 	}
 	c.cache[key] = inMemoryCacheEntry
 
-	logger.DebugWithContext(ctx, "Cache entry set", log.String("key", key.ToString()))
+	logger.Debug(ctx, "Cache entry set", log.String("key", key.ToString()))
 
 	// Check if there's a requirement to evict an entry
 	if len(c.cache) > c.size {
-		logger.DebugWithContext(ctx, "Cache size exceeded, evicting an entry")
+		logger.Debug(ctx, "Cache size exceeded, evicting an entry")
 		c.evict()
 	}
 
@@ -290,7 +290,7 @@ func (c *inMemoryCache[T]) Get(ctx context.Context, key CacheKey) (T, bool) {
 		heap.Fix(c.lfuHeap, entry.heapItem.index)
 	}
 
-	logger.DebugWithContext(ctx, "Cache hit", log.String("key", key.ToString()))
+	logger.Debug(ctx, "Cache hit", log.String("key", key.ToString()))
 	return entry.Value, true
 }
 
@@ -330,7 +330,7 @@ func (c *inMemoryCache[T]) Clear(ctx context.Context) error {
 	c.missCount.Store(0)
 	c.evictCount.Store(0)
 
-	logger.DebugWithContext(ctx, "Cleared all entries in the cache")
+	logger.Debug(ctx, "Cleared all entries in the cache")
 	return nil
 }
 
@@ -399,7 +399,7 @@ func (c *inMemoryCache[T]) evictOldest() {
 			c.deleteEntry(key, entry)
 			c.evictCount.Add(1)
 			// Cache eviction is infrastructure-scoped, not tied to a request.
-			logger.DebugWithContext(context.Background(), "Cache entry evicted", log.String("key", key.ToString()))
+			logger.Debug(context.Background(), "Cache entry evicted", log.String("key", key.ToString()))
 		}
 	}
 }
@@ -420,7 +420,7 @@ func (c *inMemoryCache[T]) evictLeastFrequent() {
 		c.deleteEntry(leastFrequentItem.key, entry)
 		c.evictCount.Add(1)
 		// Cache eviction is infrastructure-scoped, not tied to a request.
-		logger.DebugWithContext(context.Background(), "Cache entry evicted (LFU)",
+		logger.Debug(context.Background(), "Cache entry evicted (LFU)",
 			log.String("key", leastFrequentItem.key.ToString()),
 			log.Any("accessCount", leastFrequentItem.accessCount))
 	}
@@ -447,7 +447,7 @@ func (c *inMemoryCache[T]) CleanupExpired() {
 
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InMemoryCache"),
 		log.String("name", c.GetName()))
-	logger.DebugWithContext(ctx, "Cleaning up expired entries from the cache")
+	logger.Debug(ctx, "Cleaning up expired entries from the cache")
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -463,9 +463,9 @@ func (c *inMemoryCache[T]) CleanupExpired() {
 
 	if logger.IsDebugEnabled() {
 		if cleaned > 0 {
-			logger.DebugWithContext(ctx, "Expired cache entries cleaned", log.Int("count", cleaned))
+			logger.Debug(ctx, "Expired cache entries cleaned", log.Int("count", cleaned))
 		} else {
-			logger.DebugWithContext(ctx, "No expired entries found in the cache")
+			logger.Debug(ctx, "No expired entries found in the cache")
 		}
 	}
 }

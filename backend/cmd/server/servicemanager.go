@@ -101,17 +101,17 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Load the server's private key for signing JWTs.
 	pkiService, err := pki.Initialize()
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize certificate service", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize certificate service", log.Error(err))
 	}
 
 	runtimeCryptoSvc, _, err := kmprovider.Initialize(pkiService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize key manager provider", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize key manager provider", log.Error(err))
 	}
 
 	jwtService, jweService, err := jose.Initialize(runtimeCryptoSvc)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize JOSE services", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize JOSE services", log.Error(err))
 	}
 
 	observabilitySvc = observability.Initialize()
@@ -125,19 +125,19 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Initialize i18n service for internationalization support.
 	i18nService, i18nExporter, err := i18nmgt.Initialize(mux, config.GetServerRuntime().Config.Translation)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize i18n service", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize i18n service", log.Error(err))
 	}
 	// Add to exporters list (must be done after initializing list)
 	exporters = append(exporters, i18nExporter)
 
 	ouAuthzService, err := sysauthz.Initialize()
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize system authorization service", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize system authorization service", log.Error(err))
 	}
 
 	ouService, ouHierarchyResolver, ouExporter, err := ou.Initialize(mux, mcpServer, cacheManager, ouAuthzService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize OrganizationUnitService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize OrganizationUnitService", log.Error(err))
 	}
 	exporters = append(exporters, ouExporter)
 
@@ -148,11 +148,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	hashCfg, err := buildHashConfig()
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to build HashService config", log.Error(err))
+		logger.Fatal(ctx, "Failed to build HashService config", log.Error(err))
 	}
 	hashService, err := cryptolib.Initialize(hashCfg)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize HashService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize HashService", log.Error(err))
 	}
 
 	// Initialize consent service
@@ -162,14 +162,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	entityTypeService, entityTypeExporter, err := entitytype.Initialize(
 		mux, mcpServer, cacheManager, ouService, ouAuthzService, consentService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize EntityTypeService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize EntityTypeService", log.Error(err))
 	}
 	exporters = append(exporters, entityTypeExporter)
 
 	// Initialize entity service
 	entityService, err := entity.Initialize(cacheManager, hashService, entityTypeService, ouService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize EntityService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize EntityService", log.Error(err))
 	}
 
 	// Initialize entity provider
@@ -179,7 +179,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, entityService, ouService, entityTypeService, ouAuthzService,
 	)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize UserService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize UserService", log.Error(err))
 	}
 	exporters = append(exporters, userExporter)
 
@@ -187,7 +187,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		mux, dbprovider.GetDBProvider(), ouService, entityService, entityTypeService, ouAuthzService,
 	)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize GroupService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize GroupService", log.Error(err))
 	}
 	exporters = append(exporters, groupExporter)
 
@@ -197,33 +197,33 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, consentService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize Resource Service", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize Resource Service", log.Error(err))
 	}
 	exporters = append(exporters, resourceExporter)
 	roleService, roleAssignmentService, roleExporter, err := role.Initialize(
 		mux, entityService, groupService, ouService, resourceService, entityTypeService,
 	)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize RoleService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize RoleService", log.Error(err))
 	}
 	exporters = append(exporters, roleExporter)
 	authZService := authz.Initialize(roleService)
 
 	idpService, idpExporter, err := idp.Initialize(cacheManager, mux)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize IDPService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize IDPService", log.Error(err))
 	}
 	exporters = append(exporters, idpExporter)
 
 	templateService, err := template.Initialize()
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize template service", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize template service", log.Error(err))
 	}
 
 	_, otpService, notifSenderSvc, notificationExporter, err := notification.Initialize(
 		mux, jwtService, templateService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize NotificationService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize NotificationService", log.Error(err))
 	}
 	exporters = append(exporters, notificationExporter)
 
@@ -268,7 +268,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	emailClient, err = email.Initialize()
 	if err != nil {
 		// Service registration runs at startup, outside any request.
-		logger.DebugWithContext(context.Background(), "Email client not configured. "+
+		logger.Debug(context.Background(), "Email client not configured. "+
 			"EmailExecutor will be registered but will not send emails.", log.Error(err))
 		emailClient = nil
 	}
@@ -277,7 +277,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// the engine itself.
 	openid4vpVerifierSvc, err := openid4vp.Initialize(mux, runtimeCryptoSvc, cacheManager, jwtService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize OpenID4VP verifier service", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize OpenID4VP verifier service", log.Error(err))
 	}
 
 	execRegistry := executor.Initialize(flowFactory, ouService, idpService, notifSenderSvc, jwtService, authAssertGen,
@@ -289,24 +289,24 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, graphCache)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize FlowMgtService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize FlowMgtService", log.Error(err))
 	}
 	exporters = append(exporters, flowMgtExporter)
 	certservice, err := cert.Initialize(cacheManager, dbprovider.GetDBProvider())
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize CertificateService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize CertificateService", log.Error(err))
 	}
 
 	// Initialize theme and layout services
 	themeMgtService, themeExporter, err := thememgt.Initialize(mux, mcpServer)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize ThemeMgtService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize ThemeMgtService", log.Error(err))
 	}
 	exporters = append(exporters, themeExporter)
 
 	layoutMgtService, layoutExporter, err := layoutmgt.Initialize(mux)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize LayoutMgtService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize LayoutMgtService", log.Error(err))
 	}
 	exporters = append(exporters, layoutExporter)
 
@@ -314,20 +314,20 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		cacheManager, certservice, entityProvider,
 		themeMgtService, layoutMgtService, flowMgtService, entityTypeService, consentService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize InboundClientService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize InboundClientService", log.Error(err))
 	}
 
 	// TODO: Remove entityService dependency after finalizing declarative resource loading pattern
 	applicationService, applicationExporter, err := application.Initialize(
 		mux, mcpServer, entityProvider, entityService, inboundClientService, ouService, i18nService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize ApplicationService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize ApplicationService", log.Error(err))
 	}
 	exporters = append(exporters, applicationExporter)
 
 	agentService, agentExporter, err := agent.Initialize(mux, entityService, inboundClientService, ouService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize AgentService", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize AgentService", log.Error(err))
 	}
 	exporters = append(exporters, agentExporter)
 
@@ -362,7 +362,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowExecService, err := flowexec.Initialize(mux, flowMgtService, inboundClientService, entityProvider,
 		execRegistry, observabilitySvc, runtimeCryptoSvc)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize flow execution service", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
 
 	// Initialize OAuth services.
@@ -370,13 +370,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		flowExecService, observabilitySvc, runtimeCryptoSvc, ouService, attributeCacheService, authZService,
 		entityProvider, resourceService, i18nService, idpService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize OAuth services", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}
 
 	// Register OAuth2 DCR service.
 	err = dcr.Initialize(mux, applicationService, ouService, i18nService)
 	if err != nil {
-		logger.FatalWithContext(ctx, "Failed to initialize OAuth2 DCR service", log.Error(err))
+		logger.Fatal(ctx, "Failed to initialize OAuth2 DCR service", log.Error(err))
 	}
 
 	// Register the health service.

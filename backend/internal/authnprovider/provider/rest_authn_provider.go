@@ -123,7 +123,7 @@ func postAndDecode[T any](p *restAuthnProvider, ctx context.Context, url string,
 
 func (p *restAuthnProvider) logAndReturnServerError(
 	ctx context.Context, msg string, fields ...log.Field) *serviceerror.ServiceError {
-	p.logger.ErrorWithContext(ctx, msg, fields...)
+	p.logger.Error(ctx, msg, fields...)
 	err := serviceerror.InternalServerError
 	return &err
 }

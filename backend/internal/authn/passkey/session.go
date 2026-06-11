@@ -69,7 +69,7 @@ func (w *passkeyService) retrieveSessionData(ctx context.Context,
 	// Retrieve session data from database
 	session, err := w.sessionStore.retrieveSession(ctx, sessionKey)
 	if err != nil {
-		w.logger.DebugWithContext(ctx, "Failed to retrieve passkey session", log.Error(err))
+		w.logger.Debug(ctx, "Failed to retrieve passkey session", log.Error(err))
 		return nil, "", "", &serviceerror.InternalServerError
 	}
 

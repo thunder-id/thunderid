@@ -55,10 +55,10 @@ func newAuthAssertGenerator() AuthAssertGeneratorInterface {
 func (ag *authAssertGenerator) GenerateAssertion(ctx context.Context,
 	authenticators []authncm.AuthenticatorReference) (*AssertionResult, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Generating authentication assertion")
+	logger.Debug(ctx, "Generating authentication assertion")
 
 	if len(authenticators) == 0 {
-		logger.DebugWithContext(ctx, "No authenticators provided for assertion generation")
+		logger.Debug(ctx, "No authenticators provided for assertion generation")
 		return nil, &ErrorNoAuthenticators
 	}
 
@@ -79,16 +79,16 @@ func (ag *authAssertGenerator) GenerateAssertion(ctx context.Context,
 func (ag *authAssertGenerator) UpdateAssertion(ctx context.Context, context *AssuranceContext,
 	authenticator authncm.AuthenticatorReference) (*AssertionResult, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Updating authentication assertion with new authenticator")
+	logger.Debug(ctx, "Updating authentication assertion with new authenticator")
 
 	if context == nil {
-		logger.DebugWithContext(ctx, "No existing assurance context found, generating new assertion")
+		logger.Debug(ctx, "No existing assurance context found, generating new assertion")
 		return ag.GenerateAssertion(ctx, []authncm.AuthenticatorReference{authenticator})
 	}
 
 	// Validate authenticator name is present
 	if authenticator.Authenticator == "" {
-		logger.DebugWithContext(ctx, "Invalid authenticator: missing authenticator name")
+		logger.Debug(ctx, "Invalid authenticator: missing authenticator name")
 		return nil, &ErrorInvalidAuthenticator
 	}
 
@@ -106,20 +106,20 @@ func (ag *authAssertGenerator) VerifyAssurance(
 	ctx context.Context, context *AssuranceContext, requiredAAL AssuranceLevel,
 	requiredIAL AssuranceLevel) (bool, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Verifying assurance levels")
+	logger.Debug(ctx, "Verifying assurance levels")
 
 	if context == nil {
-		logger.DebugWithContext(ctx, "Nil assurance context provided")
+		logger.Debug(ctx, "Nil assurance context provided")
 		return false, &ErrorNilAssuranceContext
 	}
 	if requiredAAL == "" && requiredIAL == "" {
-		logger.DebugWithContext(ctx, "No assurance levels specified for verification")
+		logger.Debug(ctx, "No assurance levels specified for verification")
 		return false, &ErrorNoAssuranceRequirements
 	}
 
 	// Check AAL level
 	if requiredAAL != "" && !ag.meetsAssuranceLevel(context.AAL, requiredAAL) {
-		logger.DebugWithContext(ctx, "Actual AAL does not meet required AAL",
+		logger.Debug(ctx, "Actual AAL does not meet required AAL",
 			log.String("actualAAL", string(context.AAL)),
 			log.String("requiredAAL", string(requiredAAL)))
 		return false, nil
@@ -127,7 +127,7 @@ func (ag *authAssertGenerator) VerifyAssurance(
 
 	// Check IAL level
 	if requiredIAL != "" && !ag.meetsAssuranceLevel(context.IAL, requiredIAL) {
-		logger.DebugWithContext(ctx, "Actual IAL does not meet required IAL",
+		logger.Debug(ctx, "Actual IAL does not meet required IAL",
 			log.String("actualIAL", string(context.IAL)),
 			log.String("requiredIAL", string(requiredIAL)))
 		return false, nil
@@ -149,7 +149,7 @@ func (ag *authAssertGenerator) extractUniqueAuthenticators(
 
 		factors := authncm.GetAuthenticatorFactors(auth.Authenticator)
 		if len(factors) == 0 {
-			logger.DebugWithContext(ctx, "No factors found for authenticator. Skipping",
+			logger.Debug(ctx, "No factors found for authenticator. Skipping",
 				log.String("authenticator", auth.Authenticator))
 			continue
 		}
@@ -194,7 +194,7 @@ func (ag *authAssertGenerator) calculateAAL(ctx context.Context, factorSet []aut
 		aal = AALLevel3
 	}
 
-	logger.DebugWithContext(ctx, "Calculated AAL from authentication factors", log.Any("factors", factorSet),
+	logger.Debug(ctx, "Calculated AAL from authentication factors", log.Any("factors", factorSet),
 		log.String("aal", string(aal)))
 
 	return aal

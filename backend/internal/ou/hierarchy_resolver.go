@@ -61,7 +61,7 @@ func (r *ouHierarchyAdapter) IsAncestor(
 	visited := make(map[string]struct{})
 	for {
 		if _, ok := visited[current]; ok {
-			logger.ErrorWithContext(ctx, "Cyclic organization unit parent chain detected during ancestry check",
+			logger.Error(ctx, "Cyclic organization unit parent chain detected during ancestry check",
 				log.String("ouID", current))
 			return false, nil
 		}
@@ -71,11 +71,11 @@ func (r *ouHierarchyAdapter) IsAncestor(
 		if err != nil {
 			if errors.Is(err, ErrOrganizationUnitNotFound) {
 				// Broken chain — cannot confirm ancestry; deny-safe.
-				logger.DebugWithContext(ctx, "Encountered missing organization unit during ancestry check",
+				logger.Debug(ctx, "Encountered missing organization unit during ancestry check",
 					log.String("ouID", current))
 				return false, nil
 			}
-			logger.ErrorWithContext(ctx, "Failed to traverse organization unit hierarchy during ancestry check",
+			logger.Error(ctx, "Failed to traverse organization unit hierarchy during ancestry check",
 				log.Error(err))
 			return false, &serviceerror.InternalServerError
 		}
@@ -112,7 +112,7 @@ func (r *ouHierarchyAdapter) GetAncestorOUIDs(
 
 	for {
 		if _, ok := visited[current]; ok {
-			logger.ErrorWithContext(ctx, "Cyclic organization unit parent chain detected while collecting ancestors",
+			logger.Error(ctx, "Cyclic organization unit parent chain detected while collecting ancestors",
 				log.String("ouID", current))
 			return nil, &serviceerror.InternalServerError
 		}
@@ -121,11 +121,11 @@ func (r *ouHierarchyAdapter) GetAncestorOUIDs(
 		ou, err := r.store.GetOrganizationUnit(ctx, current)
 		if err != nil {
 			if errors.Is(err, ErrOrganizationUnitNotFound) {
-				logger.DebugWithContext(ctx, "Encountered missing organization unit while collecting ancestors",
+				logger.Debug(ctx, "Encountered missing organization unit while collecting ancestors",
 					log.String("ouID", current))
 				return nil, &ErrorOrganizationUnitNotFound
 			}
-			logger.ErrorWithContext(ctx, "Failed to traverse organization unit hierarchy while collecting ancestors",
+			logger.Error(ctx, "Failed to traverse organization unit hierarchy while collecting ancestors",
 				log.Error(err))
 			return nil, &serviceerror.InternalServerError
 		}

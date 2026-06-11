@@ -83,7 +83,7 @@ func (o *OTelSubscriber) Initialize() error {
 	// Subscriber initialization runs during application startup, outside any request.
 	ctx := context.Background()
 
-	o.logger.DebugWithContext(ctx, "Initializing OpenTelemetry subscriber",
+	o.logger.Debug(ctx, "Initializing OpenTelemetry subscriber",
 		log.String("exporterType", otelConfig.ExporterType),
 		log.String("endpoint", otelConfig.OTLPEndpoint))
 
@@ -112,11 +112,11 @@ func (o *OTelSubscriber) Initialize() error {
 	o.tracer = otel.Tracer("thunderid-observability")
 	o.id, err = utils.GenerateUUIDv7()
 	if err != nil {
-		o.logger.ErrorWithContext(ctx, "Failed to generate UUID", log.Error(err))
+		o.logger.Error(ctx, "Failed to generate UUID", log.Error(err))
 		return fmt.Errorf("Failed to generate UUID: %w", err)
 	}
 
-	o.logger.DebugWithContext(ctx, "OpenTelemetry subscriber initialized successfully",
+	o.logger.Debug(ctx, "OpenTelemetry subscriber initialized successfully",
 		log.String("exporterType", otelConfig.ExporterType),
 		log.String("serviceName", otelConfig.ServiceName))
 
@@ -169,7 +169,7 @@ func (o *OTelSubscriber) createSpan(evt *event.Event) error {
 	traceID, err := trace.TraceIDFromHex(cleanTraceID)
 	if err != nil {
 		// If invalid TraceID, log warning and let OTel generate a new one
-		o.logger.WarnWithContext(ctx, "Invalid TraceID in event, generating new one",
+		o.logger.Warn(ctx, "Invalid TraceID in event, generating new one",
 			log.String("traceID", evt.TraceID),
 			log.Error(err))
 	} else {
@@ -253,7 +253,7 @@ func (o *OTelSubscriber) createSpan(evt *event.Event) error {
 	// it took for the event to be processed by this subscriber.
 	span.End()
 
-	o.logger.DebugWithContext(ctx, "Created span with event",
+	o.logger.Debug(ctx, "Created span with event",
 		log.String("spanName", spanName),
 		log.String("eventType", evt.Type),
 		log.String("status", evt.Status))
@@ -343,20 +343,20 @@ func (o *OTelSubscriber) Close() error {
 	// Subscriber shutdown runs during application teardown, outside any request.
 	ctx := context.Background()
 
-	o.logger.InfoWithContext(ctx, "Closing OTel subscriber", log.String("subscriberID", o.id))
+	o.logger.Info(ctx, "Closing OTel subscriber", log.String("subscriberID", o.id))
 
 	if o.tracerProvider != nil {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
 		if err := o.tracerProvider.Shutdown(shutdownCtx); err != nil {
-			o.logger.ErrorWithContext(ctx, "Failed to shutdown OpenTelemetry provider", log.Error(err))
+			o.logger.Error(ctx, "Failed to shutdown OpenTelemetry provider", log.Error(err))
 			return err
 		}
-		o.logger.DebugWithContext(ctx, "OpenTelemetry provider shutdown successfully")
+		o.logger.Debug(ctx, "OpenTelemetry provider shutdown successfully")
 		o.tracerProvider = nil
 	}
 
-	o.logger.InfoWithContext(ctx, "OTel subscriber closed successfully", log.String("subscriberID", o.id))
+	o.logger.Info(ctx, "OTel subscriber closed successfully", log.String("subscriberID", o.id))
 	return nil
 }

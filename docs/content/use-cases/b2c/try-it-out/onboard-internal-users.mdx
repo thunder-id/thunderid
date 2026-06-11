@@ -20,16 +20,12 @@ Complete [Set Up Your Environment](../../try-it-out#set-up-your-environment) bef
 
 ## Set Up Internal User Onboarding
 
-1. Invitation emails require a working SMTP connection. See [Email Configuration](/docs/next/guides/getting-started/configuration#email-configuration) to configure and enable it.
+Activate the user onboarding flow before running this walkthrough. Set `user_onboarding_flow_handle` in `repository/conf/deployment.yaml`, then restart <ProductName /> for the change to take effect:
 
-2. **Activate the user onboarding flow** by pointing the `user_onboarding_flow_handle` to the bundled flow in `repository/conf/deployment.yaml`:
-
-    ```yaml
-    flow:
-      user_onboarding_flow_handle: "wayfinder-onboarding-flow"
-    ```
-
-3. Restart <ProductName /> for the changes to take effect.
+```yaml
+flow:
+  user_onboarding_flow_handle: "wayfinder-onboarding-flow"
+```
 
 ## Try the Use Case
 
@@ -39,7 +35,7 @@ The Wayfinder onboarding flow prompts the admin to pick the staff role (Support 
 2. Navigate to **Users** and select **Add User**.
 3. Select `Staff` as the user type.
 4. Pick **Support** as the role, enter Sam Rivera's email (`sam.rivera@example.com`), and click **Send invitation**. <ProductName /> emails Sam an invite link.
-5. Open the email in Sam's inbox and open the link. The browser opens a **Complete Your Profile** page.
+5. Open Sam's invitation email from the inbox at <WayFinderMailUrl /> and open the link. The browser opens a **Complete Your Profile** page.
 6. Fill in the additional attributes (username `sam.rivera`, display name `Sam Rivera`, a password) and submit. Sam's account is now active with the `Support` role attached.
 7. Repeat the flow for Maya Patel (email `maya.patel@example.com`, username `maya.patel`), picking **DestinationsAdmin** as the role.
 

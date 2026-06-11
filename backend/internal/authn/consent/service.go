@@ -78,10 +78,10 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	availableAttributes *authnprovidercm.AttributesResponse) (
 	*ConsentPromptData, *serviceerror.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
-	logger.DebugWithContext(ctx, "Resolving consent for user")
+	logger.Debug(ctx, "Resolving consent for user")
 
 	if !s.consentService.IsEnabled() {
-		logger.DebugWithContext(ctx, "Consent service is not enabled; skipping consent check")
+		logger.Debug(ctx, "Consent service is not enabled; skipping consent check")
 		return nil, nil
 	}
 
@@ -89,11 +89,11 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	purposes, svcErr := s.consentService.ListConsentPurposes(ctx, ouID, appID)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
-			logger.DebugWithContext(ctx, "Client error from consent service when listing purposes",
+			logger.Debug(ctx, "Client error from consent service when listing purposes",
 				log.Any("error", svcErr))
 			return nil, &ErrorConsentPurposeFetchFailed
 		}
-		logger.ErrorWithContext(ctx, "Failed to list consent purposes", log.Any("error", svcErr))
+		logger.Error(ctx, "Failed to list consent purposes", log.Any("error", svcErr))
 		return nil, &serviceerror.InternalServerError
 	}
 	purposes, svcErr = s.applyPermissionsPurpose(ctx, purposes, ouID, appID, appName, authorizedPermissions)
@@ -101,7 +101,7 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 		return nil, svcErr
 	}
 	if len(purposes) == 0 {
-		logger.DebugWithContext(ctx, "No consent purposes configured for application; skipping consent")
+		logger.Debug(ctx, "No consent purposes configured for application; skipping consent")
 		return nil, nil
 	}
 
@@ -114,11 +114,11 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	existingConsents, svcErr := s.consentService.SearchConsents(ctx, ouID, filter)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
-			logger.DebugWithContext(ctx, "Client error from consent service when searching consents",
+			logger.Debug(ctx, "Client error from consent service when searching consents",
 				log.Any("error", svcErr))
 			return nil, &ErrorConsentSearchFailed
 		}
-		logger.ErrorWithContext(ctx, "Failed to search existing consents", log.Any("error", svcErr))
+		logger.Error(ctx, "Failed to search existing consents", log.Any("error", svcErr))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -131,7 +131,7 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	promptPurposes := buildPurposePrompts(purposes, essentialAttributes, optionalAttributes,
 		consentedElements, userAttributeSet, authorizedPermissions)
 	if len(promptPurposes) == 0 {
-		logger.DebugWithContext(ctx, "All required consents are active; no prompt needed")
+		logger.Debug(ctx, "All required consents are active; no prompt needed")
 		return nil, nil
 	}
 
@@ -141,12 +141,12 @@ func (s *consentEnforcerService) ResolveConsent(ctx context.Context, ouID, appID
 	// This token should be verified in RecordConsent to ensure the user's decisions match what was prompted
 	sessionToken, err := s.createConsentSessionToken(ctx, promptData)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to create consent session token", log.Error(err))
+		logger.Error(ctx, "Failed to create consent session token", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	promptData.SessionToken = sessionToken
 
-	logger.DebugWithContext(ctx, "Consent prompt required", log.Int("purposeCount", len(promptPurposes)))
+	logger.Debug(ctx, "Consent prompt required", log.Int("purposeCount", len(promptPurposes)))
 	return promptData, nil
 }
 
@@ -157,12 +157,12 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 	decisions *ConsentDecisions, sessionToken string,
 	validityPeriod int64) (*consent.Consent, *serviceerror.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
-	logger.DebugWithContext(ctx, "Recording consent for user")
+	logger.Debug(ctx, "Recording consent for user")
 
 	// Verify and decode the consent session token to retrieve the prompted purposes
 	sessionData, err := s.verifyAndDecodeConsentSession(ctx, sessionToken)
 	if err != nil {
-		logger.DebugWithContext(ctx, "Failed to verify consent session token", log.Error(err))
+		logger.Debug(ctx, "Failed to verify consent session token", log.Error(err))
 		return nil, &ErrorConsentSessionInvalid
 	}
 
@@ -190,11 +190,11 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 	})
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
-			logger.DebugWithContext(ctx, "Client error from consent service when searching consents for upsert",
+			logger.Debug(ctx, "Client error from consent service when searching consents for upsert",
 				log.Any("error", svcErr))
 			return nil, &ErrorConsentSearchFailed
 		}
-		logger.ErrorWithContext(ctx, "Failed to search existing consents for upsert", log.Any("error", svcErr))
+		logger.Error(ctx, "Failed to search existing consents for upsert", log.Any("error", svcErr))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -211,7 +211,7 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 
 	// If the user denied any essential attribute, return an error after persisting
 	if hasEssentialDenial {
-		logger.DebugWithContext(ctx, "User denied essential attribute(s)", log.String("consentID", consentRecord.ID))
+		logger.Debug(ctx, "User denied essential attribute(s)", log.String("consentID", consentRecord.ID))
 		return nil, &ErrorEssentialConsentDenied
 	}
 
@@ -226,7 +226,7 @@ func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, ouID
 ) (*consent.Consent, *serviceerror.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID),
 		log.Int("existingConsentCount", len(existingConsents)))
-	logger.DebugWithContext(ctx, "Existing consent record found; updating with new decisions")
+	logger.Debug(ctx, "Existing consent record found; updating with new decisions")
 
 	// Build the consent request payload
 	req := &consent.ConsentRequest{
@@ -249,15 +249,15 @@ func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, ouID
 	updated, svcErr := s.consentService.UpdateConsent(ctx, ouID, existing.ID, req)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
-			logger.DebugWithContext(ctx, "Client error from consent service when updating consent record",
+			logger.Debug(ctx, "Client error from consent service when updating consent record",
 				log.Any("error", svcErr))
 			return nil, &ErrorConsentUpdateFailed
 		}
-		logger.ErrorWithContext(ctx, "Failed to update consent record", log.Any("error", svcErr))
+		logger.Error(ctx, "Failed to update consent record", log.Any("error", svcErr))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Consent record updated successfully", log.String("consentID", updated.ID))
+	logger.Debug(ctx, "Consent record updated successfully", log.String("consentID", updated.ID))
 	return updated, nil
 }
 
@@ -266,7 +266,7 @@ func (s *consentEnforcerService) createNewConsent(ctx context.Context, ouID, app
 	newPurposeItems []consent.ConsentPurposeItem, validityTime int64) (
 	*consent.Consent, *serviceerror.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
-	logger.DebugWithContext(ctx, "Creating new consent record")
+	logger.Debug(ctx, "Creating new consent record")
 
 	// Build the consent request payload
 	req := &consent.ConsentRequest{
@@ -286,15 +286,15 @@ func (s *consentEnforcerService) createNewConsent(ctx context.Context, ouID, app
 	created, svcErr := s.consentService.CreateConsent(ctx, ouID, req)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
-			logger.DebugWithContext(ctx, "Client error from consent service when creating consent record",
+			logger.Debug(ctx, "Client error from consent service when creating consent record",
 				log.Any("error", svcErr))
 			return nil, &ErrorConsentCreateFailed
 		}
-		logger.ErrorWithContext(ctx, "Failed to create consent record", log.Any("error", svcErr))
+		logger.Error(ctx, "Failed to create consent record", log.Any("error", svcErr))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Consent recorded successfully", log.String("consentID", created.ID))
+	logger.Debug(ctx, "Consent recorded successfully", log.String("consentID", created.ID))
 	return created, nil
 }
 
@@ -755,11 +755,11 @@ func (s *consentEnforcerService) applyPermissionsPurpose(ctx context.Context,
 		created, createErr := s.consentService.CreateConsentPurpose(ctx, ouID, &input)
 		if createErr != nil {
 			if createErr.Type == serviceerror.ClientErrorType {
-				logger.DebugWithContext(ctx, "Client error from consent service when creating permission purpose",
+				logger.Debug(ctx, "Client error from consent service when creating permission purpose",
 					log.Any("error", createErr))
 				return nil, &ErrorConsentPurposeCreateFailed
 			}
-			logger.ErrorWithContext(ctx, "Failed to create permission consent purpose", log.Any("error", createErr))
+			logger.Error(ctx, "Failed to create permission consent purpose", log.Any("error", createErr))
 			return nil, &serviceerror.InternalServerError
 		}
 		return append(allPurposes, *created), nil
@@ -781,11 +781,11 @@ func (s *consentEnforcerService) applyPermissionsPurpose(ctx context.Context,
 	updated, updErr := s.consentService.UpdateConsentPurpose(ctx, ouID, current.ID, &input)
 	if updErr != nil {
 		if updErr.Type == serviceerror.ClientErrorType {
-			logger.DebugWithContext(ctx, "Client error from consent service when updating permission purpose",
+			logger.Debug(ctx, "Client error from consent service when updating permission purpose",
 				log.Any("error", updErr))
 			return nil, &ErrorConsentPurposeUpdateFailed
 		}
-		logger.ErrorWithContext(ctx, "Failed to update permission consent purpose", log.Any("error", updErr))
+		logger.Error(ctx, "Failed to update permission consent purpose", log.Any("error", updErr))
 		return nil, &serviceerror.InternalServerError
 	}
 	for i := range allPurposes {

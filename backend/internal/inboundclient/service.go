@@ -328,7 +328,7 @@ func (s *inboundClientService) resolveClientID(ctx context.Context, entityID str
 	}
 	e, epErr := s.entityProvider.GetEntity(entityID)
 	if epErr != nil {
-		s.logger.WarnWithContext(ctx, "Failed to resolve OAuth client_id from entity provider",
+		s.logger.Warn(ctx, "Failed to resolve OAuth client_id from entity provider",
 			log.String("entityID", entityID), log.Error(epErr))
 		return ""
 	}
@@ -1053,7 +1053,7 @@ func (s *inboundClientService) validateAllowedUserTypes(
 		entityTypeList, svcErr := s.entityType.GetEntityTypeList(
 			security.WithRuntimeContext(ctx), entitytype.TypeCategoryUser, limit, offset, false)
 		if svcErr != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to retrieve user type list for validation",
+			s.logger.Error(ctx, "Failed to retrieve user type list for validation",
 				log.String("error", svcErr.Error.DefaultValue), log.String("code", svcErr.Code))
 			return ErrUserSchemaLookupFailed
 		}
@@ -1400,7 +1400,7 @@ func (s *inboundClientService) syncConsentOnUpdate(ctx context.Context,
 		// is left alone — it has an independent lifecycle bound to the resource service.
 		if delErr := s.consentService.DeleteConsentPurpose(ctx, ouID, existing[0].ID); delErr != nil {
 			if delErr.Code == consent.ErrorDeletingConsentPurposeWithAssociatedRecords.Code {
-				s.logger.WarnWithContext(ctx, "Cannot delete attribute consent purpose due to existing consents",
+				s.logger.Warn(ctx, "Cannot delete attribute consent purpose due to existing consents",
 					log.String("entityID", entityID))
 				return nil
 			}
@@ -1454,7 +1454,7 @@ func (s *inboundClientService) syncConsentOnDelete(ctx context.Context, entityID
 	for _, p := range purposes {
 		if delErr := s.consentService.DeleteConsentPurpose(ctx, ouID, p.ID); delErr != nil {
 			if delErr.Code == consent.ErrorDeletingConsentPurposeWithAssociatedRecords.Code {
-				s.logger.WarnWithContext(ctx, "Cannot delete consent purpose due to existing consents",
+				s.logger.Warn(ctx, "Cannot delete consent purpose due to existing consents",
 					log.String("entityID", entityID), log.String("purposeID", p.ID),
 					log.String("purposeNamespace", string(p.Namespace)))
 				continue

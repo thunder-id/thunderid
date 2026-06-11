@@ -74,7 +74,7 @@ func NewCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 		case common.CustomPropKeyContentType:
 			client.contentType = strings.ToUpper(value)
 		default:
-			logger.WarnWithContext(ctx, "Unknown property for Custom client", log.String("property", prop.GetName()))
+			logger.Warn(ctx, "Unknown property for Custom client", log.String("property", prop.GetName()))
 		}
 	}
 	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
@@ -105,7 +105,7 @@ func (c *CustomClient) Send(ctx context.Context, channel common.ChannelType, dat
 // sendSMS sends an SMS via the custom webhook.
 func (c *CustomClient) sendSMS(ctx context.Context, data common.NotificationData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, customClientLoggerComponentName))
-	logger.DebugWithContext(ctx, "Sending SMS via custom client", log.MaskedString("to", data.Recipient))
+	logger.Debug(ctx, "Sending SMS via custom client", log.MaskedString("to", data.Recipient))
 
 	var req *http.Request
 	var err error
@@ -144,15 +144,15 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.NotificationData
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.ErrorWithContext(ctx, "Failed to close response body", log.Error(closeErr))
+			logger.Error(ctx, "Failed to close response body", log.Error(closeErr))
 		}
 	}()
 
-	logger.DebugWithContext(ctx, "Received response from custom provider", log.Int("statusCode", resp.StatusCode))
+	logger.Debug(ctx, "Received response from custom provider", log.Int("statusCode", resp.StatusCode))
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		logger.ErrorWithContext(ctx, "Failed to send SMS via custom client", log.Int("statusCode", resp.StatusCode),
+		logger.Error(ctx, "Failed to send SMS via custom client", log.Int("statusCode", resp.StatusCode),
 			log.String("response", string(bodyBytes)))
 		return fmt.Errorf("custom SMS send failed, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
 	}

@@ -117,7 +117,7 @@ func (h *cibaGrantHandler) HandleGrant(ctx context.Context, tokenRequest *model.
 	if now.After(record.ExpiryTime) {
 		if record.State != ciba.CIBAStateExpired && record.State != ciba.CIBAStateConsumed {
 			if updateErr := h.cibaService.UpdateState(ctx, record.AuthReqID, ciba.CIBAStateExpired); updateErr != nil {
-				logger.ErrorWithContext(ctx, "Failed to mark CIBA request as expired", log.Error(updateErr))
+				logger.Error(ctx, "Failed to mark CIBA request as expired", log.Error(updateErr))
 			}
 		}
 		return nil, &model.ErrorResponse{
@@ -156,7 +156,7 @@ func (h *cibaGrantHandler) handlePending(ctx context.Context, record *ciba.CIBAA
 		now.Sub(record.LastPolledAt) < time.Duration(constants.CIBADefaultIntervalSeconds)*time.Second
 
 	if updateErr := h.cibaService.UpdateLastPolled(ctx, record.AuthReqID, now); updateErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to update CIBA last polled time", log.Error(updateErr))
+		logger.Error(ctx, "Failed to update CIBA last polled time", log.Error(updateErr))
 	}
 
 	if tooFast {
@@ -186,7 +186,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 	if record.AttributeCacheID != "" {
 		cacheEntry, cacheErr := h.attributeCache.GetAttributeCache(ctx, record.AttributeCacheID)
 		if cacheErr != nil {
-			logger.ErrorWithContext(ctx, "Failed to get user attributes from attribute cache",
+			logger.Error(ctx, "Failed to get user attributes from attribute cache",
 				log.String("error", cacheErr.ErrorDescription.DefaultValue))
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
@@ -207,7 +207,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 		OAuthApp:         oauthApp,
 	})
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to generate access token", log.Error(err))
+		logger.Error(ctx, "Failed to generate access token", log.Error(err))
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
 			ErrorDescription: "Failed to generate token",
@@ -229,7 +229,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 			CompletedACR:   record.CompletedACR,
 		})
 		if idErr != nil {
-			logger.ErrorWithContext(ctx, "Failed to generate ID token", log.Error(idErr))
+			logger.Error(ctx, "Failed to generate ID token", log.Error(idErr))
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
 				ErrorDescription: "Failed to generate token",
@@ -242,7 +242,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, record *ciba.CIBAAut
 	// consumed it, reject this one with invalid_grant.
 	consumed, consumeErr := h.cibaService.MarkConsumed(ctx, record.AuthReqID)
 	if consumeErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to consume CIBA authentication request", log.Error(consumeErr))
+		logger.Error(ctx, "Failed to consume CIBA authentication request", log.Error(consumeErr))
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
 			ErrorDescription: "Failed to process token request",

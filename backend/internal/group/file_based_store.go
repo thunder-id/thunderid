@@ -75,7 +75,7 @@ func (f *fileBasedGroupStore) GetGroupList(ctx context.Context, limit, offset in
 	for _, item := range list {
 		grpData, err := groupFromDeclarativeData(item.ID.ID, item.Data)
 		if err != nil {
-			log.GetLogger().WarnWithContext(ctx, "Skipping malformed group in GetGroupList",
+			log.GetLogger().Warn(ctx, "Skipping malformed group in GetGroupList",
 				log.String("groupID", item.ID.ID),
 				log.Error(err))
 			continue
@@ -447,7 +447,7 @@ func (f *fileBasedGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []str
 		}
 		grpData, err := groupFromDeclarativeData(item.ID.ID, item.Data)
 		if err != nil {
-			log.GetLogger().WarnWithContext(ctx, "Skipping malformed group in GetGroupsByIDs",
+			log.GetLogger().Warn(ctx, "Skipping malformed group in GetGroupsByIDs",
 				log.String("groupID", item.ID.ID),
 				log.Error(err))
 			continue

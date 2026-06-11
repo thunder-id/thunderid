@@ -55,7 +55,7 @@ func (av *authorizationValidator) validateInitialAuthorizationRequest(ctx contex
 	}
 
 	if err := oauthApp.ValidateRedirectURI(ctx, redirectURI); err != nil {
-		logger.DebugWithContext(ctx, "Validation failed for redirect URI", log.Error(err))
+		logger.Debug(ctx, "Validation failed for redirect URI", log.Error(err))
 		return false, constants.ErrorInvalidRequest, "Invalid redirect URI"
 	}
 

@@ -114,7 +114,7 @@ func (e *layoutExporter) ValidateResource(ctx context.Context,
 	}
 
 	if len(layout.Layout) == 0 {
-		logger.WarnWithContext(ctx, "Layout has no layout configuration",
+		logger.Warn(ctx, "Layout has no layout configuration",
 			log.String("layoutID", id), log.String("displayName", layout.DisplayName))
 	}
 

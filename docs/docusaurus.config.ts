@@ -187,6 +187,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
                 replacements: {
                   '{{ConsoleUrl}}': productConfig.local.consoleUrl,
                   '{{WayFinderSampleUrl}}': productConfig.local.samples.wayfinderUrl,
+                  '{{WayFinderMailUrl}}': productConfig.local.samples.wayfinderMailUrl,
                 },
               },
             ],

@@ -63,7 +63,7 @@ func (eh *exportHandler) HandleExportRequest(w http.ResponseWriter, r *http.Requ
 	exportResponse, svcErr := eh.service.ExportResources(r.Context(), exportRequest)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ServerErrorType {
-			logger.ErrorWithContext(r.Context(), "Error exporting resources", log.Any("serviceError", svcErr))
+			logger.Error(r.Context(), "Error exporting resources", log.Any("serviceError", svcErr))
 		}
 		eh.handleError(r.Context(), w, svcErr)
 		return
@@ -116,7 +116,7 @@ func (eh *exportHandler) HandleExportZipRequest(w http.ResponseWriter, r *http.R
 	exportResponse, svcErr := eh.service.ExportResources(ctx, exportRequest)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ServerErrorType {
-			logger.ErrorWithContext(ctx, "Error exporting resources", log.Any("serviceError", svcErr))
+			logger.Error(ctx, "Error exporting resources", log.Any("serviceError", svcErr))
 		}
 		eh.handleError(ctx, w, svcErr)
 		return
@@ -124,7 +124,7 @@ func (eh *exportHandler) HandleExportZipRequest(w http.ResponseWriter, r *http.R
 
 	// Generate ZIP file and send response
 	if err := eh.generateAndSendZipResponse(ctx, w, logger, exportResponse); err != nil {
-		logger.ErrorWithContext(ctx, "Error generating ZIP response", log.Error(err))
+		logger.Error(ctx, "Error generating ZIP response", log.Error(err))
 		errResp := apierror.ErrorResponse{
 			Code:        serviceerror.InternalServerError.Code,
 			Message:     serviceerror.InternalServerError.Error,
@@ -152,12 +152,12 @@ func (eh *exportHandler) generateAndSendZipResponse(ctx context.Context,
 
 		fileWriter, err := zipWriter.Create(zipPath)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Error creating file in ZIP", log.String("zipPath", zipPath), log.Error(err))
+			logger.Error(ctx, "Error creating file in ZIP", log.String("zipPath", zipPath), log.Error(err))
 			return fmt.Errorf("failed to create file in ZIP: %w", err)
 		}
 
 		if _, err := fileWriter.Write([]byte(file.Content)); err != nil {
-			logger.ErrorWithContext(ctx, "Error writing file content to ZIP",
+			logger.Error(ctx, "Error writing file content to ZIP",
 				log.String("zipPath", zipPath), log.Error(err))
 			return fmt.Errorf("failed to write content to ZIP: %w", err)
 		}
@@ -166,14 +166,14 @@ func (eh *exportHandler) generateAndSendZipResponse(ctx context.Context,
 	if exportResponse.EnvFile != nil {
 		envWriter, err := zipWriter.Create(exportResponse.EnvFile.FileName)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Error creating env file in ZIP",
+			logger.Error(ctx, "Error creating env file in ZIP",
 				log.String("fileName", exportResponse.EnvFile.FileName),
 				log.Error(err))
 			return fmt.Errorf("failed to create env file in ZIP: %w", err)
 		}
 
 		if _, err = envWriter.Write([]byte(exportResponse.EnvFile.Content)); err != nil {
-			logger.ErrorWithContext(ctx, "Error writing env file content to ZIP",
+			logger.Error(ctx, "Error writing env file content to ZIP",
 				log.String("fileName", exportResponse.EnvFile.FileName),
 				log.Error(err))
 			return fmt.Errorf("failed to write env file content to ZIP: %w", err)
@@ -182,7 +182,7 @@ func (eh *exportHandler) generateAndSendZipResponse(ctx context.Context,
 
 	// Close the ZIP writer
 	if err := zipWriter.Close(); err != nil {
-		logger.ErrorWithContext(ctx, "Error closing ZIP writer", log.Error(err))
+		logger.Error(ctx, "Error closing ZIP writer", log.Error(err))
 		return fmt.Errorf("failed to close ZIP writer: %w", err)
 	}
 
@@ -194,7 +194,7 @@ func (eh *exportHandler) generateAndSendZipResponse(ctx context.Context,
 
 	// Write the ZIP content
 	if _, err := w.Write(zipBuffer.Bytes()); err != nil {
-		logger.ErrorWithContext(ctx, "Error writing ZIP response", log.Error(err))
+		logger.Error(ctx, "Error writing ZIP response", log.Error(err))
 		return fmt.Errorf("failed to write ZIP response: %w", err)
 	}
 

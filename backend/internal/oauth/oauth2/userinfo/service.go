@@ -95,13 +95,13 @@ func (s *userInfoService) GetUserInfo(
 
 	accessTokenClaims, err := s.tokenValidator.ValidateAccessToken(ctx, accessToken)
 	if err != nil {
-		s.logger.DebugWithContext(ctx, "Failed to verify access token", log.Error(err))
+		s.logger.Debug(ctx, "Failed to verify access token", log.Error(err))
 		return nil, &errorInvalidAccessToken
 	}
 
 	boundJkt, _ := dpop.ExtractCnfJkt(accessTokenClaims.Claims)
 	if boundJkt != "" {
-		s.logger.DebugWithContext(ctx, "DPoP-bound access token presented under Bearer scheme")
+		s.logger.Debug(ctx, "DPoP-bound access token presented under Bearer scheme")
 		return nil, &errorBearerDowngrade
 	}
 
@@ -120,18 +120,18 @@ func (s *userInfoService) GetUserInfoForDPoP(
 
 	accessTokenClaims, err := s.tokenValidator.ValidateAccessToken(ctx, accessToken)
 	if err != nil {
-		s.logger.DebugWithContext(ctx, "Failed to verify access token", log.Error(err))
+		s.logger.Debug(ctx, "Failed to verify access token", log.Error(err))
 		return nil, &errorInvalidAccessToken
 	}
 
 	expectedJkt, _ := dpop.ExtractCnfJkt(accessTokenClaims.Claims)
 	if expectedJkt == "" {
-		s.logger.DebugWithContext(ctx, "DPoP scheme used with non-bound access token")
+		s.logger.Debug(ctx, "DPoP scheme used with non-bound access token")
 		return nil, &errorDPoPProofInvalid
 	}
 
 	if s.dpopVerifier == nil {
-		s.logger.ErrorWithContext(ctx, "DPoP verifier not configured")
+		s.logger.Error(ctx, "DPoP verifier not configured")
 		return nil, &serviceerror.InternalServerError
 	}
 	if _, dpopErr := s.dpopVerifier.Verify(ctx, dpop.VerifyParams{
@@ -141,7 +141,7 @@ func (s *userInfoService) GetUserInfoForDPoP(
 		AccessToken: accessToken,
 		ExpectedJkt: expectedJkt,
 	}); dpopErr != nil {
-		s.logger.DebugWithContext(ctx, "DPoP proof verification failed", log.Error(dpopErr))
+		s.logger.Debug(ctx, "DPoP proof verification failed", log.Error(dpopErr))
 		return nil, &errorDPoPProofInvalid
 	}
 
@@ -182,7 +182,7 @@ func (s *userInfoService) buildResponseFromClaims(
 	userAttributes, err := tokenservice.FetchUserAttributes(ctx, s.attributeCacheSvc,
 		allowedUserAttributes, attributeCacheID)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to fetch user attributes",
+		s.logger.Error(ctx, "Failed to fetch user attributes",
 			log.MaskedString(log.LoggerKeyUserID, sub), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -230,7 +230,7 @@ func (s *userInfoService) generateJWEUserInfo(
 
 	payload, err := json.Marshal(response)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to marshal userinfo claims for JWE")
+		s.logger.Error(ctx, "Failed to marshal userinfo claims for JWE")
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -242,7 +242,7 @@ func (s *userInfoService) generateJWEUserInfo(
 		rpKID,
 	)
 	if svcErr != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to encrypt userinfo JWE")
+		s.logger.Error(ctx, "Failed to encrypt userinfo JWE")
 		return nil, svcErr
 	}
 
@@ -277,7 +277,7 @@ func (s *userInfoService) generateNestedJWTUserInfo(
 		rpKID,
 	)
 	if svcErr != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to encrypt nested JWT userinfo JWE")
+		s.logger.Error(ctx, "Failed to encrypt nested JWT userinfo JWE")
 		return nil, svcErr
 	}
 
@@ -320,10 +320,10 @@ func (s *userInfoService) generateJWSUserInfo(
 	)
 	if err != nil {
 		if err.Code == jwt.ErrorUnsupportedJWSAlgorithm.Code {
-			s.logger.ErrorWithContext(ctx, "UserInfo signing algorithm is not supported by the server key",
+			s.logger.Error(ctx, "UserInfo signing algorithm is not supported by the server key",
 				log.String("alg", signingAlg), log.String("error", err.Error.DefaultValue))
 		} else {
-			s.logger.ErrorWithContext(ctx, "Failed to generate signed UserInfo JWT",
+			s.logger.Error(ctx, "Failed to generate signed UserInfo JWT",
 				log.String("error", err.Error.DefaultValue))
 		}
 		return nil, &serviceerror.InternalServerError
@@ -349,7 +349,7 @@ func (s *userInfoService) validateGrantType(
 	}
 
 	if constants.GrantType(grantTypeString) == constants.GrantTypeClientCredentials {
-		s.logger.DebugWithContext(ctx, "UserInfo endpoint called with client_credentials grant token",
+		s.logger.Debug(ctx, "UserInfo endpoint called with client_credentials grant token",
 			log.String("grant_type", grantTypeString))
 		return &errorClientCredentialsNotSupported
 	}
@@ -375,7 +375,7 @@ func (s *userInfoService) extractScopes(claims map[string]interface{}) []string 
 // validateOpenIDScope validates that the access token contains the required 'openid' scope.
 func (s *userInfoService) validateOpenIDScope(ctx context.Context, scopes []string) *serviceerror.ServiceError {
 	if !slices.Contains(scopes, constants.ScopeOpenID) {
-		s.logger.DebugWithContext(ctx, "UserInfo request missing required 'openid' scope",
+		s.logger.Debug(ctx, "UserInfo request missing required 'openid' scope",
 			log.String("scopes", tokenservice.JoinScopes(scopes)))
 		return &errorInsufficientScope
 	}
@@ -459,7 +459,7 @@ func (s *userInfoService) extractClaimsRequest(ctx context.Context,
 
 	claimsRequest, err := oauth2utils.ParseClaimsRequest(claimsRequestStr)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to parse claims request from access token", log.Error(err))
+		s.logger.Error(ctx, "Failed to parse claims request from access token", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 

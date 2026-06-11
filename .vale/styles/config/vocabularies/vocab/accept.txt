@@ -192,3 +192,4 @@ rp_id
 EUDI
 [Vv]erifiable
 [Kk]rakenD
+[Gg]oroutines?

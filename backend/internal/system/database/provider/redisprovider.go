@@ -83,15 +83,15 @@ func initRedisProvider() {
 
 		if err := client.Ping(context.Background()).Err(); err != nil {
 			if closeErr := client.Close(); closeErr != nil {
-				logger.FatalWithContext(context.Background(),
+				logger.Fatal(context.Background(),
 					"Failed to connect to Redis runtime store; also failed to close client",
 					log.Error(err), log.String("closeError", closeErr.Error()))
 			}
-			logger.FatalWithContext(context.Background(), "Failed to connect to Redis runtime store", log.Error(err))
+			logger.Fatal(context.Background(), "Failed to connect to Redis runtime store", log.Error(err))
 		}
 
 		// Redis client is initialized at startup, outside any request.
-		logger.InfoWithContext(context.Background(), "Connected to Redis runtime store",
+		logger.Info(context.Background(), "Connected to Redis runtime store",
 			log.String("address", r.Address))
 		redisInstance = &redisProvider{
 			client:    client,

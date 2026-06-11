@@ -151,7 +151,7 @@ func (s *entityTypeStore) GetEntityTypeList(ctx context.Context, category TypeCa
 	for _, row := range results {
 		entityType, err := parseEntityTypeListItemFromRow(row)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to parse entity type list item from row", log.Error(err))
+			logger.Error(ctx, "Failed to parse entity type list item from row", log.Error(err))
 			continue
 		}
 		entityTypes = append(entityTypes, entityType)
@@ -190,7 +190,7 @@ func (s *entityTypeStore) GetEntityTypeListByOUIDs(ctx context.Context, category
 	for _, row := range results {
 		entityType, err := parseEntityTypeListItemFromRow(row)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to parse entity type list item from row", log.Error(err))
+			logger.Error(ctx, "Failed to parse entity type list item from row", log.Error(err))
 			continue
 		}
 		entityTypes = append(entityTypes, entityType)
@@ -355,7 +355,7 @@ func (s *entityTypeStore) DeleteEntityTypeByID(ctx context.Context, category Typ
 	}
 
 	if rowsAffected == 0 {
-		logger.DebugWithContext(ctx, "entity type not found with id: "+schemaID)
+		logger.Debug(ctx, "entity type not found with id: "+schemaID)
 	}
 
 	return nil
@@ -396,13 +396,13 @@ func (s *entityTypeStore) GetDisplayAttributesByNames(ctx context.Context, categ
 	for _, row := range results {
 		name, ok := row["name"].(string)
 		if !ok {
-			logger.ErrorWithContext(ctx, "Failed to parse name from display attributes query")
+			logger.Error(ctx, "Failed to parse name from display attributes query")
 			continue
 		}
 
 		sysAttrs, err := parseSystemAttributes(row["system_attributes"])
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to parse system attributes",
+			logger.Error(ctx, "Failed to parse system attributes",
 				log.String("schemaName", name), log.Error(err))
 			continue
 		}

@@ -86,10 +86,10 @@ func newTaskExecutionNode(id string, properties map[string]interface{}, isStartN
 // Execute executes the node's executor.
 func (n *taskExecutionNode) Execute(ctx *NodeContext) (*common.NodeResponse, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Executing task execution node")
+	logger.Debug(ctx.Context, "Executing task execution node")
 
 	if n.executor == nil {
-		logger.ErrorWithContext(ctx.Context, "No executor configured for the node")
+		logger.Error(ctx.Context, "No executor configured for the node")
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -158,7 +158,7 @@ func (n *taskExecutionNode) Execute(ctx *NodeContext) (*common.NodeResponse, *se
 		len(nodeResp.Inputs) == 0 {
 		// Executor returned INCOMPLETE+VIEW with no inputs — broken executor implementation.
 		// There is nothing for the client to act on; surface as a server error.
-		logger.ErrorWithContext(ctx.Context, "Executor returned INCOMPLETE with VIEW type but no inputs")
+		logger.Error(ctx.Context, "Executor returned INCOMPLETE with VIEW type but no inputs")
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -190,11 +190,11 @@ func (n *taskExecutionNode) triggerExecutor(ctx *NodeContext, logger *log.Logger
 	*common.ExecutorResponse, *serviceerror.ServiceError) {
 	execResp, err := n.executor.Execute(ctx)
 	if err != nil {
-		logger.ErrorWithContext(ctx.Context, "Error executing node executor", log.Error(err))
+		logger.Error(ctx.Context, "Error executing node executor", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	if execResp == nil {
-		logger.ErrorWithContext(ctx.Context, "Executor returned a nil response")
+		logger.Error(ctx.Context, "Executor returned a nil response")
 		return nil, &serviceerror.InternalServerError
 	}
 

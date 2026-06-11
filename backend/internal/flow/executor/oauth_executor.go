@@ -122,7 +122,7 @@ func newOAuthExecutor(
 //nolint:dupl // OAuth and OIDC executors share the same execute skeleton with type-specific behavior.
 func (o *oAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Executing OAuth authentication executor")
+	logger.Debug(ctx.Context, "Executing OAuth authentication executor")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -130,7 +130,7 @@ func (o *oAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse
 	}
 
 	if !o.HasRequiredInputs(ctx, execResp) {
-		logger.DebugWithContext(ctx.Context, "Required inputs for OAuth authentication executor is not provided")
+		logger.Debug(ctx.Context, "Required inputs for OAuth authentication executor is not provided")
 		err := o.BuildAuthorizeFlow(ctx, execResp)
 		if err != nil {
 			return nil, err
@@ -142,7 +142,7 @@ func (o *oAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse
 		}
 	}
 
-	logger.DebugWithContext(ctx.Context, "OAuth authentication executor execution completed",
+	logger.Debug(ctx.Context, "OAuth authentication executor execution completed",
 		log.String("status", string(execResp.Status)),
 		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
 
@@ -152,7 +152,7 @@ func (o *oAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse
 // BuildAuthorizeFlow constructs the redirection to the external OAuth provider for user authentication.
 func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *core.NodeContext, execResp *common.ExecutorResponse) error {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Initiating OAuth authentication flow")
+	logger.Debug(ctx.Context, "Initiating OAuth authentication flow")
 
 	idpID, err := o.GetIdpID(ctx)
 	if err != nil {
@@ -167,7 +167,7 @@ func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *core.NodeContext, execResp *comm
 			return nil
 		}
 
-		logger.ErrorWithContext(ctx.Context, "Failed to build authorize URL", log.String("errorCode", svcErr.Code),
+		logger.Error(ctx.Context, "Failed to build authorize URL", log.String("errorCode", svcErr.Code),
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 		return errors.New("failed to build authorize URL")
 	}
@@ -200,7 +200,7 @@ func (o *oAuthExecutor) BuildAuthorizeFlow(ctx *core.NodeContext, execResp *comm
 func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	execResp *common.ExecutorResponse) error {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Processing OAuth authentication response")
+	logger.Debug(ctx.Context, "Processing OAuth authentication response")
 
 	code, ok := ctx.UserInputs[userInputCode]
 	if !ok || code == "" {
@@ -216,7 +216,7 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	if returnedState, ok := ctx.UserInputs[userInputState]; ok && returnedState != "" {
 		expectedState := ctx.RuntimeData[common.RuntimeKeyOAuthState]
 		if returnedState != expectedState {
-			logger.DebugWithContext(ctx.Context, "OAuth state mismatch")
+			logger.Debug(ctx.Context, "OAuth state mismatch")
 			execResp.Status = common.ExecFailure
 			execResp.Error = &ErrInvalidOAuthState
 			return nil
@@ -245,13 +245,13 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 			return nil
 		}
 
-		logger.ErrorWithContext(ctx.Context, "Federated authentication failed", log.String("errorCode", svcErr.Code),
+		logger.Error(ctx.Context, "Federated authentication failed", log.String("errorCode", svcErr.Code),
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 		return errors.New("federated authentication failed")
 	}
 
 	if basicResult == nil {
-		logger.ErrorWithContext(ctx.Context, "authnProvider.AuthenticateUser returned nil result")
+		logger.Error(ctx.Context, "authnProvider.AuthenticateUser returned nil result")
 		return errors.New("OAuth authentication failed")
 	}
 
@@ -287,7 +287,7 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return nil
 	}
 	if contextUser == nil {
-		logger.ErrorWithContext(ctx.Context, "Failed to resolve context user after OAuth authentication")
+		logger.Error(ctx.Context, "Failed to resolve context user after OAuth authentication")
 		return errors.New("unexpected error occurred while resolving user")
 	}
 
@@ -324,7 +324,7 @@ func (o *oAuthExecutor) GetIdpID(ctx *core.NodeContext) (string, error) {
 // getIDPName retrieves the name of the identity provider using its ID.
 func (o *oAuthExecutor) getIDPName(ctx context.Context, idpID string) (string, error) {
 	logger := o.logger
-	logger.DebugWithContext(ctx, "Retrieving IDP name for the given IDP ID")
+	logger.Debug(ctx, "Retrieving IDP name for the given IDP ID")
 
 	idp, svcErr := o.idpService.GetIdentityProvider(ctx, idpID)
 	if svcErr != nil {
@@ -332,7 +332,7 @@ func (o *oAuthExecutor) getIDPName(ctx context.Context, idpID string) (string, e
 			return "", fmt.Errorf("failed to get identity provider: %s", svcErr.ErrorDescription.DefaultValue)
 		}
 
-		logger.ErrorWithContext(ctx, "Error while retrieving identity provider", log.String("errorCode", svcErr.Code),
+		logger.Error(ctx, "Error while retrieving identity provider", log.String("errorCode", svcErr.Code),
 			log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 		return "", errors.New("error while retrieving identity provider")
 	}
@@ -367,7 +367,7 @@ func (o *oAuthExecutor) getContextUserForAuthentication(ctx *core.NodeContext,
 				// Ambiguous user: exists in multiple OUs. Set sub for downstream
 				// disambiguation but do NOT mark as eligible for provisioning since
 				// the user already exists.
-				logger.DebugWithContext(ctx.Context, "Ambiguous user detected, deferring to flow for disambiguation")
+				logger.Debug(ctx.Context, "Ambiguous user detected, deferring to flow for disambiguation")
 				execResp.Status = common.ExecComplete
 				execResp.Error = nil
 				execResp.RuntimeData[userAttributeSub] = sub
@@ -378,7 +378,7 @@ func (o *oAuthExecutor) getContextUserForAuthentication(ctx *core.NodeContext,
 			}
 
 			// Genuinely new user: no local account exists
-			logger.DebugWithContext(ctx.Context, "User not found, but authentication is allowed without a local user")
+			logger.Debug(ctx.Context, "User not found, but authentication is allowed without a local user")
 
 			err := o.resolveUserTypeForAutoProvisioning(ctx, execResp)
 			if err != nil {
@@ -430,7 +430,7 @@ func (o *oAuthExecutor) getContextUserForRegistration(ctx *core.NodeContext,
 		// OU when cross-OU provisioning is explicitly allowed. The ProvisioningExecutor enforces
 		// the same-OU duplicate guard, so we don't need to fail here.
 		if isRegistrationWithExistingUserAllowed(ctx) && isCrossOUProvisioningAllowed(ctx) {
-			logger.DebugWithContext(ctx.Context,
+			logger.Debug(ctx.Context,
 				"Ambiguous user detected, proceeding with cross-OU provisioning eligibility")
 			execResp.Status = common.ExecComplete
 			execResp.Error = nil
@@ -441,7 +441,7 @@ func (o *oAuthExecutor) getContextUserForRegistration(ctx *core.NodeContext,
 			}, nil
 		}
 
-		logger.DebugWithContext(ctx.Context,
+		logger.Debug(ctx.Context,
 			"Ambiguous user detected in registration flow, cannot proceed with registration")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrAmbiguousUserIdentity
@@ -450,7 +450,7 @@ func (o *oAuthExecutor) getContextUserForRegistration(ctx *core.NodeContext,
 
 	// If no local user is found, proceed with registration
 	if internalUser == nil {
-		logger.DebugWithContext(ctx.Context,
+		logger.Debug(ctx.Context,
 			"User not found for the provided sub claim. Proceeding with registration flow.")
 		execResp.Status = common.ExecComplete
 		execResp.Error = nil
@@ -468,7 +468,7 @@ func (o *oAuthExecutor) getContextUserForRegistration(ctx *core.NodeContext,
 			// the target OU. The same-OU duplicate guard is enforced by the ProvisioningExecutor
 			// itself, which has access to the target OU context. We intentionally do not set
 			// RuntimeKeySkipProvisioning here because we want provisioning to run.
-			logger.DebugWithContext(ctx.Context,
+			logger.Debug(ctx.Context,
 				"User already exists, proceeding with cross-OU provisioning to target OU")
 			execResp.Status = common.ExecComplete
 			execResp.Error = nil
@@ -479,7 +479,7 @@ func (o *oAuthExecutor) getContextUserForRegistration(ctx *core.NodeContext,
 			}, nil
 		}
 
-		logger.DebugWithContext(ctx.Context, "User already exists, but registration flow is allowed to continue")
+		logger.Debug(ctx.Context, "User already exists, but registration flow is allowed to continue")
 		execResp.Status = common.ExecComplete
 		execResp.Error = nil
 		execResp.RuntimeData[common.RuntimeKeySkipProvisioning] = dataValueTrue
@@ -502,10 +502,10 @@ func (o *oAuthExecutor) getContextUserForRegistration(ctx *core.NodeContext,
 func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext,
 	execResp *common.ExecutorResponse) error {
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Resolving user type for automatic provisioning")
+	logger.Debug(ctx.Context, "Resolving user type for automatic provisioning")
 
 	if len(ctx.Application.AllowedUserTypes) == 0 {
-		logger.DebugWithContext(ctx.Context, "No allowed user types configured for the application")
+		logger.Debug(ctx.Context, "No allowed user types configured for the application")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrCannotProvisionAutomatically
 		return nil
@@ -523,7 +523,7 @@ func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext
 				return nil
 			}
 
-			logger.ErrorWithContext(ctx.Context, "Error while retrieving user type",
+			logger.Error(ctx.Context, "Error while retrieving user type",
 				log.String("errorCode", svcErr.Code),
 				log.String("description", svcErr.ErrorDescription.DefaultValue))
 			return errors.New("error while retrieving user type")
@@ -535,7 +535,7 @@ func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext
 
 	// Fail if no user types have self-registration enabled
 	if len(selfRegEnabledSchemas) == 0 {
-		logger.DebugWithContext(ctx.Context,
+		logger.Debug(ctx.Context,
 			"No user types with self-registration enabled, cannot provision automatically")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrSelfRegistrationDisabled
@@ -544,7 +544,7 @@ func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext
 
 	// Fail if multiple user types have self-registration enabled
 	if len(selfRegEnabledSchemas) > 1 {
-		logger.DebugWithContext(ctx.Context,
+		logger.Debug(ctx.Context,
 			"Multiple user types with self-registration enabled, cannot resolve user type automatically")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrCannotProvisionAutomatically

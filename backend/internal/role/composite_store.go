@@ -276,7 +276,7 @@ func (c *compositeRoleStore) getCompositeAssignmentsCount(
 
 	count := len(assignments)
 	if count > serverconst.MaxCompositeStoreRecords*9/10 {
-		log.GetLogger().WarnWithContext(ctx,
+		log.GetLogger().Warn(ctx,
 			"Role assignment count approaches composite store limit; consider API pagination",
 			log.String("id", id),
 			log.Int("count", count),
@@ -422,7 +422,7 @@ func (c *compositeRoleStore) crossStoreAuthorizedPermissions(
 			if errors.Is(err, ErrRoleNotFound) || errors.Is(err, ErrRoleDataCorrupted) {
 				continue
 			}
-			log.GetLogger().ErrorWithContext(ctx,
+			log.GetLogger().Error(ctx,
 				"Failed to load declarative role for cross-store permission resolution",
 				log.String("roleID", id), log.Error(err))
 			return nil, fmt.Errorf("composite role store: load declarative role %q: %w", id, err)

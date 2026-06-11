@@ -1058,7 +1058,7 @@ function Package-Wayfinder-Sample {
 
     $dist_folder = Join-Path $DIST_DIR $WAYFINDER_SAMPLE_APP_FOLDER
 
-    foreach ($dir in @("frontend", "backend", "ai-agent")) {
+    foreach ($dir in @("frontend", "backend", "smtp-server", "ai-agent")) {
         $envExample = Join-Path $dist_folder "$dir/.env.example"
         if (Test-Path $envExample) {
             Copy-Item -Path $envExample -Destination (Join-Path $dist_folder "$dir/.env") -Force

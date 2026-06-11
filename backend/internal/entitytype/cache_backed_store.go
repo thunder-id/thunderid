@@ -207,7 +207,7 @@ func (s *cachedBackedEntityTypeStore) cacheEntityType(ctx context.Context, schem
 	if schema.ID != "" {
 		key := cacheKeyForID(schema.Category, schema.ID)
 		if err := s.schemaByIDCache.Set(ctx, key, schema); err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to cache entity type by ID",
+			s.logger.Error(ctx, "Failed to cache entity type by ID",
 				log.String("schemaID", schema.ID), log.Error(err))
 		}
 	}
@@ -215,7 +215,7 @@ func (s *cachedBackedEntityTypeStore) cacheEntityType(ctx context.Context, schem
 	if schema.Name != "" {
 		key := cacheKeyForName(schema.Category, schema.Name)
 		if err := s.schemaByNameCache.Set(ctx, key, schema); err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to cache entity type by name",
+			s.logger.Error(ctx, "Failed to cache entity type by name",
 				log.String("schemaName", schema.Name), log.Error(err))
 		}
 	}
@@ -227,7 +227,7 @@ func (s *cachedBackedEntityTypeStore) invalidateEntityTypeCache(ctx context.Cont
 	if schemaID != "" {
 		key := cacheKeyForID(category, schemaID)
 		if err := s.schemaByIDCache.Delete(ctx, key); err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to invalidate entity type cache by ID",
+			s.logger.Error(ctx, "Failed to invalidate entity type cache by ID",
 				log.String("schemaID", schemaID), log.Error(err))
 		}
 	}
@@ -235,7 +235,7 @@ func (s *cachedBackedEntityTypeStore) invalidateEntityTypeCache(ctx context.Cont
 	if schemaName != "" {
 		key := cacheKeyForName(category, schemaName)
 		if err := s.schemaByNameCache.Delete(ctx, key); err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to invalidate entity type cache by name",
+			s.logger.Error(ctx, "Failed to invalidate entity type cache by name",
 				log.String("schemaName", schemaName), log.Error(err))
 		}
 	}

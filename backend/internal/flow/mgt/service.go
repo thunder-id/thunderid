@@ -121,7 +121,7 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 
 	flows, totalCount, err := s.store.ListFlows(ctx, limit, offset, string(flowType))
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to list flows", log.Error(err))
+		s.logger.Error(ctx, "Failed to list flows", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -147,7 +147,7 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 	if flowID == "" {
 		generated, genErr := utils.GenerateUUIDv7()
 		if genErr != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to generate UUID v7", log.Error(genErr))
+			s.logger.Error(ctx, "Failed to generate UUID v7", log.Error(genErr))
 			return nil, &serviceerror.InternalServerError
 		}
 		flowID = generated
@@ -184,11 +184,11 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 		if errors.Is(txErr, errFlowHandleExists) {
 			return nil, &ErrorDuplicateFlowHandle
 		}
-		s.logger.ErrorWithContext(ctx, "Failed to create flow", log.Error(txErr))
+		s.logger.Error(ctx, "Failed to create flow", log.Error(txErr))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	s.logger.DebugWithContext(ctx, "Flow created successfully", log.String(logKeyFlowID, flowID))
+	s.logger.Debug(ctx, "Flow created successfully", log.String(logKeyFlowID, flowID))
 
 	s.tryInferRegistrationFlow(ctx, flowID, flowDef)
 
@@ -207,7 +207,7 @@ func (s *flowMgtService) GetFlow(ctx context.Context, flowID string) (
 		if errors.Is(err, errFlowNotFound) {
 			return nil, &ErrorFlowNotFound
 		}
-		s.logger.ErrorWithContext(ctx, "Failed to get flow", log.String(logKeyFlowID, flowID), log.Error(err))
+		s.logger.Error(ctx, "Failed to get flow", log.String(logKeyFlowID, flowID), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -229,7 +229,7 @@ func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flo
 		if errors.Is(err, errFlowNotFound) {
 			return nil, &ErrorFlowNotFound
 		}
-		s.logger.ErrorWithContext(ctx, "Failed to get flow by handle", log.String("handle", handle),
+		s.logger.Error(ctx, "Failed to get flow by handle", log.String("handle", handle),
 			log.String("flowType", string(flowType)), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -286,11 +286,11 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 		if errors.Is(txErr, errFlowNotFound) {
 			return nil, &ErrorFlowNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to update flow", log.Error(txErr))
+		logger.Error(ctx, "Failed to update flow", log.Error(txErr))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Flow updated successfully")
+	logger.Debug(ctx, "Flow updated successfully")
 
 	// Invalidate the cached graph since the flow has been updated
 	s.graphBuilder.InvalidateCache(ctx, flowID)
@@ -312,7 +312,7 @@ func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *service
 			// Silently return if the flow does not exist
 			return nil
 		}
-		logger.ErrorWithContext(ctx, "Failed to get existing flow", log.Error(err))
+		logger.Error(ctx, "Failed to get existing flow", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 
@@ -322,11 +322,11 @@ func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *service
 
 	err = s.store.DeleteFlow(ctx, flowID)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to delete flow", log.Error(err))
+		logger.Error(ctx, "Failed to delete flow", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Flow deleted successfully")
+	logger.Debug(ctx, "Flow deleted successfully")
 
 	// Invalidate the cached graph since the flow has been deleted
 	s.graphBuilder.InvalidateCache(ctx, flowID)
@@ -350,13 +350,13 @@ func (s *flowMgtService) ListFlowVersions(ctx context.Context, flowID string) (
 		if errors.Is(err, errFlowNotFound) {
 			return nil, &ErrorFlowNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to get existing flow", log.Error(err))
+		logger.Error(ctx, "Failed to get existing flow", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	versions, err := s.store.ListFlowVersions(ctx, flowID)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to list flow versions", log.Error(err))
+		logger.Error(ctx, "Failed to list flow versions", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -386,7 +386,7 @@ func (s *flowMgtService) GetFlowVersion(ctx context.Context, flowID string, vers
 		if errors.Is(err, errVersionNotFound) {
 			return nil, &ErrorVersionNotFound
 		}
-		s.logger.ErrorWithContext(ctx, "Failed to get flow version", log.String(logKeyFlowID, flowID),
+		s.logger.Error(ctx, "Failed to get flow version", log.String(logKeyFlowID, flowID),
 			log.Int(logKeyVersion, version), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -424,11 +424,11 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 		if errors.Is(txErr, errVersionNotFound) {
 			return nil, &ErrorVersionNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to restore flow version", log.Error(txErr))
+		logger.Error(ctx, "Failed to restore flow version", log.Error(txErr))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Flow version restored successfully")
+	logger.Debug(ctx, "Flow version restored successfully")
 
 	// Invalidate the cached graph since a version has been restored
 	s.graphBuilder.InvalidateCache(ctx, flowID)
@@ -451,7 +451,7 @@ func (s *flowMgtService) GetGraph(ctx context.Context, flowID string) (
 		if errors.Is(err, errFlowNotFound) {
 			return nil, &ErrorFlowNotFound
 		}
-		s.logger.ErrorWithContext(ctx, "Failed to get flow for graph building", log.String(logKeyFlowID, flowID),
+		s.logger.Error(ctx, "Failed to get flow for graph building", log.String(logKeyFlowID, flowID),
 			log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
@@ -581,12 +581,12 @@ func (s *flowMgtService) tryInferRegistrationFlow(ctx context.Context, authFlowI
 	logger := s.logger.With(log.String("authFlowID", authFlowID))
 
 	if !config.GetServerRuntime().Config.Flow.AutoInferRegistration {
-		logger.DebugWithContext(ctx, "Automatic registration flow inference is disabled")
+		logger.Debug(ctx, "Automatic registration flow inference is disabled")
 		return
 	}
 
 	if authFlowDef.FlowType != common.FlowTypeAuthentication {
-		logger.DebugWithContext(ctx, "Flow is not an authentication flow, skipping registration inference",
+		logger.Debug(ctx, "Flow is not an authentication flow, skipping registration inference",
 			log.String("flowType", string(authFlowDef.FlowType)))
 		return
 	}
@@ -594,33 +594,33 @@ func (s *flowMgtService) tryInferRegistrationFlow(ctx context.Context, authFlowI
 	// Check if auth flow already contains PasskeyAuthExecutor with registration modes
 	// If so, skip registration flow inference as the auth flow handles registration internally
 	if s.hasPasskeyRegistrationModes(authFlowDef) {
-		logger.DebugWithContext(ctx, "Authentication flow contains PasskeyAuthExecutor with "+
+		logger.Debug(ctx, "Authentication flow contains PasskeyAuthExecutor with "+
 			"register_start and register_finish modes, skipping registration inference")
 		return
 	}
 
-	logger.DebugWithContext(ctx, "Inferring registration flow from authentication flow",
+	logger.Debug(ctx, "Inferring registration flow from authentication flow",
 		log.String("flowName", authFlowDef.Name))
 
 	regFlowDef, inferErr := s.inferenceService.InferRegistrationFlow(ctx, authFlowDef)
 	if inferErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to infer registration flow", log.Error(inferErr))
+		logger.Error(ctx, "Failed to infer registration flow", log.Error(inferErr))
 		return
 	}
 
 	regFlowID, uuidErr := utils.GenerateUUIDv7()
 	if uuidErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to generate UUID for inferred registration flow", log.Error(uuidErr))
+		logger.Error(ctx, "Failed to generate UUID for inferred registration flow", log.Error(uuidErr))
 		return
 	}
 
 	_, storeErr := s.store.CreateFlow(ctx, regFlowID, regFlowDef)
 	if storeErr != nil {
-		logger.ErrorWithContext(ctx, "Failed to create inferred registration flow", log.Error(storeErr))
+		logger.Error(ctx, "Failed to create inferred registration flow", log.Error(storeErr))
 		return
 	}
 
-	logger.DebugWithContext(ctx, "Successfully inferred and created registration flow",
+	logger.Debug(ctx, "Successfully inferred and created registration flow",
 		log.String("authFlowName", authFlowDef.Name), log.String("regFlowID", regFlowID),
 		log.String("regFlowName", regFlowDef.Name))
 }

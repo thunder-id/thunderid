@@ -59,7 +59,7 @@ func newJWKSService(cryptoProvider kmprovider.RuntimeCryptoProvider) JWKSService
 func (s *jwksService) GetJWKS(ctx context.Context) (*JWKSResponse, *serviceerror.ServiceError) {
 	publicKeys, err := s.cryptoProvider.GetPublicKeys(ctx, kmprovider.PublicKeyFilter{})
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to retrieve public keys", log.Error(err))
+		s.logger.Error(ctx, "Failed to retrieve public keys", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -89,7 +89,7 @@ func (s *jwksService) GetJWKS(ctx context.Context) (*JWKSResponse, *serviceerror
 		case ed25519.PublicKey:
 			jwksKeys = append(jwksKeys, getEdDSAPublicKeyJWKS(pub, kid, x5c, x5t, x5tS256))
 		default:
-			s.logger.DebugWithContext(ctx, "Unsupported public key type for JWKS", log.String("keyID", keyInfo.KeyID))
+			s.logger.Debug(ctx, "Unsupported public key type for JWKS", log.String("keyID", keyInfo.KeyID))
 			continue
 		}
 	}

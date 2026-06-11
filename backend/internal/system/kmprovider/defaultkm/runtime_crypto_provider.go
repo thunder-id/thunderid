@@ -160,7 +160,7 @@ func (s *runtimeCryptoService) GetPublicKeys(
 			case "P-521":
 				alg = cryptolib.AlgorithmES512
 			default:
-				s.logger.WarnWithContext(ctx, "Unsupported EC curve; skipping",
+				s.logger.Warn(ctx, "Unsupported EC curve; skipping",
 					log.String("keyID", id),
 					log.String("curve", pub.Curve.Params().Name))
 				continue
@@ -168,7 +168,7 @@ func (s *runtimeCryptoService) GetPublicKeys(
 		case ed25519.PublicKey:
 			alg = cryptolib.AlgorithmEdDSA
 		default:
-			s.logger.DebugWithContext(ctx, "Unsupported public key type; skipping", log.String("keyID", id))
+			s.logger.Debug(ctx, "Unsupported public key type; skipping", log.String("keyID", id))
 			continue
 		}
 

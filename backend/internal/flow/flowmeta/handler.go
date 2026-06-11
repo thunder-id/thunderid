@@ -87,7 +87,7 @@ func (h *flowMetaHandler) HandleGetFlowMetadata(w http.ResponseWriter, r *http.R
 
 	// Return success response
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusOK, metadata)
-	h.logger.DebugWithContext(r.Context(), "Flow metadata retrieved successfully",
+	h.logger.Debug(r.Context(), "Flow metadata retrieved successfully",
 		log.String("type", metaType),
 		log.String("id", id))
 }

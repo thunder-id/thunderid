@@ -116,7 +116,7 @@ func newPKIService() (PKIServiceInterface, error) {
 func (s *pkiService) GetPrivateKey(ctx context.Context, id string) (crypto.PrivateKey, *serviceerror.ServiceError) {
 	cert, exists := s.certificates[id]
 	if !exists || cert.PrivateKey == nil {
-		s.logger.ErrorWithContext(ctx, "Private key not found for certificate ID: "+id)
+		s.logger.Error(ctx, "Private key not found for certificate ID: "+id)
 		return nil, &serviceerror.InternalServerError
 	}
 	return cert.PrivateKey, nil
@@ -145,16 +145,16 @@ func (s *pkiService) GetX509Certificate(
 	ctx context.Context, id string) (*x509.Certificate, *serviceerror.ServiceError) {
 	cert, exists := s.certificates[id]
 	if !exists {
-		s.logger.ErrorWithContext(ctx, "Certificate not found for certificate ID: "+id)
+		s.logger.Error(ctx, "Certificate not found for certificate ID: "+id)
 		return nil, &serviceerror.InternalServerError
 	}
 	if len(cert.Certificate.Certificate) == 0 {
-		s.logger.ErrorWithContext(ctx, "Certificate data is empty for certificate ID: "+id)
+		s.logger.Error(ctx, "Certificate data is empty for certificate ID: "+id)
 		return nil, &serviceerror.InternalServerError
 	}
 	parsedCert, err := x509.ParseCertificate(cert.Certificate.Certificate[0])
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to parse x509 certificate for ID: "+id+" Error: "+err.Error())
+		s.logger.Error(ctx, "Failed to parse x509 certificate for ID: "+id+" Error: "+err.Error())
 		return nil, &serviceerror.InternalServerError
 	}
 	return parsedCert, nil
@@ -166,12 +166,12 @@ func (s *pkiService) GetAllX509Certificates(
 	result := make(map[string]*x509.Certificate)
 	for id, cert := range s.certificates {
 		if len(cert.Certificate.Certificate) == 0 {
-			s.logger.ErrorWithContext(ctx, "Certificate data is empty for certificate ID: "+id)
+			s.logger.Error(ctx, "Certificate data is empty for certificate ID: "+id)
 			return nil, &serviceerror.InternalServerError
 		}
 		parsedCert, err := x509.ParseCertificate(cert.Certificate.Certificate[0])
 		if err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to parse x509 certificate for ID: "+id+" Error: "+err.Error())
+			s.logger.Error(ctx, "Failed to parse x509 certificate for ID: "+id+" Error: "+err.Error())
 			return nil, &serviceerror.InternalServerError
 		}
 		result[id] = parsedCert

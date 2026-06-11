@@ -5203,6 +5203,278 @@ func (suite *ResourceServiceTestSuite) TestResolveResourceServerOUHandle_NilOUSe
 
 // TestResourceServerYAML_OUHandleParsed verifies that ou_handle is parsed off the YAML
 // document into the ResourceServer struct.
+// newEnabledConsentServiceMock returns a consent service mock with IsEnabled returning true.
+func (suite *ResourceServiceTestSuite) newEnabledConsentServiceMock() *consentmock.ConsentServiceInterfaceMock {
+	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
+	cm.On("IsEnabled").Return(true).Maybe()
+	return cm
+}
+
+// newServiceWithConsent builds a resource service wired to the suite's store, OU, and
+// transactioner mocks but with the supplied consent service.
+func (suite *ResourceServiceTestSuite) newServiceWithConsent(
+	cm consent.ConsentServiceInterface,
+) ResourceServiceInterface {
+	return &resourceService{
+		logger:           *log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
+		resourceStore:    suite.mockStore,
+		ouService:        suite.mockOU,
+		consentService:   cm,
+		defaultDelimiter: ":",
+		transactioner:    suite.mockTransactioner,
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_CheckHandleError() {
+	rs := ResourceServer{
+		Name:   "test-rs",
+		Handle: "test-handle",
+		OUID:   "ou-123",
+	}
+
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+		Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").
+		Return(false, nil)
+	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything, "test-handle").
+		Return(false, errors.New("database error"))
+
+	result, err := suite.service.CreateResourceServer(context.Background(), rs)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_IDConflict() {
+	rs := ResourceServer{
+		ID:   "rs-existing",
+		Name: "test-rs",
+		OUID: "ou-123",
+	}
+
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+		Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").
+		Return(false, nil)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-existing").
+		Return(ResourceServer{ID: "rs-existing"}, nil)
+
+	result, err := suite.service.CreateResourceServer(context.Background(), rs)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorResourceServerIDConflict.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerByIdentifier_NotFound() {
+	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "ident-1").
+		Return(ResourceServer{}, errResourceServerNotFound)
+
+	result, err := suite.service.GetResourceServerByIdentifier(context.Background(), "ident-1")
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorResourceServerNotFound.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerByIdentifier_StoreError() {
+	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "ident-1").
+		Return(ResourceServer{}, errors.New("database error"))
+
+	result, err := suite.service.GetResourceServerByIdentifier(context.Background(), "ident-1")
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_CheckNameError() {
+	rs := ResourceServer{
+		Name: testUpdatedName,
+		OUID: "ou-123",
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(ResourceServer{ID: "rs-123", Name: testOriginalName, OUID: "ou-123"}, nil)
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+		Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, testUpdatedName).
+		Return(false, errors.New("database error"))
+
+	result, err := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestFindResourceServersByPermissions_StoreError() {
+	perms := []string{"booking:read"}
+	suite.mockStore.On("FindResourceServersByPermissions", mock.Anything, perms).
+		Return([]ResourceServer(nil), errors.New("database error"))
+
+	result, err := suite.service.FindResourceServersByPermissions(context.Background(), perms)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResource_ConsentSyncError() {
+	cm := suite.newEnabledConsentServiceMock()
+	serverErr := &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, Code: "CE-9999"}
+	cm.On("ValidateConsentElements", mock.Anything, "default", mock.Anything).
+		Return([]string(nil), serverErr)
+	svc := suite.newServiceWithConsent(cm)
+
+	res := Resource{Name: "test-resource", Handle: "test-handle"}
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(ResourceServer{ID: "rs-123"}, nil)
+	suite.mockStore.On("CheckResourceHandleExists", mock.Anything,
+		"rs-123", "test-handle", (*string)(nil)).Return(false, nil)
+	suite.mockStore.On("CreateResource", mock.Anything,
+		mock.AnythingOfType("string"), "rs-123", (*string)(nil), matchResource(res)).Return(nil)
+
+	result, err := svc.CreateResource(context.Background(), "rs-123", res)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResource_ConsentSyncError() {
+	cm := suite.newEnabledConsentServiceMock()
+	serverErr := &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, Code: "CE-9999"}
+	cm.On("ListConsentElements", mock.Anything, "default", consent.NamespacePermission, "perm-x").
+		Return([]consent.ConsentElement(nil), serverErr)
+	svc := suite.newServiceWithConsent(cm)
+
+	res := Resource{Name: testUpdatedName, Description: testNewDescription}
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(ResourceServer{ID: "rs-123"}, nil)
+	suite.mockStore.On("GetResource", mock.Anything, "res-123", "rs-123").
+		Return(Resource{ID: "res-123", Handle: testOriginalHandle, Permission: "perm-x"}, nil)
+	suite.mockStore.On("UpdateResource", mock.Anything,
+		"res-123", "rs-123", mock.AnythingOfType("Resource")).Return(nil)
+
+	result, err := svc.UpdateResource(context.Background(), "rs-123", "res-123", res)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestDeleteResource_ConsentSyncError() {
+	cm := suite.newEnabledConsentServiceMock()
+	serverErr := &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, Code: "CE-9999"}
+	cm.On("ListConsentElements", mock.Anything, "default", consent.NamespacePermission, "perm-x").
+		Return([]consent.ConsentElement(nil), serverErr)
+	svc := suite.newServiceWithConsent(cm)
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(ResourceServer{ID: "rs-123"}, nil)
+	suite.mockStore.On("GetResource", mock.Anything, "res-123", "rs-123").
+		Return(Resource{ID: "res-123", Permission: "perm-x"}, nil)
+	suite.mockStore.On("CheckResourceHasDependencies", mock.Anything, "res-123").
+		Return(false, nil)
+	suite.mockStore.On("DeleteResource", mock.Anything, "res-123", "rs-123").Return(nil)
+
+	err := svc.DeleteResource(context.Background(), "rs-123", "res-123")
+
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateAction_ConsentSyncError() {
+	cm := suite.newEnabledConsentServiceMock()
+	serverErr := &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, Code: "CE-9999"}
+	cm.On("ValidateConsentElements", mock.Anything, "default", mock.Anything).
+		Return([]string(nil), serverErr)
+	svc := suite.newServiceWithConsent(cm)
+
+	action := Action{Name: "test-action", Handle: "test-handle"}
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(ResourceServer{ID: "rs-123"}, nil)
+	suite.mockStore.On("CheckActionHandleExists", mock.Anything,
+		"rs-123", (*string)(nil), "test-handle").Return(false, nil)
+	suite.mockStore.On("CreateAction", mock.Anything,
+		mock.AnythingOfType("string"), "rs-123", (*string)(nil), matchAction(action)).Return(nil)
+
+	result, err := svc.CreateAction(context.Background(), "rs-123", nil, action)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateAction_ConsentSyncError() {
+	cm := suite.newEnabledConsentServiceMock()
+	serverErr := &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, Code: "CE-9999"}
+	cm.On("ListConsentElements", mock.Anything, "default", consent.NamespacePermission, "perm-x").
+		Return([]consent.ConsentElement(nil), serverErr)
+	svc := suite.newServiceWithConsent(cm)
+
+	action := Action{Name: testUpdatedName, Description: testNewDescription}
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(ResourceServer{ID: "rs-123"}, nil)
+	suite.mockStore.On("GetAction", mock.Anything, "action-123", "rs-123", (*string)(nil)).
+		Return(Action{ID: "action-123", Handle: testOriginalHandle, Permission: "perm-x"}, nil)
+	suite.mockStore.On("UpdateAction", mock.Anything,
+		"action-123", "rs-123", (*string)(nil), mock.AnythingOfType("Action")).Return(nil)
+
+	result, err := svc.UpdateAction(context.Background(), "rs-123", nil, "action-123", action)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestDeleteAction_LoadForConsentSyncError() {
+	cm := suite.newEnabledConsentServiceMock()
+	svc := suite.newServiceWithConsent(cm)
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(ResourceServer{ID: "rs-123"}, nil)
+	suite.mockStore.On("IsActionExist", mock.Anything, "action-123", "rs-123", (*string)(nil)).
+		Return(true, nil)
+	suite.mockStore.On("GetAction", mock.Anything, "action-123", "rs-123", (*string)(nil)).
+		Return(Action{}, errors.New("database error"))
+
+	err := svc.DeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestDeleteAction_ConsentSyncError() {
+	cm := suite.newEnabledConsentServiceMock()
+	serverErr := &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, Code: "CE-9999"}
+	cm.On("ListConsentElements", mock.Anything, "default", consent.NamespacePermission, "perm-x").
+		Return([]consent.ConsentElement(nil), serverErr)
+	svc := suite.newServiceWithConsent(cm)
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+		Return(ResourceServer{ID: "rs-123"}, nil)
+	suite.mockStore.On("IsActionExist", mock.Anything, "action-123", "rs-123", (*string)(nil)).
+		Return(true, nil)
+	suite.mockStore.On("GetAction", mock.Anything, "action-123", "rs-123", (*string)(nil)).
+		Return(Action{ID: "action-123", Permission: "perm-x"}, nil)
+	suite.mockStore.On("DeleteAction", mock.Anything, "action-123", "rs-123", (*string)(nil)).
+		Return(nil)
+
+	err := svc.DeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
 func TestResourceServerYAML_OUHandleParsed(t *testing.T) {
 	yamlData := []byte(`
 id: rs1

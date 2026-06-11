@@ -407,7 +407,7 @@ func buildInboundClientFromRow(ctx context.Context, row map[string]interface{}) 
 	if blobStr := parseJSONColumnString(row, "properties"); blobStr != "" {
 		var blob inboundClientJSONBlob
 		if err := json.Unmarshal([]byte(blobStr), &blob); err != nil {
-			log.GetLogger().DebugWithContext(ctx, "Failed to unmarshal properties", log.Error(err))
+			log.GetLogger().Debug(ctx, "Failed to unmarshal properties", log.Error(err))
 		} else {
 			client.Assertion = blob.Assertion
 			client.LoginConsent = blob.LoginConsent

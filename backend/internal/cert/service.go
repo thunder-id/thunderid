@@ -75,11 +75,11 @@ func (s *certificateService) GetCertificateByID(ctx context.Context,
 		if errors.Is(err, ErrCertificateNotFound) {
 			return nil, &ErrorCertificateNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to get certificate by ID", log.String("id", id), log.Error(err))
+		logger.Error(ctx, "Failed to get certificate by ID", log.String("id", id), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	if certObj == nil {
-		logger.DebugWithContext(ctx, "Certificate not found for ID", log.String("id", id))
+		logger.Debug(ctx, "Certificate not found for ID", log.String("id", id))
 		return nil, &ErrorCertificateNotFound
 	}
 
@@ -103,12 +103,12 @@ func (s *certificateService) GetCertificateByReference(ctx context.Context, refT
 		if errors.Is(err, ErrCertificateNotFound) {
 			return nil, &ErrorCertificateNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to get certificate by reference", log.String("refType", string(refType)),
+		logger.Error(ctx, "Failed to get certificate by reference", log.String("refType", string(refType)),
 			log.String("refID", refID), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	if certObj == nil {
-		logger.DebugWithContext(ctx, "Certificate not found for reference", log.String("refType", string(refType)),
+		logger.Debug(ctx, "Certificate not found for reference", log.String("refType", string(refType)),
 			log.String("refID", refID))
 		return nil, &ErrorCertificateNotFound
 	}
@@ -128,7 +128,7 @@ func (s *certificateService) CreateCertificate(ctx context.Context, cert *Certif
 	// Check if a certificate with the same reference already exists
 	existingCert, err := s.store.GetCertificateByReference(ctx, cert.RefType, cert.RefID)
 	if err != nil && !errors.Is(err, ErrCertificateNotFound) {
-		logger.ErrorWithContext(ctx, "Failed to check existing certificate",
+		logger.Error(ctx, "Failed to check existing certificate",
 			log.String("refType", string(cert.RefType)),
 			log.String("refID", cert.RefID), log.Error(err))
 		return nil, &serviceerror.InternalServerError
@@ -139,7 +139,7 @@ func (s *certificateService) CreateCertificate(ctx context.Context, cert *Certif
 
 	cert.ID, err = sysutils.GenerateUUIDv7()
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to generate UUID", log.Error(err))
+		logger.Error(ctx, "Failed to generate UUID", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -147,7 +147,7 @@ func (s *certificateService) CreateCertificate(ctx context.Context, cert *Certif
 		return s.store.CreateCertificate(txCtx, cert)
 	})
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to create certificate", log.Error(err))
+		logger.Error(ctx, "Failed to create certificate", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -172,11 +172,11 @@ func (s *certificateService) UpdateCertificateByID(ctx context.Context, id strin
 		if errors.Is(err, ErrCertificateNotFound) {
 			return nil, &ErrorCertificateNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to get existing certificate", log.String("id", id), log.Error(err))
+		logger.Error(ctx, "Failed to get existing certificate", log.String("id", id), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	if existingCert == nil {
-		logger.DebugWithContext(ctx, "Certificate not found for update", log.String("id", id))
+		logger.Debug(ctx, "Certificate not found for update", log.String("id", id))
 		return nil, &ErrorCertificateNotFound
 	}
 
@@ -192,7 +192,7 @@ func (s *certificateService) UpdateCertificateByID(ctx context.Context, id strin
 		if errors.Is(err, ErrCertificateNotFound) {
 			return nil, &ErrorCertificateNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to update certificate by ID", log.String("id", id), log.Error(err))
+		logger.Error(ctx, "Failed to update certificate by ID", log.String("id", id), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -220,12 +220,12 @@ func (s *certificateService) UpdateCertificateByReference(ctx context.Context, r
 		if errors.Is(err, ErrCertificateNotFound) {
 			return nil, &ErrorCertificateNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to get existing certificate", log.String("refType", string(refType)),
+		logger.Error(ctx, "Failed to get existing certificate", log.String("refType", string(refType)),
 			log.String("refID", refID), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	if existingCert == nil {
-		logger.DebugWithContext(ctx, "Certificate not found for update", log.String("refType", string(refType)),
+		logger.Debug(ctx, "Certificate not found for update", log.String("refType", string(refType)),
 			log.String("refID", refID))
 		return nil, &ErrorCertificateNotFound
 	}
@@ -243,7 +243,7 @@ func (s *certificateService) UpdateCertificateByReference(ctx context.Context, r
 		if errors.Is(err, ErrCertificateNotFound) {
 			return nil, &ErrorCertificateNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to update certificate by reference",
+		logger.Error(ctx, "Failed to update certificate by reference",
 			log.String("refType", string(refType)),
 			log.String("refID", refID), log.Error(err))
 		return nil, &serviceerror.InternalServerError
@@ -264,7 +264,7 @@ func (s *certificateService) DeleteCertificateByID(ctx context.Context, id strin
 		return s.store.DeleteCertificateByID(txCtx, id)
 	})
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to delete certificate by ID", log.String("id", id), log.Error(err))
+		logger.Error(ctx, "Failed to delete certificate by ID", log.String("id", id), log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 
@@ -287,7 +287,7 @@ func (s *certificateService) DeleteCertificateByReference(ctx context.Context, r
 		return s.store.DeleteCertificateByReference(txCtx, refType, refID)
 	})
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to delete certificate by reference",
+		logger.Error(ctx, "Failed to delete certificate by reference",
 			log.String("refType", string(refType)),
 			log.String("refID", refID), log.Error(err))
 		return &serviceerror.InternalServerError

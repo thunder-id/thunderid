@@ -189,7 +189,7 @@ func (s *cacheBackedOUStore) cacheOUByID(ctx context.Context, ou *OrganizationUn
 		return
 	}
 	if err := s.ouByIDCache.Set(ctx, cache.CacheKey{Key: ou.ID}, ou); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to cache OU by ID",
+		s.logger.Error(ctx, "Failed to cache OU by ID",
 			log.String("ouID", ou.ID), log.Error(err))
 	}
 }
@@ -200,7 +200,7 @@ func (s *cacheBackedOUStore) cacheOUByHandleParent(ctx context.Context, ou *Orga
 	}
 	key := handleParentCacheKey(ou.Handle, ou.Parent)
 	if err := s.ouByHandleParentCache.Set(ctx, cache.CacheKey{Key: key}, ou); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to cache OU by handle+parent",
+		s.logger.Error(ctx, "Failed to cache OU by handle+parent",
 			log.String("handle", ou.Handle), log.Error(err))
 	}
 }
@@ -210,7 +210,7 @@ func (s *cacheBackedOUStore) invalidateOUByID(ctx context.Context, id string) {
 		return
 	}
 	if err := s.ouByIDCache.Delete(ctx, cache.CacheKey{Key: id}); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to invalidate OU cache by ID",
+		s.logger.Error(ctx, "Failed to invalidate OU cache by ID",
 			log.String("ouID", id), log.Error(err))
 	}
 }
@@ -236,7 +236,7 @@ func (s *cacheBackedOUStore) getHandleParentKey(ctx context.Context, id string) 
 
 func (s *cacheBackedOUStore) deleteHandleParentCacheKey(ctx context.Context, key string) {
 	if err := s.ouByHandleParentCache.Delete(ctx, cache.CacheKey{Key: key}); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to invalidate OU cache by handle+parent",
+		s.logger.Error(ctx, "Failed to invalidate OU cache by handle+parent",
 			log.String("cacheKey", key), log.Error(err))
 	}
 }

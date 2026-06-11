@@ -75,7 +75,7 @@ func (ouh *organizationUnitHandler) HandleOUListRequest(w http.ResponseWriter, r
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ouListResponse)
 
-	logger.DebugWithContext(ctx, "Successfully listed organization units with pagination",
+	logger.Debug(ctx, "Successfully listed organization units with pagination",
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", ouListResponse.TotalResults),
 		log.Int("count", ouListResponse.Count))
@@ -106,7 +106,7 @@ func (ouh *organizationUnitHandler) HandleOUPostRequest(w http.ResponseWriter, r
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, createdOU)
 
-	logger.DebugWithContext(ctx, "Successfully created organization unit", log.String("ouId", createdOU.ID))
+	logger.Debug(ctx, "Successfully created organization unit", log.String("ouId", createdOU.ID))
 }
 
 // HandleOUGetRequest handles the get organization unit by id request.
@@ -127,7 +127,7 @@ func (ouh *organizationUnitHandler) HandleOUGetRequest(w http.ResponseWriter, r 
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.DebugWithContext(ctx, "Successfully retrieved organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully retrieved organization unit", log.String("ouId", id))
 }
 
 // HandleOUPutRequest handles the update organization unit request.
@@ -153,7 +153,7 @@ func (ouh *organizationUnitHandler) HandleOUPutRequest(w http.ResponseWriter, r 
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.DebugWithContext(ctx, "Successfully updated organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully updated organization unit", log.String("ouId", id))
 }
 
 // HandleOUDeleteRequest handles the delete organization unit request.
@@ -173,7 +173,7 @@ func (ouh *organizationUnitHandler) HandleOUDeleteRequest(w http.ResponseWriter,
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
-	logger.DebugWithContext(ctx, "Successfully deleted organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully deleted organization unit", log.String("ouId", id))
 }
 
 // HandleOUChildrenListRequest handles the list child organization units request.
@@ -358,7 +358,7 @@ func (ouh *organizationUnitHandler) handleResourceListRequest(
 		count = resp.Count
 	}
 
-	logger.DebugWithContext(r.Context(), "Successfully listed resources in organization unit",
+	logger.Debug(r.Context(), "Successfully listed resources in organization unit",
 		log.String("resourceType", resourceType),
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", totalResults),
@@ -383,7 +383,7 @@ func (ouh *organizationUnitHandler) HandleOUGetByPathRequest(w http.ResponseWrit
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.DebugWithContext(ctx, "Successfully retrieved organization unit by path", log.String("path", path))
+	logger.Debug(ctx, "Successfully retrieved organization unit by path", log.String("path", path))
 }
 
 // HandleOUPutByPathRequest handles the update organization unit by hierarchical handle path request.
@@ -409,7 +409,7 @@ func (ouh *organizationUnitHandler) HandleOUPutByPathRequest(w http.ResponseWrit
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.DebugWithContext(ctx, "Successfully updated organization unit by path", log.String("path", path))
+	logger.Debug(ctx, "Successfully updated organization unit by path", log.String("path", path))
 }
 
 // HandleOUDeleteByPathRequest handles the delete organization unit by hierarchical handle path request.
@@ -429,7 +429,7 @@ func (ouh *organizationUnitHandler) HandleOUDeleteByPathRequest(w http.ResponseW
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
-	logger.DebugWithContext(ctx, "Successfully deleted organization unit by path", log.String("path", path))
+	logger.Debug(ctx, "Successfully deleted organization unit by path", log.String("path", path))
 }
 
 // handleResourceListByPathRequest is a generic handler for listing resources under an organization unit by path.
@@ -476,7 +476,7 @@ func (ouh *organizationUnitHandler) handleResourceListByPathRequest(
 			count = resp.Count
 		}
 
-		logger.DebugWithContext(r.Context(), "Successfully listed resources in organization unit by path",
+		logger.Debug(r.Context(), "Successfully listed resources in organization unit by path",
 			log.String("resourceType", resourceType), log.String("path", path),
 			log.Int("limit", limit), log.Int("offset", offset),
 			log.Int("totalResults", totalResults), log.Int("count", count))

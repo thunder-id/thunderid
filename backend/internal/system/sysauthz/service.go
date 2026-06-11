@@ -95,14 +95,14 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 
 	// Step 1: Check if SKIP_SECURITY flag is set.
 	if security.IsSecuritySkipped(ctx) {
-		logger.DebugWithContext(ctx, "Authorization skipped: SKIP_SECURITY is enabled",
+		logger.Debug(ctx, "Authorization skipped: SKIP_SECURITY is enabled",
 			log.String("action", string(action)))
 		return true, nil
 	}
 
 	// Step 2: Check if this is an internal runtime caller.
 	if security.IsRuntimeContext(ctx) {
-		logger.DebugWithContext(ctx, "Authorization granted: runtime context for the action",
+		logger.Debug(ctx, "Authorization granted: runtime context for the action",
 			log.String("action", string(action)))
 		return true, nil
 	}
@@ -110,7 +110,7 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 	// Step 3: Verify the caller is authenticated.
 	subject := security.GetSubject(ctx)
 	if subject == "" {
-		logger.DebugWithContext(ctx, "Authorization denied: unauthenticated caller",
+		logger.Debug(ctx, "Authorization denied: unauthenticated caller",
 			log.String("action", string(action)))
 		return false, nil
 	}
@@ -125,7 +125,7 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 	// Step 5: Allow resource owners to access their own resources (self-service).
 	if isResourceOwner(ctx, actionCtx) {
 		if logger.IsDebugEnabled() {
-			logger.DebugWithContext(ctx, "Authorization granted: resource owner",
+			logger.Debug(ctx, "Authorization granted: resource owner",
 				log.String("action", string(action)),
 				log.MaskedString("subject", subject))
 		}
@@ -136,7 +136,7 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 	requiredPermission := security.ResolveActionPermission(action)
 	if !security.HasSufficientPermission(permissions, requiredPermission) {
 		if logger.IsDebugEnabled() {
-			logger.DebugWithContext(ctx, "Authorization denied: insufficient permissions",
+			logger.Debug(ctx, "Authorization denied: insufficient permissions",
 				log.String("action", string(action)),
 				log.MaskedString("subject", subject))
 		}
@@ -150,7 +150,7 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 	}
 	if !allowed {
 		if logger.IsDebugEnabled() {
-			logger.DebugWithContext(ctx, "Authorization denied: policy evaluation failed",
+			logger.Debug(ctx, "Authorization denied: policy evaluation failed",
 				log.String("action", string(action)),
 				log.MaskedString("subject", subject))
 		}
@@ -158,7 +158,7 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 	}
 
 	if logger.IsDebugEnabled() {
-		logger.DebugWithContext(ctx, "Authorization granted",
+		logger.Debug(ctx, "Authorization granted",
 			log.String("action", string(action)),
 			log.MaskedString("subject", subject))
 	}
@@ -195,7 +195,7 @@ func (s *systemAuthorizationService) GetAccessibleResources(ctx context.Context,
 
 	// Step 1: Check if SKIP_SECURITY flag is set.
 	if security.IsSecuritySkipped(ctx) {
-		logger.DebugWithContext(ctx, "GetAccessibleResources skipped: SKIP_SECURITY is enabled",
+		logger.Debug(ctx, "GetAccessibleResources skipped: SKIP_SECURITY is enabled",
 			log.String("action", string(action)),
 			log.String("resourceType", string(resourceType)))
 		return &AccessibleResources{AllAllowed: true}, nil
@@ -203,7 +203,7 @@ func (s *systemAuthorizationService) GetAccessibleResources(ctx context.Context,
 
 	// Step 2: Check if this is an internal runtime caller — return all resources.
 	if security.IsRuntimeContext(ctx) {
-		logger.DebugWithContext(ctx, "GetAccessibleResources: runtime context, returning all resources",
+		logger.Debug(ctx, "GetAccessibleResources: runtime context, returning all resources",
 			log.String("action", string(action)),
 			log.String("resourceType", string(resourceType)))
 		return &AccessibleResources{AllAllowed: true}, nil
@@ -212,7 +212,7 @@ func (s *systemAuthorizationService) GetAccessibleResources(ctx context.Context,
 	// Step 3: Verify the caller is authenticated.
 	subject := security.GetSubject(ctx)
 	if subject == "" {
-		logger.DebugWithContext(ctx, "GetAccessibleResources denied: unauthenticated caller",
+		logger.Debug(ctx, "GetAccessibleResources denied: unauthenticated caller",
 			log.String("action", string(action)),
 			log.String("resourceType", string(resourceType)))
 		return &AccessibleResources{AllAllowed: false, IDs: []string{}}, nil
@@ -229,7 +229,7 @@ func (s *systemAuthorizationService) GetAccessibleResources(ctx context.Context,
 	requiredPermission := security.ResolveActionPermission(action)
 	if !security.HasSufficientPermission(permissions, requiredPermission) {
 		if logger.IsDebugEnabled() {
-			logger.DebugWithContext(ctx, "GetAccessibleResources denied: insufficient permissions",
+			logger.Debug(ctx, "GetAccessibleResources denied: insufficient permissions",
 				log.String("action", string(action)),
 				log.String("resourceType", string(resourceType)),
 				log.MaskedString("subject", subject))
@@ -243,7 +243,7 @@ func (s *systemAuthorizationService) GetAccessibleResources(ctx context.Context,
 		return nil, svcErr
 	}
 	if logger.IsDebugEnabled() && !result.AllAllowed {
-		logger.DebugWithContext(ctx, "GetAccessibleResources: restricted by policy",
+		logger.Debug(ctx, "GetAccessibleResources: restricted by policy",
 			log.String("action", string(action)),
 			log.String("resourceType", string(resourceType)),
 			log.MaskedString("subject", subject),

@@ -293,27 +293,25 @@ const translations = {
 
     'welcome.applicationTryout.scenarios.recovery.description':
       'Walk through the password recovery flow — John forgets his password and resets it via email.',
-    'welcome.applicationTryout.scenarios.recovery.smtpNote':
-      "Recovery emails require a configured SMTP server. Add your SMTP settings under email.smtp in {{productName}}'s deployment.yaml and restart the server before trying this flow.",
     'welcome.applicationTryout.scenarios.recovery.step1': 'Open <a>http://localhost:5173</a> and click Sign in.',
     'welcome.applicationTryout.scenarios.recovery.step2': 'On the {{productName}} sign-in page, click Forgot password?',
     'welcome.applicationTryout.scenarios.recovery.step3': 'Enter john.doe as the username and submit.',
     'welcome.applicationTryout.scenarios.recovery.step4':
-      "{{productName}} sends a recovery email to John's registered address.",
-    'welcome.applicationTryout.scenarios.recovery.step5': 'Open the link in the email and set a new password.',
+      "{{productName}} sends a recovery email to John's registered address. Open it from the inbox at <mail>http://localhost:8788</mail>.",
+    'welcome.applicationTryout.scenarios.recovery.step5': 'Click the reset link in the email and set a new password.',
     'welcome.applicationTryout.scenarios.recovery.step6': 'Sign in again with the new credentials.',
 
     'welcome.applicationTryout.scenarios.onboard.description':
       'Invite and onboard two new staff members entirely from the {{productName}} Console: Sam Rivera (Support) and Maya Patel (DestinationsAdmin). The admin picks the staff role and sends the invitation, and the matching role is attached automatically when the invitee completes their profile.',
     'welcome.applicationTryout.scenarios.onboard.smtpNote':
-      "Staff invitation requires a configured SMTP server and the user onboarding flow enabled. Add your SMTP settings under email.smtp and set flow.user_onboarding_flow_handle to wayfinder-onboarding-flow in {{productName}}'s deployment.yaml, then restart the server before trying this flow.",
+      "Before trying this flow, set flow.user_onboarding_flow_handle to wayfinder-onboarding-flow in {{productName}}'s deployment.yaml and restart the server.",
     'welcome.applicationTryout.scenarios.onboard.step1': 'Sign in to the {{productName}} Console as your admin user.',
     'welcome.applicationTryout.scenarios.onboard.step2': 'Navigate to Users and select Add User.',
     'welcome.applicationTryout.scenarios.onboard.step3': 'Select Staff as the user type.',
     'welcome.applicationTryout.scenarios.onboard.step4':
       "Pick Support as the role, enter Sam Rivera's email (sam.rivera@example.com), and click Send invitation. An invite link is emailed to Sam.",
     'welcome.applicationTryout.scenarios.onboard.step5':
-      "Open the email in Sam's inbox and open the link. The browser opens a Complete Your Profile page.",
+      "Open Sam's invitation email from the inbox at <mail>http://localhost:8788</mail> and open the link. The browser opens a Complete Your Profile page.",
     'welcome.applicationTryout.scenarios.onboard.step6':
       "Fill in the additional attributes and submit. Sam's account is now active with the Support role attached.",
     'welcome.applicationTryout.scenarios.onboard.step7':

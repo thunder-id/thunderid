@@ -78,7 +78,7 @@ func newOTPAuthnService(otpSvc notification.OTPServiceInterface,
 func (s *otpAuthnService) SendOTP(ctx context.Context, senderID string, channel notifcommon.ChannelType,
 	recipient string) (string, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Sending OTP for authentication", log.MaskedString("recipient", recipient),
+	logger.Debug(ctx, "Sending OTP for authentication", log.MaskedString("recipient", recipient),
 		log.String("channel", string(channel)))
 
 	if svcErr := s.validateOTPSendRequest(senderID, channel, recipient); svcErr != nil {
@@ -95,7 +95,7 @@ func (s *otpAuthnService) SendOTP(ctx context.Context, senderID string, channel 
 		return "", s.handleOTPServiceError(ctx, svcErr, false, logger)
 	}
 
-	logger.DebugWithContext(ctx, "OTP sent successfully, session token generated")
+	logger.Debug(ctx, "OTP sent successfully, session token generated")
 	return result.SessionToken, nil
 }
 
@@ -103,7 +103,7 @@ func (s *otpAuthnService) SendOTP(ctx context.Context, senderID string, channel 
 func (s *otpAuthnService) Authenticate(ctx context.Context, sessionToken,
 	otp string) (*OTPAuthnResult, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Verifying OTP for authentication")
+	logger.Debug(ctx, "Verifying OTP for authentication")
 
 	if svcErr := s.validateOTPVerifyRequest(sessionToken, otp); svcErr != nil {
 		return nil, svcErr
@@ -154,9 +154,9 @@ func (s *otpAuthnService) handleOTPServiceError(ctx context.Context, svcErr *ser
 	}
 
 	if isVerify {
-		logger.ErrorWithContext(ctx, "Error occurred while verifying OTP", log.Any("error", svcErr))
+		logger.Error(ctx, "Error occurred while verifying OTP", log.Any("error", svcErr))
 	} else {
-		logger.ErrorWithContext(ctx, "Error occurred while sending OTP", log.Any("error", svcErr))
+		logger.Error(ctx, "Error occurred while sending OTP", log.Any("error", svcErr))
 	}
 	return &serviceerror.InternalServerError
 }
@@ -180,7 +180,7 @@ func (s *otpAuthnService) handleVerifyOTPResponse(ctx context.Context, result *n
 	}
 
 	if result.Recipient == "" {
-		logger.ErrorWithContext(ctx, "Recipient not found in OTP verification result")
+		logger.Error(ctx, "Recipient not found in OTP verification result")
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -201,7 +201,7 @@ func (s *otpAuthnService) handleVerifyOTPResponse(ctx context.Context, result *n
 // resolveUser retrieves a user by their recipient identifier (e.g., mobile number).
 func (s *otpAuthnService) resolveUser(ctx context.Context, recipient string, channel notifcommon.ChannelType,
 	logger *log.Logger) (*entityprovider.Entity, *serviceerror.ServiceError) {
-	logger.DebugWithContext(ctx, "Resolving user from recipient", log.MaskedString("recipient", recipient),
+	logger.Debug(ctx, "Resolving user from recipient", log.MaskedString("recipient", recipient),
 		log.String("channel", string(channel)))
 
 	// Build filter based on channel type
@@ -218,7 +218,7 @@ func (s *otpAuthnService) resolveUser(ctx context.Context, recipient string, cha
 		return nil, s.handleUserProviderError(ctx, upErr, logger)
 	}
 	if userID == nil || *userID == "" {
-		logger.DebugWithContext(ctx, "No user found for recipient", log.MaskedString("recipient", recipient))
+		logger.Debug(ctx, "No user found for recipient", log.MaskedString("recipient", recipient))
 		return nil, &common.ErrorUserNotFound
 	}
 
@@ -227,7 +227,7 @@ func (s *otpAuthnService) resolveUser(ctx context.Context, recipient string, cha
 		return nil, s.handleUserProviderError(ctx, upErr, logger)
 	}
 
-	logger.DebugWithContext(ctx, "User resolved from recipient", log.MaskedString(log.LoggerKeyUserID, user.ID))
+	logger.Debug(ctx, "User resolved from recipient", log.MaskedString(log.LoggerKeyUserID, user.ID))
 	return user, nil
 }
 
@@ -238,7 +238,7 @@ func (s *otpAuthnService) handleUserProviderError(ctx context.Context, upErr *en
 		return &common.ErrorUserNotFound
 	}
 	if upErr.Code == entityprovider.ErrorCodeSystemError {
-		logger.ErrorWithContext(ctx, "Error occurred while retrieving user", log.Any("error", upErr))
+		logger.Error(ctx, "Error occurred while retrieving user", log.Any("error", upErr))
 		return &serviceerror.InternalServerError
 	}
 	return serviceerror.CustomServiceError(ErrorClientErrorWhileResolvingUser, core.I18nMessage{

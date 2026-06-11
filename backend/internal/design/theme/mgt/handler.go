@@ -89,7 +89,7 @@ func (th *themeMgtHandler) HandleThemeListRequest(w http.ResponseWriter, r *http
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, themeListResponse)
 
-	th.logger.DebugWithContext(ctx, "Successfully listed theme configurations with pagination",
+	th.logger.Debug(ctx, "Successfully listed theme configurations with pagination",
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", themeListResponse.TotalResults),
 		log.Int("count", themeListResponse.Count))
@@ -127,7 +127,7 @@ func (th *themeMgtHandler) HandleThemePostRequest(w http.ResponseWriter, r *http
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, themeResponse)
 
-	th.logger.DebugWithContext(ctx, "Successfully created theme configuration",
+	th.logger.Debug(ctx, "Successfully created theme configuration",
 		log.String("id", createdTheme.ID))
 }
 
@@ -153,7 +153,7 @@ func (th *themeMgtHandler) HandleThemeGetRequest(w http.ResponseWriter, r *http.
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, themeResponse)
 
-	th.logger.DebugWithContext(ctx, "Successfully retrieved theme configuration", log.String("id", id))
+	th.logger.Debug(ctx, "Successfully retrieved theme configuration", log.String("id", id))
 }
 
 // HandleThemePutRequest handles the update theme configuration request.
@@ -184,7 +184,7 @@ func (th *themeMgtHandler) HandleThemePutRequest(w http.ResponseWriter, r *http.
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, themeResponse)
 
-	th.logger.DebugWithContext(ctx, "Successfully updated theme configuration", log.String("id", id))
+	th.logger.Debug(ctx, "Successfully updated theme configuration", log.String("id", id))
 }
 
 // HandleThemeDeleteRequest handles the delete theme configuration request.
@@ -198,7 +198,7 @@ func (th *themeMgtHandler) HandleThemeDeleteRequest(w http.ResponseWriter, r *ht
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
-	th.logger.DebugWithContext(ctx, "Successfully deleted theme configuration", log.String("id", id))
+	th.logger.Debug(ctx, "Successfully deleted theme configuration", log.String("id", id))
 }
 
 // parsePaginationParams parses limit and offset query parameters from the request.

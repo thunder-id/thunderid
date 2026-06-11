@@ -297,7 +297,7 @@ func (s *organizationUnitStore) GetOrganizationUnitByPath(
 			if !errors.Is(err, ErrOrganizationUnitNotFound) {
 				return OrganizationUnit{}, err
 			}
-			logger.DebugWithContext(ctx, "Organization unit not found in path",
+			logger.Debug(ctx, "Organization unit not found in path",
 				log.String("handle", handle),
 				log.Int("pathIndex", i),
 				log.String("fullPath", fullPath))

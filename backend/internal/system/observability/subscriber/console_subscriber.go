@@ -86,7 +86,7 @@ func (cs *ConsoleSubscriber) Initialize() error {
 
 	id, err := utils.GenerateUUIDv7()
 	if err != nil {
-		cs.logger.ErrorWithContext(ctx, "failed to generate UUID for console subscriber", log.Error(err))
+		cs.logger.Error(ctx, "failed to generate UUID for console subscriber", log.Error(err))
 		return err
 	}
 	cs.id = id
@@ -94,7 +94,7 @@ func (cs *ConsoleSubscriber) Initialize() error {
 	cs.formatter = fmtr
 	cs.adapter = adptr
 
-	cs.logger.DebugWithContext(ctx, "Console subscriber initialized",
+	cs.logger.Debug(ctx, "Console subscriber initialized",
 		log.String("format", consoleConfig.Format),
 		log.Int("categories", len(cs.categories)))
 
@@ -125,20 +125,20 @@ func (cs *ConsoleSubscriber) Close() error {
 	// Subscriber shutdown runs during application teardown, outside any request.
 	ctx := context.Background()
 
-	cs.logger.InfoWithContext(ctx, "Closing console subscriber", log.String("subscriberID", cs.id))
+	cs.logger.Info(ctx, "Closing console subscriber", log.String("subscriberID", cs.id))
 
 	// Flush and close adapter
 	if cs.adapter != nil {
 		if err := cs.adapter.Flush(); err != nil {
-			cs.logger.ErrorWithContext(ctx, "Failed to flush console adapter", log.Error(err))
+			cs.logger.Error(ctx, "Failed to flush console adapter", log.Error(err))
 		}
 
 		if err := cs.adapter.Close(); err != nil {
-			cs.logger.ErrorWithContext(ctx, "Failed to close console adapter", log.Error(err))
+			cs.logger.Error(ctx, "Failed to close console adapter", log.Error(err))
 			return err
 		}
 	}
 
-	cs.logger.InfoWithContext(ctx, "Console subscriber closed", log.String("subscriberID", cs.id))
+	cs.logger.Info(ctx, "Console subscriber closed", log.String("subscriberID", cs.id))
 	return nil
 }

@@ -77,7 +77,7 @@ func newI18nService(store i18nStoreInterface) I18nServiceInterface {
 func (s *i18nService) ListLanguages(ctx context.Context) ([]string, *serviceerror.ServiceError) {
 	localeCodes, err := s.store.GetDistinctLanguages()
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to get locales from store", log.Error(err))
+		s.logger.Error(ctx, "Failed to get locales from store", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -107,7 +107,7 @@ func (s *i18nService) ResolveTranslationsForKey(ctx context.Context,
 
 	trans, err := s.store.GetTranslationsByKey(key, namespace)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to get translation from store", log.Error(err))
+		s.logger.Error(ctx, "Failed to get translation from store", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -165,7 +165,7 @@ func (s *i18nService) SetTranslationOverrideForKey(ctx context.Context,
 
 	// Use upsert to create or update
 	if err := s.store.UpsertTranslation(trans); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to set translation override", log.Error(err))
+		s.logger.Error(ctx, "Failed to set translation override", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -215,7 +215,7 @@ func (s *i18nService) SetTranslationOverridesForNamespace(
 		return nil
 	}
 	if err := s.store.UpsertTranslations(ctx, translations); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to set translation overrides for namespace", log.Error(err))
+		s.logger.Error(ctx, "Failed to set translation overrides for namespace", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	return nil
@@ -232,7 +232,7 @@ func (s *i18nService) ClearTranslationOverrideForKey(ctx context.Context,
 	}
 
 	if err := s.store.DeleteTranslation(language, key, namespace); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to clear translation override", log.Error(err))
+		s.logger.Error(ctx, "Failed to clear translation override", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 
@@ -264,13 +264,13 @@ func (s *i18nService) ResolveTranslations(ctx context.Context,
 		// Get all namespaces
 		allTranslations, err = s.store.GetTranslations()
 		if err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to get translations from store", log.Error(err))
+			s.logger.Error(ctx, "Failed to get translations from store", log.Error(err))
 			return nil, &serviceerror.InternalServerError
 		}
 	} else {
 		allTranslations, err = s.store.GetTranslationsByNamespace(namespace)
 		if err != nil {
-			s.logger.ErrorWithContext(ctx, "Failed to get translations from store", log.Error(err))
+			s.logger.Error(ctx, "Failed to get translations from store", log.Error(err))
 			return nil, &serviceerror.InternalServerError
 		}
 	}
@@ -360,7 +360,7 @@ func (s *i18nService) SetTranslationOverrides(ctx context.Context,
 	}
 
 	if err := s.store.UpsertTranslationsByLanguage(language, flattenedTranslations); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to upsert translations", log.Error(err))
+		s.logger.Error(ctx, "Failed to upsert translations", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -385,7 +385,7 @@ func (s *i18nService) ClearTranslationOverrides(ctx context.Context, language st
 	}
 
 	if err := s.clearAllOverrides(language); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to clear overrides", log.Error(err))
+		s.logger.Error(ctx, "Failed to clear overrides", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 
@@ -402,7 +402,7 @@ func (s *i18nService) DeleteTranslationsByKey(
 		return &ErrorInvalidKey
 	}
 	if err := s.store.DeleteTranslationsByKey(ctx, namespace, key); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to delete translations by namespace and key", log.Error(err))
+		s.logger.Error(ctx, "Failed to delete translations by namespace and key", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	return nil
@@ -416,7 +416,7 @@ func (s *i18nService) DeleteTranslationsByNamespace(
 		return &ErrorInvalidNamespace
 	}
 	if err := s.store.DeleteTranslationsByNamespace(ctx, namespace); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to delete translations by namespace", log.Error(err))
+		s.logger.Error(ctx, "Failed to delete translations by namespace", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	return nil
@@ -432,7 +432,7 @@ func (s *i18nService) GetTranslationsByNamespace(ctx context.Context,
 	}
 	byNs, err := s.store.GetTranslationsByNamespace(namespace)
 	if err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to get translations by namespace", log.Error(err))
+		s.logger.Error(ctx, "Failed to get translations by namespace", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	result := make(map[string]map[string]string, len(byNs))

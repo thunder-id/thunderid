@@ -68,7 +68,7 @@ func (gh *groupHandler) HandleGroupListRequest(w http.ResponseWriter, r *http.Re
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, groupListResponse)
 
-	logger.DebugWithContext(ctx, "Successfully listed groups with pagination",
+	logger.Debug(ctx, "Successfully listed groups with pagination",
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", groupListResponse.TotalResults),
 		log.Int("count", groupListResponse.Count))
@@ -101,7 +101,7 @@ func (gh *groupHandler) HandleGroupListByPathRequest(w http.ResponseWriter, r *h
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, groupListResponse)
 
-	logger.DebugWithContext(ctx, "Successfully listed groups by path", log.String("path", path),
+	logger.Debug(ctx, "Successfully listed groups by path", log.String("path", path),
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", groupListResponse.TotalResults),
 		log.Int("count", groupListResponse.Count))
@@ -135,7 +135,7 @@ func (gh *groupHandler) HandleGroupPostRequest(w http.ResponseWriter, r *http.Re
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, createdGroup)
 
-	logger.DebugWithContext(ctx, "Successfully created group", log.String("group id", createdGroup.ID))
+	logger.Debug(ctx, "Successfully created group", log.String("group id", createdGroup.ID))
 }
 
 // HandleGroupPostByPathRequest handles the create group by OU path request.
@@ -170,7 +170,7 @@ func (gh *groupHandler) HandleGroupPostByPathRequest(w http.ResponseWriter, r *h
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, group)
 
-	logger.DebugWithContext(ctx, "Successfully created group by path",
+	logger.Debug(ctx, "Successfully created group by path",
 		log.String("path", path), log.String("groupName", group.Name))
 }
 
@@ -201,7 +201,7 @@ func (gh *groupHandler) HandleGroupGetRequest(w http.ResponseWriter, r *http.Req
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, group)
 
-	logger.DebugWithContext(ctx, "Successfully retrieved group", log.String("group id", id))
+	logger.Debug(ctx, "Successfully retrieved group", log.String("group id", id))
 }
 
 // HandleGroupPutRequest handles the update group request.
@@ -244,7 +244,7 @@ func (gh *groupHandler) HandleGroupPutRequest(w http.ResponseWriter, r *http.Req
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, group)
 
-	logger.DebugWithContext(ctx, "Successfully updated group", log.String("group id", id))
+	logger.Debug(ctx, "Successfully updated group", log.String("group id", id))
 }
 
 // HandleGroupDeleteRequest handles the delete group request.
@@ -271,7 +271,7 @@ func (gh *groupHandler) HandleGroupDeleteRequest(w http.ResponseWriter, r *http.
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
-	logger.DebugWithContext(ctx, "Successfully deleted group", log.String("group id", id))
+	logger.Debug(ctx, "Successfully deleted group", log.String("group id", id))
 }
 
 // HandleGroupMembersGetRequest handles the get group members request.
@@ -307,7 +307,7 @@ func (gh *groupHandler) HandleGroupMembersGetRequest(w http.ResponseWriter, r *h
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, memberListResponse)
 
-	logger.DebugWithContext(ctx, "Successfully retrieved group members", log.String("group id", id),
+	logger.Debug(ctx, "Successfully retrieved group members", log.String("group id", id),
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", memberListResponse.TotalResults),
 		log.Int("count", memberListResponse.Count))
@@ -341,7 +341,7 @@ func (gh *groupHandler) HandleGroupMembersAddRequest(w http.ResponseWriter, r *h
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, group)
-	logger.DebugWithContext(ctx, "Successfully added members to group", log.String("group id", id))
+	logger.Debug(ctx, "Successfully added members to group", log.String("group id", id))
 }
 
 // HandleGroupMembersRemoveRequest handles the remove members from group request.
@@ -372,7 +372,7 @@ func (gh *groupHandler) HandleGroupMembersRemoveRequest(w http.ResponseWriter, r
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, group)
-	logger.DebugWithContext(ctx, "Successfully removed members from group", log.String("group id", id))
+	logger.Debug(ctx, "Successfully removed members from group", log.String("group id", id))
 }
 
 // handleError handles service errors and returns appropriate HTTP responses.

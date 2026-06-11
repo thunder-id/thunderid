@@ -205,9 +205,9 @@ func (s *cacheBackedFlowStore) cacheFlow(ctx context.Context, flow *CompleteFlow
 			Key: flow.ID,
 		}
 		if err := s.flowByIDCache.Set(ctx, cacheKey, flow); err != nil {
-			logger.ErrorWithContext(ctx, "Failed to cache flow by ID", log.Error(err))
+			logger.Error(ctx, "Failed to cache flow by ID", log.Error(err))
 		} else {
-			logger.DebugWithContext(ctx, "Flow cached by ID")
+			logger.Debug(ctx, "Flow cached by ID")
 		}
 	}
 
@@ -215,10 +215,10 @@ func (s *cacheBackedFlowStore) cacheFlow(ctx context.Context, flow *CompleteFlow
 	if flow.Handle != "" && flow.FlowType != "" {
 		handleCacheKey := getFlowByHandleCacheKey(flow.Handle, flow.FlowType)
 		if err := s.flowByHandleCache.Set(ctx, handleCacheKey, flow); err != nil {
-			logger.ErrorWithContext(ctx, "Failed to cache flow by handle", log.String("handle", flow.Handle),
+			logger.Error(ctx, "Failed to cache flow by handle", log.String("handle", flow.Handle),
 				log.String("flowType", string(flow.FlowType)), log.Error(err))
 		} else {
-			logger.DebugWithContext(ctx, "Flow cached by handle",
+			logger.Debug(ctx, "Flow cached by handle",
 				log.String("handle", flow.Handle), log.String("flowType", string(flow.FlowType)))
 		}
 	}
@@ -233,9 +233,9 @@ func (s *cacheBackedFlowStore) invalidateFlowCache(ctx context.Context, flowID s
 			Key: flowID,
 		}
 		if err := s.flowByIDCache.Delete(ctx, cacheKey); err != nil {
-			logger.ErrorWithContext(ctx, "Failed to invalidate flow cache by ID", log.Error(err))
+			logger.Error(ctx, "Failed to invalidate flow cache by ID", log.Error(err))
 		} else {
-			logger.DebugWithContext(ctx, "Flow cache invalidated by ID")
+			logger.Debug(ctx, "Flow cache invalidated by ID")
 		}
 	}
 }
@@ -249,7 +249,7 @@ func (s *cacheBackedFlowStore) invalidateFlowCacheByHandle(
 
 	cacheKey := getFlowByHandleCacheKey(handle, flowType)
 	if err := s.flowByHandleCache.Delete(ctx, cacheKey); err != nil {
-		s.logger.ErrorWithContext(ctx, "Failed to invalidate flow cache by handle",
+		s.logger.Error(ctx, "Failed to invalidate flow cache by handle",
 			log.String("handle", handle), log.String("flowType", string(flowType)), log.Error(err))
 	}
 }

@@ -139,7 +139,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	// Validate and extract subject token claims
 	subjectClaims, err := h.tokenValidator.ValidateSubjectToken(ctx, tokenRequest.SubjectToken, oauthApp)
 	if err != nil {
-		logger.DebugWithContext(ctx, "Failed to validate subject token", log.Error(err))
+		logger.Debug(ctx, "Failed to validate subject token", log.Error(err))
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidRequest,
 			ErrorDescription: "Invalid subject_token",
@@ -157,7 +157,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 	if tokenRequest.ActorToken != "" {
 		actorClaims, err = h.tokenValidator.ValidateSubjectToken(ctx, tokenRequest.ActorToken, oauthApp)
 		if err != nil {
-			logger.DebugWithContext(ctx, "Failed to validate actor token", log.Error(err))
+			logger.Debug(ctx, "Failed to validate actor token", log.Error(err))
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorInvalidRequest,
 				ErrorDescription: "Invalid actor_token",
@@ -208,7 +208,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		DPoPJkt:        dpop.GetJkt(ctx),
 	})
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to generate token", log.Error(err))
+		logger.Error(ctx, "Failed to generate token", log.Error(err))
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
 			ErrorDescription: "Failed to generate token",

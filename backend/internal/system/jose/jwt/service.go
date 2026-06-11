@@ -125,21 +125,21 @@ func (js *jwtService) GenerateJWT(
 		jwsAlg = jws.Algorithm(alg)
 	}
 	if js.cryptoProvider == nil {
-		js.logger.ErrorWithContext(ctx, "Crypto provider not initialized for JWT generation")
+		js.logger.Error(ctx, "Crypto provider not initialized for JWT generation")
 		return "", 0, &serviceerror.InternalServerError
 	}
 
 	// Validate that claims["aud"] is present and of an accepted type.
 	audValue, hasAud := claims["aud"]
 	if !hasAud {
-		js.logger.ErrorWithContext(ctx, "GenerateJWT called without aud in claims")
+		js.logger.Error(ctx, "GenerateJWT called without aud in claims")
 		return "", 0, &serviceerror.InternalServerError
 	}
 	switch audValue.(type) {
 	case string, []string:
 		// valid
 	default:
-		js.logger.ErrorWithContext(ctx, "GenerateJWT called with unsupported aud type in claims")
+		js.logger.Error(ctx, "GenerateJWT called with unsupported aud type in claims")
 		return "", 0, &serviceerror.InternalServerError
 	}
 
@@ -157,7 +157,7 @@ func (js *jwtService) GenerateJWT(
 
 	headerJSON, err := json.Marshal(header)
 	if err != nil {
-		js.logger.ErrorWithContext(ctx, "Failed to marshal JWT header: "+err.Error())
+		js.logger.Error(ctx, "Failed to marshal JWT header: "+err.Error())
 		return "", 0, &serviceerror.InternalServerError
 	}
 
@@ -175,7 +175,7 @@ func (js *jwtService) GenerateJWT(
 
 	jti, err := utils.GenerateUUIDv7()
 	if err != nil {
-		js.logger.ErrorWithContext(ctx, "Failed to generate UUID", log.Error(err))
+		js.logger.Error(ctx, "Failed to generate UUID", log.Error(err))
 		return "", 0, &serviceerror.InternalServerError
 	}
 
@@ -198,7 +198,7 @@ func (js *jwtService) GenerateJWT(
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		js.logger.ErrorWithContext(ctx, "Failed to marshal JWT payload: "+err.Error())
+		js.logger.Error(ctx, "Failed to marshal JWT payload: "+err.Error())
 		return "", 0, &serviceerror.InternalServerError
 	}
 
@@ -210,7 +210,7 @@ func (js *jwtService) GenerateJWT(
 	signingInput := headerBase64 + "." + payloadBase64
 	signature, err := js.cryptoProvider.Sign(ctx, js.keyRef, js.signAlg, []byte(signingInput))
 	if err != nil {
-		js.logger.ErrorWithContext(ctx, "Failed to sign JWT: "+err.Error())
+		js.logger.Error(ctx, "Failed to sign JWT: "+err.Error())
 		return "", 0, &serviceerror.InternalServerError
 	}
 
@@ -225,7 +225,7 @@ func (js *jwtService) VerifyJWT(
 	ctx context.Context, jwtToken string, expectedAud, expectedIss string,
 ) *serviceerror.ServiceError {
 	if js.cryptoProvider == nil {
-		js.logger.ErrorWithContext(ctx, "Crypto provider not initialized for JWT verification")
+		js.logger.Error(ctx, "Crypto provider not initialized for JWT verification")
 		return &serviceerror.InternalServerError
 	}
 
@@ -271,7 +271,7 @@ func (js *jwtService) VerifyJWTWithJWKS(ctx context.Context,
 // VerifyJWTSignature verifies the signature of a JWT token using the server's public key.
 func (js *jwtService) VerifyJWTSignature(ctx context.Context, jwtToken string) *serviceerror.ServiceError {
 	if js.cryptoProvider == nil {
-		js.logger.ErrorWithContext(ctx, "Crypto provider not initialized for JWT verification")
+		js.logger.Error(ctx, "Crypto provider not initialized for JWT verification")
 		return &serviceerror.InternalServerError
 	}
 	parts := strings.Split(jwtToken, ".")
@@ -303,7 +303,7 @@ func (js *jwtService) VerifyJWTSignature(ctx context.Context, jwtToken string) *
 	// Retrieve all public keys from the provider and match by thumbprint
 	keys, providerErr := js.cryptoProvider.GetPublicKeys(ctx, kmprovider.PublicKeyFilter{})
 	if providerErr != nil {
-		js.logger.ErrorWithContext(ctx, "Failed to retrieve public keys for JWT verification: "+providerErr.Error())
+		js.logger.Error(ctx, "Failed to retrieve public keys for JWT verification: "+providerErr.Error())
 		return &serviceerror.InternalServerError
 	}
 	var matchedKey *kmprovider.PublicKeyInfo
@@ -395,7 +395,7 @@ func (js *jwtService) VerifyJWTSignatureWithJWKS(
 	// Convert JWK to public key
 	pubKey, err := jws.JWKToPublicKey(jwk)
 	if err != nil {
-		js.logger.DebugWithContext(ctx, "Failed to convert JWK to public key: "+err.Error())
+		js.logger.Debug(ctx, "Failed to convert JWK to public key: "+err.Error())
 		return &ErrorFailedToParseJWKS
 	}
 
@@ -419,23 +419,23 @@ func (js *jwtService) getJWKSKeys(
 
 	resp, err := js.httpClient.Get(jwksURL)
 	if err != nil {
-		js.logger.DebugWithContext(ctx, "Failed to fetch JWKS from URL: "+err.Error())
+		js.logger.Debug(ctx, "Failed to fetch JWKS from URL: "+err.Error())
 		return nil, &ErrorFailedToGetJWKS
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			js.logger.ErrorWithContext(ctx, "Failed to close response body", log.Error(closeErr))
+			js.logger.Error(ctx, "Failed to close response body", log.Error(closeErr))
 		}
 	}()
 
 	if resp.StatusCode != http.StatusOK {
-		js.logger.DebugWithContext(ctx, "Failed to fetch JWKS, HTTP status: "+resp.Status)
+		js.logger.Debug(ctx, "Failed to fetch JWKS, HTTP status: "+resp.Status)
 		return nil, &ErrorFailedToGetJWKS
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		js.logger.DebugWithContext(ctx, "Failed to read JWKS response body: "+err.Error())
+		js.logger.Debug(ctx, "Failed to read JWKS response body: "+err.Error())
 		return nil, &ErrorFailedToParseJWKS
 	}
 
@@ -443,7 +443,7 @@ func (js *jwtService) getJWKSKeys(
 		Keys []map[string]interface{} `json:"keys"`
 	}
 	if err := json.Unmarshal(body, &jwks); err != nil {
-		js.logger.DebugWithContext(ctx, "Failed to parse JWKS JSON: "+err.Error())
+		js.logger.Debug(ctx, "Failed to parse JWKS JSON: "+err.Error())
 		return nil, &ErrorFailedToParseJWKS
 	}
 
@@ -462,7 +462,7 @@ func (js *jwtService) verifyJWTClaims(
 	// Decode the JWT payload
 	payload, err := DecodeJWTPayload(jwtToken)
 	if err != nil {
-		js.logger.DebugWithContext(ctx, "Failed to decode JWT payload: "+err.Error())
+		js.logger.Debug(ctx, "Failed to decode JWT payload: "+err.Error())
 		return &ErrorDecodingJWTPayload
 	}
 
@@ -474,11 +474,11 @@ func (js *jwtService) verifyJWTClaims(
 
 	if exp, ok := payload["exp"].(float64); ok {
 		if now >= int64(exp)+leeway {
-			js.logger.DebugWithContext(ctx, "JWT token has expired")
+			js.logger.Debug(ctx, "JWT token has expired")
 			return &ErrorTokenExpired
 		}
 	} else {
-		js.logger.DebugWithContext(ctx, "JWT token missing 'exp' claim or it is not a number")
+		js.logger.Debug(ctx, "JWT token missing 'exp' claim or it is not a number")
 		return &ErrorInvalidJWTFormat
 	}
 
@@ -486,11 +486,11 @@ func (js *jwtService) verifyJWTClaims(
 	if nbfRaw, ok := payload["nbf"]; ok {
 		nbf, isNumber := nbfRaw.(float64)
 		if !isNumber {
-			js.logger.DebugWithContext(ctx, "JWT token 'nbf' claim present but not a number")
+			js.logger.Debug(ctx, "JWT token 'nbf' claim present but not a number")
 			return &ErrorInvalidJWTFormat
 		}
 		if now < int64(nbf)-leeway {
-			js.logger.DebugWithContext(ctx, "JWT token is not valid yet (nbf claim)")
+			js.logger.Debug(ctx, "JWT token is not valid yet (nbf claim)")
 			return &ErrorInvalidJWTFormat
 		}
 	}
@@ -499,7 +499,7 @@ func (js *jwtService) verifyJWTClaims(
 		switch aud := payload["aud"].(type) {
 		case string:
 			if aud != expectedAud {
-				js.logger.DebugWithContext(ctx, "Invalid audience: expected "+expectedAud+", got "+aud)
+				js.logger.Debug(ctx, "Invalid audience: expected "+expectedAud+", got "+aud)
 				return &ErrorInvalidJWTFormat
 			}
 		case []interface{}:
@@ -511,11 +511,11 @@ func (js *jwtService) verifyJWTClaims(
 				}
 			}
 			if !found {
-				js.logger.DebugWithContext(ctx, "Invalid audience: expected "+expectedAud+" not found in aud array")
+				js.logger.Debug(ctx, "Invalid audience: expected "+expectedAud+" not found in aud array")
 				return &ErrorInvalidJWTFormat
 			}
 		default:
-			js.logger.DebugWithContext(ctx, "Missing or invalid 'aud' claim")
+			js.logger.Debug(ctx, "Missing or invalid 'aud' claim")
 			return &ErrorInvalidJWTFormat
 		}
 	}
@@ -523,11 +523,11 @@ func (js *jwtService) verifyJWTClaims(
 	if expectedIss != "" {
 		if iss, ok := payload["iss"].(string); ok {
 			if iss != expectedIss {
-				js.logger.DebugWithContext(ctx, "Invalid issuer: expected "+expectedIss+", got "+iss)
+				js.logger.Debug(ctx, "Invalid issuer: expected "+expectedIss+", got "+iss)
 				return &ErrorInvalidJWTFormat
 			}
 		} else {
-			js.logger.DebugWithContext(ctx, "Missing 'iss' claim or it is not a string")
+			js.logger.Debug(ctx, "Missing 'iss' claim or it is not a string")
 			return &ErrorInvalidJWTFormat
 		}
 	}

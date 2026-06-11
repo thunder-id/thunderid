@@ -89,7 +89,7 @@ func (ih *importHandler) handleError(ctx context.Context, w http.ResponseWriter,
 	}
 
 	if statusCode == http.StatusInternalServerError {
-		ih.logger.ErrorWithContext(ctx,
+		ih.logger.Error(ctx,
 			"Import request failed with server error",
 			log.String("code", svcErr.Code),
 			log.String("error", svcErr.Error.DefaultValue),

@@ -79,7 +79,7 @@ func (client *DBClient) QueryContext(
 	args ...interface{},
 ) ([]map[string]interface{}, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DBClient"))
-	logger.DebugWithContext(ctx, "Executing query", log.String("queryID", query.GetID()))
+	logger.Debug(ctx, "Executing query", log.String("queryID", query.GetID()))
 
 	sqlQuery := query.GetQuery(client.dbType)
 
@@ -102,7 +102,7 @@ func (client *DBClient) QueryContext(
 	}
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil {
-			logger.ErrorWithContext(ctx, "Error closing rows", log.Error(closeErr))
+			logger.Error(ctx, "Error closing rows", log.Error(closeErr))
 		}
 	}()
 
@@ -147,7 +147,7 @@ func (client *DBClient) Execute(query model.DBQuery, args ...interface{}) (int64
 // If a transaction exists in the context, it will be used automatically.
 func (client *DBClient) ExecuteContext(ctx context.Context, query model.DBQuery, args ...interface{}) (int64, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DBClient"))
-	logger.DebugWithContext(ctx, "Executing query", log.String("queryID", query.GetID()))
+	logger.Debug(ctx, "Executing query", log.String("queryID", query.GetID()))
 
 	sqlQuery := query.GetQuery(client.dbType)
 

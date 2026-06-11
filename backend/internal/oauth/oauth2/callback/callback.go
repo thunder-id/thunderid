@@ -149,7 +149,7 @@ func (
 	}
 	redirectURI, err := oauth2utils.GetURIWithQueryParams(authErr.ClientRedirectURI, queryParams)
 	if err != nil {
-		d.logger.ErrorWithContext(ctx, "Failed to construct client redirect URI", log.Error(err))
+		d.logger.Error(ctx, "Failed to construct client redirect URI", log.Error(err))
 		d.writeErrorPageRedirect(ctx, w, oauth2const.ErrorServerError,
 			"Failed to process authorization request", authErr.State)
 		return

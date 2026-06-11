@@ -79,7 +79,7 @@ func newIdentifyingExecutor(
 func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[string]interface{},
 	execResp *common.ExecutorResponse) (*string, error) {
 	logger := i.logger
-	logger.DebugWithContext(ctx, "Identifying user with filters")
+	logger.Debug(ctx, "Identifying user with filters")
 
 	// filter out non-searchable attributes
 	var searchableFilter = make(map[string]interface{})
@@ -93,13 +93,13 @@ func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[stri
 	if err != nil {
 		switch err.Code {
 		case entityprovider.ErrorCodeEntityNotFound:
-			logger.DebugWithContext(ctx, "User not found for the provided filters")
+			logger.Debug(ctx, "User not found for the provided filters")
 			execResp.Error = &ErrUserNotFound
 		case entityprovider.ErrorCodeAmbiguousEntity:
-			logger.DebugWithContext(ctx, "Multiple users found for the provided filters")
+			logger.Debug(ctx, "Multiple users found for the provided filters")
 			execResp.Error = &ErrAmbiguousUserIdentity
 		default:
-			logger.DebugWithContext(ctx, "Failed to identify user due to error: "+err.Error())
+			logger.Debug(ctx, "Failed to identify user due to error: "+err.Error())
 			execResp.Error = &ErrFailedToIdentifyUser
 		}
 		execResp.Status = common.ExecFailure
@@ -107,7 +107,7 @@ func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[stri
 	}
 
 	if userID == nil || *userID == "" {
-		logger.DebugWithContext(ctx, "User not found for the provided filter")
+		logger.Debug(ctx, "User not found for the provided filter")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrUserNotFound
 		return nil, nil
@@ -119,7 +119,7 @@ func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[stri
 // Execute executes the identifying executor logic.
 func (i *identifyingExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Executing identifying executor")
+	logger.Debug(ctx.Context, "Executing identifying executor")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -127,7 +127,7 @@ func (i *identifyingExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 	}
 
 	if !i.HasRequiredInputs(ctx, execResp) {
-		logger.DebugWithContext(ctx.Context, "Required inputs for identifying executor are not provided")
+		logger.Debug(ctx.Context, "Required inputs for identifying executor are not provided")
 		execResp.Status = common.ExecUserInputRequired
 		return execResp, nil
 	}
@@ -151,7 +151,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *core.NodeContext,
 
 	userID, err := i.IdentifyUser(ctx.Context, userSearchAttributes, execResp)
 	if err != nil {
-		logger.DebugWithContext(ctx.Context, "Failed to identify user due to error: "+err.Error())
+		logger.Debug(ctx.Context, "Failed to identify user due to error: "+err.Error())
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrFailedToIdentifyUser
 		return execResp, nil
@@ -166,7 +166,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *core.NodeContext,
 	_, loginHintAttrSet := ctx.NodeProperties[propertyKeyLoginHintAttribute]
 	if execResp.Status == common.ExecFailure &&
 		execResp.Error != nil && execResp.Error.Code == ErrUserNotFound.Code && !loginHintAttrSet {
-		logger.DebugWithContext(ctx.Context, "User not found — promoting to user input required",
+		logger.Debug(ctx.Context, "User not found — promoting to user input required",
 			log.Int("searchAttributeCount", len(userSearchAttributes)))
 		execResp.Status = common.ExecUserInputRequired
 		execResp.Inputs = i.GetRequiredInputs(ctx)
@@ -177,7 +177,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *core.NodeContext,
 	}
 
 	if userID == nil || *userID == "" {
-		logger.DebugWithContext(ctx.Context, "User not found for the provided attributes")
+		logger.Debug(ctx.Context, "User not found for the provided attributes")
 		if !loginHintAttrSet {
 			execResp.Status = common.ExecUserInputRequired
 			execResp.Inputs = i.GetRequiredInputs(ctx)
@@ -191,7 +191,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *core.NodeContext,
 	execResp.RuntimeData[userAttributeUserID] = *userID
 	execResp.Status = common.ExecComplete
 
-	logger.DebugWithContext(ctx.Context, "Identifying executor completed successfully",
+	logger.Debug(ctx.Context, "Identifying executor completed successfully",
 		log.MaskedString(log.LoggerKeyUserID, *userID))
 
 	return execResp, nil
@@ -201,7 +201,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *core.NodeContext,
 func (i *identifyingExecutor) executeResolve(ctx *core.NodeContext,
 	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Executing identifying executor in resolve mode")
+	logger.Debug(ctx.Context, "Executing identifying executor in resolve mode")
 
 	userSearchAttributes := i.buildSearchAttributes(ctx)
 
@@ -228,7 +228,7 @@ func (i *identifyingExecutor) executeResolve(ctx *core.NodeContext,
 
 	switch len(candidates) {
 	case 0:
-		logger.DebugWithContext(ctx.Context, "No matching users after filtering")
+		logger.Debug(ctx.Context, "No matching users after filtering")
 		execResp.Status = common.ExecUserInputRequired
 		execResp.Inputs = i.GetRequiredInputs(ctx)
 		execResp.Error = &ErrUserNotFound
@@ -236,7 +236,7 @@ func (i *identifyingExecutor) executeResolve(ctx *core.NodeContext,
 	case 1:
 		execResp.RuntimeData[userAttributeUserID] = candidates[0].ID
 		execResp.Status = common.ExecComplete
-		logger.DebugWithContext(ctx.Context, "User resolved successfully",
+		logger.Debug(ctx.Context, "User resolved successfully",
 			log.MaskedString("userID", candidates[0].ID))
 		return execResp, nil
 	default:
@@ -291,10 +291,10 @@ func (i *identifyingExecutor) searchCandidates(ctx context.Context,
 	users, err := i.entityProvider.SearchEntities(searchableFilters)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeEntityNotFound {
-			logger.DebugWithContext(ctx, "No users found for the provided filters")
+			logger.Debug(ctx, "No users found for the provided filters")
 			return []*entityprovider.Entity{}, nil
 		}
-		logger.DebugWithContext(ctx, "Failed to search users: "+err.Error())
+		logger.Debug(ctx, "Failed to search users: "+err.Error())
 		return nil, errors.New(ErrFailedToIdentifyUser.Error.DefaultValue)
 	}
 
@@ -307,7 +307,7 @@ func (i *identifyingExecutor) getFilteredCandidates(ctx context.Context,
 	logger *log.Logger) ([]*entityprovider.Entity, error) {
 	var candidates []*entityprovider.Entity
 	if err := json.Unmarshal([]byte(storedCandidates), &candidates); err != nil {
-		logger.DebugWithContext(ctx, "Failed to deserialize candidate users")
+		logger.Debug(ctx, "Failed to deserialize candidate users")
 		return nil, errors.New(ErrFailedToIdentifyUser.Error.DefaultValue)
 	}
 
@@ -322,7 +322,7 @@ func (i *identifyingExecutor) handleAmbiguousCandidates(ctx context.Context,
 	logger *log.Logger) (*common.ExecutorResponse, error) {
 	options := extractDisambiguationOptions(candidates)
 	if len(options) == 0 {
-		logger.DebugWithContext(ctx, "Candidates are indistinguishable, no disambiguation options available",
+		logger.Debug(ctx, "Candidates are indistinguishable, no disambiguation options available",
 			log.Int("candidateCount", len(candidates)))
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrFailedToIdentifyUser
@@ -331,7 +331,7 @@ func (i *identifyingExecutor) handleAmbiguousCandidates(ctx context.Context,
 
 	candidatesJSON, err := json.Marshal(candidates)
 	if err != nil {
-		logger.DebugWithContext(ctx, "Failed to serialize candidate users")
+		logger.Debug(ctx, "Failed to serialize candidate users")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrFailedToIdentifyUser
 		return execResp, nil
@@ -343,7 +343,7 @@ func (i *identifyingExecutor) handleAmbiguousCandidates(ctx context.Context,
 		common.ForwardedDataKeyInputs: options,
 	}
 
-	logger.DebugWithContext(ctx, "Multiple users still match, requesting additional attributes",
+	logger.Debug(ctx, "Multiple users still match, requesting additional attributes",
 		log.Int("candidateCount", len(candidates)))
 	return execResp, nil
 }

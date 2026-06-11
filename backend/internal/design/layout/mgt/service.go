@@ -68,13 +68,13 @@ func (ls *layoutMgtService) GetLayoutList(
 
 	totalCount, err := ls.layoutMgtStore.GetLayoutListCount()
 	if err != nil {
-		ls.logger.ErrorWithContext(ctx, "Failed to get layout count", log.Error(err))
+		ls.logger.Error(ctx, "Failed to get layout count", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	layouts, err := ls.layoutMgtStore.GetLayoutList(limit, offset)
 	if err != nil {
-		ls.logger.ErrorWithContext(ctx, "Failed to list layouts", log.Error(err))
+		ls.logger.Error(ctx, "Failed to list layouts", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -92,7 +92,7 @@ func (ls *layoutMgtService) GetLayoutList(
 // CreateLayout creates a new layout configuration.
 func (ls *layoutMgtService) CreateLayout(
 	ctx context.Context, layout CreateLayoutRequest) (*Layout, *serviceerror.ServiceError) {
-	ls.logger.DebugWithContext(ctx, "Creating layout configuration")
+	ls.logger.Debug(ctx, "Creating layout configuration")
 
 	if layout.DisplayName == "" {
 		return nil, &ErrorMissingDisplayName
@@ -109,7 +109,7 @@ func (ls *layoutMgtService) CreateLayout(
 
 	conflict, err := ls.layoutMgtStore.IsLayoutHandleConflict(layout.Handle, "")
 	if err != nil {
-		ls.logger.ErrorWithContext(ctx, "Failed to check layout handle conflict", log.Error(err))
+		ls.logger.Error(ctx, "Failed to check layout handle conflict", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 	if conflict {
@@ -122,12 +122,12 @@ func (ls *layoutMgtService) CreateLayout(
 
 	id, err := utils.GenerateUUIDv7()
 	if err != nil {
-		ls.logger.ErrorWithContext(ctx, "Failed to generate UUID", log.Error(err))
+		ls.logger.Error(ctx, "Failed to generate UUID", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	if err := ls.layoutMgtStore.CreateLayout(id, layout); err != nil {
-		ls.logger.ErrorWithContext(ctx, "Failed to create layout", log.Error(err))
+		ls.logger.Error(ctx, "Failed to create layout", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -139,13 +139,13 @@ func (ls *layoutMgtService) CreateLayout(
 		Layout:      layout.Layout,
 	}
 
-	ls.logger.DebugWithContext(ctx, "Successfully created layout", log.String("id", id))
+	ls.logger.Debug(ctx, "Successfully created layout", log.String("id", id))
 	return createdLayout, nil
 }
 
 // GetLayout retrieves a specific layout configuration by its id.
 func (ls *layoutMgtService) GetLayout(ctx context.Context, id string) (*Layout, *serviceerror.ServiceError) {
-	ls.logger.DebugWithContext(ctx, "Retrieving layout", log.String("id", id))
+	ls.logger.Debug(ctx, "Retrieving layout", log.String("id", id))
 
 	if id == "" {
 		return nil, &ErrorInvalidLayoutID
@@ -154,21 +154,21 @@ func (ls *layoutMgtService) GetLayout(ctx context.Context, id string) (*Layout, 
 	layout, err := ls.layoutMgtStore.GetLayout(id)
 	if err != nil {
 		if errors.Is(err, errLayoutNotFound) {
-			ls.logger.DebugWithContext(ctx, "Layout not found", log.String("id", id))
+			ls.logger.Debug(ctx, "Layout not found", log.String("id", id))
 			return nil, &ErrorLayoutNotFound
 		}
-		ls.logger.ErrorWithContext(ctx, "Failed to retrieve layout", log.String("id", id), log.Error(err))
+		ls.logger.Error(ctx, "Failed to retrieve layout", log.String("id", id), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	ls.logger.DebugWithContext(ctx, "Successfully retrieved layout", log.String("id", layout.ID))
+	ls.logger.Debug(ctx, "Successfully retrieved layout", log.String("id", layout.ID))
 	return &layout, nil
 }
 
 // UpdateLayout updates an existing layout configuration.
 func (ls *layoutMgtService) UpdateLayout(ctx context.Context,
 	id string, layout UpdateLayoutRequest) (*Layout, *serviceerror.ServiceError) {
-	ls.logger.DebugWithContext(ctx, "Updating layout", log.String("id", id))
+	ls.logger.Debug(ctx, "Updating layout", log.String("id", id))
 
 	if id == "" {
 		return nil, &ErrorInvalidLayoutID
@@ -189,7 +189,7 @@ func (ls *layoutMgtService) UpdateLayout(ctx context.Context,
 		if errors.Is(err, errLayoutNotFound) {
 			return nil, &ErrorLayoutNotFound
 		}
-		ls.logger.ErrorWithContext(ctx, "Failed to retrieve layout", log.String("id", id), log.Error(err))
+		ls.logger.Error(ctx, "Failed to retrieve layout", log.String("id", id), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -203,7 +203,7 @@ func (ls *layoutMgtService) UpdateLayout(ctx context.Context,
 	}
 
 	if err := ls.layoutMgtStore.UpdateLayout(id, layout); err != nil {
-		ls.logger.ErrorWithContext(ctx, "Failed to update layout", log.String("id", id), log.Error(err))
+		ls.logger.Error(ctx, "Failed to update layout", log.String("id", id), log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -215,13 +215,13 @@ func (ls *layoutMgtService) UpdateLayout(ctx context.Context,
 		Layout:      layout.Layout,
 	}
 
-	ls.logger.DebugWithContext(ctx, "Successfully updated layout", log.String("id", id))
+	ls.logger.Debug(ctx, "Successfully updated layout", log.String("id", id))
 	return updatedLayout, nil
 }
 
 // DeleteLayout deletes a layout configuration.
 func (ls *layoutMgtService) DeleteLayout(ctx context.Context, id string) *serviceerror.ServiceError {
-	ls.logger.DebugWithContext(ctx, "Deleting layout", log.String("id", id))
+	ls.logger.Debug(ctx, "Deleting layout", log.String("id", id))
 
 	if id == "" {
 		return &ErrorInvalidLayoutID
@@ -235,19 +235,19 @@ func (ls *layoutMgtService) DeleteLayout(ctx context.Context, id string) *servic
 	// Check if layout exists. Return success for non-existing layouts (idempotent delete).
 	exists, err := ls.layoutMgtStore.IsLayoutExist(id)
 	if err != nil {
-		ls.logger.ErrorWithContext(ctx, "Failed to check layout existence", log.String("id", id), log.Error(err))
+		ls.logger.Error(ctx, "Failed to check layout existence", log.String("id", id), log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 
 	if !exists {
-		ls.logger.DebugWithContext(ctx, "Layout not found for deletion, returning success", log.String("id", id))
+		ls.logger.Debug(ctx, "Layout not found for deletion, returning success", log.String("id", id))
 		return nil
 	}
 
 	// Check if layout is used by any applications
 	count, err := ls.layoutMgtStore.GetApplicationsCountByLayoutID(id)
 	if err != nil {
-		ls.logger.ErrorWithContext(ctx, "Failed to check applications using layout",
+		ls.logger.Error(ctx, "Failed to check applications using layout",
 			log.String("id", id), log.Error(err))
 		return &serviceerror.InternalServerError
 	}
@@ -260,11 +260,11 @@ func (ls *layoutMgtService) DeleteLayout(ctx context.Context, id string) *servic
 	}
 
 	if err := ls.layoutMgtStore.DeleteLayout(id); err != nil {
-		ls.logger.ErrorWithContext(ctx, "Failed to delete layout", log.String("id", id), log.Error(err))
+		ls.logger.Error(ctx, "Failed to delete layout", log.String("id", id), log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 
-	ls.logger.DebugWithContext(ctx, "Successfully deleted layout", log.String("id", id))
+	ls.logger.Debug(ctx, "Successfully deleted layout", log.String("id", id))
 	return nil
 }
 
@@ -276,7 +276,7 @@ func (ls *layoutMgtService) IsLayoutExist(ctx context.Context, id string) (bool,
 
 	exists, err := ls.layoutMgtStore.IsLayoutExist(id)
 	if err != nil {
-		ls.logger.ErrorWithContext(ctx, "Failed to check layout existence", log.String("id", id), log.Error(err))
+		ls.logger.Error(ctx, "Failed to check layout existence", log.String("id", id), log.Error(err))
 		return false, &serviceerror.InternalServerError
 	}
 
@@ -292,7 +292,7 @@ func (ls *layoutMgtService) validateLayoutPreferences(
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(layout, &result); err != nil {
-		ls.logger.DebugWithContext(ctx, "Invalid layout JSON", log.Error(err))
+		ls.logger.Debug(ctx, "Invalid layout JSON", log.Error(err))
 		return &ErrorInvalidLayoutFormat
 	}
 

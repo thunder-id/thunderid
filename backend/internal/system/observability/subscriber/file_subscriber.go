@@ -84,7 +84,7 @@ func (fs *FileSubscriber) Initialize() error {
 
 	if fs.adapter != nil {
 		if err := fs.adapter.Close(); err != nil {
-			fs.logger.WarnWithContext(ctx, "failed to close existing file adapter", log.Error(err))
+			fs.logger.Warn(ctx, "failed to close existing file adapter", log.Error(err))
 		}
 	}
 	// Create file adapter using the Initialize pattern
@@ -109,7 +109,7 @@ func (fs *FileSubscriber) Initialize() error {
 	fs.adapter = adptr
 	fs.logger = log.GetLogger().With(log.String(log.LoggerKeyComponentName, fileSubscriberComponentName))
 
-	fs.logger.DebugWithContext(ctx, "File subscriber initialized",
+	fs.logger.Debug(ctx, "File subscriber initialized",
 		log.String("filePath", filePath),
 		log.String("format", fileConfig.Format),
 		log.Int("categories", len(fs.categories)))
@@ -141,20 +141,20 @@ func (fs *FileSubscriber) Close() error {
 	// Subscriber shutdown runs during application teardown, outside any request.
 	ctx := context.Background()
 
-	fs.logger.InfoWithContext(ctx, "Closing file subscriber", log.String("subscriberID", fs.id))
+	fs.logger.Info(ctx, "Closing file subscriber", log.String("subscriberID", fs.id))
 
 	// Flush and close adapter
 	if fs.adapter != nil {
 		if err := fs.adapter.Flush(); err != nil {
-			fs.logger.ErrorWithContext(ctx, "Failed to flush file adapter", log.Error(err))
+			fs.logger.Error(ctx, "Failed to flush file adapter", log.Error(err))
 		}
 
 		if err := fs.adapter.Close(); err != nil {
-			fs.logger.ErrorWithContext(ctx, "Failed to close file adapter", log.Error(err))
+			fs.logger.Error(ctx, "Failed to close file adapter", log.Error(err))
 			return err
 		}
 	}
 
-	fs.logger.InfoWithContext(ctx, "File subscriber closed", log.String("subscriberID", fs.id))
+	fs.logger.Info(ctx, "File subscriber closed", log.String("subscriberID", fs.id))
 	return nil
 }

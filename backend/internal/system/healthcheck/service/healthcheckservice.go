@@ -101,11 +101,11 @@ func (hcs *HealthCheckService) checkRuntimeDatabaseStatus(ctx context.Context, q
 func (hcs *HealthCheckService) checkRedisRuntimeStatus(ctx context.Context) model.Status {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "HealthCheckService"))
 	if hcs.RedisProvider == nil {
-		logger.ErrorWithContext(ctx, "Redis runtime provider is not initialized")
+		logger.Error(ctx, "Redis runtime provider is not initialized")
 		return model.StatusDown
 	}
 	if err := hcs.RedisProvider.GetRedisClient().Ping(context.Background()).Err(); err != nil {
-		logger.ErrorWithContext(ctx, "Failed to ping Redis runtime store", log.Error(err))
+		logger.Error(ctx, "Failed to ping Redis runtime store", log.Error(err))
 		return model.StatusDown
 	}
 	return model.StatusUp
@@ -124,13 +124,13 @@ func (hcs *HealthCheckService) executeDatabaseHealthCheck(ctx context.Context,
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "HealthCheckService"))
 
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to get database client", log.String("dbname", dbName), log.Error(err))
+		logger.Error(ctx, "Failed to get database client", log.String("dbname", dbName), log.Error(err))
 		return model.StatusDown
 	}
 
 	_, err = dbClient.Query(query)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to execute query", log.String("dbname", dbName), log.Error(err))
+		logger.Error(ctx, "Failed to execute query", log.String("dbname", dbName), log.Error(err))
 		return model.StatusDown
 	}
 	return model.StatusUp

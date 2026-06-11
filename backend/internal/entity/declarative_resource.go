@@ -107,7 +107,7 @@ func loadDeclarativeResources(
 		resource, ok := data.(*entityStoreEntry)
 		if !ok {
 			// Declarative resource loading runs at startup, outside any request.
-			logger.ErrorWithContext(context.Background(), "IDExtractor: type assertion failed for entityStoreEntry")
+			logger.Error(context.Background(), "IDExtractor: type assertion failed for entityStoreEntry")
 			return ""
 		}
 		if config.IDExtractor != nil {

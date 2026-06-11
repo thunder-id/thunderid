@@ -2126,3 +2126,314 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExplicitOUIDChanged_Validate
 	assert.Equal(suite.T(), ErrorOrganizationUnitNotFound.Code, svcErr.Code)
 	assert.Nil(suite.T(), resp)
 }
+
+// --- error-branch coverage ---
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_EntityCreationFails_NonMappableError() {
+	svc, mockEntity, _, _ := suite.setupService()
+
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+		Return((*entity.Entity)(nil), errors.New("db error"))
+
+	req := &model.Agent{Name: testAgentName, Type: testAgentType, OUID: testOUID}
+	resp, svcErr := svc.CreateAgent(context.Background(), req)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_InboundCreationFails_NonTranslatableError() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+
+	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+		Return(createdEntity, nil)
+
+	clearMockCalls(mockInbound, "CreateInboundClient")
+	mockInbound.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("inbound boom"))
+
+	clearMockCalls(mockEntity, "DeleteEntity")
+	mockEntity.On("DeleteEntity", mock.Anything, mock.Anything).Return(nil)
+
+	req := &model.Agent{
+		Name:               testAgentName,
+		Type:               testAgentType,
+		OUID:               testOUID,
+		InboundAuthProfile: inboundmodel.InboundAuthProfile{AuthFlowID: "flow-1"},
+	}
+	resp, svcErr := svc.CreateAgent(context.Background(), req)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+	mockEntity.AssertCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestCreateAgent_InboundFails_CompensationDeleteFails() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+
+	createdEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "CreateEntity")
+	mockEntity.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything).
+		Return(createdEntity, nil)
+
+	clearMockCalls(mockInbound, "CreateInboundClient")
+	mockInbound.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("inbound boom"))
+
+	clearMockCalls(mockEntity, "DeleteEntity")
+	mockEntity.On("DeleteEntity", mock.Anything, mock.Anything).
+		Return(errors.New("compensation delete failed"))
+
+	req := &model.Agent{
+		Name:               testAgentName,
+		Type:               testAgentType,
+		OUID:               testOUID,
+		InboundAuthProfile: inboundmodel.InboundAuthProfile{AuthFlowID: "flow-1"},
+	}
+	resp, svcErr := svc.CreateAgent(context.Background(), req)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+	mockEntity.AssertCalled(suite.T(), "DeleteEntity", mock.Anything, mock.Anything)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ExistingOAuthProfileLoadError() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockInbound, "GetOAuthProfileByEntityID")
+	mockInbound.On("GetOAuthProfileByEntityID", mock.Anything, testAgentID).
+		Return((*inboundmodel.OAuthProfile)(nil), errors.New("db error"))
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Name: testAgentName, Type: testAgentType,
+	})
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateEntityFails_NonMappableError() {
+	svc, mockEntity, _, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "UpdateEntity")
+	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
+		Return((*entity.Entity)(nil), errors.New("db error"))
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Name: testAgentName, Type: testAgentType,
+	})
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_UpdateSystemCredentialsFails() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockEntity, "UpdateEntity")
+	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
+		Return(&entity.Entity{}, nil)
+
+	clearMockCalls(mockEntity, "UpdateSystemCredentials")
+	mockEntity.On("UpdateSystemCredentials", mock.Anything, testAgentID, mock.Anything).
+		Return(errors.New("creds boom"))
+
+	clearMockCalls(mockInbound, "UpdateInboundClient")
+	mockInbound.On("UpdateInboundClient", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	clearMockCalls(mockInbound, "GetInboundClientByEntityID")
+	mockInbound.On("GetInboundClientByEntityID", mock.Anything, testAgentID).
+		Return(&inboundmodel.InboundClient{ID: testAgentID}, nil)
+
+	req := &model.UpdateAgentRequest{
+		Name: testAgentName,
+		Type: testAgentType,
+		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
+			{
+				Type: inboundmodel.OAuthInboundAuthType,
+				OAuthConfig: &inboundmodel.OAuthConfigWithSecret{
+					GrantTypes:              []oauth2const.GrantType{oauth2const.GrantTypeClientCredentials},
+					TokenEndpointAuthMethod: oauth2const.TokenEndpointAuthMethodClientSecretBasic,
+				},
+			},
+		},
+	}
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileUpdateInboundFails_NonTranslatableError() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockInbound, "GetInboundClientByEntityID")
+	mockInbound.On("GetInboundClientByEntityID", mock.Anything, testAgentID).
+		Return(&inboundmodel.InboundClient{ID: testAgentID}, nil)
+
+	clearMockCalls(mockInbound, "UpdateInboundClient")
+	mockInbound.On("UpdateInboundClient", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("update boom"))
+
+	req := &model.UpdateAgentRequest{
+		Name:               testAgentName,
+		Type:               testAgentType,
+		InboundAuthProfile: inboundmodel.InboundAuthProfile{AuthFlowID: "flow-1"},
+	}
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileCreateInboundFails_NonTranslatableError() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockInbound, "GetInboundClientByEntityID")
+	mockInbound.On("GetInboundClientByEntityID", mock.Anything, testAgentID).
+		Return((*inboundmodel.InboundClient)(nil), inboundclient.ErrInboundClientNotFound)
+
+	clearMockCalls(mockInbound, "CreateInboundClient")
+	mockInbound.On("CreateInboundClient", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("create boom"))
+
+	req := &model.UpdateAgentRequest{
+		Name:               testAgentName,
+		Type:               testAgentType,
+		InboundAuthProfile: inboundmodel.InboundAuthProfile{AuthFlowID: "flow-1"},
+	}
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestUpdateAgent_ReconcileDeleteInboundFails_NonTranslatableError() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture("old-name", "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockInbound, "GetInboundClientByEntityID")
+	mockInbound.On("GetInboundClientByEntityID", mock.Anything, testAgentID).
+		Return(&inboundmodel.InboundClient{ID: testAgentID}, nil)
+
+	clearMockCalls(mockInbound, "DeleteInboundClient")
+	mockInbound.On("DeleteInboundClient", mock.Anything, testAgentID).
+		Return(errors.New("delete boom"))
+
+	req := &model.UpdateAgentRequest{Name: testAgentName, Type: testAgentType}
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, req)
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestDeleteAgent_DeleteInboundClientFails_NonTranslatableError() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockInbound, "DeleteInboundClient")
+	mockInbound.On("DeleteInboundClient", mock.Anything, testAgentID).
+		Return(errors.New("delete boom"))
+
+	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestDeleteAgent_DeleteEntityFails() {
+	svc, mockEntity, mockInbound, _ := suite.setupService()
+
+	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Return(agentEntity, nil)
+
+	clearMockCalls(mockInbound, "DeleteInboundClient")
+	mockInbound.On("DeleteInboundClient", mock.Anything, testAgentID).
+		Return(inboundclient.ErrInboundClientNotFound)
+
+	clearMockCalls(mockEntity, "DeleteEntity")
+	mockEntity.On("DeleteEntity", mock.Anything, testAgentID).
+		Return(errors.New("delete entity boom"))
+
+	svcErr := svc.DeleteAgent(context.Background(), testAgentID)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestValidateAgent_ResolveHandlesFails_NonFKError() {
+	svc, _, mockInbound, _ := suite.setupService()
+
+	clearMockCalls(mockInbound, "ResolveInboundAuthProfileHandles")
+	mockInbound.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).
+		Return(errors.New("resolve boom"))
+
+	req := &model.Agent{Name: testAgentName, Type: testAgentType, OUID: testOUID}
+	_, _, _, svcErr := svc.ValidateAgent(context.Background(), req, "")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestValidateAgent_InboundValidateFails_NonTranslatableError() {
+	svc, _, mockInbound, _ := suite.setupService()
+
+	clearMockCalls(mockInbound, "Validate")
+	mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(errors.New("validate boom"))
+
+	req := &model.Agent{
+		Name:               testAgentName,
+		Type:               testAgentType,
+		OUID:               testOUID,
+		InboundAuthProfile: inboundmodel.InboundAuthProfile{AuthFlowID: "flow-1"},
+	}
+	_, _, _, svcErr := svc.ValidateAgent(context.Background(), req, "")
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}
+
+func (suite *AgentServiceTestSuite) TestValidateOUExists_StoreError_NonNotFound() {
+	svc, _, _, mockOU := suite.setupService()
+
+	otherErr := &serviceerror.ServiceError{Code: "SOME_OTHER_ERROR"}
+	clearMockCalls(mockOU, "IsOrganizationUnitExists")
+	mockOU.On("IsOrganizationUnitExists", mock.Anything, testOUID).
+		Return(false, otherErr)
+
+	svcErr := svc.validateOUExists(context.Background(), testOUID)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), serviceerror.InternalServerError.Code, svcErr.Code)
+}

@@ -506,7 +506,7 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 
 	if len(results) == 0 {
 		if es.logger.IsDebugEnabled() {
-			es.logger.DebugWithContext(ctx, "Entity not found with the provided filters",
+			es.logger.Debug(ctx, "Entity not found with the provided filters",
 				log.MaskedMap("filters", filters))
 		}
 		return nil, ErrEntityNotFound
@@ -514,7 +514,7 @@ func (es *entityDBStore) IdentifyEntity(ctx context.Context,
 
 	if len(results) != 1 {
 		if es.logger.IsDebugEnabled() {
-			es.logger.DebugWithContext(ctx,
+			es.logger.Debug(ctx,
 				"Unexpected number of results for the provided filters",
 				log.MaskedMap("filters", filters),
 				log.Int("result_count", len(results)),

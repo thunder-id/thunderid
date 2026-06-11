@@ -163,7 +163,7 @@ func (ous *organizationUnitService) listAllOrganizationUnits(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
 	totalCount, err := ous.ouStore.GetOrganizationUnitListCount(ctx, f)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to get organization unit count", log.Error(err))
+		logger.Error(ctx, "Failed to get organization unit count", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -173,7 +173,7 @@ func (ous *organizationUnitService) listAllOrganizationUnits(
 		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
 			return nil, &ErrorResultLimitExceeded
 		}
-		logger.ErrorWithContext(ctx, "Failed to list organization units", log.Error(err))
+		logger.Error(ctx, "Failed to list organization units", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -209,7 +209,7 @@ func (ous *organizationUnitService) listAccessibleOrganizationUnits(
 		// reflects the filtered count, not the raw authorized-ID count.
 		allOUs, err := ous.ouStore.GetOrganizationUnitsByIDs(ctx, ids)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to get organization units by IDs", log.Error(err))
+			logger.Error(ctx, "Failed to get organization units by IDs", log.Error(err))
 			return nil, &serviceerror.InternalServerError
 		}
 
@@ -264,7 +264,7 @@ func (ous *organizationUnitService) listAccessibleOrganizationUnits(
 
 	pageOUs, err := ous.ouStore.GetOrganizationUnitsByIDs(ctx, pageIDs)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to get organization units by IDs", log.Error(err))
+		logger.Error(ctx, "Failed to get organization units by IDs", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -282,7 +282,7 @@ func (ous *organizationUnitService) CreateOrganizationUnit(
 	ctx context.Context, request OrganizationUnitRequestWithID,
 ) (OrganizationUnit, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Creating organization unit", log.String("name", request.Name))
+	logger.Debug(ctx, "Creating organization unit", log.String("name", request.Name))
 
 	// Fail if store is in declarative mode
 	if isDeclarativeModeEnabled() {
@@ -374,12 +374,12 @@ func (ous *organizationUnitService) CreateOrganizationUnit(
 		return OrganizationUnit{}, capturedSvcErr
 	}
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to create organization unit",
+		logger.Error(ctx, "Failed to create organization unit",
 			log.Error(err), log.String("name", request.Name))
 		return OrganizationUnit{}, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully created organization unit", log.String("ouID", createdOU.ID))
+	logger.Debug(ctx, "Successfully created organization unit", log.String("ouID", createdOU.ID))
 
 	return createdOU, nil
 }
@@ -389,7 +389,7 @@ func (ous *organizationUnitService) GetOrganizationUnit(
 	ctx context.Context, id string,
 ) (OrganizationUnit, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Getting organization unit", log.String("ouID", id))
+	logger.Debug(ctx, "Getting organization unit", log.String("ouID", id))
 
 	if svcErr := ous.checkOUAccess(ctx, security.ActionReadOU, id); svcErr != nil {
 		return OrganizationUnit{}, svcErr
@@ -400,7 +400,7 @@ func (ous *organizationUnitService) GetOrganizationUnit(
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
 			return OrganizationUnit{}, &ErrorOrganizationUnitNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to get organization unit", log.Error(err))
+		logger.Error(ctx, "Failed to get organization unit", log.Error(err))
 		return OrganizationUnit{}, &serviceerror.InternalServerError
 	}
 
@@ -412,7 +412,7 @@ func (ous *organizationUnitService) GetOrganizationUnitByPath(
 	ctx context.Context, handlePath string,
 ) (OrganizationUnit, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Getting organization unit by path", log.String("path", handlePath))
+	logger.Debug(ctx, "Getting organization unit by path", log.String("path", handlePath))
 
 	handles, serviceError := validateAndProcessHandlePath(handlePath)
 	if serviceError != nil {
@@ -424,7 +424,7 @@ func (ous *organizationUnitService) GetOrganizationUnitByPath(
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
 			return OrganizationUnit{}, &ErrorOrganizationUnitNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to get organization unit by path", log.Error(err))
+		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
 		return OrganizationUnit{}, &serviceerror.InternalServerError
 	}
 
@@ -440,11 +440,11 @@ func (ous *organizationUnitService) IsOrganizationUnitExists(
 	ctx context.Context, id string,
 ) (bool, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Checking if organization unit exists", log.String("ouID", id))
+	logger.Debug(ctx, "Checking if organization unit exists", log.String("ouID", id))
 
 	exists, err := ous.ouStore.IsOrganizationUnitExists(ctx, id)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to check organization unit existence", log.Error(err))
+		logger.Error(ctx, "Failed to check organization unit existence", log.Error(err))
 		return false, &serviceerror.InternalServerError
 	}
 
@@ -475,11 +475,11 @@ func (ous *organizationUnitService) IsParent(
 		parentOU, err := ous.ouStore.GetOrganizationUnit(ctx, *currentParent)
 		if err != nil {
 			if errors.Is(err, ErrOrganizationUnitNotFound) {
-				logger.DebugWithContext(ctx, "Encountered missing organization unit in hierarchy",
+				logger.Debug(ctx, "Encountered missing organization unit in hierarchy",
 					log.String("ouID", *currentParent))
 				return false, &ErrorOrganizationUnitNotFound
 			}
-			logger.ErrorWithContext(ctx, "Failed to traverse organization unit hierarchy", log.Error(err))
+			logger.Error(ctx, "Failed to traverse organization unit hierarchy", log.Error(err))
 			return false, &serviceerror.InternalServerError
 		}
 
@@ -494,7 +494,7 @@ func (ous *organizationUnitService) UpdateOrganizationUnit(
 	ctx context.Context, id string, request OrganizationUnitRequestWithID,
 ) (OrganizationUnit, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Updating organization unit", log.String("ouID", id))
+	logger.Debug(ctx, "Updating organization unit", log.String("ouID", id))
 
 	if svcErr := ous.checkOUAccess(ctx, security.ActionUpdateOU, id); svcErr != nil {
 		return OrganizationUnit{}, svcErr
@@ -526,11 +526,11 @@ func (ous *organizationUnitService) UpdateOrganizationUnit(
 		return OrganizationUnit{}, capturedSvcErr
 	}
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to update organization unit", log.Error(err), log.String("ouID", id))
+		logger.Error(ctx, "Failed to update organization unit", log.Error(err), log.String("ouID", id))
 		return OrganizationUnit{}, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully updated organization unit", log.String("ouID", id))
+	logger.Debug(ctx, "Successfully updated organization unit", log.String("ouID", id))
 	return updatedOU, nil
 }
 
@@ -539,7 +539,7 @@ func (ous *organizationUnitService) UpdateOrganizationUnitByPath(
 	ctx context.Context, handlePath string, request OrganizationUnitRequestWithID,
 ) (OrganizationUnit, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Updating organization unit by path", log.String("path", handlePath))
+	logger.Debug(ctx, "Updating organization unit by path", log.String("path", handlePath))
 
 	handles, serviceError := validateAndProcessHandlePath(handlePath)
 	if serviceError != nil {
@@ -583,12 +583,12 @@ func (ous *organizationUnitService) UpdateOrganizationUnitByPath(
 		return OrganizationUnit{}, capturedSvcErr
 	}
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to update organization unit by path",
+		logger.Error(ctx, "Failed to update organization unit by path",
 			log.Error(err), log.String("path", handlePath))
 		return OrganizationUnit{}, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully updated organization unit by path", log.String("ouID", updatedOU.ID))
+	logger.Debug(ctx, "Successfully updated organization unit by path", log.String("ouID", updatedOU.ID))
 	return updatedOU, nil
 }
 
@@ -615,7 +615,7 @@ func (ous *organizationUnitService) updateOUInternal(
 	if request.Parent != nil {
 		exists, err := ous.ouStore.IsOrganizationUnitExists(ctx, *request.Parent)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to check parent organization unit existence", log.Error(err))
+			logger.Error(ctx, "Failed to check parent organization unit existence", log.Error(err))
 			return OrganizationUnit{}, &serviceerror.InternalServerError
 		}
 		if !exists {
@@ -634,7 +634,7 @@ func (ous *organizationUnitService) updateOUInternal(
 	if parentChanged || existingOU.Name != request.Name {
 		nameConflict, err = ous.ouStore.CheckOrganizationUnitNameConflict(ctx, request.Name, request.Parent)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to check organization unit name conflict", log.Error(err))
+			logger.Error(ctx, "Failed to check organization unit name conflict", log.Error(err))
 			return OrganizationUnit{}, &serviceerror.InternalServerError
 		}
 	}
@@ -647,7 +647,7 @@ func (ous *organizationUnitService) updateOUInternal(
 	if parentChanged || existingOU.Handle != request.Handle {
 		handleConflict, err = ous.ouStore.CheckOrganizationUnitHandleConflict(ctx, request.Handle, request.Parent)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to check organization unit handle conflict", log.Error(err))
+			logger.Error(ctx, "Failed to check organization unit handle conflict", log.Error(err))
 			return OrganizationUnit{}, &serviceerror.InternalServerError
 		}
 	}
@@ -677,7 +677,7 @@ func (ous *organizationUnitService) updateOUInternal(
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
 			return OrganizationUnit{}, &ErrorOrganizationUnitNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to update organization unit", log.Error(err))
+		logger.Error(ctx, "Failed to update organization unit", log.Error(err))
 		return OrganizationUnit{}, &serviceerror.InternalServerError
 	}
 	return updatedOU, nil
@@ -687,7 +687,7 @@ func (ous *organizationUnitService) updateOUInternal(
 func (ous *organizationUnitService) DeleteOrganizationUnit(
 	ctx context.Context, id string) *serviceerror.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Deleting organization unit", log.String("ouID", id))
+	logger.Debug(ctx, "Deleting organization unit", log.String("ouID", id))
 
 	if svcErr := ous.checkOUAccess(ctx, security.ActionDeleteOU, id); svcErr != nil {
 		return svcErr
@@ -718,11 +718,11 @@ func (ous *organizationUnitService) DeleteOrganizationUnit(
 		return capturedSvcErr
 	}
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to delete organization unit", log.Error(err), log.String("ouID", id))
+		logger.Error(ctx, "Failed to delete organization unit", log.Error(err), log.String("ouID", id))
 		return &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully deleted organization unit", log.String("ouID", id))
+	logger.Debug(ctx, "Successfully deleted organization unit", log.String("ouID", id))
 	return nil
 }
 
@@ -731,7 +731,7 @@ func (ous *organizationUnitService) DeleteOrganizationUnitByPath(
 	ctx context.Context, handlePath string,
 ) *serviceerror.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Deleting organization unit by path", log.String("path", handlePath))
+	logger.Debug(ctx, "Deleting organization unit by path", log.String("path", handlePath))
 
 	handles, serviceError := validateAndProcessHandlePath(handlePath)
 	if serviceError != nil {
@@ -775,12 +775,12 @@ func (ous *organizationUnitService) DeleteOrganizationUnitByPath(
 		return capturedSvcErr
 	}
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to delete organization unit by path",
+		logger.Error(ctx, "Failed to delete organization unit by path",
 			log.Error(err), log.String("path", handlePath))
 		return &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully deleted organization unit by path", log.String("ouID", ouID))
+	logger.Debug(ctx, "Successfully deleted organization unit by path", log.String("ouID", ouID))
 	return nil
 }
 
@@ -796,7 +796,7 @@ func (ous *organizationUnitService) deleteOUInternal(
 	// Check child OUs (own table).
 	childCount, err := ous.ouStore.GetOrganizationUnitChildrenCount(ctx, id, nil)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to check child organization units", log.Error(err))
+		logger.Error(ctx, "Failed to check child organization units", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	if childCount > 0 {
@@ -805,12 +805,12 @@ func (ous *organizationUnitService) deleteOUInternal(
 
 	// Check users via resolver.
 	if ous.userResolver == nil {
-		logger.ErrorWithContext(ctx, "OUUserResolver not initialized")
+		logger.Error(ctx, "OUUserResolver not initialized")
 		return &serviceerror.InternalServerError
 	}
 	userCount, err := ous.userResolver.GetUserCountByOUID(ctx, id)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to check organization unit users", log.Error(err))
+		logger.Error(ctx, "Failed to check organization unit users", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	if userCount > 0 {
@@ -819,12 +819,12 @@ func (ous *organizationUnitService) deleteOUInternal(
 
 	// Check groups via resolver.
 	if ous.groupResolver == nil {
-		logger.ErrorWithContext(ctx, "OUGroupResolver not initialized")
+		logger.Error(ctx, "OUGroupResolver not initialized")
 		return &serviceerror.InternalServerError
 	}
 	groupCount, err := ous.groupResolver.GetGroupCountByOUID(ctx, id)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to check organization unit groups", log.Error(err))
+		logger.Error(ctx, "Failed to check organization unit groups", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	if groupCount > 0 {
@@ -836,7 +836,7 @@ func (ous *organizationUnitService) deleteOUInternal(
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
 			return &ErrorOrganizationUnitNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to delete organization unit", log.Error(err))
+		logger.Error(ctx, "Failed to delete organization unit", log.Error(err))
 		return &serviceerror.InternalServerError
 	}
 	return nil
@@ -884,7 +884,7 @@ func (ous *organizationUnitService) GetOrganizationUnitUsers(
 	users, ok := items.([]User)
 	if !ok {
 		logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-		logger.ErrorWithContext(ctx, "Failed to cast user list response for organization unit", log.String("ouID", id))
+		logger.Error(ctx, "Failed to cast user list response for organization unit", log.String("ouID", id))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -956,7 +956,7 @@ func (ous *organizationUnitService) GetOrganizationUnitChildrenByPath(
 	ctx context.Context, handlePath string, limit, offset int, f *filter.FilterGroup,
 ) (*OrganizationUnitListResponse, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Getting organization unit children by path", log.String("path", handlePath))
+	logger.Debug(ctx, "Getting organization unit children by path", log.String("path", handlePath))
 
 	handles, serviceError := validateAndProcessHandlePath(handlePath)
 	if serviceError != nil {
@@ -968,7 +968,7 @@ func (ous *organizationUnitService) GetOrganizationUnitChildrenByPath(
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
 			return nil, &ErrorOrganizationUnitNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to get organization unit by path", log.Error(err))
+		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -980,7 +980,7 @@ func (ous *organizationUnitService) GetOrganizationUnitUsersByPath(
 	ctx context.Context, handlePath string, limit, offset int, includeDisplay bool,
 ) (*UserListResponse, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Getting organization unit users by path", log.String("path", handlePath))
+	logger.Debug(ctx, "Getting organization unit users by path", log.String("path", handlePath))
 
 	handles, serviceError := validateAndProcessHandlePath(handlePath)
 	if serviceError != nil {
@@ -992,7 +992,7 @@ func (ous *organizationUnitService) GetOrganizationUnitUsersByPath(
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
 			return nil, &ErrorOrganizationUnitNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to get organization unit by path", log.Error(err))
+		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -1004,7 +1004,7 @@ func (ous *organizationUnitService) GetOrganizationUnitGroupsByPath(
 	ctx context.Context, handlePath string, limit, offset int,
 ) (*GroupListResponse, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Getting organization unit groups by path", log.String("path", handlePath))
+	logger.Debug(ctx, "Getting organization unit groups by path", log.String("path", handlePath))
 
 	handles, serviceError := validateAndProcessHandlePath(handlePath)
 	if serviceError != nil {
@@ -1016,7 +1016,7 @@ func (ous *organizationUnitService) GetOrganizationUnitGroupsByPath(
 		if errors.Is(err, ErrOrganizationUnitNotFound) {
 			return nil, &ErrorOrganizationUnitNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to get organization unit by path", log.Error(err))
+		logger.Error(ctx, "Failed to get organization unit by path", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
@@ -1119,7 +1119,7 @@ func (ous *organizationUnitService) getResourceListWithExistenceCheck(
 	mapCompositeError bool,
 ) (interface{}, int, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentNameService))
-	logger.DebugWithContext(ctx, "Getting resource for organization unit", log.String("resource_type", resourceType),
+	logger.Debug(ctx, "Getting resource for organization unit", log.String("resource_type", resourceType),
 		log.String("ouID", id))
 
 	if err := validatePaginationParams(limit, offset); err != nil {
@@ -1129,7 +1129,7 @@ func (ous *organizationUnitService) getResourceListWithExistenceCheck(
 	// Check if the organization unit exists
 	exists, err := ous.ouStore.IsOrganizationUnitExists(ctx, id)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to check organization unit existence", log.Error(err))
+		logger.Error(ctx, "Failed to check organization unit existence", log.Error(err))
 		return nil, 0, &serviceerror.InternalServerError
 	}
 	if !exists {
@@ -1142,14 +1142,14 @@ func (ous *organizationUnitService) getResourceListWithExistenceCheck(
 		if mapCompositeError && errors.Is(err, ErrResultLimitExceededInCompositeMode) {
 			return nil, 0, &ErrorResultLimitExceeded
 		}
-		logger.ErrorWithContext(ctx, "Failed to list resource",
+		logger.Error(ctx, "Failed to list resource",
 			log.String("resource_type", resourceType), log.Error(err))
 		return nil, 0, &serviceerror.InternalServerError
 	}
 
 	totalCount, err := getCountFunc(ctx, id)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to get resource count",
+		logger.Error(ctx, "Failed to get resource count",
 			log.String("resource_type", resourceType), log.Error(err))
 		return nil, 0, &serviceerror.InternalServerError
 	}
@@ -1215,7 +1215,7 @@ func (ous *organizationUnitService) GetOrganizationUnitHandlesByIDs(
 
 	ouBasics, err := ous.ouStore.GetOrganizationUnitsByIDs(ctx, ids)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to get organization units by IDs", log.Error(err))
+		logger.Error(ctx, "Failed to get organization units by IDs", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 

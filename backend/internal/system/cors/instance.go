@@ -65,7 +65,7 @@ func InitializeMatcher(entries OriginEntries) error {
 		if !isRegexAnchored(rx.Pattern) {
 			logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CORS"))
 			// CORS matcher is initialized at startup, outside any request.
-			logger.WarnWithContext(context.Background(),
+			logger.Warn(context.Background(),
 				"cors.allowed_origins regex is not fully anchored; partial matches are likely",
 				log.Int("index", i),
 				log.String("pattern", rx.Pattern))

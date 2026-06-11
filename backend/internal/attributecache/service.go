@@ -72,7 +72,7 @@ func (s *attributeCacheService) CreateAttributeCache(
 	ctx context.Context, cache *AttributeCache,
 ) (*AttributeCache, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Creating attribute cache entry")
+	logger.Debug(ctx, "Creating attribute cache entry")
 
 	if cache == nil {
 		return nil, &ErrorInvalidRequestFormat
@@ -89,17 +89,17 @@ func (s *attributeCacheService) CreateAttributeCache(
 	var err error
 	cache.ID, err = utils.GenerateUUIDv7()
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to generate UUID", log.Error(err))
+		logger.Error(ctx, "Failed to generate UUID", log.Error(err))
 		return nil, &serviceerror.InternalServerError
 	}
 
 	err = s.store.CreateAttributeCache(ctx, *cache)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to create attribute cache", log.Error(err), log.String("id", cache.ID))
+		logger.Error(ctx, "Failed to create attribute cache", log.Error(err), log.String("id", cache.ID))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully created attribute cache", log.String("id", cache.ID))
+	logger.Debug(ctx, "Successfully created attribute cache", log.String("id", cache.ID))
 	return cache, nil
 }
 
@@ -108,7 +108,7 @@ func (s *attributeCacheService) GetAttributeCache(
 	ctx context.Context, id string,
 ) (*AttributeCache, *serviceerror.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Retrieving attribute cache", log.String("id", id))
+	logger.Debug(ctx, "Retrieving attribute cache", log.String("id", id))
 
 	if strings.TrimSpace(id) == "" {
 		return nil, &ErrorMissingCacheID
@@ -117,14 +117,14 @@ func (s *attributeCacheService) GetAttributeCache(
 	cache, err := s.store.GetAttributeCache(ctx, id)
 	if err != nil {
 		if errors.Is(err, errAttributeCacheNotFound) {
-			logger.DebugWithContext(ctx, "Attribute cache not found", log.String("id", id))
+			logger.Debug(ctx, "Attribute cache not found", log.String("id", id))
 			return nil, &ErrorAttributeCacheNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to retrieve attribute cache", log.Error(err), log.String("id", id))
+		logger.Error(ctx, "Failed to retrieve attribute cache", log.Error(err), log.String("id", id))
 		return nil, &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully retrieved attribute cache", log.String("id", id))
+	logger.Debug(ctx, "Successfully retrieved attribute cache", log.String("id", id))
 	return &cache, nil
 }
 
@@ -133,7 +133,7 @@ func (s *attributeCacheService) ExtendAttributeCacheTTL(
 	ctx context.Context, id string, ttlSeconds int,
 ) *serviceerror.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Extending attribute cache TTL", log.String("id", id))
+	logger.Debug(ctx, "Extending attribute cache TTL", log.String("id", id))
 
 	if strings.TrimSpace(id) == "" {
 		return &ErrorMissingCacheID
@@ -146,14 +146,14 @@ func (s *attributeCacheService) ExtendAttributeCacheTTL(
 	err := s.store.ExtendAttributeCacheTTL(ctx, id, ttlSeconds)
 	if err != nil {
 		if errors.Is(err, errAttributeCacheNotFound) {
-			logger.DebugWithContext(ctx, "Attribute cache not found", log.String("id", id))
+			logger.Debug(ctx, "Attribute cache not found", log.String("id", id))
 			return &ErrorAttributeCacheNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to extend attribute cache TTL", log.Error(err), log.String("id", id))
+		logger.Error(ctx, "Failed to extend attribute cache TTL", log.Error(err), log.String("id", id))
 		return &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully extended attribute cache TTL", log.String("id", id))
+	logger.Debug(ctx, "Successfully extended attribute cache TTL", log.String("id", id))
 	return nil
 }
 
@@ -162,7 +162,7 @@ func (s *attributeCacheService) DeleteAttributeCache(
 	ctx context.Context, id string,
 ) *serviceerror.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-	logger.DebugWithContext(ctx, "Deleting attribute cache", log.String("id", id))
+	logger.Debug(ctx, "Deleting attribute cache", log.String("id", id))
 
 	if strings.TrimSpace(id) == "" {
 		return &ErrorMissingCacheID
@@ -171,13 +171,13 @@ func (s *attributeCacheService) DeleteAttributeCache(
 	err := s.store.DeleteAttributeCache(ctx, id)
 	if err != nil {
 		if errors.Is(err, errAttributeCacheNotFound) {
-			logger.DebugWithContext(ctx, "Attribute cache not found", log.String("id", id))
+			logger.Debug(ctx, "Attribute cache not found", log.String("id", id))
 			return &ErrorAttributeCacheNotFound
 		}
-		logger.ErrorWithContext(ctx, "Failed to delete attribute cache", log.Error(err), log.String("id", id))
+		logger.Error(ctx, "Failed to delete attribute cache", log.Error(err), log.String("id", id))
 		return &serviceerror.InternalServerError
 	}
 
-	logger.DebugWithContext(ctx, "Successfully deleted attribute cache", log.String("id", id))
+	logger.Debug(ctx, "Successfully deleted attribute cache", log.String("id", id))
 	return nil
 }

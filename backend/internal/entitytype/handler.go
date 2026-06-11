@@ -76,7 +76,7 @@ func (h *entityTypeHandler) HandleEntityTypeListRequest(w http.ResponseWriter, r
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, entityTypeListResponse)
 
-	logger.DebugWithContext(ctx, "Successfully listed entity types with pagination",
+	logger.Debug(ctx, "Successfully listed entity types with pagination",
 		log.String("category", string(h.category)),
 		log.Int("limit", limit), log.Int("offset", offset),
 		log.Int("totalResults", entityTypeListResponse.TotalResults),
@@ -119,7 +119,7 @@ func (h *entityTypeHandler) HandleEntityTypePostRequest(w http.ResponseWriter, r
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, createdEntityType)
 
-	logger.DebugWithContext(ctx, "Successfully created entity type",
+	logger.Debug(ctx, "Successfully created entity type",
 		log.String("category", string(h.category)),
 		log.String("entityTypeID", createdEntityType.ID), log.String("name", createdEntityType.Name))
 }
@@ -144,7 +144,7 @@ func (h *entityTypeHandler) HandleEntityTypeGetRequest(w http.ResponseWriter, r 
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, entityType)
 
-	logger.DebugWithContext(ctx, "Successfully retrieved entity type",
+	logger.Debug(ctx, "Successfully retrieved entity type",
 		log.String("category", string(h.category)), log.String("entityTypeID", schemaID))
 }
 
@@ -172,7 +172,7 @@ func (h *entityTypeHandler) HandleEntityTypePutRequest(w http.ResponseWriter, r 
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, updatedEntityType)
 
-	logger.DebugWithContext(ctx, "Successfully updated entity type",
+	logger.Debug(ctx, "Successfully updated entity type",
 		log.String("category", string(h.category)),
 		log.String("entityTypeID", schemaID), log.String("name", updatedEntityType.Name))
 }
@@ -194,7 +194,7 @@ func (h *entityTypeHandler) HandleEntityTypeDeleteRequest(w http.ResponseWriter,
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
-	logger.DebugWithContext(ctx, "Successfully deleted entity type",
+	logger.Debug(ctx, "Successfully deleted entity type",
 		log.String("category", string(h.category)), log.String("entityTypeID", schemaID))
 }
 
@@ -314,7 +314,7 @@ func (h *entityTypeHandler) sanitizeUpdateEntityTypeRequest(ctx context.Context,
 	sanitizedOUID := sysutils.SanitizeString(request.OUID)
 
 	if originalName != sanitizedName {
-		logger.DebugWithContext(ctx, "Sanitized entity type name in update request",
+		logger.Debug(ctx, "Sanitized entity type name in update request",
 			log.MaskedString("original", originalName),
 			log.MaskedString("sanitized", sanitizedName))
 	}

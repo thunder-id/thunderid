@@ -166,21 +166,21 @@ func (d *dbProvider) initializeAllClients() {
 	configDBConfig := config.GetServerRuntime().Config.Database.Config
 	err := d.initializeClient(&d.configClient, configDBConfig, dbNameConfig)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to initialize config database client", log.Error(err))
+		logger.Error(ctx, "Failed to initialize config database client", log.Error(err))
 	}
 
 	runtimeDBConfig := config.GetServerRuntime().Config.Database.Runtime
 	if runtimeDBConfig.Type != DataSourceTypeRedis {
 		err = d.initializeClient(&d.runtimeClient, runtimeDBConfig, dbNameRuntime)
 		if err != nil {
-			logger.ErrorWithContext(ctx, "Failed to initialize runtime database client", log.Error(err))
+			logger.Error(ctx, "Failed to initialize runtime database client", log.Error(err))
 		}
 	}
 
 	userDBConfig := config.GetServerRuntime().Config.Database.User
 	err = d.initializeClient(&d.userClient, userDBConfig, dbNameUser)
 	if err != nil {
-		logger.ErrorWithContext(ctx, "Failed to initialize user database client", log.Error(err))
+		logger.Error(ctx, "Failed to initialize user database client", log.Error(err))
 	}
 }
 
@@ -314,7 +314,7 @@ func (d *dbProvider) getDBConfig(dataSource config.DataSource) dbConfig {
 func (d *dbProvider) Close() error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DBProvider"))
 	// DB shutdown runs outside any request.
-	logger.DebugWithContext(context.Background(), "Closing database connections")
+	logger.Debug(context.Background(), "Closing database connections")
 
 	configErr := d.closeClient(&d.configClient, &d.configMutex, "config")
 	runtimeErr := d.closeClient(&d.runtimeClient, &d.runtimeMutex, "runtime")

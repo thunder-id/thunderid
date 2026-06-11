@@ -46,7 +46,7 @@ func Initialize(mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
 		notificationStore, tx, err = newNotificationStore()
 		if err != nil {
 			// Service initialization runs during application startup, outside any request.
-			log.GetLogger().ErrorWithContext(context.Background(),
+			log.GetLogger().Error(context.Background(),
 				"Failed to initialize notification store", log.Error(err))
 			return nil, nil, nil, nil, err
 		}

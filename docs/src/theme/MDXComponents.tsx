@@ -40,7 +40,7 @@ import ReactLogo from '@site/src/components/icons/ReactLogo';
 import ReactRouterLogo from '@site/src/components/icons/ReactRouterLogo';
 import TanStackLogo from '@site/src/components/icons/TanStackLogo';
 import VueLogo from '@site/src/components/icons/VueLogo';
-import {ConsoleUrl, WayFinderSampleUrl} from '@site/src/components/LocalUrls';
+import {ConsoleUrl, WayFinderSampleUrl, WayFinderMailUrl} from '@site/src/components/LocalUrls';
 import ProductName from '@site/src/components/ProductName';
 import RepoLink from '@site/src/components/RepoLink';
 import SDKCard from '@site/src/components/SDKCard';
@@ -89,6 +89,7 @@ export default {
   ProductName,
   ConsoleUrl,
   WayFinderSampleUrl,
+  WayFinderMailUrl,
   RepoLink,
   // TODO: Heading styling is a bit off when oxygen-ui Typography is used.
   // After sorting that out, we can switch to using Oxygen UI Typography for headings as well.

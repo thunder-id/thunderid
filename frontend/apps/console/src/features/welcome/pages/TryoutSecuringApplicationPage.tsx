@@ -43,6 +43,9 @@ import useWelcomeClose from '../hooks/useWelcomeClose';
 import AppBreadcrumbs from '@/components/AppBreadcrumbs';
 const MotionBox = motion.create(Box);
 
+const WAYFINDER_SAMPLE_URL = 'http://localhost:5173';
+const WAYFINDER_MAIL_URL = 'http://localhost:8788';
+
 type ScenarioTab = 'login' | 'signup' | 'profile' | 'recovery' | 'onboard';
 
 interface CredentialRowProps {
@@ -184,7 +187,7 @@ function StepList({steps, startFrom = 1}: StepListProps): JSX.Element {
 function AppLink({children = null}: {children?: ReactNode}): JSX.Element {
   return (
     <a
-      href="http://localhost:5173"
+      href={WAYFINDER_SAMPLE_URL}
       target="_blank"
       rel="noopener noreferrer"
       style={{color: 'inherit', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 2}}
@@ -195,8 +198,22 @@ function AppLink({children = null}: {children?: ReactNode}): JSX.Element {
   );
 }
 
-function tLink(i18nKey: string): JSX.Element {
-  return <Trans ns="common" i18nKey={i18nKey} components={{a: <AppLink />}} />;
+function MailLink({children = null}: {children?: ReactNode}): JSX.Element {
+  return (
+    <a
+      href={WAYFINDER_MAIL_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{color: 'inherit', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 2}}
+    >
+      {children}
+      <ExternalLink size={12} style={{flexShrink: 0, opacity: 0.7}} />
+    </a>
+  );
+}
+
+function tLink(i18nKey: string, values?: Record<string, unknown>): JSX.Element {
+  return <Trans ns="common" i18nKey={i18nKey} values={values} components={{a: <AppLink />, mail: <MailLink />}} />;
 }
 
 interface FormField {
@@ -476,15 +493,12 @@ export default function TryoutSecuringConsumerApp(): JSX.Element {
                     <Typography variant="body2" color="text.secondary">
                       {t('common:welcome.applicationTryout.scenarios.recovery.description')}
                     </Typography>
-                    <Alert severity="info" sx={{fontSize: '0.8rem'}}>
-                      {t('common:welcome.applicationTryout.scenarios.recovery.smtpNote', {productName})}
-                    </Alert>
                     <StepList
                       steps={[
                         tLink('welcome.applicationTryout.scenarios.recovery.step1'),
                         t('common:welcome.applicationTryout.scenarios.recovery.step2', {productName}),
                         t('common:welcome.applicationTryout.scenarios.recovery.step3'),
-                        t('common:welcome.applicationTryout.scenarios.recovery.step4', {productName}),
+                        tLink('welcome.applicationTryout.scenarios.recovery.step4', {productName}),
                         t('common:welcome.applicationTryout.scenarios.recovery.step5'),
                         t('common:welcome.applicationTryout.scenarios.recovery.step6'),
                       ]}
@@ -506,7 +520,7 @@ export default function TryoutSecuringConsumerApp(): JSX.Element {
                         t('common:welcome.applicationTryout.scenarios.onboard.step2'),
                         t('common:welcome.applicationTryout.scenarios.onboard.step3'),
                         t('common:welcome.applicationTryout.scenarios.onboard.step4'),
-                        t('common:welcome.applicationTryout.scenarios.onboard.step5'),
+                        tLink('welcome.applicationTryout.scenarios.onboard.step5'),
                         t('common:welcome.applicationTryout.scenarios.onboard.step6'),
                         t('common:welcome.applicationTryout.scenarios.onboard.step7'),
                       ]}

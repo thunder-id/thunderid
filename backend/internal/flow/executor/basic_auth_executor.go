@@ -85,7 +85,7 @@ func newBasicAuthExecutor(
 // Execute executes the basic authentication logic.
 func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := b.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Executing basic authentication executor")
+	logger.Debug(ctx.Context, "Executing basic authentication executor")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -110,7 +110,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 			return execResp, nil
 		}
 	} else if !b.HasRequiredInputs(ctx, execResp) {
-		logger.DebugWithContext(ctx.Context, "Required inputs for basic authentication executor is not provided")
+		logger.Debug(ctx.Context, "Required inputs for basic authentication executor is not provided")
 		execResp.Status = common.ExecUserInputRequired
 		return execResp, nil
 	}
@@ -146,7 +146,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 	execResp.AuthenticatedUser = *authenticatedUser
 	execResp.Status = common.ExecComplete
 
-	logger.DebugWithContext(ctx.Context, "Basic authentication executor execution completed",
+	logger.Debug(ctx.Context, "Basic authentication executor execution completed",
 		log.String("status", string(execResp.Status)),
 		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
 
@@ -196,7 +196,7 @@ func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 		}
 		if execResp.Status == common.ExecFailure {
 			if execResp.Error != nil && execResp.Error.Code == ErrUserNotFound.Code {
-				logger.DebugWithContext(ctx.Context,
+				logger.Debug(ctx.Context,
 					"User not found for the provided attributes. Proceeding with registration flow.")
 				execResp.Status = common.ExecComplete
 				return &authncm.AuthenticatedUser{
@@ -233,7 +233,7 @@ func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 			return nil, nil
 		}
 
-		logger.ErrorWithContext(ctx.Context, "Failed to authenticate user",
+		logger.Error(ctx.Context, "Failed to authenticate user",
 			log.String("errorCode", svcErr.Code), log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 		return nil, errors.New("failed to authenticate user")
 	}
@@ -245,15 +245,15 @@ func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 
 	if err != nil {
 		if err.Code != entityprovider.ErrorCodeNotImplemented {
-			logger.ErrorWithContext(ctx.Context, "Failed to get user attributes", log.Error(err))
+			logger.Error(ctx.Context, "Failed to get user attributes", log.Error(err))
 			return nil, errors.New("failed to get user attributes")
 		}
-		logger.DebugWithContext(ctx.Context, "User provider is not implemented. User attributes will be empty.")
+		logger.Debug(ctx.Context, "User provider is not implemented. User attributes will be empty.")
 	}
 
 	if err == nil && user != nil && len(user.Attributes) > 0 {
 		if err := json.Unmarshal(user.Attributes, &userAttributes); err != nil {
-			logger.ErrorWithContext(ctx.Context, "Failed to unmarshal user attributes", log.Error(err))
+			logger.Error(ctx.Context, "Failed to unmarshal user attributes", log.Error(err))
 			return nil, errors.New("failed to unmarshal user attributes")
 		}
 	}

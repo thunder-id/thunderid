@@ -1,20 +1,26 @@
 /*
-Copyright (c) 2026, WSO2 LLC. (http://www.wso2.com). All Rights Reserved.
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-   http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+    createServer,
+    type IncomingMessage,
+    type ServerResponse,
+} from "node:http";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { ChatAnthropic } from "@langchain/anthropic";
@@ -38,9 +44,13 @@ dotenv.config({
 // We disable Node's TLS verification ONLY when the configured base URL points
 // at localhost / 127.0.0.1 to keep production builds safe.
 const __thunderBaseUrl = process.env.THUNDER_BASE_URL || "";
-if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(__thunderBaseUrl)) {
+if (
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(__thunderBaseUrl)
+) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-    console.warn("[ai-agent] Local Thunder detected — NODE_TLS_REJECT_UNAUTHORIZED set to 0. Do not use this build in production.");
+    console.warn(
+        "[ai-agent] Local Thunder detected — NODE_TLS_REJECT_UNAUTHORIZED set to 0. Do not use this build in production.",
+    );
 }
 
 const agentConfig = {
@@ -79,8 +89,10 @@ function createModel(): BaseChatModel {
     // "temperature and top_p cannot both be specified"). Mutating these to
     // `undefined` makes JSON.stringify omit them from the request body so only
     // the model's own default temperature (1) is sent.
-    (anthropicModel as unknown as { topP: number | undefined }).topP = undefined;
-    (anthropicModel as unknown as { topK: number | undefined }).topK = undefined;
+    (anthropicModel as unknown as { topP: number | undefined }).topP =
+        undefined;
+    (anthropicModel as unknown as { topK: number | undefined }).topK =
+        undefined;
 
     return anthropicModel;
 }
@@ -167,8 +179,10 @@ Some tools require user authorization. The system handles this automatically at 
 // at THUNDER_BASE_URL/oauth2/token for a user-context access token.
 
 const THUNDER_BASE_URL = process.env.THUNDER_BASE_URL || "";
-const AGENT_REDIRECT_URI = process.env.AGENT_REDIRECT_URI || "http://localhost:5173/agent-callback";
-const MCP_SERVER_URL = process.env.MCP_SERVER_URL || "http://localhost:8787/mcp";
+const AGENT_REDIRECT_URI =
+    process.env.AGENT_REDIRECT_URI || "http://localhost:5173/agent-callback";
+const MCP_SERVER_URL =
+    process.env.MCP_SERVER_URL || "http://localhost:8787/mcp";
 const AGENT_ACCESS_SCOPE = process.env.AGENT_ACCESS_SCOPE || "agent:access";
 const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
 
@@ -198,7 +212,11 @@ type MCPLikeTool = {
     description?: string;
     schema?: unknown;
     invoke: (input: unknown, config?: unknown) => Promise<unknown>;
-    func: (input: unknown, runManager?: unknown, config?: unknown) => Promise<unknown>;
+    func: (
+        input: unknown,
+        runManager?: unknown,
+        config?: unknown,
+    ) => Promise<unknown>;
 };
 
 interface TokenClaims {
@@ -226,7 +244,12 @@ class ConsentRequiredError extends Error {
     requestId: string;
     scope: string;
 
-    constructor(authorizeUrl: string, state: string, requestId: string, scope: string) {
+    constructor(
+        authorizeUrl: string,
+        state: string,
+        requestId: string,
+        scope: string,
+    ) {
         super("User consent required");
         this.authorizeUrl = authorizeUrl;
         this.state = state;
@@ -249,7 +272,11 @@ function decodeTokenClaims(token: string): TokenClaims | null {
 }
 
 function base64UrlEncode(input: Buffer): string {
-    return input.toString("base64").replace(/=+$/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+    return input
+        .toString("base64")
+        .replace(/=+$/g, "")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_");
 }
 
 function generatePkceVerifier(): string {
@@ -260,7 +287,11 @@ function pkceChallengeFromVerifier(verifier: string): string {
     return base64UrlEncode(createHash("sha256").update(verifier).digest());
 }
 
-function buildAuthorizeUrl(state: string, codeChallenge: string, scope: string): string {
+function buildAuthorizeUrl(
+    state: string,
+    codeChallenge: string,
+    scope: string,
+): string {
     const params = new URLSearchParams({
         response_type: "code",
         client_id: agentConfig.agentID,
@@ -274,7 +305,10 @@ function buildAuthorizeUrl(state: string, codeChallenge: string, scope: string):
     return `${THUNDER_BASE_URL}/oauth2/authorize?${params.toString()}`;
 }
 
-async function exchangeCodeForUserToken(code: string, codeVerifier: string): Promise<UserToken> {
+async function exchangeCodeForUserToken(
+    code: string,
+    codeVerifier: string,
+): Promise<UserToken> {
     const body = new URLSearchParams({
         grant_type: "authorization_code",
         code,
@@ -283,7 +317,9 @@ async function exchangeCodeForUserToken(code: string, codeVerifier: string): Pro
         code_verifier: codeVerifier,
     });
 
-    const basicAuth = Buffer.from(`${agentConfig.agentID}:${agentConfig.agentSecret}`).toString("base64");
+    const basicAuth = Buffer.from(
+        `${agentConfig.agentID}:${agentConfig.agentSecret}`,
+    ).toString("base64");
 
     const response = await fetch(`${THUNDER_BASE_URL}/oauth2/token`, {
         method: "POST",
@@ -309,20 +345,33 @@ async function exchangeCodeForUserToken(code: string, codeVerifier: string): Pro
     }
 
     if (!payload.access_token) {
-        throw new Error(`Token exchange response missing access_token: ${text}`);
+        throw new Error(
+            `Token exchange response missing access_token: ${text}`,
+        );
     }
 
     try {
-        const claims = JSON.parse(Buffer.from(payload.access_token.split(".")[1], "base64url").toString("utf8"));
-        console.log("[obo] user token claims:", JSON.stringify({
-            sub: claims.sub,
-            act: claims.act,
-            authorized_permissions: claims.authorized_permissions,
-            scope: claims.scope,
-            aud: claims.aud,
-        }));
+        const claims = JSON.parse(
+            Buffer.from(
+                payload.access_token.split(".")[1],
+                "base64url",
+            ).toString("utf8"),
+        );
+        console.log(
+            "[obo] user token claims:",
+            JSON.stringify({
+                sub: claims.sub,
+                act: claims.act,
+                authorized_permissions: claims.authorized_permissions,
+                scope: claims.scope,
+                aud: claims.aud,
+            }),
+        );
     } catch (decodeErr) {
-        console.warn("[obo] failed to decode access token for logging", decodeErr);
+        console.warn(
+            "[obo] failed to decode access token for logging",
+            decodeErr,
+        );
     }
 
     return {
@@ -335,14 +384,19 @@ async function exchangeCodeForUserToken(code: string, codeVerifier: string): Pro
 // CIBA helpers — used by the upgrade scheduler to get per-user tokens
 // ---------------------------------------------------------------------------
 
-async function initiateCiba(loginHint: string, bindingMessage: string): Promise<{ authReqId: string; interval: number; expiresIn: number }> {
+async function initiateCiba(
+    loginHint: string,
+    bindingMessage: string,
+): Promise<{ authReqId: string; interval: number; expiresIn: number }> {
     const body = new URLSearchParams({
         login_hint: loginHint,
         scope: `openid upgrade:process`,
         binding_message: bindingMessage,
     });
 
-    const basicAuth = Buffer.from(`${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`).toString("base64");
+    const basicAuth = Buffer.from(
+        `${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`,
+    ).toString("base64");
 
     const response = await fetch(`${THUNDER_BASE_URL}/oauth2/bc-authorize`, {
         method: "POST",
@@ -357,10 +411,16 @@ async function initiateCiba(loginHint: string, bindingMessage: string): Promise<
     const text = await response.text();
 
     if (!response.ok) {
-        throw new Error(`CIBA bc-authorize failed (${response.status}): ${text}`);
+        throw new Error(
+            `CIBA bc-authorize failed (${response.status}): ${text}`,
+        );
     }
 
-    let payload: { auth_req_id?: string; expires_in?: number; interval?: number };
+    let payload: {
+        auth_req_id?: string;
+        expires_in?: number;
+        interval?: number;
+    };
     try {
         payload = JSON.parse(text);
     } catch {
@@ -368,7 +428,9 @@ async function initiateCiba(loginHint: string, bindingMessage: string): Promise<
     }
 
     if (!payload.auth_req_id) {
-        throw new Error(`CIBA bc-authorize response missing auth_req_id: ${text}`);
+        throw new Error(
+            `CIBA bc-authorize response missing auth_req_id: ${text}`,
+        );
     }
 
     return {
@@ -392,7 +454,9 @@ async function pollCibaToken(authReqId: string): Promise<CibaPollResult> {
         auth_req_id: authReqId,
     });
 
-    const basicAuth = Buffer.from(`${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`).toString("base64");
+    const basicAuth = Buffer.from(
+        `${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`,
+    ).toString("base64");
 
     const response = await fetch(`${THUNDER_BASE_URL}/oauth2/token`, {
         method: "POST",
@@ -405,12 +469,19 @@ async function pollCibaToken(authReqId: string): Promise<CibaPollResult> {
     });
 
     const text = await response.text();
-    let payload: { access_token?: string; error?: string; error_description?: string };
+    let payload: {
+        access_token?: string;
+        error?: string;
+        error_description?: string;
+    };
 
     try {
         payload = JSON.parse(text);
     } catch {
-        return { status: "error", message: `Non-JSON response from token endpoint: ${text}` };
+        return {
+            status: "error",
+            message: `Non-JSON response from token endpoint: ${text}`,
+        };
     }
 
     if (response.ok && payload.access_token) {
@@ -424,7 +495,10 @@ async function pollCibaToken(authReqId: string): Promise<CibaPollResult> {
     if (errorCode === "expired_token") return { status: "expired" };
     if (errorCode === "access_denied") return { status: "denied" };
 
-    return { status: "error", message: payload.error_description ?? errorCode ?? "Unknown CIBA error" };
+    return {
+        status: "error",
+        message: payload.error_description ?? errorCode ?? "Unknown CIBA error",
+    };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -435,7 +509,10 @@ function sleep(ms: number): Promise<void> {
 // User-context MCP tools (OBO)
 // ---------------------------------------------------------------------------
 
-async function getUserContextTool(session: SessionState, toolName: string): Promise<MCPLikeTool> {
+async function getUserContextTool(
+    session: SessionState,
+    toolName: string,
+): Promise<MCPLikeTool> {
     if (!session.userToken) {
         throw new Error("No user token available");
     }
@@ -451,19 +528,25 @@ async function getUserContextTool(session: SessionState, toolName: string): Prom
             },
         });
 
-        const userTools = (await userClient.getTools()) as unknown as MCPLikeTool[];
+        const userTools =
+            (await userClient.getTools()) as unknown as MCPLikeTool[];
         session.userToolsByName = new Map(userTools.map((t) => [t.name, t]));
     }
 
     const userTool = session.userToolsByName.get(toolName);
     if (!userTool) {
-        throw new Error(`User-context tool not found on MCP server: ${toolName}`);
+        throw new Error(
+            `User-context tool not found on MCP server: ${toolName}`,
+        );
     }
 
     return userTool;
 }
 
-function wrapToolForSession(originalTool: DynamicStructuredTool, session: SessionState): DynamicStructuredTool {
+function wrapToolForSession(
+    originalTool: DynamicStructuredTool,
+    session: SessionState,
+): DynamicStructuredTool {
     if (!USER_CONTEXT_TOOLS.has(originalTool.name)) {
         return originalTool;
     }
@@ -478,35 +561,70 @@ function wrapToolForSession(originalTool: DynamicStructuredTool, session: Sessio
         schema: originalTool.schema,
         responseFormat: "content_and_artifact",
         func: async (args: Record<string, unknown>) => {
-            if (!session.userToken || session.userToken.expiresAt <= Date.now() + 5_000) {
+            if (
+                !session.userToken ||
+                session.userToken.expiresAt <= Date.now() + 5_000
+            ) {
                 if (!session.pendingConsent) {
                     const scope = OBO_SCOPES;
                     const requestId = randomUUID();
                     const state = randomUUID();
                     const verifier = generatePkceVerifier();
                     const challenge = pkceChallengeFromVerifier(verifier);
-                    const authorizeUrl = buildAuthorizeUrl(state, challenge, scope);
+                    const authorizeUrl = buildAuthorizeUrl(
+                        state,
+                        challenge,
+                        scope,
+                    );
 
                     session.pendingConsent = { verifier, state, requestId };
-                    session.consentError = new ConsentRequiredError(authorizeUrl, state, requestId, scope);
-                    console.log(`[obo] ${originalTool.name} → consent required (scope=${scope})`);
+                    session.consentError = new ConsentRequiredError(
+                        authorizeUrl,
+                        state,
+                        requestId,
+                        scope,
+                    );
+                    console.log(
+                        `[obo] ${originalTool.name} → consent required (scope=${scope})`,
+                    );
                 } else {
                     // Re-surface the existing consent error so subsequent /chat responses
                     // still carry type: "need_user_consent" for the frontend.
-                    console.log(`[obo] ${originalTool.name} → consent already pending, reusing`);
+                    console.log(
+                        `[obo] ${originalTool.name} → consent already pending, reusing`,
+                    );
                     if (!session.consentError && session.pendingConsent) {
                         const { state, requestId } = session.pendingConsent;
                         const scope = OBO_SCOPES;
-                        const authorizeUrl = buildAuthorizeUrl(state, pkceChallengeFromVerifier(session.pendingConsent.verifier), scope);
-                        session.consentError = new ConsentRequiredError(authorizeUrl, state, requestId, scope);
+                        const authorizeUrl = buildAuthorizeUrl(
+                            state,
+                            pkceChallengeFromVerifier(
+                                session.pendingConsent.verifier,
+                            ),
+                            scope,
+                        );
+                        session.consentError = new ConsentRequiredError(
+                            authorizeUrl,
+                            state,
+                            requestId,
+                            scope,
+                        );
                     }
                 }
 
-                return ["This action requires user authorization. The system will handle the consent flow.", null];
+                return [
+                    "This action requires user authorization. The system will handle the consent flow.",
+                    null,
+                ];
             }
 
-            console.log(`[obo] ${originalTool.name} → reusing cached user token`);
-            const userTool = await getUserContextTool(session, originalTool.name);
+            console.log(
+                `[obo] ${originalTool.name} → reusing cached user token`,
+            );
+            const userTool = await getUserContextTool(
+                session,
+                originalTool.name,
+            );
             return userTool.func(args);
         },
     });
@@ -538,15 +656,18 @@ function getOrCreateSession(sessionId?: string): SessionState {
     return session;
 }
 
-setInterval(() => {
-    const now = Date.now();
-    for (const [id] of sessions) {
-        const session = sessions.get(id)!;
-        if (now - session.lastActivity > SESSION_TTL_MS) {
-            sessions.delete(id);
+setInterval(
+    () => {
+        const now = Date.now();
+        for (const [id] of sessions) {
+            const session = sessions.get(id)!;
+            if (now - session.lastActivity > SESSION_TTL_MS) {
+                sessions.delete(id);
+            }
         }
-    }
-}, 5 * 60 * 1000);
+    },
+    5 * 60 * 1000,
+);
 
 // ---------------------------------------------------------------------------
 // Agent M2M token management — tracks expiry and rebuilds the MCP client
@@ -563,7 +684,9 @@ async function fetchAgentToken(): Promise<TokenState> {
         grant_type: "client_credentials",
         scope: "booking:recommend upgrade:search",
     });
-    const basicAuth = Buffer.from(`${agentConfig.agentID}:${agentConfig.agentSecret}`).toString("base64");
+    const basicAuth = Buffer.from(
+        `${agentConfig.agentID}:${agentConfig.agentSecret}`,
+    ).toString("base64");
 
     const response = await fetch(`${THUNDER_BASE_URL}/oauth2/token`, {
         method: "POST",
@@ -577,7 +700,9 @@ async function fetchAgentToken(): Promise<TokenState> {
 
     const text = await response.text();
     if (!response.ok) {
-        throw new Error(`Agent token request failed (${response.status}): ${text}`);
+        throw new Error(
+            `Agent token request failed (${response.status}): ${text}`,
+        );
     }
 
     let payload: { access_token?: string; expires_in?: number };
@@ -592,7 +717,12 @@ async function fetchAgentToken(): Promise<TokenState> {
 
     let expiresAt: number;
     try {
-        const claims = JSON.parse(Buffer.from(payload.access_token.split(".")[1], "base64url").toString());
+        const claims = JSON.parse(
+            Buffer.from(
+                payload.access_token.split(".")[1],
+                "base64url",
+            ).toString(),
+        );
         expiresAt = (claims.exp ?? Math.floor(Date.now() / 1000) + 3600) * 1000;
     } catch {
         expiresAt = Date.now() + (payload.expires_in ?? 3600) * 1000;
@@ -624,7 +754,9 @@ async function fetchUpgradeAgentToken(): Promise<TokenState> {
         grant_type: "client_credentials",
         scope: "upgrade:read upgrade:search",
     });
-    const basicAuth = Buffer.from(`${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`).toString("base64");
+    const basicAuth = Buffer.from(
+        `${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`,
+    ).toString("base64");
 
     const response = await fetch(`${THUNDER_BASE_URL}/oauth2/token`, {
         method: "POST",
@@ -638,22 +770,33 @@ async function fetchUpgradeAgentToken(): Promise<TokenState> {
 
     const text = await response.text();
     if (!response.ok) {
-        throw new Error(`Upgrade agent token request failed (${response.status}): ${text}`);
+        throw new Error(
+            `Upgrade agent token request failed (${response.status}): ${text}`,
+        );
     }
 
     let payload: { access_token?: string; expires_in?: number };
     try {
         payload = JSON.parse(text);
     } catch {
-        throw new Error(`Upgrade agent token endpoint returned non-JSON: ${text}`);
+        throw new Error(
+            `Upgrade agent token endpoint returned non-JSON: ${text}`,
+        );
     }
     if (!payload.access_token) {
-        throw new Error(`Upgrade agent token response missing access_token: ${text}`);
+        throw new Error(
+            `Upgrade agent token response missing access_token: ${text}`,
+        );
     }
 
     let expiresAt: number;
     try {
-        const claims = JSON.parse(Buffer.from(payload.access_token.split(".")[1], "base64url").toString());
+        const claims = JSON.parse(
+            Buffer.from(
+                payload.access_token.split(".")[1],
+                "base64url",
+            ).toString(),
+        );
         expiresAt = (claims.exp ?? Math.floor(Date.now() / 1000) + 3600) * 1000;
     } catch {
         expiresAt = Date.now() + (payload.expires_in ?? 3600) * 1000;
@@ -663,11 +806,16 @@ async function fetchUpgradeAgentToken(): Promise<TokenState> {
 }
 
 async function getOrRefreshUpgradeAgentToken(): Promise<string> {
-    if (upgradeAgentTokenState && upgradeAgentTokenState.expiresAt > Date.now() + 30_000) {
+    if (
+        upgradeAgentTokenState &&
+        upgradeAgentTokenState.expiresAt > Date.now() + 30_000
+    ) {
         return upgradeAgentTokenState.accessToken;
     }
     upgradeAgentTokenState = await fetchUpgradeAgentToken();
-    const ttl = Math.round((upgradeAgentTokenState.expiresAt - Date.now()) / 1000);
+    const ttl = Math.round(
+        (upgradeAgentTokenState.expiresAt - Date.now()) / 1000,
+    );
     console.log(`[upgrade-scheduler] M2M token acquired (expires in ${ttl}s)`);
     return upgradeAgentTokenState.accessToken;
 }
@@ -692,21 +840,35 @@ async function ensureMcpConnection(): Promise<void> {
     });
     mcpBaseTools = (await mcpClient.getTools()) as DynamicStructuredTool[];
     mcpTokenFingerprint = token;
-    console.log(`[ai-agent] MCP client connected (${mcpBaseTools.length} tools)`);
+    console.log(
+        `[ai-agent] MCP client connected (${mcpBaseTools.length} tools)`,
+    );
 }
 
 async function createAgent() {
-    console.log("##########################################################################################################");
-    console.log("##      This is an Agent Authentication Flow sample application for authenticating AI agents            ##");
-    console.log("##                         using Asgardeo and LangChain framework                                       ##");
-    console.log("##########################################################################################################");
+    console.log(
+        "##########################################################################################################",
+    );
+    console.log(
+        "##      This is an Agent Authentication Flow sample application for authenticating AI agents            ##",
+    );
+    console.log(
+        "##                         using Asgardeo and LangChain framework                                       ##",
+    );
+    console.log(
+        "##########################################################################################################",
+    );
     console.log(`[ai-agent] LLM provider: ${LLM_PROVIDER}`);
 
     if (THUNDER_BASE_URL && agentConfig.agentID && agentConfig.agentSecret) {
         await ensureMcpConnection();
     } else {
-        console.log("[ai-agent] Thunder not configured — running without agent authentication.");
-        console.log("[ai-agent] Set THUNDER_BASE_URL, AGENT_ID, and AGENT_SECRET to enable OAuth flows.");
+        console.log(
+            "[ai-agent] Thunder not configured — running without agent authentication.",
+        );
+        console.log(
+            "[ai-agent] Set THUNDER_BASE_URL, AGENT_ID, and AGENT_SECRET to enable OAuth flows.",
+        );
         mcpClient = new MultiServerMCPClient({
             travel: { transport: "http", url: MCP_SERVER_URL },
         });
@@ -720,11 +882,19 @@ async function createAgent() {
             description: tool.description,
             schema: tool.schema,
             responseFormat: "content_and_artifact",
-            func: async (args: Record<string, unknown>, _runManager, config) => {
+            func: async (
+                args: Record<string, unknown>,
+                _runManager,
+                config,
+            ) => {
                 await ensureMcpConnection();
-                const currentTool = mcpBaseTools.find((t) => t.name === toolName);
+                const currentTool = mcpBaseTools.find(
+                    (t) => t.name === toolName,
+                );
                 if (!currentTool) {
-                    throw new Error(`Tool ${toolName} not available on MCP server`);
+                    throw new Error(
+                        `Tool ${toolName} not available on MCP server`,
+                    );
                 }
                 return currentTool.func(args, _runManager, config);
             },
@@ -741,10 +911,17 @@ async function createAgent() {
 function setCorsHeaders(response: ServerResponse): void {
     response.setHeader("Access-Control-Allow-Origin", FRONTEND_ORIGIN);
     response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    response.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization",
+    );
 }
 
-function sendJson(response: ServerResponse, statusCode: number, body: Record<string, unknown>): void {
+function sendJson(
+    response: ServerResponse,
+    statusCode: number,
+    body: Record<string, unknown>,
+): void {
     setCorsHeaders(response);
     response.writeHead(statusCode, { "Content-Type": "application/json" });
     response.end(JSON.stringify(body));
@@ -768,7 +945,10 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
 // Session agent — lazily created per session, reused across requests
 // ---------------------------------------------------------------------------
 
-function getSessionAgent(session: SessionState, baseTools: DynamicStructuredTool[]): ReturnType<typeof createReactAgent> {
+function getSessionAgent(
+    session: SessionState,
+    baseTools: DynamicStructuredTool[],
+): ReturnType<typeof createReactAgent> {
     if (!session.agent) {
         const wrapped = baseTools.map((t) => wrapToolForSession(t, session));
         session.agent = createReactAgent({
@@ -784,7 +964,11 @@ function getSessionAgent(session: SessionState, baseTools: DynamicStructuredTool
 // POST /chat — main chat endpoint
 // ---------------------------------------------------------------------------
 
-async function handleChat(request: IncomingMessage, response: ServerResponse, baseTools: DynamicStructuredTool[]): Promise<void> {
+async function handleChat(
+    request: IncomingMessage,
+    response: ServerResponse,
+    baseTools: DynamicStructuredTool[],
+): Promise<void> {
     if (THUNDER_BASE_URL && agentConfig.agentID) {
         const authHeader = request.headers.authorization;
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -798,30 +982,48 @@ async function handleChat(request: IncomingMessage, response: ServerResponse, ba
             return;
         }
 
-        const scopes = typeof claims.scope === "string" ? claims.scope.split(" ") : [];
+        const scopes =
+            typeof claims.scope === "string" ? claims.scope.split(" ") : [];
         const requiredScopes = AGENT_ACCESS_SCOPE.split(" ");
-        const missingScopes = requiredScopes.filter((s: string) => !scopes.includes(s));
+        const missingScopes = requiredScopes.filter(
+            (s: string) => !scopes.includes(s),
+        );
 
         if (missingScopes.length > 0) {
-            console.log(`POST /chat | rejected: missing scope ${missingScopes.join(" ")} | sub: ${claims.sub || "-"}`);
+            console.log(
+                `POST /chat | rejected: missing scope ${missingScopes.join(" ")} | sub: ${claims.sub || "-"}`,
+            );
             sendJson(response, 403, {
                 error: `You do not have permission to access Wayfinder Concierge — missing required scope: ${missingScopes.join(" ")}`,
             });
             return;
         }
 
-        const aud = Array.isArray(claims.aud) ? claims.aud.join(",") : (claims.aud || "-");
-        console.log(`POST /chat | sub: ${claims.sub || "-"} | aud: ${aud} | scope: ${claims.scope || "-"}`);
+        const aud = Array.isArray(claims.aud)
+            ? claims.aud.join(",")
+            : claims.aud || "-";
+        console.log(
+            `POST /chat | sub: ${claims.sub || "-"} | aud: ${aud} | scope: ${claims.scope || "-"}`,
+        );
     }
 
-    const body = await readJsonBody(request) as { message?: string; session_id?: string };
+    const body = (await readJsonBody(request)) as {
+        message?: string;
+        session_id?: string;
+    };
 
-    if (!body.message || typeof body.message !== "string" || !body.message.trim()) {
+    if (
+        !body.message ||
+        typeof body.message !== "string" ||
+        !body.message.trim()
+    ) {
         sendJson(response, 400, { error: "message is required" });
         return;
     }
 
-    console.log(`CHAT | session: ${body.session_id || "new"} | preview: ${body.message.slice(0, 80)}`);
+    console.log(
+        `CHAT | session: ${body.session_id || "new"} | preview: ${body.message.slice(0, 80)}`,
+    );
 
     const session = getOrCreateSession(body.session_id);
     const agent = getSessionAgent(session, baseTools);
@@ -851,15 +1053,19 @@ async function handleChat(request: IncomingMessage, response: ServerResponse, ba
 
         sendJson(response, 200, {
             type: "response",
-            message: typeof finalMessage.content === "string"
-                ? finalMessage.content
-                : JSON.stringify(finalMessage.content),
+            message:
+                typeof finalMessage.content === "string"
+                    ? finalMessage.content
+                    : JSON.stringify(finalMessage.content),
             session_id: session.id,
         });
     } catch (error) {
         console.error("Error processing chat:", error);
         sendJson(response, 500, {
-            error: error instanceof Error ? error.message : "Failed to process message",
+            error:
+                error instanceof Error
+                    ? error.message
+                    : "Failed to process message",
             session_id: session.id,
         });
     }
@@ -869,8 +1075,11 @@ async function handleChat(request: IncomingMessage, response: ServerResponse, ba
 // POST /chat/consent — receives the OAuth authorization code from the frontend
 // ---------------------------------------------------------------------------
 
-async function handleConsent(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const body = await readJsonBody(request) as {
+async function handleConsent(
+    request: IncomingMessage,
+    response: ServerResponse,
+): Promise<void> {
+    const body = (await readJsonBody(request)) as {
         session_id?: string;
         request_id?: string;
         code?: string;
@@ -899,7 +1108,10 @@ async function handleConsent(request: IncomingMessage, response: ServerResponse)
     }
 
     try {
-        const userToken = await exchangeCodeForUserToken(body.code, session.pendingConsent.verifier);
+        const userToken = await exchangeCodeForUserToken(
+            body.code,
+            session.pendingConsent.verifier,
+        );
         session.userToken = userToken;
         session.userToolsByName = undefined;
         session.pendingConsent = undefined;
@@ -911,7 +1123,10 @@ async function handleConsent(request: IncomingMessage, response: ServerResponse)
     } catch (error) {
         console.error("Token exchange failed:", error);
         sendJson(response, 500, {
-            error: error instanceof Error ? error.message : "Token exchange failed",
+            error:
+                error instanceof Error
+                    ? error.message
+                    : "Token exchange failed",
         });
     }
 }
@@ -942,32 +1157,57 @@ async function processOneUpgrade(): Promise<boolean> {
 
     let getPendingTool: DynamicStructuredTool | undefined;
     try {
-        const tools = (await upgradeM2MClient.getTools()) as DynamicStructuredTool[];
+        const tools =
+            (await upgradeM2MClient.getTools()) as DynamicStructuredTool[];
         getPendingTool = tools.find((t) => t.name === "get_pending_upgrade");
     } catch (err) {
-        console.error("[upgrade-scheduler] Failed to connect upgrade agent MCP client:", err);
+        console.error(
+            "[upgrade-scheduler] Failed to connect upgrade agent MCP client:",
+            err,
+        );
         await upgradeM2MClient.close().catch(() => {});
         return false;
     }
 
     if (!getPendingTool) {
-        console.warn("[upgrade-scheduler] get_pending_upgrade tool not available on MCP server");
+        console.warn(
+            "[upgrade-scheduler] get_pending_upgrade tool not available on MCP server",
+        );
         await upgradeM2MClient.close().catch(() => {});
         return false;
     }
 
-    let pendingResult: { pendingCount: number; request: { id: string; userId: string; email: string; bookingId: string; fromFlightId: string; toFlightId: string; priceDifference: number; route: { from: string; to: string; airline: string }; fromCabin: string; toCabin: string } | null } | null = null;
+    let pendingResult: {
+        pendingCount: number;
+        request: {
+            id: string;
+            userId: string;
+            email: string;
+            bookingId: string;
+            fromFlightId: string;
+            toFlightId: string;
+            priceDifference: number;
+            route: { from: string; to: string; airline: string };
+            fromCabin: string;
+            toCabin: string;
+        } | null;
+    } | null = null;
 
     try {
         const raw = await getPendingTool.func({}, undefined, undefined);
         const text = Array.isArray(raw)
             ? (raw[0] as string)
             : typeof raw === "string"
-            ? raw
-            : JSON.stringify(raw);
-        pendingResult = JSON.parse(typeof text === "string" ? text : JSON.stringify(text));
+              ? raw
+              : JSON.stringify(raw);
+        pendingResult = JSON.parse(
+            typeof text === "string" ? text : JSON.stringify(text),
+        );
     } catch (err) {
-        console.error("[upgrade-scheduler] Failed to fetch pending upgrades:", err);
+        console.error(
+            "[upgrade-scheduler] Failed to fetch pending upgrades:",
+            err,
+        );
         await upgradeM2MClient.close().catch(() => {});
         return false;
     } finally {
@@ -975,14 +1215,21 @@ async function processOneUpgrade(): Promise<boolean> {
     }
 
     if (!pendingResult || !pendingResult.request) {
-        console.log(`[upgrade-scheduler] No pending upgrades (count: ${pendingResult?.pendingCount ?? 0})`);
+        console.log(
+            `[upgrade-scheduler] No pending upgrades (count: ${pendingResult?.pendingCount ?? 0})`,
+        );
         return false;
     }
 
     const { request, pendingCount } = pendingResult;
-    console.log(`[upgrade-scheduler] Found ${pendingCount} pending upgrade(s). Processing: ${request.id} for user: ${request.email}`);
+    console.log(
+        `[upgrade-scheduler] Found ${pendingCount} pending upgrade(s). Processing: ${request.id} for user: ${request.email}`,
+    );
 
-    const priceDiff = request.priceDifference > 0 ? `+$${request.priceDifference.toFixed(0)}` : "no extra cost";
+    const priceDiff =
+        request.priceDifference > 0
+            ? `+$${request.priceDifference.toFixed(0)}`
+            : "no extra cost";
     const bindingMessage = `WF-UPG: Approve ${request.route.from}→${request.route.to} ${request.fromCabin}→${request.toCabin} upgrade (${priceDiff})?`;
 
     let authReqId: string;
@@ -992,9 +1239,14 @@ async function processOneUpgrade(): Promise<boolean> {
         const cibaResponse = await initiateCiba(request.email, bindingMessage);
         authReqId = cibaResponse.authReqId;
         pollIntervalSeconds = cibaResponse.interval;
-        console.log(`[upgrade-scheduler] CIBA initiated for ${request.email} | auth_req_id: ${authReqId}`);
+        console.log(
+            `[upgrade-scheduler] CIBA initiated for ${request.email} | auth_req_id: ${authReqId}`,
+        );
     } catch (err) {
-        console.error(`[upgrade-scheduler] CIBA initiation failed for ${request.email}:`, err);
+        console.error(
+            `[upgrade-scheduler] CIBA initiation failed for ${request.email}:`,
+            err,
+        );
         return false; // Sleep before retrying to avoid overwhelming Thunder
     }
 
@@ -1010,19 +1262,26 @@ async function processOneUpgrade(): Promise<boolean> {
         try {
             pollResult = await pollCibaToken(authReqId);
         } catch (err) {
-            console.error(`[upgrade-scheduler] CIBA poll error for ${request.id}:`, err);
+            console.error(
+                `[upgrade-scheduler] CIBA poll error for ${request.id}:`,
+                err,
+            );
             return true;
         }
 
         if (pollResult.status === "approved") {
             cibaUserToken = pollResult.accessToken;
-            console.log(`[upgrade-scheduler] CIBA approved for ${request.email}`);
+            console.log(
+                `[upgrade-scheduler] CIBA approved for ${request.email}`,
+            );
             break;
         }
 
         if (pollResult.status === "slow_down") {
             currentIntervalMs += 5000;
-            console.log(`[upgrade-scheduler] CIBA slow_down — increasing poll interval to ${currentIntervalMs}ms`);
+            console.log(
+                `[upgrade-scheduler] CIBA slow_down — increasing poll interval to ${currentIntervalMs}ms`,
+            );
             continue;
         }
 
@@ -1031,7 +1290,9 @@ async function processOneUpgrade(): Promise<boolean> {
         }
 
         // denied / expired / error
-        console.log(`[upgrade-scheduler] CIBA ${pollResult.status} for upgrade ${request.id} (user: ${request.email})`);
+        console.log(
+            `[upgrade-scheduler] CIBA ${pollResult.status} for upgrade ${request.id} (user: ${request.email})`,
+        );
         return true;
     }
 
@@ -1049,21 +1310,36 @@ async function processOneUpgrade(): Promise<boolean> {
             },
         });
 
-        const userTools = (await userMcpClient.getTools()) as DynamicStructuredTool[];
-        const processUpgradeTool = userTools.find((t) => t.name === "process_upgrade");
+        const userTools =
+            (await userMcpClient.getTools()) as DynamicStructuredTool[];
+        const processUpgradeTool = userTools.find(
+            (t) => t.name === "process_upgrade",
+        );
 
         if (!processUpgradeTool) {
-            console.error(`[upgrade-scheduler] process_upgrade tool not found with CIBA token`);
+            console.error(
+                `[upgrade-scheduler] process_upgrade tool not found with CIBA token`,
+            );
             await userMcpClient.close().catch(() => {});
             return true;
         }
 
-        const result = await processUpgradeTool.func({ upgradeRequestId: request.id }, undefined, undefined);
-        console.log(`[upgrade-scheduler] Upgrade ${request.id} processed successfully:`, JSON.stringify(result).slice(0, 200));
+        const result = await processUpgradeTool.func(
+            { upgradeRequestId: request.id },
+            undefined,
+            undefined,
+        );
+        console.log(
+            `[upgrade-scheduler] Upgrade ${request.id} processed successfully:`,
+            JSON.stringify(result).slice(0, 200),
+        );
 
         await userMcpClient.close().catch(() => {});
     } catch (err) {
-        console.error(`[upgrade-scheduler] process_upgrade failed for ${request.id}:`, err);
+        console.error(
+            `[upgrade-scheduler] process_upgrade failed for ${request.id}:`,
+            err,
+        );
     }
 
     return true;
@@ -1071,16 +1347,22 @@ async function processOneUpgrade(): Promise<boolean> {
 
 function startUpgradeScheduler(): void {
     if (!THUNDER_BASE_URL || !agentConfig.agentID || !agentConfig.agentSecret) {
-        console.log("[upgrade-scheduler] Thunder not configured — upgrade scheduler disabled.");
+        console.log(
+            "[upgrade-scheduler] Thunder not configured — upgrade scheduler disabled.",
+        );
         return;
     }
 
     if (!upgradeAgentConfig.agentID || !upgradeAgentConfig.agentSecret) {
-        console.log("[upgrade-scheduler] Upgrade agent not configured (UPGRADE_AGENT_ID / UPGRADE_AGENT_SECRET missing) — upgrade scheduler disabled.");
+        console.log(
+            "[upgrade-scheduler] Upgrade agent not configured (UPGRADE_AGENT_ID / UPGRADE_AGENT_SECRET missing) — upgrade scheduler disabled.",
+        );
         return;
     }
 
-    console.log("[upgrade-scheduler] Starting upgrade scheduler (30s sleep when idle).");
+    console.log(
+        "[upgrade-scheduler] Starting upgrade scheduler (30s sleep when idle).",
+    );
 
     async function loop(): Promise<void> {
         for (;;) {
@@ -1093,13 +1375,18 @@ function startUpgradeScheduler(): void {
                 }
                 // If hadWork is true there may be more — loop immediately
             } catch (err) {
-                console.error("[upgrade-scheduler] Unexpected error in scheduler loop:", err);
+                console.error(
+                    "[upgrade-scheduler] Unexpected error in scheduler loop:",
+                    err,
+                );
                 await sleep(30_000);
             }
         }
     }
 
-    loop().catch((err) => console.error("[upgrade-scheduler] Fatal loop error:", err));
+    loop().catch((err) =>
+        console.error("[upgrade-scheduler] Fatal loop error:", err),
+    );
 }
 
 async function runAgentServer() {
@@ -1108,7 +1395,10 @@ async function runAgentServer() {
     const host = process.env.HOST || "localhost";
 
     const server = createServer(async (request, response) => {
-        const url = new URL(request.url || "", `http://${request.headers.host || host}`);
+        const url = new URL(
+            request.url || "",
+            `http://${request.headers.host || host}`,
+        );
 
         if (request.method === "OPTIONS") {
             setCorsHeaders(response);
@@ -1152,7 +1442,9 @@ async function runAgentServer() {
     server.listen(port, host, () => {
         console.log(`AI agent API server is running at http://${host}:${port}`);
         console.log(`Chat endpoint: POST http://${host}:${port}/chat`);
-        console.log(`Consent endpoint: POST http://${host}:${port}/chat/consent`);
+        console.log(
+            `Consent endpoint: POST http://${host}:${port}/chat/consent`,
+        );
         console.log(`Health check: GET http://${host}:${port}/health`);
         startUpgradeScheduler();
     });

@@ -303,7 +303,7 @@ func (s *idpStore) DeleteIdentityProvider(ctx context.Context, id string) error 
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
 	if rowsAffected == 0 {
-		logger.DebugWithContext(ctx, "idp not found with id: "+id)
+		logger.Debug(ctx, "idp not found with id: "+id)
 	}
 
 	return nil

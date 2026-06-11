@@ -53,21 +53,21 @@ func (r *executorRegistry) RegisterExecutor(name string, exec core.ExecutorInter
 	// so there is no request context (or trace ID) to propagate.
 	ctx := context.Background()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ExecutorRegistry"))
-	logger.DebugWithContext(ctx, "Registering executor", log.String("executorName", exec.GetName()))
+	logger.Debug(ctx, "Registering executor", log.String("executorName", exec.GetName()))
 
 	if exec == nil {
-		logger.WarnWithContext(ctx, "Skipping registration of nil executor")
+		logger.Warn(ctx, "Skipping registration of nil executor")
 		return
 	}
 	if name == "" {
-		logger.WarnWithContext(ctx, "Skipping registration of executor with empty name")
+		logger.Warn(ctx, "Skipping registration of executor with empty name")
 		return
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.executors[name]; ok {
-		logger.WarnWithContext(ctx, "Executor already registered", log.String("executorName", name))
+		logger.Warn(ctx, "Executor already registered", log.String("executorName", name))
 		return
 	}
 	r.executors[name] = exec

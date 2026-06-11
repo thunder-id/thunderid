@@ -68,7 +68,7 @@ func NewVonageClient(ctx context.Context, sender common.NotificationSenderDTO) (
 		case common.VonagePropKeySenderID:
 			client.senderID = value
 		default:
-			logger.WarnWithContext(ctx, "Unknown property for Vonage client", log.String("property", prop.GetName()))
+			logger.Warn(ctx, "Unknown property for Vonage client", log.String("property", prop.GetName()))
 		}
 	}
 	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
@@ -99,7 +99,7 @@ func (v *VonageClient) Send(ctx context.Context, channel common.ChannelType, dat
 // sendSMS sends an SMS via the Vonage API.
 func (v *VonageClient) sendSMS(ctx context.Context, data common.NotificationData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, vonageLoggerComponentName))
-	logger.DebugWithContext(ctx, "Sending SMS via Vonage", log.MaskedString("to", data.Recipient))
+	logger.Debug(ctx, "Sending SMS via Vonage", log.MaskedString("to", data.Recipient))
 
 	formattedPhoneNumber := v.formatPhoneNumber(data.Recipient)
 
@@ -134,15 +134,15 @@ func (v *VonageClient) sendSMS(ctx context.Context, data common.NotificationData
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			logger.ErrorWithContext(ctx, "Failed to close response body", log.Error(closeErr))
+			logger.Error(ctx, "Failed to close response body", log.Error(closeErr))
 		}
 	}()
 
-	logger.DebugWithContext(ctx, "Received response from Vonage", log.Int("statusCode", resp.StatusCode))
+	logger.Debug(ctx, "Received response from Vonage", log.Int("statusCode", resp.StatusCode))
 
 	if resp.StatusCode != http.StatusAccepted {
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		logger.ErrorWithContext(ctx, "Failed to send SMS via Vonage", log.Int("statusCode", resp.StatusCode),
+		logger.Error(ctx, "Failed to send SMS via Vonage", log.Int("statusCode", resp.StatusCode),
 			log.String("response", string(bodyBytes)))
 		return fmt.Errorf("vonage SMS send failed, status: %d, response: %s", resp.StatusCode, string(bodyBytes))
 	}

@@ -341,7 +341,7 @@ func (s *roleStore) DeleteRole(ctx context.Context, id string) error {
 	}
 
 	if rowsAffected == 0 {
-		logger.DebugWithContext(ctx, "Role not found with id: "+id)
+		logger.Debug(ctx, "Role not found with id: "+id)
 	}
 
 	return nil

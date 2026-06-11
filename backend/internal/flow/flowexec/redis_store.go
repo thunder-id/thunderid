@@ -83,7 +83,7 @@ func (s *redisFlowStore) StoreFlowContext(ctx context.Context, dbModel FlowConte
 		return fmt.Errorf("failed to store flow context in Redis: %w", err)
 	}
 
-	logger.DebugWithContext(ctx, "Stored flow context in Redis", log.String("executionID", dbModel.ExecutionID))
+	logger.Debug(ctx, "Stored flow context in Redis", log.String("executionID", dbModel.ExecutionID))
 	return nil
 }
 

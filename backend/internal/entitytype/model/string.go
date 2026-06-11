@@ -59,21 +59,21 @@ func (p *str) getDisplayName() string {
 func (p *str) validateValue(ctx context.Context, value interface{}, path string, logger *log.Logger) (bool, error) {
 	strValue, ok := value.(string)
 	if !ok {
-		logger.DebugWithContext(ctx, "Expected string but got different type",
+		logger.Debug(ctx, "Expected string but got different type",
 			log.String("property", path), log.String("value", fmt.Sprintf("%v", value)))
 		return false, nil
 	}
 
 	if p.enum != nil {
 		if _, exists := p.enum[strValue]; !exists {
-			logger.DebugWithContext(ctx, "Value not in enum",
+			logger.Debug(ctx, "Value not in enum",
 				log.String("property", path), log.String("value", strValue))
 			return false, nil
 		}
 	}
 
 	if p.pattern != nil && !p.pattern.MatchString(strValue) {
-		logger.DebugWithContext(ctx, "Regex pattern mismatch",
+		logger.Debug(ctx, "Regex pattern mismatch",
 			log.String("property", path), log.String("value", strValue))
 		return false, nil
 	}

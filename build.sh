@@ -753,7 +753,7 @@ function package_wayfinder_sample() {
     tar xzf "$tgz" -C "$DIST_DIR"
     mv "$DIST_DIR/package" "$DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER"
 
-    for dir in frontend backend ai-agent; do
+    for dir in frontend backend smtp-server ai-agent; do
         if [ -f "$DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER/$dir/.env.example" ]; then
             cp "$DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER/$dir/.env.example" "$DIST_DIR/$WAYFINDER_SAMPLE_APP_FOLDER/$dir/.env"
         fi

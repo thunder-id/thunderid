@@ -70,7 +70,7 @@ func newAttributeUniquenessValidator(
 // named in the structured error when a conflict is detected, or ExecComplete when all values are free.
 func (e *attributeUniquenessValidator) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.DebugWithContext(ctx.Context, "Executing uniqueness checker executor")
+	logger.Debug(ctx.Context, "Executing uniqueness checker executor")
 
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
@@ -105,7 +105,7 @@ func (e *attributeUniquenessValidator) Execute(ctx *core.NodeContext) (*common.E
 		}
 
 		if userID != nil {
-			logger.DebugWithContext(ctx.Context, "Unique attribute conflict detected", log.String("attribute", attr))
+			logger.Debug(ctx.Context, "Unique attribute conflict detected", log.String("attribute", attr))
 			execResp.Status = common.ExecUserInputRequired
 			execResp.Error = errAttributeNotUniqueFor(attr)
 			return execResp, nil

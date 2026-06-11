@@ -44,7 +44,7 @@ func Initialize(
 	if err != nil {
 		wrappedErr := fmt.Errorf("failed to get runtime DB transactioner for DCR: %w", err)
 		// Service initialization runs during application startup, outside any request.
-		log.GetLogger().ErrorWithContext(context.Background(),
+		log.GetLogger().Error(context.Background(),
 			"Failed to initialize DCR service", log.Error(wrappedErr))
 		return wrappedErr
 	}

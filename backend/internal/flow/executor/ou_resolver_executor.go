@@ -92,7 +92,7 @@ func (e *ouResolverExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 
 	resolveFrom := e.getResolveFrom(ctx)
 	if resolveFrom == "" {
-		logger.DebugWithContext(ctx.Context, "resolveFrom not configured, skipping OU override")
+		logger.Debug(ctx.Context, "resolveFrom not configured, skipping OU override")
 		return execResp, nil
 	}
 
@@ -104,7 +104,7 @@ func (e *ouResolverExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 	case ouResolveFromPromptAll:
 		return e.resolveFromPromptAll(ctx, logger)
 	default:
-		logger.ErrorWithContext(ctx.Context, "Unsupported resolveFrom value", log.String("resolveFrom", resolveFrom))
+		logger.Error(ctx.Context, "Unsupported resolveFrom value", log.String("resolveFrom", resolveFrom))
 		execResp.Status = common.ExecFailure
 		execResp.Error = serviceerror.CustomServiceError(ErrOUResolutionFailed, i18ncore.I18nMessage{
 			Key:          ErrOUResolutionFailed.ErrorDescription.Key,
@@ -119,7 +119,7 @@ func (e *ouResolverExecutor) resolveFromCaller(ctx *core.NodeContext,
 	execResp *common.ExecutorResponse, logger *log.Logger) (*common.ExecutorResponse, error) {
 	callerOUID := security.GetOUID(ctx.Context)
 	if callerOUID == "" {
-		logger.ErrorWithContext(ctx.Context, "Caller OU not found in security context")
+		logger.Error(ctx.Context, "Caller OU not found in security context")
 		execResp.Status = common.ExecFailure
 		execResp.Error = serviceerror.CustomServiceError(ErrOUResolutionFailed, i18ncore.I18nMessage{
 			Key:          ErrOUResolutionFailed.ErrorDescription.Key,
@@ -128,7 +128,7 @@ func (e *ouResolverExecutor) resolveFromCaller(ctx *core.NodeContext,
 		return execResp, nil
 	}
 
-	logger.DebugWithContext(ctx.Context, "Overriding user OU with caller's OU", log.String("callerOUID", callerOUID))
+	logger.Debug(ctx.Context, "Overriding user OU with caller's OU", log.String("callerOUID", callerOUID))
 	execResp.RuntimeData[ouIDKey] = callerOUID
 
 	return execResp, nil
@@ -168,7 +168,7 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *core.NodeContext,
 			return nil, errors.New("failed to validate selected organization unit: " + svcErr.Error.DefaultValue)
 		}
 		if !isDescendant {
-			logger.DebugWithContext(ctx.Context, "Selected OU is not a descendant of the parent OU",
+			logger.Debug(ctx.Context, "Selected OU is not a descendant of the parent OU",
 				log.String(ouIDKey, selectedOUID),
 				log.String("parentOUID", parentOUID))
 			execResp.Status = common.ExecUserInputRequired
@@ -177,7 +177,7 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *core.NodeContext,
 			return execResp, nil
 		}
 
-		logger.DebugWithContext(ctx.Context, "OU selected by user", log.String(ouIDKey, selectedOUID))
+		logger.Debug(ctx.Context, "OU selected by user", log.String(ouIDKey, selectedOUID))
 		execResp.RuntimeData[ouIDKey] = selectedOUID
 		execResp.Status = common.ExecComplete
 		return execResp, nil
@@ -190,13 +190,13 @@ func (e *ouResolverExecutor) resolveFromPrompt(ctx *core.NodeContext,
 	}
 
 	if children.TotalResults == 0 {
-		logger.DebugWithContext(ctx.Context, "No child OUs found, skipping OU selection")
+		logger.Debug(ctx.Context, "No child OUs found, skipping OU selection")
 		execResp.Status = common.ExecComplete
 		return execResp, nil
 	}
 
 	// Child OUs exist — prompt the user to select one.
-	logger.DebugWithContext(ctx.Context, "Child OUs found, requesting OU selection",
+	logger.Debug(ctx.Context, "Child OUs found, requesting OU selection",
 		log.String("parentOUID", parentOUID),
 		log.Int("totalChildren", children.TotalResults))
 
@@ -237,14 +237,14 @@ func (e *ouResolverExecutor) resolveFromPromptAll(ctx *core.NodeContext,
 			return execResp, nil
 		}
 
-		logger.DebugWithContext(ctx.Context, "OU selected by user", log.String(ouIDKey, selectedOUID))
+		logger.Debug(ctx.Context, "OU selected by user", log.String(ouIDKey, selectedOUID))
 		execResp.RuntimeData[ouIDKey] = selectedOUID
 		execResp.Status = common.ExecComplete
 		return execResp, nil
 	}
 
 	// No selection yet — prompt the user with the full OU tree.
-	logger.DebugWithContext(ctx.Context, "Requesting OU selection from full tree")
+	logger.Debug(ctx.Context, "Requesting OU selection from full tree")
 	execResp.Status = common.ExecUserInputRequired
 
 	inputs := e.GetDefaultInputs()

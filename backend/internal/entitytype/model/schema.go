@@ -169,7 +169,7 @@ func (cs *Schema) GetUniqueAttributes() []string {
 func (cs *Schema) Validate(
 	ctx context.Context, attributes json.RawMessage, logger *log.Logger, skipCredentialRequired bool) (bool, error) {
 	if len(attributes) == 0 {
-		logger.DebugWithContext(ctx, "User has no attributes to validate")
+		logger.Debug(ctx, "User has no attributes to validate")
 		return true, nil
 	}
 
@@ -203,7 +203,7 @@ func (cs *Schema) Validate(
 	// Reject any user attributes not declared in the schema.
 	for key := range userAttrs {
 		if _, declared := cs.properties[key]; !declared {
-			logger.DebugWithContext(ctx, "Attribute not defined in schema", log.String("attribute", key))
+			logger.Debug(ctx, "Attribute not defined in schema", log.String("attribute", key))
 			return false, nil
 		}
 	}

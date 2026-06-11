@@ -86,7 +86,7 @@ func CreateTypeError(resourceType, resourceID string) *ExportError {
 func ValidateResourceName(
 	ctx context.Context, name, resourceType, resourceID, errorCode string, logger *log.Logger) *ExportError {
 	if name == "" {
-		logger.WarnWithContext(ctx, resourceType+" missing name, skipping export",
+		logger.Warn(ctx, resourceType+" missing name, skipping export",
 			log.String("resourceID", resourceID))
 		return &ExportError{
 			ResourceType: resourceType,
