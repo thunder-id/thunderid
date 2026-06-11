@@ -195,7 +195,7 @@ func (js *jwtService) GenerateJWT(
 		if _, exists := payload[key]; exists {
 			js.logger.Error("GenerateJWT called with default JWT claim in custom claims",
 				log.String("claim", key))
-			return "", 0, &serviceerror.InternalServerError
+			continue
 		}
 		payload[key] = value
 	}
