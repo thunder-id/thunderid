@@ -22,6 +22,7 @@ export {default as useGetTheme} from './api/useGetTheme';
 export {default as useCreateTheme} from './api/useCreateTheme';
 export {default as useUpdateTheme} from './api/useUpdateTheme';
 export {default as useDeleteTheme} from './api/useDeleteTheme';
+export {default as useGetThemeUsages} from './api/useGetThemeUsages';
 
 // Themes
 export {default as DefaultTheme} from './themes/DefaultTheme';

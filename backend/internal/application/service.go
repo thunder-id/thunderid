@@ -58,6 +58,8 @@ type ApplicationServiceInterface interface {
 		ctx context.Context, appID string, app *model.ApplicationDTO) (
 		*model.ApplicationDTO, *serviceerror.ServiceError)
 	DeleteApplication(ctx context.Context, appID string) *serviceerror.ServiceError
+	GetApplicationsByThemeID(ctx context.Context, themeID string, limit, offset int) (
+		[]model.ApplicationThemeUsage, int, *serviceerror.ServiceError)
 }
 
 // ApplicationService is the default implementation of the ApplicationServiceInterface.
@@ -544,6 +546,45 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 	}
 
 	return as.deleteLocalizedVariants(ctx, appID)
+}
+
+// GetApplicationsByThemeID returns a paginated list of applications referencing the given theme.
+func (as *applicationService) GetApplicationsByThemeID(
+	ctx context.Context, themeID string, limit, offset int,
+) ([]model.ApplicationThemeUsage, int, *serviceerror.ServiceError) {
+	ids, total, err := as.inboundClientService.GetEntityIDsByThemeID(ctx, themeID, limit, offset)
+	if err != nil {
+		as.logger.ErrorWithContext(ctx, "Failed to get entity IDs by theme ID", log.Error(err))
+		return nil, 0, &serviceerror.InternalServerError
+	}
+	if len(ids) == 0 {
+		return []model.ApplicationThemeUsage{}, total, nil
+	}
+
+	entities, epErr := as.entityProvider.GetEntitiesByIDs(ids)
+	if epErr != nil {
+		as.logger.ErrorWithContext(ctx, "Failed to get entities by IDs", log.Error(epErr))
+		return nil, 0, &serviceerror.InternalServerError
+	}
+
+	usages := make([]model.ApplicationThemeUsage, 0, len(entities))
+	for _, e := range entities {
+		name := ""
+		var sysAttrs map[string]interface{}
+		if len(e.SystemAttributes) > 0 {
+			_ = json.Unmarshal(e.SystemAttributes, &sysAttrs)
+		}
+		if sysAttrs != nil {
+			if n, ok := sysAttrs[fieldName].(string); ok {
+				name = n
+			}
+		}
+		usages = append(usages, model.ApplicationThemeUsage{
+			ID:          e.ID,
+			DisplayName: name,
+		})
+	}
+	return usages, total, nil
 }
 
 // isIdentifierTaken checks if an entity with the given identifier already exists.

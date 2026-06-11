@@ -66,6 +66,7 @@ export interface ThemeResponse {
   displayName: string;
   description?: string;
   theme: Theme;
+  isReadOnly?: boolean;
 }
 
 /**
@@ -96,4 +97,35 @@ export interface LayoutResponse {
 export interface DesignResolveResponse {
   theme: Theme;
   layout: LayoutConfig;
+}
+
+/**
+ * A single resource that references a theme.
+ */
+export interface ThemeUsage {
+  resourceType: string;
+  id: string;
+  displayName: string;
+  behaviorOnDelete: 'fallback' | 'cascade';
+}
+
+/**
+ * Grouped count of usages by resource type.
+ * A null value means the count could not be determined.
+ */
+export interface ThemeUsagesSummary {
+  applications: number | null;
+}
+
+/**
+ * Paginated response for the theme usages endpoint.
+ * totalResults is null when usage data is unavailable (e.g. reader not wired).
+ */
+export interface ThemeUsagesResponse {
+  totalResults: number | null;
+  startIndex: number;
+  count: number;
+  summary: ThemeUsagesSummary;
+  usages: ThemeUsage[];
+  links: ApiPaginationLink[];
 }

@@ -34,6 +34,18 @@ import (
 
 const loggerComponentName = "ThemeMgtService"
 
+// ApplicationUsageReader is defined here (consumer side) so the theme service can query
+// application references without importing the application package.
+type ApplicationUsageReader interface {
+	GetApplicationsByThemeID(ctx context.Context, themeID string, limit, offset int) ([]ApplicationUsage, int, error)
+}
+
+// ApplicationUsage is a minimal projection of an application used by the usages endpoint.
+type ApplicationUsage struct {
+	ID          string
+	DisplayName string
+}
+
 // ThemeMgtServiceInterface defines the interface for the theme management service.
 type ThemeMgtServiceInterface interface {
 	GetThemeList(ctx context.Context, limit, offset int) (*ThemeList, *serviceerror.ServiceError)
@@ -42,12 +54,15 @@ type ThemeMgtServiceInterface interface {
 	UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *serviceerror.ServiceError)
 	DeleteTheme(ctx context.Context, id string) *serviceerror.ServiceError
 	IsThemeExist(ctx context.Context, id string) (bool, *serviceerror.ServiceError)
+	SetApplicationReader(r ApplicationUsageReader)
+	GetThemeUsages(ctx context.Context, id string, limit, offset int) (*ThemeUsagesResponse, *serviceerror.ServiceError)
 }
 
 // themeMgtService is the default implementation of the ThemeMgtServiceInterface.
 type themeMgtService struct {
-	themeMgtStore themeMgtStoreInterface
-	logger        *log.Logger
+	themeMgtStore     themeMgtStoreInterface
+	applicationReader ApplicationUsageReader
+	logger            *log.Logger
 }
 
 // newThemeMgtService creates a new instance of ThemeMgtService with injected dependencies.
@@ -291,6 +306,72 @@ func (ts *themeMgtService) IsThemeExist(ctx context.Context, id string) (bool, *
 	return exists, nil
 }
 
+// SetApplicationReader injects the application usage reader. Called by servicemanager
+// after both theme and application services are initialized to avoid a cyclic import.
+func (ts *themeMgtService) SetApplicationReader(r ApplicationUsageReader) {
+	ts.applicationReader = r
+}
+
+// GetThemeUsages returns a paginated list of resources that reference this theme.
+func (ts *themeMgtService) GetThemeUsages(
+	ctx context.Context, id string, limit, offset int) (*ThemeUsagesResponse, *serviceerror.ServiceError) {
+	if id == "" {
+		return nil, &ErrorInvalidThemeID
+	}
+
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	exists, err := ts.themeMgtStore.IsThemeExist(id)
+	if err != nil {
+		ts.logger.ErrorWithContext(ctx, "Failed to check theme existence", log.String("id", id), log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+	if !exists {
+		return nil, &ErrorThemeNotFound
+	}
+
+	if ts.applicationReader == nil {
+		ts.logger.WarnWithContext(ctx, "ApplicationReader not set; returning unknown usages", log.String("id", id))
+		return &ThemeUsagesResponse{
+			TotalResults: nil,
+			StartIndex:   offset + 1,
+			Count:        0,
+			Summary:      ThemeUsagesSummary{Applications: nil},
+			Usages:       []ThemeUsage{},
+			Links:        []LinkResponse{},
+		}, nil
+	}
+
+	apps, total, err := ts.applicationReader.GetApplicationsByThemeID(ctx, id, limit, offset)
+	if err != nil {
+		ts.logger.ErrorWithContext(ctx, "Failed to get applications by theme ID", log.String("id", id), log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+
+	usages := make([]ThemeUsage, len(apps))
+	for i, app := range apps {
+		usages[i] = ThemeUsage{
+			ResourceType:     "application",
+			ID:               app.ID,
+			DisplayName:      app.DisplayName,
+			BehaviorOnDelete: "fallback",
+		}
+	}
+
+	links := buildUsagesPaginationLinks(id, limit, offset, total)
+
+	return &ThemeUsagesResponse{
+		TotalResults: &total,
+		StartIndex:   offset + 1,
+		Count:        len(usages),
+		Summary:      ThemeUsagesSummary{Applications: &total},
+		Usages:       usages,
+		Links:        links,
+	}, nil
+}
+
 // validateThemePreferences validates the theme JSON.
 func (ts *themeMgtService) validateThemePreferences(
 	ctx context.Context, theme json.RawMessage) *serviceerror.ServiceError {
@@ -321,6 +402,29 @@ func validatePaginationParams(limit, offset int) *serviceerror.ServiceError {
 	}
 
 	return nil
+}
+
+// buildUsagesPaginationLinks builds pagination links for the theme usages response.
+func buildUsagesPaginationLinks(themeID string, limit, offset, totalCount int) []LinkResponse {
+	links := make([]LinkResponse, 0)
+	base := fmt.Sprintf("/design/themes/%s/usages", themeID)
+	if offset > 0 {
+		prevOffset := offset - limit
+		if prevOffset < 0 {
+			prevOffset = 0
+		}
+		links = append(links, LinkResponse{
+			Href: fmt.Sprintf("%s?limit=%d&offset=%d", base, limit, prevOffset),
+			Rel:  "previous",
+		})
+	}
+	if offset+limit < totalCount {
+		links = append(links, LinkResponse{
+			Href: fmt.Sprintf("%s?limit=%d&offset=%d", base, limit, offset+limit),
+			Rel:  "next",
+		})
+	}
+	return links
 }
 
 // buildPaginationLinks builds pagination links for the response.

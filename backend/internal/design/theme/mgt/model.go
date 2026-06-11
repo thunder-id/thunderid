@@ -141,3 +141,28 @@ type ThemeList struct {
 	Themes       []Theme
 	Links        []Link
 }
+
+// ThemeUsage represents a single resource that references the theme.
+type ThemeUsage struct {
+	ResourceType     string `json:"resourceType"`
+	ID               string `json:"id"`
+	DisplayName      string `json:"displayName"`
+	BehaviorOnDelete string `json:"behaviorOnDelete"`
+}
+
+// ThemeUsagesSummary holds a grouped count of usages by resource type.
+// A nil value means the count could not be determined.
+type ThemeUsagesSummary struct {
+	Applications *int `json:"applications"`
+}
+
+// ThemeUsagesResponse is the paginated response for the usages endpoint.
+// TotalResults is nil when usage data is unavailable.
+type ThemeUsagesResponse struct {
+	TotalResults *int               `json:"totalResults"`
+	StartIndex   int                `json:"startIndex"`
+	Count        int                `json:"count"`
+	Summary      ThemeUsagesSummary `json:"summary"`
+	Usages       []ThemeUsage       `json:"usages"`
+	Links        []LinkResponse     `json:"links"`
+}

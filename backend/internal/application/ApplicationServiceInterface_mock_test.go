@@ -303,6 +303,94 @@ func (_c *ApplicationServiceInterfaceMock_GetApplicationList_Call) RunAndReturn(
 	return _c
 }
 
+// GetApplicationsByThemeID provides a mock function for the type ApplicationServiceInterfaceMock
+func (_mock *ApplicationServiceInterfaceMock) GetApplicationsByThemeID(ctx context.Context, themeID string, limit int, offset int) ([]model.ApplicationThemeUsage, int, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, themeID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetApplicationsByThemeID")
+	}
+
+	var r0 []model.ApplicationThemeUsage
+	var r1 int
+	var r2 *serviceerror.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) ([]model.ApplicationThemeUsage, int, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, themeID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) []model.ApplicationThemeUsage); ok {
+		r0 = returnFunc(ctx, themeID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]model.ApplicationThemeUsage)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) int); ok {
+		r1 = returnFunc(ctx, themeID, limit, offset)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, int, int) *serviceerror.ServiceError); ok {
+		r2 = returnFunc(ctx, themeID, limit, offset)
+	} else {
+		if ret.Get(2) != nil {
+			r2 = ret.Get(2).(*serviceerror.ServiceError)
+		}
+	}
+	return r0, r1, r2
+}
+
+// ApplicationServiceInterfaceMock_GetApplicationsByThemeID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetApplicationsByThemeID'
+type ApplicationServiceInterfaceMock_GetApplicationsByThemeID_Call struct {
+	*mock.Call
+}
+
+// GetApplicationsByThemeID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - themeID string
+//   - limit int
+//   - offset int
+func (_e *ApplicationServiceInterfaceMock_Expecter) GetApplicationsByThemeID(ctx interface{}, themeID interface{}, limit interface{}, offset interface{}) *ApplicationServiceInterfaceMock_GetApplicationsByThemeID_Call {
+	return &ApplicationServiceInterfaceMock_GetApplicationsByThemeID_Call{Call: _e.mock.On("GetApplicationsByThemeID", ctx, themeID, limit, offset)}
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationsByThemeID_Call) Run(run func(ctx context.Context, themeID string, limit int, offset int)) *ApplicationServiceInterfaceMock_GetApplicationsByThemeID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationsByThemeID_Call) Return(applicationThemeUsages []model.ApplicationThemeUsage, n int, serviceError *serviceerror.ServiceError) *ApplicationServiceInterfaceMock_GetApplicationsByThemeID_Call {
+	_c.Call.Return(applicationThemeUsages, n, serviceError)
+	return _c
+}
+
+func (_c *ApplicationServiceInterfaceMock_GetApplicationsByThemeID_Call) RunAndReturn(run func(ctx context.Context, themeID string, limit int, offset int) ([]model.ApplicationThemeUsage, int, *serviceerror.ServiceError)) *ApplicationServiceInterfaceMock_GetApplicationsByThemeID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetOAuthApplication provides a mock function for the type ApplicationServiceInterfaceMock
 func (_mock *ApplicationServiceInterfaceMock) GetOAuthApplication(ctx context.Context, clientID string) (*model0.OAuthClient, *serviceerror.ServiceError) {
 	ret := _mock.Called(ctx, clientID)

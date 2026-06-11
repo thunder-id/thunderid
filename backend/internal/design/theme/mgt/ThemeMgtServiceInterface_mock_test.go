@@ -313,6 +313,88 @@ func (_c *ThemeMgtServiceInterfaceMock_GetThemeList_Call) RunAndReturn(run func(
 	return _c
 }
 
+// GetThemeUsages provides a mock function for the type ThemeMgtServiceInterfaceMock
+func (_mock *ThemeMgtServiceInterfaceMock) GetThemeUsages(ctx context.Context, id string, limit int, offset int) (*ThemeUsagesResponse, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, id, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetThemeUsages")
+	}
+
+	var r0 *ThemeUsagesResponse
+	var r1 *serviceerror.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*ThemeUsagesResponse, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, id, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *ThemeUsagesResponse); ok {
+		r0 = returnFunc(ctx, id, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ThemeUsagesResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, id, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ThemeMgtServiceInterfaceMock_GetThemeUsages_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetThemeUsages'
+type ThemeMgtServiceInterfaceMock_GetThemeUsages_Call struct {
+	*mock.Call
+}
+
+// GetThemeUsages is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - limit int
+//   - offset int
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) GetThemeUsages(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *ThemeMgtServiceInterfaceMock_GetThemeUsages_Call {
+	return &ThemeMgtServiceInterfaceMock_GetThemeUsages_Call{Call: _e.mock.On("GetThemeUsages", ctx, id, limit, offset)}
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_GetThemeUsages_Call) Run(run func(ctx context.Context, id string, limit int, offset int)) *ThemeMgtServiceInterfaceMock_GetThemeUsages_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_GetThemeUsages_Call) Return(themeUsagesResponse *ThemeUsagesResponse, serviceError *serviceerror.ServiceError) *ThemeMgtServiceInterfaceMock_GetThemeUsages_Call {
+	_c.Call.Return(themeUsagesResponse, serviceError)
+	return _c
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_GetThemeUsages_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int) (*ThemeUsagesResponse, *serviceerror.ServiceError)) *ThemeMgtServiceInterfaceMock_GetThemeUsages_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsThemeExist provides a mock function for the type ThemeMgtServiceInterfaceMock
 func (_mock *ThemeMgtServiceInterfaceMock) IsThemeExist(ctx context.Context, id string) (bool, *serviceerror.ServiceError) {
 	ret := _mock.Called(ctx, id)
@@ -378,6 +460,46 @@ func (_c *ThemeMgtServiceInterfaceMock_IsThemeExist_Call) Return(b bool, service
 
 func (_c *ThemeMgtServiceInterfaceMock_IsThemeExist_Call) RunAndReturn(run func(ctx context.Context, id string) (bool, *serviceerror.ServiceError)) *ThemeMgtServiceInterfaceMock_IsThemeExist_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SetApplicationReader provides a mock function for the type ThemeMgtServiceInterfaceMock
+func (_mock *ThemeMgtServiceInterfaceMock) SetApplicationReader(r ApplicationUsageReader) {
+	_mock.Called(r)
+	return
+}
+
+// ThemeMgtServiceInterfaceMock_SetApplicationReader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetApplicationReader'
+type ThemeMgtServiceInterfaceMock_SetApplicationReader_Call struct {
+	*mock.Call
+}
+
+// SetApplicationReader is a helper method to define mock.On call
+//   - r ApplicationUsageReader
+func (_e *ThemeMgtServiceInterfaceMock_Expecter) SetApplicationReader(r interface{}) *ThemeMgtServiceInterfaceMock_SetApplicationReader_Call {
+	return &ThemeMgtServiceInterfaceMock_SetApplicationReader_Call{Call: _e.mock.On("SetApplicationReader", r)}
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_SetApplicationReader_Call) Run(run func(r ApplicationUsageReader)) *ThemeMgtServiceInterfaceMock_SetApplicationReader_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 ApplicationUsageReader
+		if args[0] != nil {
+			arg0 = args[0].(ApplicationUsageReader)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_SetApplicationReader_Call) Return() *ThemeMgtServiceInterfaceMock_SetApplicationReader_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ThemeMgtServiceInterfaceMock_SetApplicationReader_Call) RunAndReturn(run func(r ApplicationUsageReader)) *ThemeMgtServiceInterfaceMock_SetApplicationReader_Call {
+	_c.Run(run)
 	return _c
 }
 

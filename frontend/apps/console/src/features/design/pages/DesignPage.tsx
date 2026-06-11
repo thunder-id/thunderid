@@ -25,6 +25,7 @@ import {useNavigate} from 'react-router';
 import ItemCard from '../components/common/ItemCard';
 import SectionHeader from '../components/common/SectionHeader';
 import LayoutPresetThumbnail, {type LayoutPresetVariant} from '../components/layouts/LayoutPresetThumbnail';
+import ThemeDeleteDialog from '../components/themes/ThemeDeleteDialog';
 import ThemeThumbnail from '../components/themes/ThemeThumbnail';
 import DesignUIConstants from '../constants/design-ui-constants';
 
@@ -52,6 +53,7 @@ export default function DesignPage(): JSX.Element {
   const {mutateAsync: createLayout} = useCreateLayout();
 
   const [showAllThemes, setShowAllThemes] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{id: string; name: string} | null>(null);
 
   // Build a map of handle → layoutId for API layouts
   const layoutIdByHandle = new Map((layoutsData?.layouts ?? []).map((l) => [l.handle, l.id]));
@@ -133,6 +135,9 @@ export default function DesignPage(): JSX.Element {
                           // Ignore navigation errors
                         });
                       }}
+                      onDelete={
+                        theme.isReadOnly ? undefined : () => setDeleteTarget({id: theme.id, name: theme.displayName})
+                      }
                     />
                   </Grid>
                 )),
@@ -267,6 +272,13 @@ export default function DesignPage(): JSX.Element {
           })}
         </Grid>
       </Box>
+
+      <ThemeDeleteDialog
+        open={deleteTarget !== null}
+        themeId={deleteTarget?.id ?? null}
+        themeName={deleteTarget?.name ?? null}
+        onClose={() => setDeleteTarget(null)}
+      />
     </PageContent>
   );
 }
