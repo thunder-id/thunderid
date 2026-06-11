@@ -1,0 +1,125 @@
+---
+title: Token Exchange with External Identity Providers
+sidebar_position: 5
+persona: iam
+description: Exchange a token from an external identity provider for a {{ProductName}}-issued access token using RFC 8693 Token Exchange.
+---
+
+# Token Exchange with External Identity Providers
+
+<ProductName /> can exchange a token issued by an external identity provider (IdP) for a <ProductName />-issued access token. This lets a client that authenticates users via an external OIDC provider — such as Asgardeo, Google, Azure AD, or Keycloak — obtain a <ProductName />-scoped access token without requiring users to sign in again.
+
+This uses [RFC 8693 Token Exchange](https://datatracker.ietf.org/doc/html/rfc8693). For general information about the token exchange grant type, see [Token Exchange](../protocols/oauth-oidc/token-exchange.mdx).
+
+## When to Use
+
+Use this when:
+
+- A client authenticates users via an external OIDC provider and needs a <ProductName />-scoped access token to call <ProductName />-protected APIs.
+- You want to centralize token issuance through <ProductName /> while delegating user authentication to an upstream IdP.
+
+## Prerequisites
+
+- <ProductName /> is running. See [Get Started](../../getting-started/get-thunderid.mdx).
+- An external OIDC identity provider that issues JWTs with an `iss` claim and exposes a JWKS endpoint.
+- An access token with the `system` scope for the setup API calls.
+
+## Step 1: Register the External Identity Provider
+
+Register the external IdP in <ProductName /> and enable it for token exchange. Only three properties are required for a token-exchange-only IdP:
+
+| Property | Required | Description |
+|----------|----------|-------------|
+| `issuer` | Yes | The exact `iss` claim value in tokens from this IdP. <ProductName /> matches incoming tokens against this value to identify which IdP issued them. |
+| `jwks_endpoint` | Yes | The IdP's JWKS URL. <ProductName /> fetches public signing keys from this URL to verify token signatures. |
+| `token_exchange_enabled` | Yes | Set to `"true"` to allow this IdP's tokens to be exchanged. |
+
+The redirect-flow OIDC properties (`client_secret`, `redirect_uri`, `authorization_endpoint`, `token_endpoint`) are not required unless the same IdP is also used for redirect-based sign-in.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/identity-providers \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Asgardeo",
+    "type": "OIDC",
+    "properties": [
+      {"name": "issuer", "value": "https://api.asgardeo.io/t/myorg/oauth2/token"},
+      {"name": "jwks_endpoint", "value": "https://api.asgardeo.io/t/myorg/oauth2/jwks"},
+      {"name": "token_exchange_enabled", "value": "true"}
+    ]
+  }'
+```
+
+## Step 2: Create an OAuth Application with the Token Exchange Grant
+
+Create an OAuth application and include `urn:ietf:params:oauth:grant-type:token-exchange` in its allowed grant types. This is the client that will perform exchanges on behalf of users.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/applications \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Token Exchange Client",
+    "inboundAuthConfig": [{
+      "type": "oauth2",
+      "config": {
+        "clientId": "te_client",
+        "clientSecret": "te_secret",
+        "grantTypes": ["urn:ietf:params:oauth:grant-type:token-exchange"],
+        "tokenEndpointAuthMethod": "client_secret_basic"
+      }
+    }]
+  }'
+```
+
+## Step 3: Exchange the External Token
+
+Send the external IdP token to <ProductName />'s token endpoint using the token exchange grant type:
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u 'te_client:te_secret' \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  -d 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+  -d 'subject_token=<JWT_FROM_EXTERNAL_IDP>' \
+  -d 'subject_token_type=urn:ietf:params:oauth:token-type:jwt'
+```
+
+A successful response returns a <ProductName />-issued access token:
+
+```json
+{
+  "access_token": "eyJ...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "issued_token_type": "urn:ietf:params:oauth:token-type:access_token"
+}
+```
+
+The issued token's `sub` claim contains the external user's subject identifier from the original token.
+
+## How <ProductName /> Validates the External Token
+
+When processing an external token for exchange, <ProductName />:
+
+1. Extracts the `iss` claim and matches it against registered IdPs with `token_exchange_enabled=true`.
+2. Fetches the matching IdP's JWKS and verifies the token signature.
+3. Checks that the token's `aud` claim contains this <ProductName /> instance's own issuer.
+4. Validates `exp` (and `nbf` if present) with the configured clock-skew leeway.
+5. Extracts the `sub` claim and non-standard claims as user attributes.
+
+If any step fails, the exchange returns HTTP 400 with `error=invalid_request` and an `"Invalid subject_token"` message.
+
+## Limitations
+
+- Only JWT tokens are supported. Opaque tokens (for example, GitHub access tokens) cannot be exchanged.
+- The external user's `sub` is passed through as-is. No local user lookup or just-in-time provisioning occurs.
+- No scope or claim mapping is applied. External token scopes use the existing intersection logic; external claims pass through filtered by the application's `userAttributes` configuration.
+- Token exchange is available to all applications that have the token exchange grant type. No per-application IdP restriction applies.
+
+## Next Steps
+
+- [Manage Identity Providers](../manage-identity-providers) — Create, update, and delete identity providers using the API.
+- [Connect an IdP to an Application](../connect-idp-to-application) — Use an IdP for redirect-based sign-in flows.
+- [Token Exchange](../protocols/oauth-oidc/token-exchange.mdx) — Learn about the RFC 8693 token exchange grant type in <ProductName />.

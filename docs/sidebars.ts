@@ -294,6 +294,12 @@ const sidebars: SidebarsConfig = {
                   id: 'guides/guides/identity-providers/connect-idp-to-application',
                   label: 'Connect IdP to Application',
                 },
+                {
+                  type: 'doc',
+                  id: 'guides/guides/identity-providers/token-exchange-idp',
+                  label: 'Token Exchange',
+                  key: 'idp-token-exchange',
+                },
               ],
             },
             {
@@ -353,11 +359,6 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'guides/guides/consent',
           label: 'Consent',
-        },
-        {
-          type: 'doc',
-          id: 'guides/guides/trusted-issuer',
-          label: 'Trusted Issuer',
         },
         {
           type: 'doc',
@@ -444,7 +445,7 @@ const sidebars: SidebarsConfig = {
                     {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/authorization-code', label: 'Authorization Code'},
                     {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/client-credentials', label: 'Client Credentials'},
                     {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/refresh-token', label: 'Refresh Token'},
-                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/token-exchange', label: 'Token Exchange'},
+                    {type: 'doc', id: 'guides/guides/protocols/oauth-oidc/token-exchange', label: 'Token Exchange', key: 'oauth-token-exchange'},
                   ],
                 },
                 {
@@ -860,6 +861,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'guides/deployment-patterns/observability',
           label: 'Observability',
+        },
+        {
+          type: 'doc',
+          id: 'guides/deployment-patterns/trusted-issuer',
+          label: 'Secure Using a Third-Party IdP',
         },
       ],
     },
