@@ -673,6 +673,16 @@ email:
 
 For the full property reference and provider-specific examples, see [Configure SMTP Server](../../guides/smtp-server/smtp-server-configuration).
 
+## Notification Configuration
+
+Controls notification delivery behaviour, including OTP generation parameters.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `notification.otp.length` | `6` | OTP character length. Must be in `[4, 10]`. |
+| `notification.otp.use_numeric_only` | `true` | If `true`, OTPs use digits only; if `false`, OTPs use a mixed alphanumeric character set. |
+| `notification.otp.validity_period_seconds` | `120` | OTP validity period in seconds. Must be in `[30, 600]`. |
+
 ## Authentication Provider Configuration
 
 External authentication provider settings.

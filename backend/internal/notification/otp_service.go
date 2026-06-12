@@ -36,9 +36,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/template"
 )
 
-// otpUseOnlyNumericChars indicates whether to use only numeric characters for OTP generation.
-var otpUseOnlyNumericChars = true
-
 // OTPServiceInterface defines the interface for OTP operations.
 type OTPServiceInterface interface {
 	SendOTP(ctx context.Context, request common.SendOTPDTO) (*common.SendOTPResultDTO, *serviceerror.ServiceError)
@@ -234,22 +231,24 @@ func (s *otpService) getOTPCharset() string {
 	return "KIGXHOYSPRWCEFMVUQLZDNABJT9245378016"
 }
 
+// resolveOTPConfig returns the effective OTP configuration for this otpService.
+func (s *otpService) resolveOTPConfig() config.OTPConfig {
+	return config.GetServerRuntime().Config.Notification.OTP
+}
+
 // getOTPLength returns the length of the OTP.
 func (s *otpService) getOTPLength() int {
-	// TODO: This needs to be configured as a property
-	return 6
+	return s.resolveOTPConfig().Length
 }
 
 // useOnlyNumericChars determines whether to use only numeric characters.
 func (s *otpService) useOnlyNumericChars() bool {
-	// TODO: This needs to be configured as a property
-	return otpUseOnlyNumericChars
+	return s.resolveOTPConfig().UseNumericOnly
 }
 
 // getOTPValidityPeriodInMillis returns the validity period of the OTP in milliseconds.
 func (s *otpService) getOTPValidityPeriodInMillis() int64 {
-	// TODO: This needs to be configured as a property
-	return 120000 // 2 minutes
+	return int64(s.resolveOTPConfig().ValidityPeriodSeconds) * 1000
 }
 
 // sendSMSOTP sends an SMS OTP to the recipient.

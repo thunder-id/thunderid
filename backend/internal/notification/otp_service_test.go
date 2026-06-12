@@ -66,6 +66,13 @@ func (suite *OTPServiceTestSuite) SetupSuite() {
 				Key: "0579f866ac7c9273580d0ff163fa01a7b2401a7ff3ddc3e3b14ae3136fa6025e",
 			},
 		},
+		Notification: config.NotificationConfig{
+			OTP: config.OTPConfig{
+				Length:                6,
+				UseNumericOnly:        true,
+				ValidityPeriodSeconds: 120,
+			},
+		},
 	}
 	err := config.InitializeServerRuntime("", testConfig)
 	if err != nil {
@@ -74,6 +81,11 @@ func (suite *OTPServiceTestSuite) SetupSuite() {
 }
 
 func (suite *OTPServiceTestSuite) SetupTest() {
+	config.GetServerRuntime().Config.Notification.OTP = config.OTPConfig{
+		Length:                6,
+		UseNumericOnly:        true,
+		ValidityPeriodSeconds: 120,
+	}
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockSenderService = NewNotificationSenderMgtSvcInterfaceMock(suite.T())
 	suite.mockTemplateService = templatemock.NewTemplateServiceInterfaceMock(suite.T())
@@ -267,15 +279,28 @@ func (suite *OTPServiceTestSuite) TestGetOTPValidityPeriodInMillis() {
 }
 
 func (suite *OTPServiceTestSuite) TestGetOTPCharset_NonNumeric() {
-	// toggle package variable to force non-numeric branch
-	prev := otpUseOnlyNumericChars
-	otpUseOnlyNumericChars = false
-	defer func() { otpUseOnlyNumericChars = prev }()
+	otpCfg := &config.GetServerRuntime().Config.Notification.OTP
+	prev := otpCfg.UseNumericOnly
+	otpCfg.UseNumericOnly = false
+	defer func() { otpCfg.UseNumericOnly = prev }()
 
 	charset := suite.service.getOTPCharset()
 	suite.NotEmpty(charset)
 	suite.NotEqual("9245378016", charset)
 	suite.Equal("KIGXHOYSPRWCEFMVUQLZDNABJT9245378016", charset)
+}
+
+func (suite *OTPServiceTestSuite) TestAccessors_ReadFromLiveConfig() {
+	otpCfg := &config.GetServerRuntime().Config.Notification.OTP
+	prev := *otpCfg
+	otpCfg.Length = 8
+	otpCfg.UseNumericOnly = false
+	otpCfg.ValidityPeriodSeconds = 300
+	defer func() { *otpCfg = prev }()
+
+	suite.Equal(8, suite.service.getOTPLength())
+	suite.False(suite.service.useOnlyNumericChars())
+	suite.Equal(int64(300000), suite.service.getOTPValidityPeriodInMillis())
 }
 
 // SendOTP when OTP generation fails (force rand.Reader to error)
