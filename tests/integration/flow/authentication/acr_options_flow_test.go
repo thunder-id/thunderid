@@ -217,7 +217,9 @@ var acrOptionsFlow = testutils.Flow{
 	},
 }
 
-// acrOptionsTestApp is a minimal OAuth2 application used across ACR options tests.
+// acrOptionsTestApp is the OAuth2 application used for ACR options tests that go through
+// the OAuth authorize endpoint (response_type=code). It must have the authorization_code
+// grant type so that /oauth2/authorize accepts it.
 var acrOptionsTestApp = testutils.Application{
 	Name:                      "ACR Options Flow Test Application",
 	Description:               "Application for testing login_options flow behaviour",
@@ -235,6 +237,34 @@ var acrOptionsTestApp = testutils.Application{
 				"redirectUris":            []string{"https://localhost:3000/acr-options-callback"},
 				"grantTypes":              []string{"authorization_code"},
 				"responseTypes":           []string{"code"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				"acrValues": []string{
+					"urn:thunder:acr:password",
+					"urn:thunder:acr:generated-code",
+					"urn:thunder:acr:biometrics",
+				},
+			},
+		},
+	},
+}
+
+// acrOptionsNativeTestApp is a native (non-redirect) application used for ACR options
+// tests that call /flow/execute directly. It must not have the authorization_code grant
+// type so that the redirect-app guard allows direct flow initiation.
+var acrOptionsNativeTestApp = testutils.Application{
+	Name:                      "ACR Options Native Test Application",
+	Description:               "Native application for direct flow execution in ACR options tests",
+	IsRegistrationFlowEnabled: false,
+	ClientID:                  "acr_options_native_test_client",
+	ClientSecret:              "acr_options_native_test_secret",
+	AllowedUserTypes:          []string{"acr_options_test_person"},
+	InboundAuthConfig: []map[string]interface{}{
+		{
+			"type": "oauth2",
+			"config": map[string]interface{}{
+				"clientId":                "acr_options_native_test_client",
+				"clientSecret":            "acr_options_native_test_secret",
+				"grantTypes":              []string{"client_credentials"},
 				"tokenEndpointAuthMethod": "client_secret_basic",
 				"acrValues": []string{
 					"urn:thunder:acr:password",
@@ -272,10 +302,11 @@ var acrOptionsTestUser = testutils.User{
 }
 
 var (
-	acrOptionsTestAppID  string
-	acrOptionsTestOUID   string
-	acrOptionsFlowID     string
-	acrOptionsUserTypeID string
+	acrOptionsTestAppID        string
+	acrOptionsNativeTestAppID  string
+	acrOptionsTestOUID         string
+	acrOptionsFlowID           string
+	acrOptionsUserTypeID       string
 )
 
 // AcrOptionsFlowTestSuite tests the login_options PROMPT node filtering, ordering,
@@ -317,6 +348,12 @@ func (ts *AcrOptionsFlowTestSuite) SetupSuite() {
 	appID, err := testutils.CreateApplication(acrOptionsTestApp)
 	ts.Require().NoError(err, "failed to create ACR options test application")
 	acrOptionsTestAppID = appID
+
+	acrOptionsNativeTestApp.AuthFlowID = flowID
+	acrOptionsNativeTestApp.OUID = acrOptionsTestOUID
+	nativeAppID, err := testutils.CreateApplication(acrOptionsNativeTestApp)
+	ts.Require().NoError(err, "failed to create ACR options native test application")
+	acrOptionsNativeTestAppID = nativeAppID
 }
 
 func (ts *AcrOptionsFlowTestSuite) TearDownSuite() {
@@ -326,6 +363,11 @@ func (ts *AcrOptionsFlowTestSuite) TearDownSuite() {
 	if acrOptionsTestAppID != "" {
 		if err := testutils.DeleteApplication(acrOptionsTestAppID); err != nil {
 			ts.T().Logf("failed to delete test application: %v", err)
+		}
+	}
+	if acrOptionsNativeTestAppID != "" {
+		if err := testutils.DeleteApplication(acrOptionsNativeTestAppID); err != nil {
+			ts.T().Logf("failed to delete native test application: %v", err)
 		}
 	}
 	for _, id := range ts.config.CreatedFlowIDs {
@@ -346,7 +388,7 @@ func (ts *AcrOptionsFlowTestSuite) TearDownSuite() {
 }
 
 func (ts *AcrOptionsFlowTestSuite) TestAcrOptions_NodeValidInFlowGraph() {
-	flowStep, err := common.InitiateAuthenticationFlow(acrOptionsTestAppID, false, nil, "")
+	flowStep, err := common.InitiateAuthenticationFlow(acrOptionsNativeTestAppID, false, nil, "")
 	ts.Require().NoError(err, "flow initiation should succeed")
 
 	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
@@ -426,7 +468,7 @@ func (ts *AcrOptionsFlowTestSuite) TestAcrOptions_AutoSelectsWhenSingleACR() {
 
 func (ts *AcrOptionsFlowTestSuite) TestAcrOptions_AcrInAuthAssertionJWT() {
 	// Step 1: Start the flow without acr filtering so the chooser is shown.
-	flowStep, err := common.InitiateAuthenticationFlow(acrOptionsTestAppID, false, nil, "")
+	flowStep, err := common.InitiateAuthenticationFlow(acrOptionsNativeTestAppID, false, nil, "")
 	ts.Require().NoError(err)
 	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
 	ts.Require().NotEmpty(flowStep.Data.Actions)

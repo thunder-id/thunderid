@@ -31,6 +31,8 @@ const (
 	ClientErrorType ServiceErrorType = "client_error"
 	// ServerErrorType denotes the server error type.
 	ServerErrorType ServiceErrorType = "server_error"
+	// ForbiddenErrorType denotes a forbidden/access-denied error type.
+	ForbiddenErrorType ServiceErrorType = "forbidden_error"
 )
 
 // CustomServiceError creates a new service error based on an existing error with a custom description.

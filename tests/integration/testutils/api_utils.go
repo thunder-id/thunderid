@@ -370,6 +370,7 @@ func CreateApplication(app Application) (string, error) {
 					"clientId":     app.ClientID,
 					"clientSecret": app.ClientSecret,
 					"redirectUris": redirectURIs,
+					"grantTypes":   []string{"client_credentials"},
 				},
 			},
 		}

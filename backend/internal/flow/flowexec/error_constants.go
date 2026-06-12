@@ -164,3 +164,18 @@ var ErrorInvalidChallengeToken = serviceerror.ServiceError{
 		DefaultValue: "The challenge token is missing or invalid",
 	},
 }
+
+// ErrorDirectFlowInitiationNotPermitted defines the error for applications that do not allow
+// direct flow initiation via the HTTP endpoint (e.g. authorization_code grant type apps).
+var ErrorDirectFlowInitiationNotPermitted = serviceerror.ServiceError{
+	Code: "FES-1011",
+	Type: serviceerror.ForbiddenErrorType,
+	Error: core.I18nMessage{
+		Key:          "error.flowexecservice.direct_flow_initiation_not_permitted",
+		DefaultValue: "Direct flow initiation not permitted",
+	},
+	ErrorDescription: core.I18nMessage{
+		Key:          "error.flowexecservice.direct_flow_initiation_not_permitted_description",
+		DefaultValue: "Direct flow initiation is not permitted for this application type",
+	},
+}
