@@ -16,11 +16,18 @@
  * under the License.
  */
 
+import {act, renderHook} from '@testing-library/react';
 import {render, screen} from '@thunderid/test-utils';
 import React from 'react';
 import {describe, expect, it, vi} from 'vitest';
 import RoleCreateProvider from '../RoleCreateProvider';
 import useRoleCreate from '../useRoleCreate';
+
+function renderUseRoleCreate() {
+  return renderHook(() => useRoleCreate(), {
+    wrapper: ({children}: {children: React.ReactNode}) => <RoleCreateProvider>{children}</RoleCreateProvider>,
+  });
+}
 
 function TestConsumer() {
   const context = useRoleCreate();
@@ -76,6 +83,8 @@ describe('useRoleCreate', () => {
         'setOuId',
         'error',
         'setError',
+        'permissions',
+        'setPermissions',
         'reset',
       ];
 
@@ -126,7 +135,7 @@ describe('useRoleCreate', () => {
 
   it('provides functions that are properly typed', () => {
     function TestFunctionTypes() {
-      const {setCurrentStep, setName, setOuId, setError, reset} = useRoleCreate();
+      const {setCurrentStep, setName, setOuId, setError, setPermissions, reset} = useRoleCreate();
 
       return (
         <div>
@@ -134,6 +143,7 @@ describe('useRoleCreate', () => {
           <div data-testid="setName-type">{typeof setName}</div>
           <div data-testid="setOuId-type">{typeof setOuId}</div>
           <div data-testid="setError-type">{typeof setError}</div>
+          <div data-testid="setPermissions-type">{typeof setPermissions}</div>
           <div data-testid="reset-type">{typeof reset}</div>
         </div>
       );
@@ -151,6 +161,7 @@ describe('useRoleCreate', () => {
     expect(screen.getByTestId('setName-type')).toHaveTextContent('function');
     expect(screen.getByTestId('setOuId-type')).toHaveTextContent('function');
     expect(screen.getByTestId('setError-type')).toHaveTextContent('function');
+    expect(screen.getByTestId('setPermissions-type')).toHaveTextContent('function');
     expect(screen.getByTestId('reset-type')).toHaveTextContent('function');
   });
 
@@ -173,7 +184,22 @@ describe('useRoleCreate', () => {
     errorSpy.mockRestore();
   });
 
-  it('has exactly 9 properties in the context interface', () => {
+  it('exposes permissions state, defaults to empty, and resets it', () => {
+    const {result} = renderUseRoleCreate();
+    expect(result.current.permissions).toEqual([]);
+
+    act(() => {
+      result.current.setPermissions([{resourceServerId: 'rs-1', permissions: ['bookings']}]);
+    });
+    expect(result.current.permissions).toEqual([{resourceServerId: 'rs-1', permissions: ['bookings']}]);
+
+    act(() => {
+      result.current.reset();
+    });
+    expect(result.current.permissions).toEqual([]);
+  });
+
+  it('has exactly 11 properties in the context interface', () => {
     function TestContextProperties() {
       const context = useRoleCreate();
 
@@ -192,6 +218,6 @@ describe('useRoleCreate', () => {
       </TestWrapper>,
     );
 
-    expect(screen.getByTestId('property-count')).toHaveTextContent('9');
+    expect(screen.getByTestId('property-count')).toHaveTextContent('11');
   });
 });

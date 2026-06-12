@@ -24,6 +24,8 @@ import RoleQueryKeys from '../constants/role-query-keys';
 import type {UpdateRoleRequest} from '../models/requests';
 import type {Role} from '../models/role';
 
+export const ROLE_MUTATION_KEY = ['update-role'] as const;
+
 export interface UpdateRoleVariables {
   roleId: string;
   data: UpdateRoleRequest;
@@ -42,6 +44,7 @@ export default function useUpdateRole(): UseMutationResult<Role, Error, UpdateRo
   const {showToast} = useToast();
 
   return useMutation<Role, Error, UpdateRoleVariables>({
+    mutationKey: ROLE_MUTATION_KEY,
     mutationFn: async ({roleId, data}: UpdateRoleVariables): Promise<Role> => {
       const serverUrl: string = getServerUrl();
       const response: {data: Role} = await http.request({
@@ -53,7 +56,10 @@ export default function useUpdateRole(): UseMutationResult<Role, Error, UpdateRo
 
       return response.data;
     },
-    onSuccess: (_data, {roleId}) => {
+    onSuccess: (data, {roleId}) => {
+      queryClient.setQueryData<Role>([RoleQueryKeys.ROLE, roleId], (old) =>
+        old ? {...old, name: data.name, description: data.description, permissions: data.permissions ?? []} : data,
+      );
       queryClient.invalidateQueries({queryKey: [RoleQueryKeys.ROLE, roleId]}).catch(() => {
         /* noop */
       });

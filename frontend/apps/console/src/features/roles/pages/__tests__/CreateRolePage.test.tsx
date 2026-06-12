@@ -16,6 +16,7 @@
  * under the License.
  */
 
+import {fireEvent} from '@testing-library/react';
 import {render, screen} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -33,6 +34,24 @@ vi.mock('../../components/create-role/ConfigureBasicInfo', () => ({
 
 vi.mock('../../components/create-role/ConfigureOrganizationUnit', () => ({
   default: () => <div data-testid="configure-organization-unit">Configure Organization Unit</div>,
+}));
+
+vi.mock('../../components/create-role/ConfigurePermissions', () => ({
+  default: ({
+    onPermissionsChange,
+  }: {
+    onPermissionsChange: (permissions: {resourceServerId: string; permissions: string[]}[]) => void;
+  }) => (
+    <div data-testid="configure-permissions">
+      <button
+        type="button"
+        data-testid="stage-permissions"
+        onClick={() => onPermissionsChange([{resourceServerId: 'rs-1', permissions: ['bookings']}])}
+      >
+        Stage
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('react-router', async () => {
@@ -63,6 +82,7 @@ describe('CreateRolePage', () => {
   let mockSetName: ReturnType<typeof vi.fn>;
   let mockSetOuId: ReturnType<typeof vi.fn>;
   let mockSetError: ReturnType<typeof vi.fn>;
+  let mockSetPermissions: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     mockNavigate = vi.fn();
@@ -70,6 +90,7 @@ describe('CreateRolePage', () => {
     mockSetName = vi.fn();
     mockSetOuId = vi.fn();
     mockSetError = vi.fn();
+    mockSetPermissions = vi.fn();
 
     vi.mocked(useNavigate).mockReturnValue(mockNavigate as unknown as NavigateFunction);
 
@@ -82,6 +103,8 @@ describe('CreateRolePage', () => {
       setOuId: mockSetOuId,
       error: null,
       setError: mockSetError,
+      permissions: [],
+      setPermissions: mockSetPermissions,
       reset: vi.fn(),
     } as unknown as ReturnType<typeof useRoleCreate>);
 
@@ -155,6 +178,8 @@ describe('CreateRolePage', () => {
       setOuId: mockSetOuId,
       error: null,
       setError: mockSetError,
+      permissions: [],
+      setPermissions: mockSetPermissions,
       reset: vi.fn(),
     } as unknown as ReturnType<typeof useRoleCreate>);
 
@@ -182,6 +207,8 @@ describe('CreateRolePage', () => {
       setOuId: mockSetOuId,
       error: null,
       setError: mockSetError,
+      permissions: [],
+      setPermissions: mockSetPermissions,
       reset: vi.fn(),
     } as unknown as ReturnType<typeof useRoleCreate>);
 
@@ -199,6 +226,46 @@ describe('CreateRolePage', () => {
     expect(screen.getByRole('button', {name: /back/i})).toBeInTheDocument();
   });
 
+  it('should render ConfigurePermissions on permissions step', () => {
+    vi.mocked(useRoleCreate).mockReturnValue({
+      currentStep: RoleCreateFlowStep.PERMISSIONS,
+      setCurrentStep: mockSetCurrentStep,
+      name: 'Test Role',
+      setName: mockSetName,
+      ouId: '',
+      setOuId: mockSetOuId,
+      error: null,
+      setError: mockSetError,
+      permissions: [],
+      setPermissions: mockSetPermissions,
+      reset: vi.fn(),
+    } as unknown as ReturnType<typeof useRoleCreate>);
+
+    render(<CreateRolePage />);
+
+    expect(screen.getByTestId('configure-permissions')).toBeInTheDocument();
+  });
+
+  it('should render Back button on permissions step', () => {
+    vi.mocked(useRoleCreate).mockReturnValue({
+      currentStep: RoleCreateFlowStep.PERMISSIONS,
+      setCurrentStep: mockSetCurrentStep,
+      name: 'Test Role',
+      setName: mockSetName,
+      ouId: '',
+      setOuId: mockSetOuId,
+      error: null,
+      setError: mockSetError,
+      permissions: [],
+      setPermissions: mockSetPermissions,
+      reset: vi.fn(),
+    } as unknown as ReturnType<typeof useRoleCreate>);
+
+    render(<CreateRolePage />);
+
+    expect(screen.getByRole('button', {name: /back/i})).toBeInTheDocument();
+  });
+
   it('should render context error alert when error is set', () => {
     vi.mocked(useRoleCreate).mockReturnValue({
       currentStep: RoleCreateFlowStep.BASIC_INFO,
@@ -209,6 +276,8 @@ describe('CreateRolePage', () => {
       setOuId: mockSetOuId,
       error: 'Something went wrong',
       setError: mockSetError,
+      permissions: [],
+      setPermissions: mockSetPermissions,
       reset: vi.fn(),
     } as unknown as ReturnType<typeof useRoleCreate>);
 
@@ -265,5 +334,100 @@ describe('CreateRolePage', () => {
     render(<CreateRolePage />);
 
     expect(screen.getByRole('button', {name: /saving/i})).toBeDisabled();
+  });
+
+  it('should submit with permissions in POST payload when permissions are selected on the permissions step', async () => {
+    const mockMutateAsync = vi.fn().mockResolvedValue({});
+    vi.mocked(useCreateRole).mockReturnValue({
+      mutate: vi.fn(),
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+      error: null,
+      data: undefined,
+      reset: vi.fn(),
+      context: undefined,
+      failureCount: 0,
+      failureReason: null,
+      isIdle: true,
+      isPaused: false,
+      status: 'idle',
+      submittedAt: 0,
+      variables: undefined,
+    } as unknown as ReturnType<typeof useCreateRole>);
+
+    vi.mocked(useRoleCreate).mockReturnValue({
+      currentStep: RoleCreateFlowStep.PERMISSIONS,
+      setCurrentStep: mockSetCurrentStep,
+      name: 'Test Role',
+      setName: mockSetName,
+      ouId: '',
+      setOuId: mockSetOuId,
+      error: null,
+      setError: mockSetError,
+      permissions: [{resourceServerId: 'rs-1', permissions: ['bookings']}],
+      setPermissions: mockSetPermissions,
+      reset: vi.fn(),
+    } as unknown as ReturnType<typeof useRoleCreate>);
+
+    render(<CreateRolePage />);
+
+    fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+    await vi.waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          permissions: [{resourceServerId: 'rs-1', permissions: ['bookings']}],
+        }),
+      );
+    });
+  });
+
+  it('should submit without a permissions field when no permissions are selected on the permissions step', async () => {
+    const mockMutateAsync = vi.fn().mockResolvedValue({});
+    vi.mocked(useCreateRole).mockReturnValue({
+      mutate: vi.fn(),
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+      error: null,
+      data: undefined,
+      reset: vi.fn(),
+      context: undefined,
+      failureCount: 0,
+      failureReason: null,
+      isIdle: true,
+      isPaused: false,
+      status: 'idle',
+      submittedAt: 0,
+      variables: undefined,
+    } as unknown as ReturnType<typeof useCreateRole>);
+
+    vi.mocked(useRoleCreate).mockReturnValue({
+      currentStep: RoleCreateFlowStep.PERMISSIONS,
+      setCurrentStep: mockSetCurrentStep,
+      name: 'Test Role',
+      setName: mockSetName,
+      ouId: '',
+      setOuId: mockSetOuId,
+      error: null,
+      setError: mockSetError,
+      permissions: [],
+      setPermissions: mockSetPermissions,
+      reset: vi.fn(),
+    } as unknown as ReturnType<typeof useRoleCreate>);
+
+    render(<CreateRolePage />);
+
+    fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+    await vi.waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        name: 'Test Role',
+        ouId: 'ou-1',
+      });
+    });
   });
 });

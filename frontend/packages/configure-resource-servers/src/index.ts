@@ -33,6 +33,10 @@ export {default as useUpdateAction} from './api/useUpdateAction';
 export {default as useDeleteAction} from './api/useDeleteAction';
 
 // Components
+export {default as PermissionCatalog} from './components/permission-catalog/PermissionCatalog';
+export type {PermissionCatalogProps} from './components/permission-catalog/PermissionCatalog';
+export {default as SelectedScopesField} from './components/permission-catalog/SelectedScopesField';
+export type {SelectedScopesFieldProps} from './components/permission-catalog/SelectedScopesField';
 export {default as ResourceServersList} from './components/ResourceServersList';
 export {default as ResourceServerDeleteDialog} from './components/ResourceServerDeleteDialog';
 export type {ResourceServerDeleteDialogProps} from './components/ResourceServerDeleteDialog';
@@ -54,7 +58,19 @@ export type {
   UpdateResourceRequest,
   CreateActionRequest,
   UpdateActionRequest,
+  ResourcePermissions,
 } from './models/resource-server';
+
+// Utils
+export {
+  isPermissionSelected,
+  togglePermission,
+  mergePermissions,
+  removePermissions,
+  getSubtreeSelectionState,
+  arePermissionsEqual,
+} from './utils/permissionSelection';
+export type {SelectionState} from './utils/permissionSelection';
 
 // Pages
 export {default as ResourceServersListPage} from './pages/ResourceServersListPage';

@@ -16,7 +16,9 @@
  * under the License.
  */
 
+import {useIsMutating} from '@tanstack/react-query';
 import {PageLoadingAnimation} from '@thunderid/components';
+import {arePermissionsEqual, type ResourcePermissions} from '@thunderid/configure-resource-servers';
 import {useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {
@@ -39,9 +41,10 @@ import type {ReactNode, SyntheticEvent, JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams} from 'react-router';
 import useGetRole from '../api/useGetRole';
-import useUpdateRole from '../api/useUpdateRole';
+import useUpdateRole, {ROLE_MUTATION_KEY} from '../api/useUpdateRole';
 import EditAssignmentsSettings from '../components/edit-role/assignments-settings/EditAssignmentsSettings';
 import EditGeneralSettings from '../components/edit-role/general-settings/EditGeneralSettings';
+import EditPermissionsSettings from '../components/edit-role/permissions-settings/EditPermissionsSettings';
 import RoleDeleteDialog from '../components/RoleDeleteDialog';
 import type {Role} from '../models/role';
 
@@ -75,6 +78,7 @@ export default function RoleEditPage(): JSX.Element {
 
   const {data: role, isLoading, error: fetchError, refetch} = useGetRole(roleId ?? '');
   const updateRole = useUpdateRole();
+  const isRoleUpdating = useIsMutating({mutationKey: ROLE_MUTATION_KEY}) > 0;
 
   const [activeTab, setActiveTab] = useState(0);
   const [editedRole, setEditedRole] = useState<Partial<Role>>({});
@@ -97,6 +101,22 @@ export default function RoleEditPage(): JSX.Element {
     setEditedRole((prev) => ({...prev, [field]: value}));
   }, []);
 
+  const serverPermissions = useMemo(() => role?.permissions ?? [], [role]);
+
+  const handlePermissionsChange = useCallback(
+    (next: ResourcePermissions[]): void => {
+      setEditedRole((prev) => {
+        if (arePermissionsEqual(next, serverPermissions)) {
+          const {permissions: _permissions, ...rest} = prev;
+          void _permissions;
+          return rest;
+        }
+        return {...prev, permissions: next};
+      });
+    },
+    [serverPermissions],
+  );
+
   const handleSave = useCallback(async (): Promise<void> => {
     if (!role || !roleId) return;
 
@@ -104,7 +124,7 @@ export default function RoleEditPage(): JSX.Element {
       name: editedRole.name ?? role.name,
       description: 'description' in editedRole ? editedRole.description : role.description,
       ouId: role.ouId,
-      permissions: role.permissions ?? [],
+      permissions: editedRole.permissions ?? role.permissions ?? [],
     };
 
     try {
@@ -293,9 +313,15 @@ export default function RoleEditPage(): JSX.Element {
           sx={{textTransform: 'none'}}
         />
         <Tab
-          label={t('roles:edit.page.tabs.assignments')}
+          label={t('roles:edit.page.tabs.permissions')}
           id="role-tab-1"
           aria-controls="role-tabpanel-1"
+          sx={{textTransform: 'none'}}
+        />
+        <Tab
+          label={t('roles:edit.page.tabs.assignments')}
+          id="role-tab-2"
+          aria-controls="role-tabpanel-2"
           sx={{textTransform: 'none'}}
         />
       </Tabs>
@@ -310,6 +336,14 @@ export default function RoleEditPage(): JSX.Element {
         </TabPanel>
 
         <TabPanel value={activeTab} index={1}>
+          <EditPermissionsSettings
+            permissions={editedRole.permissions ?? serverPermissions}
+            onPermissionsChange={handlePermissionsChange}
+            isReadOnly={role.isReadOnly}
+          />
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={2}>
           <EditAssignmentsSettings roleId={role.id} isReadOnly={role.isReadOnly} />
         </TabPanel>
       </>
@@ -378,7 +412,7 @@ export default function RoleEditPage(): JSX.Element {
                   /* noop */
                 });
               }}
-              disabled={updateRole.isPending || role.isReadOnly === true}
+              disabled={updateRole.isPending || isRoleUpdating || role.isReadOnly === true}
             >
               {updateRole.isPending ? t('roles:edit.page.saving') : t('roles:edit.page.save')}
             </Button>

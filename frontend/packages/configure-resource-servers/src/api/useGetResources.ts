@@ -22,6 +22,23 @@ import {useThunderID} from '@thunderid/react';
 import ResourceServerQueryKeys from '../constants/resource-server-query-keys';
 import type {ResourceListResponse} from '../models/resource-server';
 
+export async function fetchResources(
+  http: {request: (config: unknown) => Promise<{data: ResourceListResponse}>},
+  serverUrl: string,
+  resourceServerId: string,
+  parentId?: string,
+): Promise<ResourceListResponse> {
+  const queryParams = new URLSearchParams({limit: '100', offset: '0'});
+  if (parentId) queryParams.set('parentId', parentId);
+
+  const response = await http.request({
+    url: `${serverUrl}/resource-servers/${resourceServerId}/resources?${queryParams.toString()}`,
+    method: 'GET',
+  });
+
+  return response.data;
+}
+
 export default function useGetResources(
   resourceServerId: string,
   parentId?: string,
@@ -33,15 +50,12 @@ export default function useGetResources(
     queryKey: [ResourceServerQueryKeys.RESOURCES, resourceServerId, {parentId: parentId ?? null}],
     queryFn: async (): Promise<ResourceListResponse> => {
       const serverUrl = getServerUrl();
-      const queryParams = new URLSearchParams({limit: '100', offset: '0'});
-      if (parentId) queryParams.set('parentId', parentId);
-
-      const response: {data: ResourceListResponse} = await http.request({
-        url: `${serverUrl}/resource-servers/${resourceServerId}/resources?${queryParams.toString()}`,
-        method: 'GET',
-      } as unknown as Parameters<typeof http.request>[0]);
-
-      return response.data;
+      return fetchResources(
+        http as {request: (config: unknown) => Promise<{data: ResourceListResponse}>},
+        serverUrl,
+        resourceServerId,
+        parentId,
+      );
     },
     enabled: Boolean(resourceServerId),
   });
