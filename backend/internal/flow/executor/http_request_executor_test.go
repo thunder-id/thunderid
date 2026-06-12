@@ -63,7 +63,8 @@ func (suite *HTTPRequestExecutorTestSuite) SetupTest() {
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{}).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility, []common.Input{}, []common.Input{}))
-	suite.executor = newHTTPRequestExecutor(mockFlowFactory, nil)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFlowFactory))
+	suite.executor = newHTTPRequestExecutor(nil)
 }
 
 func (suite *HTTPRequestExecutorTestSuite) TearDownTest() {
@@ -736,7 +737,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromAuthe
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{}).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility, []common.Input{}, []common.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFlowFactory))
+	executor := newHTTPRequestExecutor(mockOUService)
 
 	ctx := &core.NodeContext{
 		ExecutionID: "test-flow",
@@ -790,7 +792,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_FallbackToRun
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{}).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility, []common.Input{}, []common.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFlowFactory))
+	executor := newHTTPRequestExecutor(mockOUService)
 
 	ctx := &core.NodeContext{
 		ExecutionID:       "test-flow",
@@ -847,7 +850,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_Authenticated
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{}).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility, []common.Input{}, []common.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFlowFactory))
+	executor := newHTTPRequestExecutor(mockOUService)
 
 	ctx := &core.NodeContext{
 		ExecutionID: "test-flow",
@@ -901,7 +905,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OverwritesExi
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{}).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility, []common.Input{}, []common.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFlowFactory))
+	executor := newHTTPRequestExecutor(mockOUService)
 
 	ctx := &core.NodeContext{
 		ExecutionID: "test-flow",
@@ -953,7 +958,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{}).
 		Return(newMockExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility, []common.Input{}, []common.Input{}))
-	executor := newHTTPRequestExecutor(mockFlowFactory, mockOUService)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFlowFactory))
+	executor := newHTTPRequestExecutor(mockOUService)
 
 	ctx := &core.NodeContext{
 		ExecutionID: "test-flow",

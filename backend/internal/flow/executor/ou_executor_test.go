@@ -70,7 +70,9 @@ func (suite *OUExecutorTestSuite) SetupTest() {
 		defaultInputs, []common.Input{}).
 		Return(newMockExecutor("TestOUExecutor", common.ExecutorTypeUtility, defaultInputs, []common.Input{}))
 
-	suite.executor = newOUExecutor(suite.mockFlowFactory, suite.mockOUService)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newOUExecutor(suite.mockOUService)
 }
 
 // newMockExecutor creates a mock executor for testing purposes
@@ -130,12 +132,14 @@ func (suite *OUExecutorTestSuite) TestNewOUExecutor() {
 	// Mock the CreateExecutor method
 	mockFlowFactory.On("CreateExecutor", ExecutorNameOUCreation, common.ExecutorTypeRegistration,
 		defaultInputs, []common.Input{}).
-		Return(newMockExecutor("OUExecutor", common.ExecutorTypeRegistration, defaultInputs, []common.Input{}))
+		Return(newMockExecutor(
+			ExecutorNameOUCreation, common.ExecutorTypeRegistration, defaultInputs, []common.Input{}))
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFlowFactory))
 
-	executor := newOUExecutor(mockFlowFactory, mockOUService)
+	executor := newOUExecutor(mockOUService)
 
 	assert.NotNil(suite.T(), executor)
-	assert.Equal(suite.T(), "OUExecutor", executor.GetName())
+	assert.Equal(suite.T(), ExecutorNameOUCreation, executor.GetName())
 
 	defaultInputsResult := executor.GetDefaultInputs()
 	assert.Len(suite.T(), defaultInputsResult, 2)

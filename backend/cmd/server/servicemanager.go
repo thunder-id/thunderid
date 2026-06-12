@@ -278,37 +278,38 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			"EmailExecutor will be registered but will not send emails.", log.Error(err))
 		emailClient = nil
 	}
-	flowFactory, graphCache, execRegistry := initializeFlowCoreAndExecutor(ctx, logger,
-		cacheManager, executor.ExecutorDependencies{
-			OUService:             ouService,
-			IDPService:            idpService,
-			NotifSenderSvc:        notifSenderSvc,
-			JWTService:            jwtService,
-			AuthAssertGen:         authAssertGen,
-			ConsentEnforcer:       consentEnforcer,
-			AuthnProvider:         authnProvider,
-			OTPService:            otpCoreService,
-			PasskeyService:        passkeyService,
-			MagicLinkService:      magicLinkService,
-			AuthZService:          authZService,
-			EntityTypeService:     entityTypeService,
-			GroupService:          groupService,
-			RoleService:           roleService,
-			RoleAssignmentService: roleAssignmentService,
-			EntityProvider:        entityProvider,
-			AttributeCacheSvc:     attributeCacheService,
-			EmailClient:           emailClient,
-			TemplateService:       templateService,
-			OAuthSvc:              oauthAuthnService,
-			OIDCSvc:               oidcAuthnService,
-			GithubSvc:             githubAuthnService,
-			GoogleSvc:             googleAuthnService,
-			OpenID4VPVerifierSvc:  openid4vpVerifierSvc,
-		},
+	execRegistry := initializeFlowCoreAndExecutor(ctx, logger, executor.ExecutorDependencies{
+		OUService:             ouService,
+		IDPService:            idpService,
+		NotifSenderSvc:        notifSenderSvc,
+		JWTService:            jwtService,
+		AuthAssertGen:         authAssertGen,
+		ConsentEnforcer:       consentEnforcer,
+		AuthnProvider:         authnProvider,
+		OTPService:            otpCoreService,
+		PasskeyService:        passkeyService,
+		MagicLinkService:      magicLinkService,
+		AuthZService:          authZService,
+		EntityTypeService:     entityTypeService,
+		GroupService:          groupService,
+		RoleService:           roleService,
+		RoleAssignmentService: roleAssignmentService,
+		EntityProvider:        entityProvider,
+		AttributeCacheSvc:     attributeCacheService,
+		EmailClient:           emailClient,
+		TemplateService:       templateService,
+		OAuthSvc:              oauthAuthnService,
+		OIDCSvc:               oidcAuthnService,
+		GithubSvc:             githubAuthnService,
+		GoogleSvc:             googleAuthnService,
+		OpenID4VPVerifierSvc:  openid4vpVerifierSvc,
+	},
 	)
 
+	graphBuilder := flowcore.InitializeGraphBuilder(cacheManager, execRegistry)
+
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
-		mux, mcpServer, cacheManager, flowFactory, execRegistry, graphCache)
+		mux, mcpServer, cacheManager, graphBuilder)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize FlowMgtService", log.Error(err))
 	}
@@ -380,8 +381,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		agentService,
 	)
 
-	flowExecService, err := flowexec.Initialize(mux, flowMgtService, inboundClientService, entityProvider,
-		execRegistry, observabilitySvc, runtimeCryptoSvc)
+	flowExecService, err := flowexec.Initialize(mux, flowMgtService, graphBuilder, inboundClientService,
+		entityProvider, execRegistry, observabilitySvc, runtimeCryptoSvc)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
@@ -416,19 +417,13 @@ func unregisterServices() {
 func initializeFlowCoreAndExecutor(
 	ctx context.Context,
 	logger *log.Logger,
-	cacheManager cache.CacheManagerInterface,
 	deps executor.ExecutorDependencies,
-) (flowcore.FlowFactoryInterface, flowcore.GraphCacheInterface, executor.ExecutorRegistryInterface) {
-	// Initialize flow core services.
-	flowFactory, graphCache := flowcore.Initialize(cacheManager)
-	deps.FlowFactory = flowFactory
-
-	// Initialize flow executor registry
+) flowcore.ExecutorRegistryInterface {
 	execRegistry, err := executor.Initialize(deps, config.GetServerRuntime().Config.Flow)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to register flow executors", log.Error(err))
 	}
-	return flowFactory, graphCache, execRegistry
+	return execRegistry
 }
 
 // buildHashConfig constructs a cryptolib.HashConfig from the server configuration.

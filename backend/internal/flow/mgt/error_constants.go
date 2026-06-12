@@ -223,26 +223,10 @@ var (
 		},
 	}
 
-	// ErrorGraphBuildFailure is the error returned when graph building fails.
-	// TODO: This should be removed and instead should return InternalServerError
-	// for graph build failures. Ideally there should be a graph validation step during
-	// flow creation/update to catch such errors early.
-	ErrorGraphBuildFailure = serviceerror.ServiceError{
-		Type: serviceerror.ClientErrorType,
-		Code: "FLM-1016",
-		Error: core.I18nMessage{
-			Key:          "error.flowmgtservice.graph_build_failure",
-			DefaultValue: "Graph build failure",
-		},
-		ErrorDescription: core.I18nMessage{
-			Key:          "error.flowmgtservice.graph_build_failure_description",
-			DefaultValue: "Failed to build executable graph from flow definition",
-		},
-	}
 	// ErrorFlowDeclarativeReadOnly is the error returned when trying to modify a declarative (immutable) flow.
 	ErrorFlowDeclarativeReadOnly = serviceerror.ServiceError{
 		Type: serviceerror.ClientErrorType,
-		Code: "FLM-1017",
+		Code: "FLM-1016",
 		Error: core.I18nMessage{
 			Key:          "error.flowmgtservice.flow_is_immutable",
 			DefaultValue: "Flow is immutable",
@@ -256,7 +240,7 @@ var (
 	// ErrorInvalidFlowIDFormat is the error returned when a caller-provided flow ID is not a valid UUID.
 	ErrorInvalidFlowIDFormat = serviceerror.ServiceError{
 		Type: serviceerror.ClientErrorType,
-		Code: "FLM-1018",
+		Code: "FLM-1017",
 		Error: core.I18nMessage{
 			Key:          "error.flowmgtservice.invalid_flow_id_format",
 			DefaultValue: "Invalid flow ID format",
@@ -270,7 +254,7 @@ var (
 	// ErrorDuplicateFlowID is the error returned when a flow with the same ID already exists.
 	ErrorDuplicateFlowID = serviceerror.ServiceError{
 		Type: serviceerror.ClientErrorType,
-		Code: "FLM-1019",
+		Code: "FLM-1018",
 		Error: core.I18nMessage{
 			Key:          "error.flowmgtservice.duplicate_flow_id",
 			DefaultValue: "Duplicate flow ID",

@@ -59,7 +59,7 @@ var _ identifyingExecutorInterface = (*smsOTPAuthExecutor)(nil)
 
 // newSMSOTPAuthExecutor creates a new instance of SMSOTPAuthExecutor.
 func newSMSOTPAuthExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	otpService otp.OTPAuthnServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 	entityProvider entityprovider.EntityProviderInterface,
@@ -78,8 +78,8 @@ func newSMSOTPAuthExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameSMSAuth))
 
 	identifyExec := newIdentifyingExecutor(ExecutorNameSMSAuth, defaultInputs, prerequisites,
-		flowFactory, entityProvider)
-	base := flowFactory.CreateExecutor(ExecutorNameSMSAuth, common.ExecutorTypeAuthentication,
+		entityProvider)
+	base := core.CreateExecutor(ExecutorNameSMSAuth, common.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites)
 
 	return &smsOTPAuthExecutor{

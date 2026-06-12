@@ -53,8 +53,10 @@ func (suite *IdentifyingExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{}).Return(mockExec)
 
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
 	suite.executor = newIdentifyingExecutor(ExecutorNameIdentifying, []common.Input{},
-		[]common.Input{}, suite.mockFlowFactory, suite.mockEntityProvider)
+		[]common.Input{}, suite.mockEntityProvider)
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestNewIdentifyingExecutor() {
@@ -66,7 +68,6 @@ func (suite *IdentifyingExecutorTestSuite) TestNewIdentifyingExecutor() {
 		"",
 		[]common.Input{},
 		[]common.Input{},
-		suite.mockFlowFactory,
 		suite.mockEntityProvider,
 	)
 	assert.NotNil(suite.T(), exec)

@@ -51,7 +51,8 @@ func createTestAuthzExecutor(t *testing.T,
 		[]common.Input{}, []common.Input{}).
 		Return(createMockExecutor(t, "AuthorizationExecutor", common.ExecutorTypeUtility))
 
-	return newAuthorizationExecutor(mockFlowFactory, mockAuthzService, mockEntityProvider)
+	t.Cleanup(core.SetFlowFactoryForTest(mockFlowFactory))
+	return newAuthorizationExecutor(mockAuthzService, mockEntityProvider)
 }
 
 // createMockExecutor creates a mock executor for testing purposes

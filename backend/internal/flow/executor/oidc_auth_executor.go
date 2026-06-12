@@ -63,7 +63,7 @@ var _ core.ExecutorInterface = (*oidcAuthExecutor)(nil)
 func newOIDCAuthExecutor(
 	name string,
 	defaultInputs, prerequisites []common.Input,
-	flowFactory core.FlowFactoryInterface,
+
 	idpService idp.IDPServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authService authnoidc.OIDCAuthnCoreServiceInterface,
@@ -82,7 +82,7 @@ func newOIDCAuthExecutor(
 	}
 
 	base := newOAuthExecutor(name, defaultInputs, prerequisites,
-		flowFactory, idpService, entityTypeService, oauthSvcCast, authnProvider, idpType)
+		idpService, entityTypeService, oauthSvcCast, authnProvider, idpType)
 
 	return &oidcAuthExecutor{
 		oAuthExecutorInterface: base,

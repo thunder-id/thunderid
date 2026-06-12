@@ -31,7 +31,7 @@ import (
 
 type ExecutorRegistryTestSuite struct {
 	suite.Suite
-	registry ExecutorRegistryInterface
+	registry core.ExecutorRegistryInterface
 }
 
 func TestExecutorRegistrySuite(t *testing.T) {

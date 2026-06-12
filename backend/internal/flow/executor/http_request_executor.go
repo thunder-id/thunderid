@@ -88,13 +88,13 @@ var _ core.ExecutorInterface = (*httpRequestExecutor)(nil)
 
 // newHTTPRequestExecutor creates a new instance of HTTPRequestExecutor.
 func newHTTPRequestExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	ouService ou.OrganizationUnitServiceInterface,
 ) *httpRequestExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpRequestLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameHTTPRequest))
 
-	base := flowFactory.CreateExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
+	base := core.CreateExecutor(ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{})
 
 	return &httpRequestExecutor{

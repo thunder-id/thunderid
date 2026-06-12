@@ -674,16 +674,13 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithComplex
 	result, err := nodeDef.MarshalYAML()
 	require.NoError(s.T(), err)
 
-	// Verify the result
-	alias, ok := result.(nodeDefinitionAlias)
-	require.True(s.T(), ok, "result should be nodeDefinitionAlias")
-
-	// Verify Meta is now a JSON string
-	metaStr, ok := alias.Meta.(string)
-	require.True(s.T(), ok, "Meta should be converted to string")
-	assert.Contains(s.T(), metaStr, "components")
-	assert.Contains(s.T(), metaStr, "text_001")
-	assert.Contains(s.T(), metaStr, "block_001")
+	yamlData, err := yaml.Marshal(result)
+	require.NoError(s.T(), err)
+	yamlStr := string(yamlData)
+	assert.Contains(s.T(), yamlStr, "meta:")
+	assert.Contains(s.T(), yamlStr, "components")
+	assert.Contains(s.T(), yamlStr, "text_001")
+	assert.Contains(s.T(), yamlStr, "block_001")
 }
 
 // TestNodeDefinitionMarshalYAML_WithNilMeta tests YAML marshaling with nil meta
@@ -697,9 +694,9 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithNilMeta
 	result, err := nodeDef.MarshalYAML()
 	require.NoError(s.T(), err)
 
-	alias, ok := result.(nodeDefinitionAlias)
-	require.True(s.T(), ok)
-	assert.Nil(s.T(), alias.Meta)
+	yamlData, err := yaml.Marshal(result)
+	require.NoError(s.T(), err)
+	assert.NotContains(s.T(), string(yamlData), "meta:")
 }
 
 // TestNodeDefinitionUnmarshalYAML_WithComplexMeta tests YAML unmarshaling with complex meta
@@ -1392,8 +1389,9 @@ func (s *DeclarativeResourceTestSuite) TestNodeDefinitionMarshalYAML_WithJSONMar
 				assert.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				alias := result.(nodeDefinitionAlias)
-				assert.IsType(t, "", alias.Meta)
+				yamlData, marshalErr := yaml.Marshal(result)
+				require.NoError(t, marshalErr)
+				assert.Contains(t, string(yamlData), "meta:")
 			}
 		})
 	}

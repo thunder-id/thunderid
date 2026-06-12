@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
 )
 
 type ModelTestSuite struct {
@@ -233,4 +234,42 @@ func (s *ModelTestSuite) TestAction_TypeFieldOmitEmpty() {
 	// Type should be present only when set
 	s.Contains(string(json1), "\"type\":")
 	s.NotContains(string(json2), "\"type\"")
+}
+
+func (s *ModelTestSuite) TestNodeDefinition_MarshalYAML_WithMeta() {
+	nd := &NodeDefinition{
+		ID:   "prompt-node",
+		Type: "PROMPT",
+		Meta: map[string]interface{}{
+			"components": []interface{}{
+				map[string]interface{}{"id": "input_1", "type": "TEXT_INPUT"},
+			},
+		},
+	}
+
+	out, err := nd.MarshalYAML()
+	s.Require().NoError(err)
+	asMap, ok := out.(nodeDefinitionAlias)
+	s.Require().True(ok)
+	metaString, ok := asMap.Meta.(string)
+	s.Require().True(ok)
+	s.Contains(metaString, "components")
+	s.Contains(metaString, "input_1")
+}
+
+func (s *ModelTestSuite) TestNodeDefinition_UnmarshalYAML_MetaJSONString() {
+	yamlDoc := `
+id: prompt-node
+type: PROMPT
+meta: '{"components":[{"id":"input_1","type":"TEXT_INPUT"}]}'
+`
+	var nd NodeDefinition
+	err := yaml.Unmarshal([]byte(yamlDoc), &nd)
+	s.Require().NoError(err)
+
+	metaMap, ok := nd.Meta.(map[string]interface{})
+	s.Require().True(ok)
+	components, ok := metaMap["components"].([]interface{})
+	s.Require().True(ok)
+	s.Len(components, 1)
 }

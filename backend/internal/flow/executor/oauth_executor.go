@@ -81,7 +81,7 @@ var _ core.ExecutorInterface = (*oAuthExecutor)(nil)
 func newOAuthExecutor(
 	name string,
 	defaultInputs, prerequisites []common.Input,
-	flowFactory core.FlowFactoryInterface,
+
 	idpService idp.IDPServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authService authnoauth.OAuthAuthnCoreServiceInterface,
@@ -103,7 +103,7 @@ func newOAuthExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, oAuthLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, name))
 
-	base := flowFactory.CreateExecutor(name, common.ExecutorTypeAuthentication,
+	base := core.CreateExecutor(name, common.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites)
 
 	return &oAuthExecutor{

@@ -47,7 +47,7 @@ var _ core.ExecutorInterface = (*attributeCollector)(nil)
 
 // newAttributeCollector creates a new instance of AttributeCollector.
 func newAttributeCollector(
-	flowFactory core.FlowFactoryInterface,
+
 	entityProvider entityprovider.EntityProviderInterface,
 ) *attributeCollector {
 	prerequisites := []common.Input{
@@ -60,7 +60,7 @@ func newAttributeCollector(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, attrCollectLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAttributeCollect))
 
-	base := flowFactory.CreateExecutor(ExecutorNameAttributeCollect, common.ExecutorTypeUtility,
+	base := core.CreateExecutor(ExecutorNameAttributeCollect, common.ExecutorTypeUtility,
 		[]common.Input{}, prerequisites)
 
 	return &attributeCollector{

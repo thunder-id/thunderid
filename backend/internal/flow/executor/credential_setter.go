@@ -36,11 +36,11 @@ type credentialSetter struct {
 
 // newCredentialSetter creates a new instance of the credential setter executor.
 func newCredentialSetter(
-	flowFactory core.FlowFactoryInterface,
+
 	entityProvider entityprovider.EntityProviderInterface,
 ) *credentialSetter {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CredentialSetter"))
-	base := flowFactory.CreateExecutor(
+	base := core.CreateExecutor(
 		ExecutorNameCredentialSetter,
 		common.ExecutorTypeRegistration,
 		[]common.Input{

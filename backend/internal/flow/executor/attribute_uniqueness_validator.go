@@ -43,7 +43,7 @@ type attributeUniquenessValidator struct {
 
 // newAttributeUniquenessValidator creates a new instance of attributeUniquenessValidator.
 func newAttributeUniquenessValidator(
-	flowFactory core.FlowFactoryInterface,
+
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 ) *attributeUniquenessValidator {
@@ -54,7 +54,7 @@ func newAttributeUniquenessValidator(
 			Required:   true,
 		},
 	}
-	base := flowFactory.CreateExecutor(ExecutorNameAttributeUniquenessValidator, common.ExecutorTypeUtility,
+	base := core.CreateExecutor(ExecutorNameAttributeUniquenessValidator, common.ExecutorTypeUtility,
 		[]common.Input{}, prerequisites)
 	return &attributeUniquenessValidator{
 		ExecutorInterface: base,

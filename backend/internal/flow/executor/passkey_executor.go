@@ -82,7 +82,7 @@ var _ identifyingExecutorInterface = (*passkeyAuthExecutor)(nil)
 
 // newPasskeyAuthExecutor creates a new instance of PasskeyAuthExecutor.
 func newPasskeyAuthExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	passkeyService passkey.PasskeyServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 	entityProvider entityprovider.EntityProviderInterface,
@@ -127,8 +127,8 @@ func newPasskeyAuthExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNamePasskeyAuth))
 
 	identifyExec := newIdentifyingExecutor(ExecutorNamePasskeyAuth, defaultInputs, prerequisites,
-		flowFactory, entityProvider)
-	base := flowFactory.CreateExecutor(ExecutorNamePasskeyAuth, common.ExecutorTypeAuthentication,
+		entityProvider)
+	base := core.CreateExecutor(ExecutorNamePasskeyAuth, common.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites)
 
 	return &passkeyAuthExecutor{

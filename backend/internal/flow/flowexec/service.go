@@ -28,7 +28,7 @@ import (
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -62,7 +62,8 @@ const (
 // flowExecService is the implementation of FlowExecServiceInterface
 type flowExecService struct {
 	flowEngine           flowEngineInterface
-	flowMgtService       flowmgt.FlowMgtServiceInterface
+	flowProvider         FlowProviderInterface
+	graphBuilder         core.GraphBuilderInterface
 	flowStore            flowStoreInterface
 	inboundClientService inboundclient.InboundClientServiceInterface
 	entityProvider       entityprovider.EntityProviderInterface
@@ -71,7 +72,7 @@ type flowExecService struct {
 	cryptoSvc            kmprovider.RuntimeCryptoProvider
 }
 
-func newFlowExecService(flowMgtService flowmgt.FlowMgtServiceInterface,
+func newFlowExecService(flowProvider FlowProviderInterface, graphBuilder core.GraphBuilderInterface,
 	flowStore flowStoreInterface, flowEngine flowEngineInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
@@ -79,7 +80,8 @@ func newFlowExecService(flowMgtService flowmgt.FlowMgtServiceInterface,
 	transactioner transaction.Transactioner,
 	cryptoSvc kmprovider.RuntimeCryptoProvider) FlowExecServiceInterface {
 	return &flowExecService{
-		flowMgtService:       flowMgtService,
+		flowProvider:         flowProvider,
+		graphBuilder:         graphBuilder,
 		flowStore:            flowStore,
 		flowEngine:           flowEngine,
 		inboundClientService: inboundClientService,
@@ -199,6 +201,39 @@ func (s *flowExecService) loadNewContext(ctx context.Context, appID, flowTypeStr
 	return engineCtx, nil
 }
 
+// loadGraph fetches a flow definition and compiles it into an executable graph.
+func (s *flowExecService) loadGraph(ctx context.Context, flowID string, logger *log.Logger) (
+	core.GraphInterface, *serviceerror.ServiceError) {
+	flowDef, svcErr := s.flowProvider.GetFlow(ctx, flowID)
+	if svcErr != nil {
+		if svcErr.Type == serviceerror.ClientErrorType {
+			return nil, svcErr
+		}
+		logger.Error(ctx, "Error retrieving flow definition",
+			log.String("flowID", flowID), log.String("error", svcErr.Error.DefaultValue))
+		return nil, &serviceerror.InternalServerError
+	}
+	if flowDef == nil {
+		logger.Error(ctx, "Flow provider returned nil flow definition", log.String("flowID", flowID))
+		return nil, &serviceerror.InternalServerError
+	}
+
+	graph, svcErr := s.graphBuilder.GetGraph(ctx, flowDef)
+	if svcErr != nil {
+		if svcErr.Type == serviceerror.ClientErrorType {
+			return nil, svcErr
+		}
+		logger.Error(ctx, "Error building flow graph",
+			log.String("flowID", flowID), log.String("error", svcErr.Error.DefaultValue))
+		return nil, &serviceerror.InternalServerError
+	}
+	if graph == nil {
+		logger.Error(ctx, "Graph builder returned nil graph", log.String("flowID", flowID))
+		return nil, &serviceerror.InternalServerError
+	}
+	return graph, nil
+}
+
 // initContext initializes a new flow context with the given details.
 func (s *flowExecService) initContext(ctx context.Context, appID string, flowType common.FlowType,
 	verbose bool, logger *log.Logger) (*EngineContext, *serviceerror.ServiceError) {
@@ -215,11 +250,9 @@ func (s *flowExecService) initContext(ctx context.Context, appID string, flowTyp
 	}
 	engineCtx.ExecutionID = executionID
 
-	graph, svcErr := s.flowMgtService.GetGraph(ctx, graphID)
+	graph, svcErr := s.loadGraph(ctx, graphID, logger)
 	if svcErr != nil {
-		logger.Error(ctx, "Error retrieving flow graph from flow management service",
-			log.String("graphID", graphID), log.String("error", svcErr.Error.DefaultValue))
-		return nil, &serviceerror.InternalServerError
+		return nil, svcErr
 	}
 
 	engineCtx.FlowType = graph.GetType()
@@ -284,11 +317,9 @@ func (s *flowExecService) loadContextFromStore(ctx context.Context, executionID 
 		return nil, &serviceerror.InternalServerError
 	}
 
-	graph, svcErr := s.flowMgtService.GetGraph(ctx, graphID)
+	graph, svcErr := s.loadGraph(ctx, graphID, logger)
 	if svcErr != nil {
-		logger.Error(ctx, "Error retrieving flow graph from flow management service",
-			log.String("graphID", graphID), log.String("error", svcErr.Error.DefaultValue))
-		return nil, &serviceerror.InternalServerError
+		return nil, svcErr
 	}
 
 	engineContext, err := dbModel.ToEngineContext(ctx, graph)
@@ -572,11 +603,18 @@ func (s *flowExecService) getSystemFlowGraph(ctx context.Context, flowType commo
 		return "", &ErrorInvalidFlowType
 	}
 
-	flow, err := s.flowMgtService.GetFlowByHandle(ctx, handle, flowType)
+	flow, err := s.flowProvider.GetFlowByHandle(ctx, handle, flowType)
 	if err != nil {
-		logger.Error(ctx, "Failed to get system flow by handle",
-			log.String("handle", handle), log.String("flowType", string(flowType)))
+		if err.Type != serviceerror.ClientErrorType {
+			logger.Error(ctx, "Failed to get system flow by handle",
+				log.String("handle", handle), log.String("flowType", string(flowType)))
+		}
 		return "", err
+	}
+	if flow == nil || flow.ID == "" {
+		logger.Error(ctx, "System flow resolution returned empty flow definition",
+			log.String("handle", handle), log.String("flowType", string(flowType)))
+		return "", &serviceerror.InternalServerError
 	}
 	return flow.ID, nil
 }

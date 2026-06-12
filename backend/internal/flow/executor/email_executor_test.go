@@ -62,9 +62,9 @@ func (suite *EmailExecutorTestSuite) SetupTest() {
 		[]common.Input{},
 	).Return(mockBaseExecutor)
 
-	suite.executor = newEmailExecutor(
-		suite.mockFlowFactory,
-		suite.mockEmailClient,
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newEmailExecutor(suite.mockEmailClient,
 		suite.mockTemplateService,
 		suite.mockEntityProvider,
 	)
@@ -485,8 +485,9 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilTemplateService() {
 		},
 		[]common.Input{},
 	).Return(mockBaseExecutor)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFactory))
 
-	noServiceExecutor := newEmailExecutor(mockFactory, suite.mockEmailClient, nil, suite.mockEntityProvider)
+	noServiceExecutor := newEmailExecutor(suite.mockEmailClient, nil, suite.mockEntityProvider)
 
 	ctx := &core.NodeContext{
 		ExecutionID:  "test-execution-id",
@@ -678,8 +679,9 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilEmailClient_Returns
 		},
 		[]common.Input{},
 	).Return(mockBaseExecutor)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFactory))
 
-	noEmailExecutor := newEmailExecutor(mockFactory, nil, suite.mockTemplateService, suite.mockEntityProvider)
+	noEmailExecutor := newEmailExecutor(nil, suite.mockTemplateService, suite.mockEntityProvider)
 
 	ctx := &core.NodeContext{
 		ExecutionID:  "test-execution-id",
@@ -1104,8 +1106,9 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilEntityProvider_Retu
 		},
 		[]common.Input{},
 	).Return(mockBaseExecutor)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFactory))
 
-	noProviderExecutor := newEmailExecutor(mockFactory, suite.mockEmailClient, suite.mockTemplateService, nil)
+	noProviderExecutor := newEmailExecutor(suite.mockEmailClient, suite.mockTemplateService, nil)
 
 	ctx := &core.NodeContext{
 		ExecutionID:  "test-execution-id",

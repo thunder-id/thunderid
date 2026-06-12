@@ -43,14 +43,14 @@ type flowEngineInterface interface {
 
 // FlowEngine is the main engine implementation for orchestrating flow executions.
 type flowEngine struct {
-	executorRegistry executor.ExecutorRegistryInterface
+	executorRegistry core.ExecutorRegistryInterface
 	observabilitySvc observability.ObservabilityServiceInterface
 	logger           *log.Logger
 }
 
 // newFlowEngine creates a new flow engine with the given dependencies.
 func newFlowEngine(
-	executorRegistry executor.ExecutorRegistryInterface,
+	executorRegistry core.ExecutorRegistryInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
 ) flowEngineInterface {
 	return &flowEngine{

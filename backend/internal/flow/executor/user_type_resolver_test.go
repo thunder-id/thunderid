@@ -69,8 +69,10 @@ func (suite *UserTypeResolverTestSuite) SetupTest() {
 		defaultInputs, []common.Input{}).
 		Return(createMockUserTypeResolverExecutor(suite.T()))
 
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
-	suite.executor = newUserTypeResolver(suite.mockFlowFactory, suite.mockEntityTypeService, suite.mockOUService)
+	suite.executor = newUserTypeResolver(suite.mockEntityTypeService, suite.mockOUService)
 }
 
 func createMockUserTypeResolverExecutor(t *testing.T) core.ExecutorInterface {
@@ -117,9 +119,10 @@ func (suite *UserTypeResolverTestSuite) TestNewUserTypeResolver() {
 	mockFlowFactory.On("CreateExecutor", ExecutorNameUserTypeResolver, common.ExecutorTypeRegistration,
 		defaultInputs, []common.Input{}).
 		Return(createMockUserTypeResolverExecutor(suite.T()))
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFlowFactory))
 
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
-	executor := newUserTypeResolver(mockFlowFactory, mockEntityTypeService, mockOUService)
+	executor := newUserTypeResolver(mockEntityTypeService, mockOUService)
 
 	assert.NotNil(suite.T(), executor)
 	assert.Equal(suite.T(), ExecutorNameUserTypeResolver, executor.GetName())

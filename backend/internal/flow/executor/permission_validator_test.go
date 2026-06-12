@@ -49,7 +49,9 @@ func (suite *PermissionValidatorTestSuite) SetupTest() {
 		[]common.Input{},
 		[]common.Input{}).Return(mockBaseExecutor)
 
-	suite.executor = newPermissionValidator(suite.mockFlowFactory)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newPermissionValidator()
 }
 
 func (suite *PermissionValidatorTestSuite) TestExecute_DefaultScopeCheck_Success() {

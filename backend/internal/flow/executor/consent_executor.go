@@ -52,7 +52,7 @@ var _ core.ExecutorInterface = (*consentExecutor)(nil)
 
 // newConsentExecutor creates a new instance of consentExecutor.
 func newConsentExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	consentEnforcer consentauthn.ConsentEnforcerServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *consentExecutor {
@@ -75,7 +75,7 @@ func newConsentExecutor(
 		},
 	}
 
-	base := flowFactory.CreateExecutor(ExecutorNameConsent, common.ExecutorTypeUtility,
+	base := core.CreateExecutor(ExecutorNameConsent, common.ExecutorTypeUtility,
 		defaultInputs, prerequisites)
 
 	return &consentExecutor{

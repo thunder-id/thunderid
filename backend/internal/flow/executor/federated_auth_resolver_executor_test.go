@@ -51,7 +51,9 @@ func (suite *FederatedAuthResolverTestSuite) SetupTest() {
 		common.ExecutorTypeAuthentication,
 		([]common.Input)(nil), ([]common.Input)(nil)).Return(mockExec)
 
-	suite.executor = newFederatedAuthResolverExecutor(suite.mockFlowFactory)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newFederatedAuthResolverExecutor()
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestNewFederatedAuthResolverExecutor() {

@@ -45,7 +45,7 @@ var _ core.ExecutorInterface = (*ouExecutor)(nil)
 
 // newOUExecutor creates a new instance of OUExecutor with the given parameters.
 func newOUExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	ouService ou.OrganizationUnitServiceInterface,
 ) *ouExecutor {
 	defaultInputs := []common.Input{
@@ -64,7 +64,7 @@ func newOUExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ouExecLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameOUCreation))
 
-	base := flowFactory.CreateExecutor(ExecutorNameOUCreation, common.ExecutorTypeRegistration,
+	base := core.CreateExecutor(ExecutorNameOUCreation, common.ExecutorTypeRegistration,
 		defaultInputs, []common.Input{})
 
 	return &ouExecutor{

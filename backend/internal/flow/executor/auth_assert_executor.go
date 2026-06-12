@@ -65,7 +65,7 @@ var _ core.ExecutorInterface = (*authAssertExecutor)(nil)
 
 // newAuthAssertExecutor creates a new instance of AuthAssertExecutor.
 func newAuthAssertExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	jwtService jwt.JWTServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
 	assertGenerator assert.AuthAssertGeneratorInterface,
@@ -77,7 +77,7 @@ func newAuthAssertExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authAssertLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthAssert))
 
-	base := flowFactory.CreateExecutor(ExecutorNameAuthAssert, common.ExecutorTypeUtility,
+	base := core.CreateExecutor(ExecutorNameAuthAssert, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{})
 
 	return &authAssertExecutor{

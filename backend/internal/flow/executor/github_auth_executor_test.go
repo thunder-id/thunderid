@@ -25,6 +25,7 @@ import (
 
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/githubmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -69,12 +70,14 @@ func (suite *GithubAuthExecutorTestSuite) TestNewGithubOAuthExecutor_Success() {
 		common.ExecutorTypeAuthentication, defaultInputs, []common.Input{}).
 		Return(baseExec).Once()
 
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
 	mockGithubSvc := &mockGithubServiceWithOAuth{
 		GithubOAuthAuthnServiceInterfaceMock: suite.mockGithubService,
 		oauthService:                         suite.mockOAuthService,
 	}
 
-	executor := newGithubOAuthExecutor(suite.mockFlowFactory, suite.mockIDPService,
+	executor := newGithubOAuthExecutor(suite.mockIDPService,
 		suite.mockEntityTypeService, mockGithubSvc, suite.mockAuthnProvider)
 
 	suite.NotNil(executor)

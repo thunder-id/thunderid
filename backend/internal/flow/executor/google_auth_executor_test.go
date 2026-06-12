@@ -25,6 +25,7 @@ import (
 
 	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/googlemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -74,12 +75,14 @@ func (suite *GoogleAuthExecutorTestSuite) TestNewGoogleOIDCAuthExecutor_Success(
 		common.ExecutorTypeAuthentication, defaultInputs, []common.Input{}).
 		Return(baseExec).Once()
 
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
 	mockGoogleSvc := &mockGoogleServiceWithOIDC{
 		GoogleOIDCAuthnServiceInterfaceMock: suite.mockGoogleService,
 		oidcService:                         suite.mockOIDCService,
 	}
 
-	executor := newGoogleOIDCAuthExecutor(suite.mockFlowFactory, suite.mockIDPService,
+	executor := newGoogleOIDCAuthExecutor(suite.mockIDPService,
 		suite.mockEntityTypeService, mockGoogleSvc, suite.mockAuthnProvider)
 
 	suite.NotNil(executor)

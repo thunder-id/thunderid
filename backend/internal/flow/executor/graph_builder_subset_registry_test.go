@@ -16,26 +16,24 @@
  * under the License.
  */
 
-package flowmgt
+package executor
 
 import (
 	"context"
 	"testing"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/githubmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/googlemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
-	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
 type GraphBuilderSubsetRegistryTestSuite struct {
@@ -52,23 +50,15 @@ func (s *GraphBuilderSubsetRegistryTestSuite) SetupSuite() {
 	})
 }
 
-func (s *GraphBuilderSubsetRegistryTestSuite) subsetExecutorRegistry() executor.ExecutorRegistryInterface {
-	mockFactory := coremock.NewFlowFactoryInterfaceMock(s.T())
-	mockBase := coremock.NewExecutorInterfaceMock(s.T())
-	mockBase.On("GetName").Return("").Maybe()
-	mockBase.On("GetType").Return(common.ExecutorTypeUtility).Maybe()
-	mockFactory.On("CreateExecutor", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(mockBase).Maybe()
-
-	reg, err := executor.Initialize(executor.ExecutorDependencies{
-		FlowFactory:    mockFactory,
+func (s *GraphBuilderSubsetRegistryTestSuite) subsetExecutorRegistry() core.ExecutorRegistryInterface {
+	reg, err := Initialize(ExecutorDependencies{
 		EntityProvider: entityprovidermock.NewEntityProviderInterfaceMock(s.T()),
 		OAuthSvc:       oauthmock.NewOAuthAuthnServiceInterfaceMock(s.T()),
 		OIDCSvc:        oidcmock.NewOIDCAuthnServiceInterfaceMock(s.T()),
 		GithubSvc:      githubmock.NewGithubOAuthAuthnServiceInterfaceMock(s.T()),
 		GoogleSvc:      googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(s.T()),
 	}, config.FlowConfig{
-		Executors: []string{executor.ExecutorNameInviteExecutor},
+		Executors: []string{ExecutorNameInviteExecutor},
 	})
 	require.NoError(s.T(), err)
 	return reg
@@ -76,40 +66,31 @@ func (s *GraphBuilderSubsetRegistryTestSuite) subsetExecutorRegistry() executor.
 
 func (s *GraphBuilderSubsetRegistryTestSuite) TestBuildGraph_SubsetRegistryRejectsUnregisteredExecutor() {
 	execRegistry := s.subsetExecutorRegistry()
-	require.False(s.T(), execRegistry.IsRegistered(executor.ExecutorNameBasicAuth))
+	require.False(s.T(), execRegistry.IsRegistered(ExecutorNameBasicAuth))
 
-	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(s.T())
-	builder := &graphBuilder{
-		flowFactory:      mockFlowFactory,
-		executorRegistry: execRegistry,
-		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowGraphBuilder")),
-	}
+	cacheManager := cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment")
+	builder := core.InitializeGraphBuilder(cacheManager, execRegistry)
 
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
+			{ID: "start", Type: string(common.NodeTypeStart)},
 			{
-				ID:       "task",
-				Type:     "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{Name: executor.ExecutorNameBasicAuth},
+				ID:        "task",
+				Type:      string(common.NodeTypeTaskExecution),
+				Executor:  &common.ExecutorDefinition{Name: ExecutorNameBasicAuth},
+				OnSuccess: "end",
 			},
+			{ID: "end", Type: string(common.NodeTypeEnd)},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
-
-	mockFlowFactory.EXPECT().CreateGraph("flow-1", common.FlowTypeAuthentication).Return(mockGraph)
-	mockFlowFactory.EXPECT().CreateNode(
-		"task", "TASK_EXECUTION", map[string]interface{}(nil), false, true).Return(mockTaskNode, nil)
-	mockTaskNode.EXPECT().SetInputs([]common.Input{})
-
-	graph, err := builder.buildGraph(context.Background(), flow)
+	graph, err := builder.GetGraph(context.Background(), flow)
 
 	s.Nil(graph)
-	s.Require().Error(err)
-	s.Contains(err.Error(), "executor with name "+executor.ExecutorNameBasicAuth+" not registered")
+	s.Require().NotNil(err)
+	s.Equal(core.ErrorGraphBuildFailure.Code, err.Code)
 }

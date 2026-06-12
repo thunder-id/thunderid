@@ -48,7 +48,6 @@ var _ identifyingExecutorInterface = (*basicAuthExecutor)(nil)
 
 // newBasicAuthExecutor creates a new instance of BasicAuthExecutor.
 func newBasicAuthExecutor(
-	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *basicAuthExecutor {
@@ -68,9 +67,8 @@ func newBasicAuthExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "BasicAuthExecutor"),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameBasicAuth))
 
-	identifyExec := newIdentifyingExecutor(ExecutorNameBasicAuth, defaultInputs, []common.Input{},
-		flowFactory, entityProvider)
-	base := flowFactory.CreateExecutor(ExecutorNameBasicAuth, common.ExecutorTypeAuthentication,
+	identifyExec := newIdentifyingExecutor(ExecutorNameBasicAuth, defaultInputs, []common.Input{}, entityProvider)
+	base := core.CreateExecutor(ExecutorNameBasicAuth, common.ExecutorTypeAuthentication,
 		defaultInputs, []common.Input{})
 
 	return &basicAuthExecutor{

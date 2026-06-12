@@ -38,7 +38,7 @@ var _ core.ExecutorInterface = (*googleOIDCAuthExecutor)(nil)
 
 // newGoogleOIDCAuthExecutor creates a new instance of GoogleOIDCAuthExecutor with the provided details.
 func newGoogleOIDCAuthExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	idpService idp.IDPServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authService authngoogle.GoogleOIDCAuthnServiceInterface,
@@ -63,7 +63,7 @@ func newGoogleOIDCAuthExecutor(
 	}
 
 	base := newOIDCAuthExecutor(ExecutorNameGoogleAuth, defaultInputs, []common.Input{},
-		flowFactory, idpService, entityTypeService, oidcSvcCast, authnProvider, idp.IDPTypeGoogle)
+		idpService, entityTypeService, oidcSvcCast, authnProvider, idp.IDPTypeGoogle)
 
 	return &googleOIDCAuthExecutor{
 		oidcAuthExecutorInterface: base,

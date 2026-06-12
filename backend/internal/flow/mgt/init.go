@@ -25,7 +25,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/flow/executor"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -40,9 +39,7 @@ func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
 	cacheManager cache.CacheManagerInterface,
-	flowFactory core.FlowFactoryInterface,
-	executorRegistry executor.ExecutorRegistryInterface,
-	graphCache core.GraphCacheInterface,
+	graphBuilder core.GraphBuilderInterface,
 ) (FlowMgtServiceInterface, declarativeresource.ResourceExporter, error) {
 	store, compositeStore, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
@@ -50,8 +47,7 @@ func Initialize(
 	}
 
 	inferenceService := newFlowInferenceService()
-	graphBuilder := newGraphBuilder(flowFactory, executorRegistry, graphCache)
-	service := newFlowMgtService(store, inferenceService, graphBuilder, executorRegistry, compositeStore, transactioner)
+	service := newFlowMgtService(store, inferenceService, graphBuilder, compositeStore, transactioner)
 
 	handler := newFlowMgtHandler(service)
 	registerRoutes(mux, handler)

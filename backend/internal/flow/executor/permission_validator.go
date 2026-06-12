@@ -39,9 +39,9 @@ type permissionValidator struct {
 }
 
 // newPermissionValidator creates a new permission validator executor.
-func newPermissionValidator(flowFactory core.FlowFactoryInterface) *permissionValidator {
+func newPermissionValidator() *permissionValidator {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "PermissionValidator"))
-	base := flowFactory.CreateExecutor(
+	base := core.CreateExecutor(
 		ExecutorNamePermissionValidator,
 		common.ExecutorTypeUtility,
 		[]common.Input{},

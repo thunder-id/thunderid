@@ -16,7 +16,7 @@
  * under the License.
  */
 
-package flowmgt
+package core
 
 import (
 	"context"
@@ -27,18 +27,15 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
-	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
-	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
 )
 
 type GraphBuilderTestSuite struct {
 	suite.Suite
-	mockFlowFactory      *coremock.FlowFactoryInterfaceMock
-	mockExecutorRegistry *executormock.ExecutorRegistryInterfaceMock
-	mockGraphCache       *coremock.GraphCacheInterfaceMock
+	mockFlowFactory      *FlowFactoryInterfaceMock
+	mockExecutorRegistry *ExecutorRegistryInterfaceMock
+	mockGraphCache       *GraphCacheInterfaceMock
 	builder              *graphBuilder
 }
 
@@ -51,9 +48,9 @@ func (s *GraphBuilderTestSuite) SetupTest() {
 		Server: config.ServerConfig{Identifier: "test-deployment"},
 	})
 
-	s.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(s.T())
-	s.mockExecutorRegistry = executormock.NewExecutorRegistryInterfaceMock(s.T())
-	s.mockGraphCache = coremock.NewGraphCacheInterfaceMock(s.T())
+	s.mockFlowFactory = NewFlowFactoryInterfaceMock(s.T())
+	s.mockExecutorRegistry = NewExecutorRegistryInterfaceMock(s.T())
+	s.mockGraphCache = NewGraphCacheInterfaceMock(s.T())
 
 	s.builder = &graphBuilder{
 		flowFactory:      s.mockFlowFactory,
@@ -75,12 +72,12 @@ func (s *GraphBuilderTestSuite) TestGetGraph_NilFlow() {
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_EmptyNodes() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes:    []NodeDefinition{},
+		Nodes:    []common.NodeDefinition{},
 	}
 
 	graph, err := s.builder.GetGraph(context.Background(), flow)
@@ -92,17 +89,17 @@ func (s *GraphBuilderTestSuite) TestGetGraph_EmptyNodes() {
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_CacheHit() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
 	s.mockGraphCache.EXPECT().Get(mock.Anything, "flow-1").Return(mockGraph, true)
 
 	graph, err := s.builder.GetGraph(context.Background(), flow)
@@ -113,20 +110,20 @@ func (s *GraphBuilderTestSuite) TestGetGraph_CacheHit() {
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_BuildAndCache() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "end"},
 			{ID: "end", Type: "END"},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
-	mockEndNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewRepresentationNodeInterfaceMock(s.T())
+	mockEndNode := NewRepresentationNodeInterfaceMock(s.T())
 
 	s.mockGraphCache.EXPECT().Get(mock.Anything, "flow-1").Return(nil, false)
 	s.mockFlowFactory.EXPECT().CreateGraph(
@@ -144,7 +141,7 @@ func (s *GraphBuilderTestSuite) TestGetGraph_BuildAndCache() {
 	mockGraph.EXPECT().AddNode(mockEndNode).Return(nil)
 	mockGraph.EXPECT().AddEdge("start", "end").Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"start": mockStartNode, "end": mockEndNode})
+		map[string]NodeInterface{"start": mockStartNode, "end": mockEndNode})
 	// Map iteration order is non-deterministic, so other nodes might be checked before START is found
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
 	mockEndNode.EXPECT().GetType().Return(common.NodeTypeEnd).Maybe()
@@ -161,17 +158,17 @@ func (s *GraphBuilderTestSuite) TestGetGraph_BuildAndCache() {
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_BuildFailure() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
 	s.mockGraphCache.EXPECT().Get(mock.Anything, "flow-1").Return(nil, false)
 	s.mockFlowFactory.EXPECT().CreateGraph("flow-1", common.FlowTypeAuthentication).Return(
 		mockGraph)
@@ -184,22 +181,22 @@ func (s *GraphBuilderTestSuite) TestGetGraph_BuildFailure() {
 	s.Nil(graph)
 	s.NotNil(err)
 	s.Equal(ErrorGraphBuildFailure.Code, err.Code)
-	s.Contains(err.ErrorDescription.DefaultValue, "node creation error")
+	s.Equal(ErrorGraphBuildFailure.ErrorDescription.DefaultValue, err.ErrorDescription.DefaultValue)
 }
 
 func (s *GraphBuilderTestSuite) TestGetGraph_CacheSetError() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewNodeInterfaceMock(s.T())
 
 	s.mockGraphCache.EXPECT().Get(mock.Anything, "flow-1").Return(nil, false)
 	s.mockFlowFactory.EXPECT().CreateGraph(
@@ -210,7 +207,7 @@ func (s *GraphBuilderTestSuite) TestGetGraph_CacheSetError() {
 		mockStartNode, nil)
 
 	mockGraph.EXPECT().AddNode(mockStartNode).Return(nil)
-	mockGraph.EXPECT().GetNodes().Return(map[string]core.NodeInterface{"start": mockStartNode})
+	mockGraph.EXPECT().GetNodes().Return(map[string]NodeInterface{"start": mockStartNode})
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(nil)
@@ -248,24 +245,24 @@ func (s *GraphBuilderTestSuite) TestInvalidateCache_Error() {
 // Test buildGraph method
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutor() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:       "task",
 				Type:     "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{Name: "test-executor"},
+				Executor: &common.ExecutorDefinition{Name: "test-executor"},
 			},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewNodeInterfaceMock(s.T())
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewNodeInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -285,7 +282,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutor() {
 	mockGraph.EXPECT().AddNode(mockTaskNode).Return(nil)
 	mockGraph.EXPECT().AddEdge("start", "task").Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"start": mockStartNode, "task": mockTaskNode})
+		map[string]NodeInterface{"start": mockStartNode, "task": mockTaskNode})
 	// Map iteration order is non-deterministic, so other nodes might be checked before START is found
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
 	mockTaskNode.EXPECT().GetType().Return(common.NodeTypeTaskExecution).Maybe()
@@ -299,22 +296,22 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutor() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_ExecutorNotRegistered() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:       "task",
 				Type:     "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{Name: "unknown-executor"},
+				Executor: &common.ExecutorDefinition{Name: "unknown-executor"},
 			},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -334,30 +331,30 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_ExecutorNotRegistered() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithOnFailure() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:        "task",
 				Type:      "TASK_EXECUTION",
 				OnSuccess: "end",
 				OnFailure: "error-prompt",
-				Executor:  &ExecutorDefinition{Name: "test-executor"},
+				Executor:  &common.ExecutorDefinition{Name: "test-executor"},
 			},
 			{ID: "error-prompt", Type: "PROMPT"},
 			{ID: "end", Type: "END"},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(s.T())
-	mockEndNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewRepresentationNodeInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
+	mockPromptNode := NewPromptNodeInterfaceMock(s.T())
+	mockEndNode := NewRepresentationNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -391,7 +388,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithOnFailure() {
 	mockGraph.EXPECT().AddEdge("task", "end").Return(nil)
 	mockGraph.EXPECT().AddEdge("task", "error-prompt").Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"start": mockStartNode, "task": mockTaskNode,
+		map[string]NodeInterface{"start": mockStartNode, "task": mockTaskNode,
 			"error-prompt": mockPromptNode, "end": mockEndNode})
 	// Map iteration order is non-deterministic, so other nodes might be checked before START is found
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
@@ -408,12 +405,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithOnFailure() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureNotPromptNode() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:        "task",
 				Type:      "TASK_EXECUTION",
@@ -423,8 +420,8 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureNotPromptNode() {
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -444,12 +441,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureNotPromptNode() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureTargetNotFound() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{
 				ID:        "task",
 				Type:      "TASK_EXECUTION",
@@ -458,8 +455,8 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureTargetNotFound() {
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -478,18 +475,18 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_OnFailureTargetNotFound() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithInputs() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:   "task",
 				Type: "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{
-					Inputs: []InputDefinition{
+				Executor: &common.ExecutorDefinition{
+					Inputs: []common.InputDefinition{
 						{Ref: "username", Type: "string", Identifier: "user", Required: true},
 						{Ref: "password", Type: "string", Identifier: "pass", Required: true},
 					},
@@ -498,9 +495,9 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithInputs() {
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewRepresentationNodeInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -522,7 +519,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithInputs() {
 	mockGraph.EXPECT().AddNode(mockTaskNode).Return(nil)
 	mockGraph.EXPECT().AddEdge("start", "task").Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"start": mockStartNode, "task": mockTaskNode})
+		map[string]NodeInterface{"start": mockStartNode, "task": mockTaskNode})
 	// Map iteration order is non-deterministic, so other nodes might be checked before START is found
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
 	mockTaskNode.EXPECT().GetType().Return(common.NodeTypeTaskExecution).Maybe()
@@ -536,19 +533,19 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithInputs() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithActions() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "prompt"},
 			{
 				ID:   "prompt",
 				Type: "PROMPT",
-				Prompts: []PromptDefinition{
-					{Action: &ActionDefinition{Ref: "login", NextNode: "task1"}},
-					{Action: &ActionDefinition{Ref: "signup", NextNode: "task2"}},
+				Prompts: []common.PromptDefinition{
+					{Action: &common.ActionDefinition{Ref: "login", NextNode: "task1"}},
+					{Action: &common.ActionDefinition{Ref: "signup", NextNode: "task2"}},
 				},
 			},
 			{ID: "task1", Type: "TASK_EXECUTION"},
@@ -556,11 +553,11 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithActions() {
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(s.T())
-	mockTask1Node := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
-	mockTask2Node := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewRepresentationNodeInterfaceMock(s.T())
+	mockPromptNode := NewPromptNodeInterfaceMock(s.T())
+	mockTask1Node := NewExecutorBackedNodeInterfaceMock(s.T())
+	mockTask2Node := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -603,7 +600,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithActions() {
 	mockGraph.EXPECT().AddEdge("prompt", "task1").Return(nil)
 	mockGraph.EXPECT().AddEdge("prompt", "task2").Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"start": mockStartNode, "prompt": mockPromptNode,
+		map[string]NodeInterface{"start": mockStartNode, "prompt": mockPromptNode,
 			"task1": mockTask1Node, "task2": mockTask2Node})
 	// Map iteration order is non-deterministic, so other nodes might be checked before START is found
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
@@ -620,12 +617,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithActions() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithMeta() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "prompt"},
 			{
 				ID:   "prompt",
@@ -635,9 +632,9 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithMeta() {
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewRepresentationNodeInterfaceMock(s.T())
+	mockPromptNode := NewPromptNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -658,7 +655,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithMeta() {
 	mockGraph.EXPECT().AddNode(mockPromptNode).Return(nil)
 	mockGraph.EXPECT().AddEdge("start", "prompt").Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"start": mockStartNode, "prompt": mockPromptNode})
+		map[string]NodeInterface{"start": mockStartNode, "prompt": mockPromptNode})
 	// Map iteration order is non-deterministic, so other nodes might be checked before START is found
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
 	mockPromptNode.EXPECT().GetType().Return(common.NodeTypePrompt).Maybe()
@@ -672,12 +669,12 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithMeta() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_VariantExplicitlySet() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "chooser"},
 			{
 				ID:      "chooser",
@@ -687,9 +684,9 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_VariantExplicitlySet() {
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewRepresentationNodeInterfaceMock(s.T())
+	mockPromptNode := NewPromptNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(mockGraph)
@@ -705,7 +702,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_VariantExplicitlySet() {
 	mockGraph.EXPECT().AddNode(mockPromptNode).Return(nil)
 	mockGraph.EXPECT().AddEdge("start", "chooser").Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"start": mockStartNode, "chooser": mockPromptNode})
+		map[string]NodeInterface{"start": mockStartNode, "chooser": mockPromptNode})
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
 	mockPromptNode.EXPECT().GetType().Return(common.NodeTypePrompt).Maybe()
 	mockStartNode.EXPECT().GetID().Return("start")
@@ -718,17 +715,17 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_VariantExplicitlySet() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithCondition() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:   "task",
 				Type: "TASK_EXECUTION",
-				Condition: &ConditionDefinition{
+				Condition: &common.ConditionDefinition{
 					Key:    "userType",
 					Value:  "premium",
 					OnSkip: "end",
@@ -738,10 +735,10 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithCondition() {
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
-	mockEndNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewRepresentationNodeInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
+	mockEndNode := NewRepresentationNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -758,7 +755,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithCondition() {
 
 	mockStartNode.EXPECT().SetOnSuccess("task")
 	mockTaskNode.EXPECT().SetInputs([]common.Input{})
-	mockTaskNode.EXPECT().SetCondition(&core.NodeCondition{
+	mockTaskNode.EXPECT().SetCondition(&NodeCondition{
 		Key:    "userType",
 		Value:  "premium",
 		OnSkip: "end",
@@ -769,7 +766,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithCondition() {
 	mockGraph.EXPECT().AddNode(mockEndNode).Return(nil)
 	mockGraph.EXPECT().AddEdge("start", "task").Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"start": mockStartNode, "task": mockTaskNode,
+		map[string]NodeInterface{"start": mockStartNode, "task": mockTaskNode,
 			"end": mockEndNode})
 	// Map iteration order is non-deterministic, so other nodes might be checked before START is found
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
@@ -785,20 +782,20 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithCondition() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_NoStartNode() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "task", Type: "TASK_EXECUTION"},
 			{ID: "end", Type: "END"},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockTaskNode := coremock.NewNodeInterfaceMock(s.T())
-	mockEndNode := coremock.NewNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockTaskNode := NewNodeInterfaceMock(s.T())
+	mockEndNode := NewNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -813,7 +810,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_NoStartNode() {
 	mockGraph.EXPECT().AddNode(mockTaskNode).Return(nil)
 	mockGraph.EXPECT().AddNode(mockEndNode).Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"task": mockTaskNode, "end": mockEndNode})
+		map[string]NodeInterface{"task": mockTaskNode, "end": mockEndNode})
 	mockTaskNode.EXPECT().GetType().Return(common.NodeTypeTaskExecution)
 	mockEndNode.EXPECT().GetType().Return(common.NodeTypeEnd)
 
@@ -825,18 +822,18 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_NoStartNode() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_AddNodeError() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -855,20 +852,20 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_AddNodeError() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_AddEdgeError() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "end"},
 			{ID: "end", Type: "END"},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewNodeInterfaceMock(s.T())
-	mockEndNode := coremock.NewNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewNodeInterfaceMock(s.T())
+	mockEndNode := NewNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -892,18 +889,18 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_AddEdgeError() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_SetStartNodeError() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START"},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -913,7 +910,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_SetStartNodeError() {
 		mockStartNode, nil)
 
 	mockGraph.EXPECT().AddNode(mockStartNode).Return(nil)
-	mockGraph.EXPECT().GetNodes().Return(map[string]core.NodeInterface{"start": mockStartNode})
+	mockGraph.EXPECT().GetNodes().Return(map[string]NodeInterface{"start": mockStartNode})
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
 	mockStartNode.EXPECT().GetID().Return("start")
 	mockGraph.EXPECT().SetStartNode("start").Return(errors.New("start node already set"))
@@ -931,20 +928,20 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithProperties() {
 		"key2": 123,
 	}
 
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task", Properties: properties},
 			{ID: "task", Type: "TASK_EXECUTION"},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
-	mockTaskNode := coremock.NewRepresentationNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewRepresentationNodeInterfaceMock(s.T())
+	mockTaskNode := NewRepresentationNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -962,7 +959,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithProperties() {
 	mockGraph.EXPECT().AddNode(mockTaskNode).Return(nil)
 	mockGraph.EXPECT().AddEdge("start", "task").Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"start": mockStartNode, "task": mockTaskNode})
+		map[string]NodeInterface{"start": mockStartNode, "task": mockTaskNode})
 	// Map iteration order is non-deterministic, so other nodes might be checked before START is found
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
 	mockTaskNode.EXPECT().GetType().Return(common.NodeTypeTaskExecution).Maybe()
@@ -1000,24 +997,24 @@ func (s *GraphBuilderTestSuite) TestValidateExecutorName_Success() {
 }
 
 func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutorMode() {
-	flow := &CompleteFlowDefinition{
+	flow := &common.CompleteFlowDefinition{
 		ID:       "flow-1",
 		Handle:   "test-handle",
 		Name:     "Test Flow",
 		FlowType: common.FlowTypeAuthentication,
-		Nodes: []NodeDefinition{
+		Nodes: []common.NodeDefinition{
 			{ID: "start", Type: "START", OnSuccess: "task"},
 			{
 				ID:       "task",
 				Type:     "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{Name: "SMSOTPAuthExecutor", Mode: "send"},
+				Executor: &common.ExecutorDefinition{Name: "SMSOTPAuthExecutor", Mode: "send"},
 			},
 		},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
-	mockStartNode := coremock.NewNodeInterfaceMock(s.T())
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
+	mockStartNode := NewNodeInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	s.mockFlowFactory.EXPECT().CreateGraph(
 		"flow-1", common.FlowTypeAuthentication).Return(
@@ -1038,7 +1035,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutorMode() {
 	mockGraph.EXPECT().AddNode(mockTaskNode).Return(nil)
 	mockGraph.EXPECT().AddEdge("start", "task").Return(nil)
 	mockGraph.EXPECT().GetNodes().Return(
-		map[string]core.NodeInterface{"start": mockStartNode, "task": mockTaskNode})
+		map[string]NodeInterface{"start": mockStartNode, "task": mockTaskNode})
 	mockStartNode.EXPECT().GetType().Return(common.NodeTypeStart)
 	mockTaskNode.EXPECT().GetType().Return(common.NodeTypeTaskExecution).Maybe()
 	mockStartNode.EXPECT().GetID().Return("start")
@@ -1051,13 +1048,13 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutorMode() {
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_NilExecutor() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:       "task",
 		Type:     "TASK_EXECUTION",
 		Executor: nil, // Nil executor
 	}
 
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	err := s.builder.configureNodeExecutor(context.Background(), nodeDef, mockTaskNode)
 
@@ -1066,16 +1063,16 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_NilExecutor() {
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_EmptyExecutorName() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "task",
 		Type: "TASK_EXECUTION",
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: "", // Empty executor name
 			Mode: "send",
 		},
 	}
 
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	err := s.builder.configureNodeExecutor(context.Background(), nodeDef, mockTaskNode)
 
@@ -1084,16 +1081,16 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_EmptyExecutorName() {
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_NodeDoesNotSupportExecutors() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt",
 		Type: "PROMPT",
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: "test-executor",
 		},
 	}
 
 	// Use a regular NodeInterface that doesn't support executors
-	mockPromptNode := coremock.NewNodeInterfaceMock(s.T())
+	mockPromptNode := NewNodeInterfaceMock(s.T())
 
 	// Should silently skip executor configuration for non-executor nodes
 	err := s.builder.configureNodeExecutor(context.Background(), nodeDef, mockPromptNode)
@@ -1101,15 +1098,15 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_NodeDoesNotSupportExec
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_ExecutorNameValidationFails() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "task",
 		Type: "TASK_EXECUTION",
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: "unregistered-executor",
 		},
 	}
 
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	s.mockExecutorRegistry.EXPECT().IsRegistered("unregistered-executor").Return(false)
 
@@ -1121,16 +1118,16 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_ExecutorNameValidation
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_WithModeSuccess() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "task",
 		Type: "TASK_EXECUTION",
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: "test-executor",
 			Mode: "verify",
 		},
 	}
 
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true)
 	mockTaskNode.EXPECT().SetExecutorName("test-executor")
@@ -1142,16 +1139,16 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_WithModeSuccess() {
 }
 
 func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_WithoutModeSuccess() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "task",
 		Type: "TASK_EXECUTION",
-		Executor: &ExecutorDefinition{
+		Executor: &common.ExecutorDefinition{
 			Name: "test-executor",
 			Mode: "", // Empty mode - should not call SetMode
 		},
 	}
 
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(s.T())
 
 	s.mockExecutorRegistry.EXPECT().IsRegistered("test-executor").Return(true)
 	mockTaskNode.EXPECT().SetExecutorName("test-executor")
@@ -1174,13 +1171,13 @@ func (s *GraphBuilderTestSuite) TestConfigureNodeExecutor_EmptyExecutorNameInVal
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_NoNextNodeDefined() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
 		Next: "", // No next node
 	}
 
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(t)
+	mockPromptNode := NewPromptNodeInterfaceMock(t)
 
 	edges := map[string][]string{}
 
@@ -1192,13 +1189,13 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_NoNextNodeDef
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithNextNode() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
 		Next: "next-node",
 	}
 
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(t)
+	mockPromptNode := NewPromptNodeInterfaceMock(t)
 	mockPromptNode.EXPECT().SetNextNode("next-node")
 
 	edges := map[string][]string{}
@@ -1213,14 +1210,14 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithNextNode(
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithMessage() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:      "prompt-1",
 		Type:    "PROMPT",
 		Next:    "next-node",
 		Message: "Please wait...",
 	}
 
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(t)
+	mockPromptNode := NewPromptNodeInterfaceMock(t)
 	mockPromptNode.EXPECT().SetNextNode("next-node")
 	mockPromptNode.EXPECT().SetMessage("Please wait...")
 
@@ -1235,13 +1232,13 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithMessage()
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_OnNonPromptNode() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "task-1",
 		Type: "TASK_EXECUTION",
 		Next: "next-node", // Not allowed on non-prompt nodes
 	}
 
-	mockTaskNode := coremock.NewExecutorBackedNodeInterfaceMock(t)
+	mockTaskNode := NewExecutorBackedNodeInterfaceMock(t)
 
 	edges := map[string][]string{}
 
@@ -1253,20 +1250,20 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_OnNonPromptNo
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithPromptsConflict() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
 		Next: "next-node",
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{Identifier: "username"},
 				},
 			},
 		},
 	}
 
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(t)
+	mockPromptNode := NewPromptNodeInterfaceMock(t)
 
 	edges := map[string][]string{}
 
@@ -1278,17 +1275,17 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_WithPromptsCo
 
 func (s *GraphBuilderTestSuite) TestProcessNode_IsFinalNode_WithNextField() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:        "node-1",
 		Type:      "PROMPT",
 		OnSuccess: "",
 		OnFailure: "",
 		Next:      "next-node", // Has next
-		Prompts:   []PromptDefinition{},
+		Prompts:   []common.PromptDefinition{},
 	}
 
-	mockGraph := coremock.NewGraphInterfaceMock(t)
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(t)
+	mockGraph := NewGraphInterfaceMock(t)
+	mockPromptNode := NewPromptNodeInterfaceMock(t)
 
 	// When Next is defined, isFinalNode should be false
 	s.mockFlowFactory.EXPECT().CreateNode(
@@ -1298,7 +1295,7 @@ func (s *GraphBuilderTestSuite) TestProcessNode_IsFinalNode_WithNextField() {
 	mockPromptNode.EXPECT().SetNextNode("next-node")
 	mockGraph.EXPECT().AddNode(mockPromptNode).Return(nil)
 
-	allNodes := []NodeDefinition{*nodeDef}
+	allNodes := []common.NodeDefinition{*nodeDef}
 	edges := map[string][]string{}
 
 	err := s.builder.processNode(context.Background(), nodeDef, allNodes, mockGraph, edges, nil)
@@ -1308,15 +1305,15 @@ func (s *GraphBuilderTestSuite) TestProcessNode_IsFinalNode_WithNextField() {
 
 func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_IncludesActionType() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{Identifier: "username"},
 				},
-				Action: &ActionDefinition{
+				Action: &common.ActionDefinition{
 					Ref:      "login",
 					Type:     "password_auth",
 					NextNode: "auth-node",
@@ -1325,7 +1322,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_IncludesActionType() {
 		},
 	}
 
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(t)
+	mockPromptNode := NewPromptNodeInterfaceMock(t)
 	mockPromptNode.EXPECT().SetPrompts(mock.MatchedBy(func(prompts []common.Prompt) bool {
 		// Verify the action type is included
 		if len(prompts) != 1 {
@@ -1346,19 +1343,19 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_IncludesActionType() {
 
 func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_WithMultipleActionsWithTypes() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Action: &ActionDefinition{
+				Action: &common.ActionDefinition{
 					Ref:      "google",
 					Type:     "social_google",
 					NextNode: "google-auth",
 				},
 			},
 			{
-				Action: &ActionDefinition{
+				Action: &common.ActionDefinition{
 					Ref:      "github",
 					Type:     "social_github",
 					NextNode: "github-auth",
@@ -1367,7 +1364,7 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_WithMultipleActionsWith
 		},
 	}
 
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(t)
+	mockPromptNode := NewPromptNodeInterfaceMock(t)
 	mockPromptNode.EXPECT().SetPrompts(mock.MatchedBy(func(prompts []common.Prompt) bool {
 		// Verify both actions have their types
 		if len(prompts) != 2 {
@@ -1386,12 +1383,12 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_WithMultipleActionsWith
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_RecordsBoundary() {
 	t := s.T()
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
 		Next: "task-1",
 	}
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(t)
+	mockPromptNode := NewPromptNodeInterfaceMock(t)
 	mockPromptNode.EXPECT().SetNextNode("task-1")
 
 	edges := map[string][]string{}
@@ -1414,8 +1411,8 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_RecordsMultip
 		{"prompt-1", "task-1"},
 		{"prompt-2", "task-2"},
 	} {
-		nodeDef := &NodeDefinition{ID: tc.id, Type: "PROMPT", Next: tc.next}
-		mockPN := coremock.NewPromptNodeInterfaceMock(t)
+		nodeDef := &common.NodeDefinition{ID: tc.id, Type: "PROMPT", Next: tc.next}
+		mockPN := NewPromptNodeInterfaceMock(t)
 		mockPN.EXPECT().SetNextNode(tc.next)
 		err := s.builder.configureDisplayOnlyProperties(context.Background(), nodeDef, mockPN, edges, &boundaries)
 		s.Nil(err)
@@ -1428,8 +1425,8 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_RecordsMultip
 
 func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_NilBoundariesDoesNotPanic() {
 	t := s.T()
-	nodeDef := &NodeDefinition{ID: "prompt-1", Type: "PROMPT", Next: "task-1"}
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(t)
+	nodeDef := &common.NodeDefinition{ID: "prompt-1", Type: "PROMPT", Next: "task-1"}
+	mockPromptNode := NewPromptNodeInterfaceMock(t)
 	mockPromptNode.EXPECT().SetNextNode("task-1")
 
 	edges := map[string][]string{}
@@ -1441,18 +1438,18 @@ func (s *GraphBuilderTestSuite) TestConfigureDisplayOnlyProperties_NilBoundaries
 
 func (s *GraphBuilderTestSuite) TestComputeSegments_NoBoundaries() {
 	// computeSegments returns early with no boundaries; SetSegments/GetStartNode must NOT be called
-	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph := NewGraphInterfaceMock(s.T())
 
 	s.builder.computeSegments(mockGraph, []segmentBoundary{})
 }
 
 func (s *GraphBuilderTestSuite) TestComputeSegments_OneBoundary() {
 	t := s.T()
-	mockGraph := coremock.NewGraphInterfaceMock(t)
-	mockStartNode := coremock.NewNodeInterfaceMock(t)
+	mockGraph := NewGraphInterfaceMock(t)
+	mockStartNode := NewNodeInterfaceMock(t)
 	mockStartNode.On("GetID").Return("node-start")
 	mockGraph.On("GetStartNode").Return(mockStartNode, nil)
-	mockGraph.On("SetSegments", []core.Segment{
+	mockGraph.On("SetSegments", []Segment{
 		{ID: "seg-0", StartNodeID: "node-start"},
 		{ID: "seg-1", StartNodeID: "node-task"},
 	}).Return()
@@ -1464,11 +1461,11 @@ func (s *GraphBuilderTestSuite) TestComputeSegments_OneBoundary() {
 
 func (s *GraphBuilderTestSuite) TestComputeSegments_TwoBoundaries() {
 	t := s.T()
-	mockGraph := coremock.NewGraphInterfaceMock(t)
-	mockStartNode := coremock.NewNodeInterfaceMock(t)
+	mockGraph := NewGraphInterfaceMock(t)
+	mockStartNode := NewNodeInterfaceMock(t)
 	mockStartNode.On("GetID").Return("node-start")
 	mockGraph.On("GetStartNode").Return(mockStartNode, nil)
-	mockGraph.On("SetSegments", []core.Segment{
+	mockGraph.On("SetSegments", []Segment{
 		{ID: "seg-0", StartNodeID: "node-start"},
 		{ID: "seg-1", StartNodeID: "node-task-1"},
 		{ID: "seg-2", StartNodeID: "node-task-2"},
@@ -1482,7 +1479,7 @@ func (s *GraphBuilderTestSuite) TestComputeSegments_TwoBoundaries() {
 
 func (s *GraphBuilderTestSuite) TestComputeSegments_GetStartNodeFails() {
 	t := s.T()
-	mockGraph := coremock.NewGraphInterfaceMock(t)
+	mockGraph := NewGraphInterfaceMock(t)
 	mockGraph.On("GetStartNode").Return(nil, errors.New("start node not set"))
 
 	// SetSegments must NOT be called when GetStartNode fails
@@ -1494,25 +1491,25 @@ func (s *GraphBuilderTestSuite) TestComputeSegments_GetStartNodeFails() {
 // Prompt inputs' regex rules must be compiled at graph-build time so the
 // request-path validator never recompiles.
 func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_ValidationRulesCompiled() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{
 						Identifier: "password",
-						Validation: []ValidationRuleDefinition{
+						Validation: []common.ValidationRuleDefinition{
 							{Type: "regex", Value: "[A-Z]+", Message: "needs.upper"},
 						},
 					},
 				},
-				Action: &ActionDefinition{Ref: "submit", NextNode: "next"},
+				Action: &common.ActionDefinition{Ref: "submit", NextNode: "next"},
 			},
 		},
 	}
 
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(s.T())
+	mockPromptNode := NewPromptNodeInterfaceMock(s.T())
 	mockPromptNode.EXPECT().SetPrompts(mock.MatchedBy(func(prompts []common.Prompt) bool {
 		if len(prompts) != 1 || len(prompts[0].Inputs) != 1 || len(prompts[0].Inputs[0].Validation) != 1 {
 			return false
@@ -1527,25 +1524,25 @@ func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_ValidationRulesCompiled
 
 // Invalid regex on a prompt input must fail the build with a useful error message.
 func (s *GraphBuilderTestSuite) TestConfigureNodePrompts_InvalidRegexFailsBuild() {
-	nodeDef := &NodeDefinition{
+	nodeDef := &common.NodeDefinition{
 		ID:   "prompt-1",
 		Type: "PROMPT",
-		Prompts: []PromptDefinition{
+		Prompts: []common.PromptDefinition{
 			{
-				Inputs: []InputDefinition{
+				Inputs: []common.InputDefinition{
 					{
 						Identifier: "password",
-						Validation: []ValidationRuleDefinition{
+						Validation: []common.ValidationRuleDefinition{
 							{Type: "regex", Value: "[unterminated", Message: "bad"},
 						},
 					},
 				},
-				Action: &ActionDefinition{Ref: "submit", NextNode: "next"},
+				Action: &common.ActionDefinition{Ref: "submit", NextNode: "next"},
 			},
 		},
 	}
 
-	mockPromptNode := coremock.NewPromptNodeInterfaceMock(s.T())
+	mockPromptNode := NewPromptNodeInterfaceMock(s.T())
 	// SetPrompts must NOT be called.
 
 	err := s.builder.configureNodePrompts(context.Background(), nodeDef, mockPromptNode, map[string][]string{})

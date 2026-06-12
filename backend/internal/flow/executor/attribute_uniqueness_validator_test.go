@@ -75,8 +75,9 @@ func (suite *AttributeUniquenessValidatorTestSuite) SetupTest() {
 		[]common.Input{},
 		prerequisites).Return(suite.mockBaseExecutor)
 
-	suite.executor = newAttributeUniquenessValidator(
-		suite.mockFlowFactory, suite.mockEntityTypeService, suite.mockEntityProvider)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newAttributeUniquenessValidator(suite.mockEntityTypeService, suite.mockEntityProvider)
 }
 
 func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_NoUserType_SkipsCheck() {
