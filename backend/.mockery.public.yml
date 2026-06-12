@@ -625,3 +625,10 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: presentationmock
       filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/scim:
+    config:
+      all: true
+      dir: tests/mocks/scim
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: scim
+      filename: "{{.InterfaceName}}_mock_test.go"
