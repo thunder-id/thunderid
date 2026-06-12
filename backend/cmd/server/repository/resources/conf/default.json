@@ -138,6 +138,13 @@
     "auto_infer_registration": false,
     "store": "composite"
   },
+  "notification": {
+    "otp": {
+      "length": 6,
+      "use_numeric_only": true,
+      "validity_period_seconds": 120
+    }
+  },
   "user": {
     "indexed_attributes": [
       "username",

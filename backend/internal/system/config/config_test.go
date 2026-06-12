@@ -101,6 +101,13 @@ func (suite *ConfigTestSuite) TestLoadConfigWithDefaults() {
       "renew_on_grant": false,
       "validity_period": 86400
     }
+  },
+  "notification": {
+    "otp": {
+      "length": 6,
+      "use_numeric_only": true,
+      "validity_period_seconds": 120
+    }
   }
 }`, cryptoPath)
 
@@ -147,6 +154,11 @@ database:
     type: "sqlite"
     sqlite:
       path: "{{.TestVar}}"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `
 
 	tempDir := suite.T().TempDir()
@@ -585,6 +597,11 @@ func (suite *ConfigTestSuite) TestLoadConfig_FileClosingErrors() {
 server:
   hostname: "test-host"
   port: 8080
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `
 
 	tempDir := suite.T().TempDir()
@@ -669,6 +686,11 @@ server:
       issuer: "https://auth.example.com"
       jwks_url: "https://auth.example.com/oauth2/jwks"
       audience: "https://thunder.example.com"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `,
 			expectError: false,
 		},
@@ -714,6 +736,25 @@ func (suite *ConfigTestSuite) TestLoadConfig_InvalidYAML() {
 	assert.Error(suite.T(), err)
 }
 
+func (suite *ConfigTestSuite) TestLoadConfig_NotificationValidation() {
+	tempDir := suite.T().TempDir()
+	userContent := `
+server:
+  hostname: "test-host"
+  port: 8080
+notification:
+  otp:
+    length: 3
+    validity_period_seconds: 120
+`
+	userFile := suite.createTempFile(tempDir, "notification-validation*.yaml", userContent)
+
+	cfg, err := LoadConfig(userFile, "", tempDir)
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), cfg)
+	assert.Contains(suite.T(), err.Error(), "notification.otp.length")
+}
+
 func (suite *ConfigTestSuite) TestLoadConfigWithDerivedIssuer() {
 	tempDir := suite.T().TempDir()
 
@@ -723,6 +764,11 @@ server:
   hostname: "auth.example.com"
   port: 443
   http_only: false
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `
 	userFile1 := suite.createTempFile(tempDir, "user1*.yaml", userContent1)
 
@@ -737,6 +783,11 @@ server:
   port: 443
 jwt:
   issuer: "custom-issuer"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `
 	userFile2 := suite.createTempFile(tempDir, "user2*.yaml", userContent2)
 
@@ -750,6 +801,11 @@ server:
   hostname: "internal-host"
   port: 8090
   public_url: "https://auth.public.com"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `
 	userFile3 := suite.createTempFile(tempDir, "user3*.yaml", userContent3)
 
@@ -763,6 +819,11 @@ server:
   hostname: "localhost"
   port: 8080
   http_only: true
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `
 	userFile4 := suite.createTempFile(tempDir, "user4*.yaml", userContent4)
 
@@ -778,6 +839,11 @@ func (suite *ConfigTestSuite) TestLoadConfigWithDerivedPaths() {
 	userContent1 := `
 gate_client:
   path: "/app"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `
 	userFile1 := suite.createTempFile(tempDir, "user1*.yaml", userContent1)
 
@@ -792,6 +858,11 @@ gate_client:
 gate_client:
   path: "/app"
   login_path: "/custom/login"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `
 	userFile2 := suite.createTempFile(tempDir, "user2*.yaml", userContent2)
 
@@ -806,6 +877,11 @@ gate_client:
 gate_client:
   path: "/app"
   error_path: "/custom/error"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `
 	userFile3 := suite.createTempFile(tempDir, "user3*.yaml", userContent3)
 
@@ -821,6 +897,11 @@ gate_client:
   path: "/app"
   login_path: "/custom/login"
   error_path: "/custom/error"
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
 `
 	userFile4 := suite.createTempFile(tempDir, "user4*.yaml", userContent4)
 
@@ -834,6 +915,13 @@ gate_client:
 	defaultContent := `{
   "gate_client": {
     "path": "/gate"
+  },
+  "notification": {
+    "otp": {
+      "length": 6,
+      "use_numeric_only": true,
+      "validity_period_seconds": 120
+    }
   }
 }`
 	defaultFile := suite.createTempFile(tempDir, "default*.json", defaultContent)
@@ -1104,4 +1192,48 @@ flow:
 	suite.Require().NoError(err)
 	suite.Equal([]string{"BasicAuthExecutor", "InviteExecutor"}, cfg.Flow.Executors)
 	suite.Equal(3, cfg.Flow.MaxVersionHistory)
+}
+
+func (suite *ConfigTestSuite) TestOTPConfig_Validate_Defaults() {
+	cfg := &OTPConfig{
+		Length:                6,
+		UseNumericOnly:        true,
+		ValidityPeriodSeconds: 120,
+	}
+	assert.NoError(suite.T(), cfg.Validate())
+}
+
+func (suite *ConfigTestSuite) TestOTPConfig_Validate_LengthBelowMin() {
+	cfg := &OTPConfig{Length: 3, ValidityPeriodSeconds: 120}
+	err := cfg.Validate()
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "notification.otp.length")
+}
+
+func (suite *ConfigTestSuite) TestOTPConfig_Validate_LengthAboveMax() {
+	cfg := &OTPConfig{Length: 11, ValidityPeriodSeconds: 120}
+	err := cfg.Validate()
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "notification.otp.length")
+}
+
+func (suite *ConfigTestSuite) TestOTPConfig_Validate_ValidityBelowMin() {
+	cfg := &OTPConfig{Length: 6, ValidityPeriodSeconds: 29}
+	err := cfg.Validate()
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "notification.otp.validity_period_seconds")
+}
+
+func (suite *ConfigTestSuite) TestOTPConfig_Validate_ValidityAboveMax() {
+	cfg := &OTPConfig{Length: 6, ValidityPeriodSeconds: 601}
+	err := cfg.Validate()
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "notification.otp.validity_period_seconds")
+}
+
+func (suite *ConfigTestSuite) TestNotificationConfig_Validate_DelegatesToOTP() {
+	cfg := &NotificationConfig{OTP: OTPConfig{Length: 3, ValidityPeriodSeconds: 120}}
+	err := cfg.Validate()
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "notification.otp.length")
 }

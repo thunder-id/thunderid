@@ -285,6 +285,35 @@ type OAuthConfig struct {
 	AllowWildcardRedirectURI bool `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`
 }
 
+// NotificationConfig holds the notification configuration details.
+type NotificationConfig struct {
+	OTP OTPConfig `yaml:"otp" json:"otp"`
+}
+
+// Validate checks the notification configuration for correctness.
+func (c *NotificationConfig) Validate() error {
+	return c.OTP.Validate()
+}
+
+// OTPConfig holds the OTP generation configuration details.
+type OTPConfig struct {
+	Length                int  `yaml:"length" json:"length"`
+	UseNumericOnly        bool `yaml:"use_numeric_only" json:"use_numeric_only"`
+	ValidityPeriodSeconds int  `yaml:"validity_period_seconds" json:"validity_period_seconds"`
+}
+
+// Validate ensures OTP configuration values are within accepted bounds.
+func (c *OTPConfig) Validate() error {
+	if c.Length < 4 || c.Length > 10 {
+		return fmt.Errorf("notification.otp.length must be in [4, 10] (got %d)", c.Length)
+	}
+	if c.ValidityPeriodSeconds < 30 || c.ValidityPeriodSeconds > 600 {
+		return fmt.Errorf("notification.otp.validity_period_seconds must be in [30, 600] (got %d)",
+			c.ValidityPeriodSeconds)
+	}
+	return nil
+}
+
 // FlowConfig holds the configuration details for the flow service.
 type FlowConfig struct {
 	DefaultAuthFlowHandle    string `yaml:"default_auth_flow_handle" json:"default_auth_flow_handle"`
@@ -785,6 +814,7 @@ type Config struct {
 	Layout               LayoutConfig           `yaml:"layout" json:"layout"`
 	Translation          TranslationConfig      `yaml:"translation" json:"translation"`
 	Email                EmailConfig            `yaml:"email" json:"email"`
+	Notification         NotificationConfig     `yaml:"notification" json:"notification"`
 	Consent              ConsentConfig          `yaml:"consent" json:"consent"`
 }
 
@@ -840,6 +870,9 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		return nil, err
 	}
 	if err := cfg.OAuth.DPoP.Validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.Notification.Validate(); err != nil {
 		return nil, err
 	}
 
