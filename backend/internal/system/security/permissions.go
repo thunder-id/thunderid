@@ -60,6 +60,11 @@ var publicPaths = []string{
 	"/auth/**",
 	"/register/passkey/**",
 	"/access/**",
+	// SCIM discovery endpoints exposed without authentication
+	// (ServiceProviderConfig, ResourceTypes).
+	"/scim/v2/ServiceProviderConfig",
+	"/scim/v2/ResourceTypes",
+	"/scim/v2/ResourceTypes/**",
 }
 
 // ---- Resource types ----

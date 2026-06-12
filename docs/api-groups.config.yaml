@@ -84,6 +84,7 @@ fileGroupNames:
   registration.yaml: ~           # Passkeys (registration) claimed by Authentication
   resource.yaml: ~               # all tags claimed by Access Control
   role.yaml: ~                   # Roles claimed by Access Control
+  scim.yaml: ~                   # SCIM tags claimed by SCIM Provisioning
   user.yaml: ~                   # all tags claimed by Identities
 
 # Explicit named sub-groups. Tags listed here are excluded from auto-grouping.
@@ -154,6 +155,11 @@ explicitSubGroups:
       - Import
       - Health
 
+  # ── SCIM Provisioning ─────────────────────────────────────────────────────────
+  - name: SCIM Provisioning
+    tags:
+      - SCIM Discovery
+
 # Defines the display order of all sidebar groups (explicit and auto-derived).
 # Groups not listed here are appended alphabetically after all ordered entries.
 # To reorder: move entries in this list. To include a new group in the order:
@@ -168,4 +174,5 @@ groupOrder:
   - OAuth2 / OIDC
   - Branding & Localization
   - System
+  - SCIM Provisioning
   - Other

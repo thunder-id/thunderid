@@ -129,3 +129,6 @@ const (
 	// StoreModeComposite indicates resources are merged from both database and declarative files (hybrid mode).
 	StoreModeComposite StoreMode = "composite"
 )
+
+// SCIMContentType is the SCIM-specific content type required by RFC 7644.
+const SCIMContentType = "application/scim+json"
