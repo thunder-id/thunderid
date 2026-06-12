@@ -1547,7 +1547,7 @@ func TestDeleteResource_RemovesDeclarativeFile(t *testing.T) {
 
 	svc := newImportService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
-	resourceDir := filepath.Join(tempHome, "repository", "resources", "applications")
+	resourceDir := filepath.Join(tempHome, "config", "resources", "applications")
 	require.NoError(t, os.MkdirAll(resourceDir, 0o750))
 	require.NoError(t, os.WriteFile(
 		filepath.Join(resourceDir, "app-1.yaml"),
@@ -1565,7 +1565,7 @@ func TestDeleteResource_RemovesDeclarativeFile(t *testing.T) {
 	assert.Equal(t, resourceTypeApplication, deleteResp.ResourceType)
 	assert.Equal(t, "app-1", deleteResp.ResourceKey)
 
-	_, statErr := os.Stat(filepath.Join(tempHome, "repository", "resources", "applications", "app-1.yaml"))
+	_, statErr := os.Stat(filepath.Join(tempHome, "config", "resources", "applications", "app-1.yaml"))
 	assert.True(t, os.IsNotExist(statErr))
 }
 

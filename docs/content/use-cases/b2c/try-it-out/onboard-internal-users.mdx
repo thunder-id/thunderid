@@ -20,7 +20,7 @@ Complete [Set Up Your Environment](../setup#set-up-your-environment) before star
 
 ## Set Up Internal User Onboarding
 
-1. Invitation emails are delivered through a SMTP server. **Configure a SMTP provider** and apply the configuration in `repository/conf/deployment.yaml`.
+1. Invitation emails are delivered through a SMTP server. **Configure a SMTP provider** and apply the configuration in `deployment.yaml`.
 
     **Sample SMTP Configuration:**
 
@@ -36,7 +36,7 @@ Complete [Set Up Your Environment](../setup#set-up-your-environment) before star
         enable_authentication: true
     ```
 
-2. **Activate the user onboarding flow** by pointing the `user_onboarding_flow_handle` to the bundled flow in `repository/conf/deployment.yaml`:
+2. **Activate the user onboarding flow** by pointing the `user_onboarding_flow_handle` to the bundled flow in `deployment.yaml`:
 
     ```yaml
     flow:

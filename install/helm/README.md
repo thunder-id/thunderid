@@ -26,7 +26,7 @@ ThunderID's configuration system supports multiple value formats for **any param
    ```yaml
    crypto:
      encryption:
-       key: "file://repository/resources/security/crypto.key"
+       key: "file://config/certs/crypto.key"
    ```
    Supports both quoted and unquoted paths:
    - `file://path/to/file` - Unquoted path (no spaces)
@@ -377,9 +377,9 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.consoleClient.clientId`            | Console client ID                                                                                                                                       | `CONSOLE`                    |
 | `configuration.consoleClient.scopes`              | Console client scopes                                                                                                                                   | `['openid', 'profile', 'email', 'system']` |
 | `configuration.tls.minVersion`                    | Minimum TLS version                                                                                                                                     | `1.3`                        |
-| `configuration.tls.certFile`                      | Server TLS certificate file path                                                                                                                        | `repository/resources/security/server.cert` |
-| `configuration.tls.keyFile`                       | Server TLS key file path                                                                                                                                | `repository/resources/security/server.key`  |
-| `configuration.crypto.encryption.key`             | Crypto encryption key (change the default key with a 32-byte (64 character) hex string in production)                                                   | `file://repository/resources/security/crypto.key` |
+| `configuration.tls.certFile`                      | Server TLS certificate file path                                                                                                                        | `config/certs/server.cert` |
+| `configuration.tls.keyFile`                       | Server TLS key file path                                                                                                                                | `config/certs/server.key`  |
+| `configuration.crypto.encryption.key`             | Crypto encryption key (change the default key with a 32-byte (64 character) hex string in production)                                                   | `file://config/certs/crypto.key` |
 | `configuration.crypto.passwordHashing.algorithm`  | Password hashing algorithm                                            | `PBKDF2`                     |
 | `configuration.crypto.passwordHashing.pbkdf2.salt_size` | PBKDF2 salt size                                                | `16`                         |
 | `configuration.crypto.passwordHashing.pbkdf2.iterations` | PBKDF2 iterations                                              | `600000`                     |
@@ -391,10 +391,10 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.crypto.passwordHashing.argon2id.parallelism` | Argon2id parallelism                                        | `1`                          |
 | `configuration.crypto.passwordHashing.sha256.salt_size` | SHA256 salt size                                                | `16`                         |
 | `configuration.crypto.keys[].id`                  | Signing key identifier                                                                                                                                  | `default-key`                |
-| `configuration.crypto.keys[].certFile`            | Signing certificate file path                                                                                                                           | `repository/resources/security/signing.cert` |
-| `configuration.crypto.keys[].keyFile`             | Signing key file path                                                                                                                                   | `repository/resources/security/signing.key`  |
+| `configuration.crypto.keys[].certFile`            | Signing certificate file path                                                                                                                           | `config/certs/signing.cert` |
+| `configuration.crypto.keys[].keyFile`             | Signing key file path                                                                                                                                   | `config/certs/signing.key`  |
 | `configuration.database.config.type`            | Config database type (postgres or sqlite)                                                                                                               | `postgres`                   |
-| `configuration.database.config.sqlite.path`      | SQLite database path (for SQLite only)                                                                                                                  | `repository/database/configdb.db` |
+| `configuration.database.config.sqlite.path`      | SQLite database path (for SQLite only)                                                                                                                  | `database/configdb.db` |
 | `configuration.database.config.sqlite.options`   | SQLite options (for SQLite only)                                                                                                                        | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` |
 | `configuration.database.config.sqlite.max_open_conns` | Maximum number of open connections for SQLite                                                                                                      | `500`                        |
 | `configuration.database.config.sqlite.max_idle_conns` | Maximum number of idle SQLite connections                                                                                                          | `100`                        |
@@ -411,7 +411,7 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.database.config.postgres.max_idle_conns`  | Maximum number of idle connections in the pool                                                                                                          | `100`                        |
 | `configuration.database.config.postgres.conn_max_lifetime` | Maximum lifetime of a connection in seconds                                                                                                             | `3600`                       |
 | `configuration.database.runtime.type`             | Runtime database type (`postgres`, `sqlite`, or `redis`)                                                                                               | `postgres`                   |
-| `configuration.database.runtime.sqlite.path`       | SQLite database path (for SQLite only)                                                                                                                  | `repository/database/runtimedb.db` |
+| `configuration.database.runtime.sqlite.path`       | SQLite database path (for SQLite only)                                                                                                                  | `database/runtimedb.db` |
 | `configuration.database.runtime.sqlite.options`    | SQLite options (for SQLite only)                                                                                                                        | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` |
 | `configuration.database.runtime.sqlite.max_open_conns` | Maximum number of open connections for SQLite                                                                                                      | `500`                        |
 | `configuration.database.runtime.sqlite.max_idle_conns` | Maximum number of idle SQLite connections                                                                                                          | `100`                        |
@@ -435,7 +435,7 @@ Password fields are available in `configuration.database.config.postgres`, `conf
 | `configuration.database.runtime.redis.db`          | Redis logical database index (0–15) (for Redis only)                                                                                                   | `0`                          |
 | `configuration.database.runtime.redis.key_prefix`   | Prefix applied to all Redis keys written by ThunderID (for Redis only)                                                                                   | `""`                         |
 | `configuration.database.user.type`                | User database type (postgres or sqlite)                                                                                                                 | `postgres`                   |
-| `configuration.database.user.sqlite.path`          | SQLite database path (for SQLite only)                                                                                                                  | `repository/database/userdb.db` |
+| `configuration.database.user.sqlite.path`          | SQLite database path (for SQLite only)                                                                                                                  | `database/userdb.db` |
 | `configuration.database.user.sqlite.options`       | SQLite options (for SQLite only)                                                                                                                        | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` |
 | `configuration.database.user.sqlite.max_open_conns` | Maximum number of open connections for SQLite                                                                                                        | `500`                        |
 | `configuration.database.user.sqlite.max_idle_conns` | Maximum number of idle SQLite connections                                                                                                            | `100`                        |
@@ -499,12 +499,12 @@ Persistence is **automatically enabled** when using SQLite as the database type 
 
 ### Declarative Resources Parameters
 
-Declarative resources can be mounted into ThunderID's `repository/resources` directory from either a ConfigMap or Secret.
+Declarative resources can be mounted into ThunderID's `config/resources` directory from either a ConfigMap or Secret.
 
 | Name                                   | Description                                                     | Default                      |
 | -------------------------------------- | --------------------------------------------------------------- | ---------------------------- |
 | `declarativeResources.enabled`         | Enable declarative resources mount                              | `false`                      |
-| `declarativeResources.mountPath`       | Mount path inside container                                     | `/opt/thunderid/repository/resources` |
+| `declarativeResources.mountPath`       | Mount path inside container                                     | `/opt/thunderid/config/resources` |
 | `declarativeResources.readOnly`        | Mount declarative resources as read-only                        | `true`                       |
 | `declarativeResources.configMap.name`  | Existing ConfigMap name containing declarative resources        | `""`                        |
 | `declarativeResources.configMap.items` | ConfigMap items to mount (string or `{key,path}`; empty = all keys) | `[]`                    |
@@ -527,7 +527,7 @@ Example using a ConfigMap:
 ```yaml
 declarativeResources:
   enabled: true
-  mountPath: /opt/thunderid/repository/resources
+  mountPath: /opt/thunderid/config/resources
   configMap:
     name: thunderid-declarative-resources
     items:
@@ -554,10 +554,10 @@ Each entry in `declarativeResources.configMap.items` (or `declarativeResources.s
 
 Use object format when you need to mount a source key to a different directory/file path under `declarativeResources.mountPath`.
 
-When `items` are provided, the chart mounts declarative resources file-by-file using `subPath`. This preserves existing files already present in ThunderID's `repository/resources` directory.
+When `items` are provided, the chart mounts declarative resources file-by-file using `subPath`. This preserves existing files already present in ThunderID's `config/resources` directory.
 
 Resulting file path example:
-- With `path: applications/application1.yaml`, file is mounted at `/opt/thunderid/repository/resources/applications/application1.yaml`
+- With `path: applications/application1.yaml`, file is mounted at `/opt/thunderid/config/resources/applications/application1.yaml`
 
 #### End-to-end example with ConfigMap
 
@@ -575,7 +575,7 @@ Configure Helm values:
 ```yaml
 declarativeResources:
   enabled: true
-  mountPath: /opt/thunderid/repository/resources
+  mountPath: /opt/thunderid/config/resources
   readOnly: true
   configMap:
     name: thunderid-declarative-resources
@@ -633,7 +633,7 @@ declarativeResources:
     items: []
 ```
 
-  Note: With empty `items`, Kubernetes mounts the source at the directory level. This can hide existing files in `repository/resources` during pod runtime. To preserve bundled files and add only selected declarative resources, configure explicit `items`.
+  Note: With empty `items`, Kubernetes mounts the source at the directory level. This can hide existing files in `config/resources` during pod runtime. To preserve bundled files and add only selected declarative resources, configure explicit `items`.
 
 #### Runtime Configuration Sync
 
@@ -648,7 +648,7 @@ declarative_resources:
 
 ```bash
 # Check mounted files inside ThunderID pod
-kubectl exec -it deploy/my-thunderid -- ls -R /opt/thunderid/repository/resources
+kubectl exec -it deploy/my-thunderid -- ls -R /opt/thunderid/config/resources
 
 # Confirm declarative_resources.enabled in generated deployment config
 kubectl exec -it deploy/my-thunderid -- grep -n "declarative_resources\|enabled" /opt/thunderid/conf/deployment.yaml

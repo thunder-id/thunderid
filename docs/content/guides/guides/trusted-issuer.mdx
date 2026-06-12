@@ -6,7 +6,7 @@ title: Trusted Issuer
 
 <ProductName /> can accept access tokens issued by an external authorization server and validate them locally using that server's JWKS endpoint. This enables federated authentication scenarios. An authorized user base can live on a separate central authorization server and still access a <ProductName /> instance that acts purely as a resource server. The resource-server <ProductName /> instance does not issue its own tokens for those users.
 
-You can enable this by adding a `server.security.trusted_issuer` block to `repository/conf/deployment.yaml`.
+You can enable this by adding a `server.security.trusted_issuer` block to `deployment.yaml`.
 
 ## When to Enable
 

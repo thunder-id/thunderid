@@ -77,11 +77,11 @@ spec:
         - key: GATE_CLIENT_SCHEME
           value: {{ .Values.gate.scheme | quote }}
         - key: DB_CONFIG_PATH
-          value: {{ .Values.database.config.path | default "repository/database/config.db" | quote }}
+          value: {{ .Values.database.config.path | default "database/config.db" | quote }}
         - key: DB_RUNTIME_PATH
-          value: {{ .Values.database.runtime.path | default "repository/database/runtime.db" | quote }}
+          value: {{ .Values.database.runtime.path | default "database/runtime.db" | quote }}
         - key: DB_USER_PATH
-          value: {{ .Values.database.user.path | default "repository/database/user.db" | quote }}
+          value: {{ .Values.database.user.path | default "database/user.db" | quote }}
         - key: CRYPTO_ENCRYPTION_KEY
           value: {{ .Values.crypto.encryption.key | quote }}
     endpoints:

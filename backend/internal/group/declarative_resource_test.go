@@ -587,7 +587,7 @@ func (suite *GroupDeclarativeResourceLoaderTestSuite) initRuntime() {
 
 func (suite *GroupDeclarativeResourceLoaderTestSuite) createGroupsDir() string {
 	runtime := config.GetServerRuntime()
-	dir := filepath.Join(runtime.ServerHome, "repository", "resources", "groups")
+	dir := filepath.Join(runtime.ServerHome, "config", "resources", "groups")
 	suite.Require().NoError(os.MkdirAll(dir, 0o750))
 	return dir
 }

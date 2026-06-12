@@ -143,7 +143,7 @@ func (suite *TemplateDeclarativeResourceTestSuite) TestLoadDeclarativeResources_
 	suite.NoError(err)
 
 	runtime := config.GetServerRuntime()
-	resourceDir := filepath.Join(runtime.ServerHome, "repository", "resources", "templates")
+	resourceDir := filepath.Join(runtime.ServerHome, "config", "resources", "templates")
 	err = os.MkdirAll(resourceDir, 0o750)
 	suite.NoError(err)
 
@@ -216,7 +216,7 @@ func (suite *TemplateDeclarativeResourceTestSuite) TestLoadDeclarativeResources_
 	suite.NoError(err)
 
 	runtime := config.GetServerRuntime()
-	resourceDir := filepath.Join(runtime.ServerHome, "repository", "resources", "templates")
+	resourceDir := filepath.Join(runtime.ServerHome, "config", "resources", "templates")
 	err = os.MkdirAll(resourceDir, 0o750)
 	suite.NoError(err)
 

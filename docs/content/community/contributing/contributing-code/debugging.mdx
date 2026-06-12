@@ -48,7 +48,7 @@ This guide focuses on local development and debugging with SQLite for database s
 
 ### Step 1: Configure the Server
 
-Edit `backend/cmd/server/repository/conf/deployment.yaml` and add:
+Edit `backend/cmd/server/deployment.yaml` and add:
 
 **CORS allowed origins** (so the frontend development servers and sample app can talk to the backend):
 
@@ -159,9 +159,9 @@ npm run dev
 
 | Database | Path |
 |----------|------|
-| User DB | `<repo-root>/backend/cmd/server/repository/database/userdb.db` |
-| Runtime DB | `<repo-root>/backend/cmd/server/repository/database/runtimedb.db` |
-| Config DB | `<repo-root>/backend/cmd/server/repository/database/configdb.db` |
+| User DB | `<repo-root>/backend/cmd/server/database/userdb.db` |
+| Runtime DB | `<repo-root>/backend/cmd/server/database/runtimedb.db` |
+| Config DB | `<repo-root>/backend/cmd/server/database/configdb.db` |
 
 5. Click **Test Connection** to verify, then click **Finish**
 6. Repeat for the other two databases

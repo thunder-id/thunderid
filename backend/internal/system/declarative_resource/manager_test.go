@@ -101,7 +101,7 @@ func (suite *FileBasedRuntimeManagerTestSuite) setEnvVar(key, value string) {
 // Helper function to create test files in the declarative resources directory
 func (suite *FileBasedRuntimeManagerTestSuite) createTestFile(configDir, filename, content string) string {
 	serverHome := config.GetServerRuntime().ServerHome
-	declarativeDir := filepath.Join(serverHome, "repository", "resources", configDir)
+	declarativeDir := filepath.Join(serverHome, "config", "resources", configDir)
 	err := os.MkdirAll(declarativeDir, 0750)
 	suite.Require().NoError(err)
 
@@ -169,7 +169,7 @@ func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigs_EmptyDirectory() {
 	configDir := "empty-configs"
 	// Create empty directory
 	serverHome := config.GetServerRuntime().ServerHome
-	declarativeDir := filepath.Join(serverHome, "repository", "resources", configDir)
+	declarativeDir := filepath.Join(serverHome, "config", "resources", configDir)
 	err := os.MkdirAll(declarativeDir, 0750)
 	suite.Require().NoError(err)
 
@@ -187,7 +187,7 @@ func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigs_DirectoryWithSubdi
 
 	// Create a subdirectory
 	serverHome := config.GetServerRuntime().ServerHome
-	declarativeDir := filepath.Join(serverHome, "repository", "resources", configDir)
+	declarativeDir := filepath.Join(serverHome, "config", "resources", configDir)
 	subDir := filepath.Join(declarativeDir, "subdir")
 	err := os.MkdirAll(subDir, 0750)
 	suite.Require().NoError(err)
@@ -325,7 +325,7 @@ func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigs_DirectoryReadPermi
 
 	// Get the directory path and remove read permissions
 	serverHome := config.GetServerRuntime().ServerHome
-	declarativeDir := filepath.Join(serverHome, "repository", "resources", configDir)
+	declarativeDir := filepath.Join(serverHome, "config", "resources", configDir)
 
 	err := os.Chmod(declarativeDir, 0000)
 	suite.NoError(err)
@@ -348,7 +348,7 @@ func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigs_CorruptedFile() {
 
 	// Create a file with invalid UTF-8 sequences using the file system directly
 	serverHome := config.GetServerRuntime().ServerHome
-	declarativeDir := filepath.Join(serverHome, "repository", "resources", configDir)
+	declarativeDir := filepath.Join(serverHome, "config", "resources", configDir)
 	err := os.MkdirAll(declarativeDir, 0750)
 	suite.Require().NoError(err)
 
@@ -498,7 +498,7 @@ func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigs_BinaryFiles() {
 	// Create a binary file (non-text content)
 	binaryContent := []byte{0x00, 0x01, 0x02, 0x03, 0xFF, 0xFE, 0xFD}
 	serverHome := config.GetServerRuntime().ServerHome
-	declarativeDir := filepath.Join(serverHome, "repository", "resources", configDir)
+	declarativeDir := filepath.Join(serverHome, "config", "resources", configDir)
 	err := os.MkdirAll(declarativeDir, 0750)
 	suite.Require().NoError(err)
 
@@ -543,10 +543,10 @@ func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigs_HiddenFiles() {
 
 // ──────────────────────── GetConfigsFromRootDir tests ────────────────────────
 
-// createRootResourceFile creates a YAML file directly inside repository/resources/.
+// createRootResourceFile creates a YAML file directly inside config/resources/.
 func (suite *FileBasedRuntimeManagerTestSuite) createRootResourceFile(filename, content string) {
 	serverHome := config.GetServerRuntime().ServerHome
-	rootDir := filepath.Join(serverHome, "repository", "resources")
+	rootDir := filepath.Join(serverHome, "config", "resources")
 	err := os.MkdirAll(rootDir, 0750)
 	suite.Require().NoError(err)
 	filePath := filepath.Join(rootDir, filename)
@@ -554,10 +554,10 @@ func (suite *FileBasedRuntimeManagerTestSuite) createRootResourceFile(filename, 
 	suite.Require().NoError(err)
 }
 
-// removeRootResourceFile removes a file from repository/resources/ to restore test isolation.
+// removeRootResourceFile removes a file from config/resources/ to restore test isolation.
 func (suite *FileBasedRuntimeManagerTestSuite) removeRootResourceFile(filename string) {
 	serverHome := config.GetServerRuntime().ServerHome
-	_ = os.Remove(filepath.Join(serverHome, "repository", "resources", filename))
+	_ = os.Remove(filepath.Join(serverHome, "config", "resources", filename))
 }
 
 func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigsFromRootDir_MatchingDocument() {
@@ -628,7 +628,7 @@ name: In Subdir
 
 func (suite *FileBasedRuntimeManagerTestSuite) TestGetConfigsFromRootDir_IgnoresNonYAMLFiles() {
 	serverHome := config.GetServerRuntime().ServerHome
-	rootDir := filepath.Join(serverHome, "repository", "resources")
+	rootDir := filepath.Join(serverHome, "config", "resources")
 	err := os.MkdirAll(rootDir, 0750)
 	suite.Require().NoError(err)
 	txtPath := filepath.Join(rootDir, "root-ignored.txt")

@@ -236,7 +236,7 @@ Supports both formats:
 {{/*
 Render file-level volumeMount entries for declarative resources.
 When items are provided, mounting file-by-file with subPath preserves existing
-files already present in repository/resources.
+files already present in config/resources.
 Each item may optionally specify a mountPath to override the global base path.
 */}}
 {{- define "thunderid.declarativeResourceVolumeMounts" -}}

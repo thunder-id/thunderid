@@ -1276,7 +1276,7 @@ func (suite *SMTPClientTestSuite) TestNewSMTPClientFromConfig_RuntimeNotInitiali
 }
 
 // TestSendLiveEmail is a manual test utility to verify email delivery against real SMTP credentials.
-// It loads the configuration from backend/cmd/server/repository/conf/deployment.yaml and attempts to send
+// It loads the configuration from backend/cmd/server/deployment.yaml and attempts to send
 // a test email to the specified address.
 //
 // By default, this test is skipped during normal test execution.
@@ -1290,7 +1290,7 @@ func (suite *SMTPClientTestSuite) TestSendLiveEmail() {
 	config.ResetServerRuntime()
 
 	emailConfig, err := config.LoadConfig(
-		"../../../cmd/server/repository/conf/deployment.yaml",
+		"../../../cmd/server/deployment.yaml",
 		"",
 		"../../../cmd/server",
 	)

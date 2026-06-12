@@ -37,8 +37,8 @@ server:
 
 
 tls:
-  cert_file: "repository/resources/security/server.cert"
-  key_file: "repository/resources/security/server.key"
+  cert_file: "config/certs/server.cert"
+  key_file: "config/certs/server.key"
 
 database:
 "@
@@ -88,7 +88,7 @@ if ($DbType -eq "postgres") {
     username: ""
     password: ""
     sslmode: ""
-    path: "repository/database/configdb.db"
+    path: "database/configdb.db"
     options: "cache=shared"
 
   runtime:
@@ -99,7 +99,7 @@ if ($DbType -eq "postgres") {
     username: ""
     password: ""
     sslmode: ""
-    path: "repository/database/runtimedb.db"
+    path: "database/runtimedb.db"
     options: "cache=shared"
 
   user:
@@ -110,7 +110,7 @@ if ($DbType -eq "postgres") {
     username: ""
     password: ""
     sslmode: ""
-    path: "repository/database/userdb.db"
+    path: "database/userdb.db"
     options: "cache=shared"
 "@
 }

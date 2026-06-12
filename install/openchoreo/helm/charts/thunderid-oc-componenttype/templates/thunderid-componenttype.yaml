@@ -130,7 +130,7 @@ spec:
                     - |
                       if [ ! -f /data/.initialized ]; then
                         echo "Copying database directory from image..."
-                        cp -r /opt/thunderid/repository/database/* /data/
+                        cp -r /opt/thunderid/database/* /data/
                         touch /data/.initialized
                         echo "Database initialization complete"
                       else
@@ -143,17 +143,17 @@ spec:
                 - name: setup
                   image: "${parameters.image}"
                   imagePullPolicy: "${parameters.runtime.imagePullPolicy}"
-                  command: ["sh", "-c", "./setup.sh && touch /opt/thunderid/repository/database/.setup-complete"]
+                  command: ["sh", "-c", "./setup.sh && touch /opt/thunderid/database/.setup-complete"]
                   env: |
                     ${configurations.configs.envs.map(e, {"name": e.name, "value": e.value}) + [
                       {"name": "WITH_CONSENT", "value": "false"}
                     ]}
                   volumeMounts:
                     - name: thunderid-config
-                      mountPath: /opt/thunderid/repository/conf/deployment.yaml
+                      mountPath: /opt/thunderid/deployment.yaml
                       subPath: deployment.yaml
                     - name: sqlite-data
-                      mountPath: /opt/thunderid/repository/database
+                      mountPath: /opt/thunderid/database
               volumes:
                 - name: thunderid-config
                   configMap:
@@ -384,14 +384,14 @@ spec:
                   command: ['sh', '-c']
                   args:
                     - |
-                      until [ -f /opt/thunderid/repository/database/.setup-complete ]; do
+                      until [ -f /opt/thunderid/database/.setup-complete ]; do
                         echo "Waiting for setup job to complete..."
                         sleep 2
                       done
                       echo "Setup complete, starting ThunderID..."
                   volumeMounts:
                     - name: sqlite-data
-                      mountPath: /opt/thunderid/repository/database
+                      mountPath: /opt/thunderid/database
               containers:
                 - name: thunderid
                   image: "${parameters.image}"
@@ -411,10 +411,10 @@ spec:
                       memory: "${environmentConfigs.resourceLimitsMemory}"
                   volumeMounts: |
                     ${[
-                      {"name": "thunderid-config", "mountPath": "/opt/thunderid/repository/conf/deployment.yaml", "subPath": "deployment.yaml"},
+                      {"name": "thunderid-config", "mountPath": "/opt/thunderid/deployment.yaml", "subPath": "deployment.yaml"},
                       {"name": "gate-config", "mountPath": "/opt/thunderid/apps/gate/config.js", "subPath": "config.js"},
                       {"name": "console-config", "mountPath": "/opt/thunderid/apps/console/config.js", "subPath": "config.js"},
-                      {"name": "sqlite-data", "mountPath": "/opt/thunderid/repository/database"}
+                      {"name": "sqlite-data", "mountPath": "/opt/thunderid/database"}
                     ] + configurations.toContainerVolumeMounts().map(m, {"name": m.name, "mountPath": m.mountPath, "subPath": m.subPath})}
               volumes: |
                 ${[

@@ -30,7 +30,7 @@ Building from source produces a distributable `.zip` file at `PROJECT_ROOT/targe
 
 ## Configure the Server
 
-Open `backend/cmd/server/repository/conf/deployment.yaml` in your favorite text editor and make the following changes:
+Open `backend/cmd/server/deployment.yaml` in your favorite text editor and make the following changes:
 
 **Add CORS allowed origins:**
 
@@ -222,15 +222,15 @@ API_BASE="https://localhost:8090" \
 
 1. Point the `gate_client` in `deployment.yaml` to the local <ProductName /> Gate application.
 
-   - If you are running `make run`, change the `gate_client` section in `backend/cmd/server/repository/conf/deployment.yaml`
-   - If you are running the backend server manually, change the `gate_client` section in `<THUNDERID_HOME>/repository/conf/deployment.yaml`
+   - If you are running `make run`, change the `gate_client` section in `backend/cmd/server/deployment.yaml`
+   - If you are running the backend server manually, change the `gate_client` section in `<THUNDERID_HOME>/deployment.yaml`
 
 ```yaml
 gate_client:
   port: 5190
 ```
 
-2. Add the local development origin of the <ProductName /> Gate application (https://localhost:5190) to the CORS allowed origins in `<THUNDERID_HOME>/repository/conf/deployment.yaml`.
+2. Add the local development origin of the <ProductName /> Gate application (https://localhost:5190) to the CORS allowed origins in `<THUNDERID_HOME>/deployment.yaml`.
 
 ```yaml
 cors:
@@ -280,7 +280,7 @@ curl -k -X PUT "https://localhost:8090/applications/<console-application-id>" \
   -d '<paste-the-modified-json-here>'
 ```
 
-5. Add the local development origin of the console application (https://localhost:5191) to the CORS allowed origins in `<THUNDERID_HOME>/repository/conf/deployment.yaml`.
+5. Add the local development origin of the console application (https://localhost:5191) to the CORS allowed origins in `<THUNDERID_HOME>/deployment.yaml`.
 
 ```yaml
 cors:

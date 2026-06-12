@@ -60,14 +60,14 @@ Without a volume, all data inside the container is lost when it is stopped or re
 docker run -d \
   --name thunderid \
   --restart unless-stopped \
-  -v thunderid-data:/opt/thunder/repository/database \
+  -v thunderid-data:/opt/thunder/database \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
 Also mount the security directory to keep TLS certificates and the encryption key outside the container lifecycle:
 
 ```bash
--v $(pwd)/security:/opt/thunder/repository/resources/security
+-v $(pwd)/security:/opt/thunder/config/resources/security
 ```
 
 ## Terminate TLS at a Reverse Proxy
@@ -116,7 +116,7 @@ services:
     expose:
       - "8090"
     volumes:
-      - ./deployment.yaml:/opt/thunder/repository/conf/deployment.yaml
+      - ./deployment.yaml:/opt/thunder/deployment.yaml
 ```
 
 ## Set Resource Constraints

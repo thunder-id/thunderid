@@ -46,13 +46,13 @@ database:
   storageSize: "1Gi"  # PVC size
   config:
     sqlite:
-      path: "repository/database/configdb.db"
+      path: "database/configdb.db"
   runtime:
     sqlite:
-      path: "repository/database/runtimedb.db"
+      path: "database/runtimedb.db"
   user:
     sqlite:
-      path: "repository/database/userdb.db"
+      path: "database/userdb.db"
 
   # ── PostgreSQL (used when type: postgres) — uncomment and fill in ──────────
   # config:
@@ -90,7 +90,7 @@ oauth:
 crypto:
   encryption:
     # WARNING: Replace with a 32-byte (64 hex character) key in production.
-    key: "file://repository/resources/security/crypto.key"
+    key: "file://config/certs/crypto.key"
 
 cache:
   type: "memory"

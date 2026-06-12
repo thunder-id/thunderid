@@ -41,8 +41,8 @@ The application runs on HTTPS. Copy the SSL certificates from your distribution:
 
 ```bash
 # From distribution
-cp /path/to/thunder/repository/resources/security/server.key .
-cp /path/to/thunder/repository/resources/security/server.cert .
+cp /path/to/thunder/config/certs/server.key .
+cp /path/to/thunder/config/certs/server.cert .
 
 # Or from build output (if building from source)
 cp ../../target/out/.cert/server.key .

@@ -61,7 +61,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_MutableStore
 
 func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_FileStore_EmptyDirectory() {
 	tmpDir := s.T().TempDir()
-	resourceDir := filepath.Join(tmpDir, "repository", "resources", "users")
+	resourceDir := filepath.Join(tmpDir, "config", "resources", "users")
 	s.Require().NoError(os.MkdirAll(resourceDir, 0750))
 
 	s.Require().NoError(config.InitializeServerRuntime(tmpDir, &config.Config{}))
@@ -83,7 +83,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_FileStore_Em
 
 func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_CompositeStore_ExtractsFileStore() {
 	tmpDir := s.T().TempDir()
-	resourceDir := filepath.Join(tmpDir, "repository", "resources", "users")
+	resourceDir := filepath.Join(tmpDir, "config", "resources", "users")
 	s.Require().NoError(os.MkdirAll(resourceDir, 0750))
 	s.Require().NoError(config.InitializeServerRuntime(tmpDir, &config.Config{}))
 
@@ -117,7 +117,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_CompositeSto
 
 func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_WithValidator_Called() {
 	tmpDir := s.T().TempDir()
-	resourceDir := filepath.Join(tmpDir, "repository", "resources", "items")
+	resourceDir := filepath.Join(tmpDir, "config", "resources", "items")
 	s.Require().NoError(os.MkdirAll(resourceDir, 0750))
 
 	entityYAML := []byte(`id: "item-1"
@@ -157,7 +157,7 @@ attributes: {}
 
 func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_ParserError() {
 	tmpDir := s.T().TempDir()
-	resourceDir := filepath.Join(tmpDir, "repository", "resources", "items")
+	resourceDir := filepath.Join(tmpDir, "config", "resources", "items")
 	s.Require().NoError(os.MkdirAll(resourceDir, 0750))
 	s.Require().NoError(os.WriteFile(filepath.Join(resourceDir, "bad.yaml"), []byte("id: x"), 0600))
 	s.Require().NoError(config.InitializeServerRuntime(tmpDir, &config.Config{}))
@@ -179,7 +179,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_ParserError(
 
 func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_ValidatorError() {
 	tmpDir := s.T().TempDir()
-	resourceDir := filepath.Join(tmpDir, "repository", "resources", "items")
+	resourceDir := filepath.Join(tmpDir, "config", "resources", "items")
 	s.Require().NoError(os.MkdirAll(resourceDir, 0750))
 	s.Require().NoError(os.WriteFile(filepath.Join(resourceDir, "item.yaml"), []byte("id: x"), 0600))
 	s.Require().NoError(config.InitializeServerRuntime(tmpDir, &config.Config{}))
@@ -204,7 +204,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_ValidatorErr
 
 func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_HashesSystemCredentialsBeforeStoreWrite() {
 	tmpDir := s.T().TempDir()
-	resourceDir := filepath.Join(tmpDir, "repository", "resources", "applications")
+	resourceDir := filepath.Join(tmpDir, "config", "resources", "applications")
 	s.Require().NoError(os.MkdirAll(resourceDir, 0750))
 	s.Require().NoError(os.WriteFile(filepath.Join(resourceDir, "app.yaml"), []byte("id: x"), 0600))
 	s.Require().NoError(config.InitializeServerRuntime(tmpDir, &config.Config{}))

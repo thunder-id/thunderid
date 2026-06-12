@@ -618,7 +618,7 @@ func TestInitialize_WithDeclarativeResources_Standalone(t *testing.T) {
 
 	// Create a temporary directory structure for file-based runtime
 	tmpDir := t.TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	appDir := confDir + "/applications"
 
 	// Create the directory structure

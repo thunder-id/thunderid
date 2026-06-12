@@ -69,7 +69,7 @@ The Docker image bakes in default configuration files. You can override them wit
 
 | File in container | Purpose |
 |---|---|
-| `/opt/thunderid/repository/conf/deployment.yaml` | Backend server — bind address, public URL, CORS, Gate client redirect |
+| `/opt/thunderid/deployment.yaml` | Backend server — bind address, public URL, CORS, Gate client redirect |
 | `/opt/thunderid/apps/console/config.js` | Management Console frontend |
 | `/opt/thunderid/apps/gate/config.js` | Gate login app frontend |
 
@@ -148,7 +148,7 @@ services:
     # ...
     volumes:
       # ...
-      - ./deployment.yaml:/opt/thunderid/repository/conf/deployment.yaml:ro
+      - ./deployment.yaml:/opt/thunderid/deployment.yaml:ro
 
   thunderid:
     # ...
@@ -156,7 +156,7 @@ services:
       - "<your-port>:<your-port>"  # Update if changing the port, e.g. 9090:9090
     volumes:
       # ...
-      - ./deployment.yaml:/opt/thunderid/repository/conf/deployment.yaml:ro
+      - ./deployment.yaml:/opt/thunderid/deployment.yaml:ro
       - ./console-config.js:/opt/thunderid/apps/console/config.js:ro
       - ./gate-config.js:/opt/thunderid/apps/gate/config.js:ro
 ```

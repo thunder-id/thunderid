@@ -18,7 +18,7 @@ The MCP server is available at `https://localhost:8090/mcp` (or your configured 
 ## Prerequisites
 
 - <ProductName /> server running (default: `https://localhost:8090`)
-- <ProductName /> certificate trusted by your system — add `backend/cmd/server/repository/resources/security/server.cert` to your system's trusted certificate store (Keychain on macOS, certificate store on Linux/Windows)
+- <ProductName /> certificate trusted by your system — add `backend/cmd/server/config/certs/server.cert` to your system's trusted certificate store (Keychain on macOS, certificate store on Linux/Windows)
 - One of the following installed: Claude Desktop, Claude Code CLI, or VS Code with the GitHub Copilot extension
 - Access to the <ProductName /> Console
 
@@ -226,7 +226,7 @@ The access token has expired or is invalid.
 
 The <ProductName /> certificate is not trusted by your system.
 
-1. Add `backend/cmd/server/repository/resources/security/server.cert` to your system's trusted certificate store.
+1. Add `backend/cmd/server/config/certs/server.cert` to your system's trusted certificate store.
 2. Restart your AI tool so it picks up the updated certificate trust settings.
 
 ### MCP Server Not Responding
