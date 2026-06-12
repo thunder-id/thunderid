@@ -82,6 +82,16 @@ Launch the <ProductName /> server:
 .\start.ps1
 ```
 
+:::note Windows Execution Policy
+If you see a `SecurityError` stating that `start.ps1` is not digitally signed, your system's PowerShell execution policy blocks unsigned scripts. Run the script with the execution policy bypass flag instead:
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File .\start.ps1
+```
+
+For more information, see [about_Execution_Policies](https://go.microsoft.com/fwlink/?LinkID=135170).
+:::
+
 </TabItem>
 </Tabs>
 
