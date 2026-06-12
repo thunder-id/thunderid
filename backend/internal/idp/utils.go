@@ -46,6 +46,111 @@ func GetPropertyValue(properties []cmodels.Property, name string) string {
 	return ""
 }
 
+// GetMappedUserType returns the resolved local user type for the IDP's attribute mapping,
+// or an empty string when no mapping is configured. This iteration resolves to the configured
+// default user type.
+func GetMappedUserType(idp *IDPDTO) string {
+	if idp == nil || idp.AttributeConfiguration == nil || idp.AttributeConfiguration.UserTypeResolution == nil {
+		return ""
+	}
+	return idp.AttributeConfiguration.UserTypeResolution.Default
+}
+
+// GetAttributeMappings returns the external→local attribute mappings for the resolved user type's
+// attributes entry, or nil when no mapping is configured.
+func GetAttributeMappings(idp *IDPDTO) []AttributeMapping {
+	if idp == nil || idp.AttributeConfiguration == nil {
+		return nil
+	}
+	userType := GetMappedUserType(idp)
+	if userType == "" {
+		return nil
+	}
+	for i := range idp.AttributeConfiguration.UserTypeAttributeMappings {
+		if idp.AttributeConfiguration.UserTypeAttributeMappings[i].UserType == userType {
+			return idp.AttributeConfiguration.UserTypeAttributeMappings[i].Attributes
+		}
+	}
+	return nil
+}
+
+// ApplyAttributeMappings applies external→local attribute mappings to attrs, supporting dot-notation
+// source paths for nested claims. Unmapped attributes pass through; mapped values take precedence
+// on collision. Returns attrs unchanged when no mappings are configured.
+func ApplyAttributeMappings(attrs map[string]interface{}, mappings []AttributeMapping) map[string]interface{} {
+	if len(mappings) == 0 {
+		return attrs
+	}
+
+	mappedSources := make(map[string]bool, len(mappings))
+	for _, m := range mappings {
+		mappedSources[m.ExternalAttribute] = true
+	}
+
+	result := make(map[string]interface{}, len(attrs))
+	for key, value := range attrs {
+		if !mappedSources[key] {
+			result[key] = value
+		}
+	}
+	for _, m := range mappings {
+		if value, ok := getNestedValue(attrs, m.ExternalAttribute); ok {
+			result[m.LocalAttribute] = value
+		}
+	}
+
+	return result
+}
+
+// getNestedValue resolves a value by exact key first, then by dot-notation path through nested maps.
+func getNestedValue(data map[string]interface{}, path string) (interface{}, bool) {
+	if value, ok := data[path]; ok {
+		return value, true
+	}
+	if !strings.Contains(path, ".") {
+		return nil, false
+	}
+
+	current := interface{}(data)
+	for _, segment := range strings.Split(path, ".") {
+		obj, ok := current.(map[string]interface{})
+		if !ok {
+			return nil, false
+		}
+		value, exists := obj[segment]
+		if !exists {
+			return nil, false
+		}
+		current = value
+	}
+	return current, true
+}
+
+// validateAttributeMappingShape validates the external→local mappings independently of any user type
+// schema: non-empty source/target names and no duplicate targets. A single external attribute may map
+// to multiple local attributes, but two external attributes mapping to the same local attribute is a
+// conflict and is rejected.
+func validateAttributeMappingShape(mappings []AttributeMapping) *serviceerror.ServiceError {
+	seenTargets := make(map[string]bool, len(mappings))
+	for _, m := range mappings {
+		if strings.TrimSpace(m.ExternalAttribute) == "" || strings.TrimSpace(m.LocalAttribute) == "" {
+			return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+				Key:          "error.idpservice.attribute_configuration_empty_claim_description",
+				DefaultValue: "attribute mapping must not contain empty attribute names",
+			})
+		}
+		if seenTargets[m.LocalAttribute] {
+			return serviceerror.CustomServiceError(ErrorInvalidAttributeConfiguration, core.I18nMessage{
+				Key: "error.idpservice.attribute_configuration_duplicate_target_description",
+				DefaultValue: fmt.Sprintf(
+					"local attribute name '%s' appears as a mapping target more than once", m.LocalAttribute),
+			})
+		}
+		seenTargets[m.LocalAttribute] = true
+	}
+	return nil
+}
+
 // validateIDP validates the identity provider details.
 func validateIDP(ctx context.Context, idp *IDPDTO, logger *log.Logger) *serviceerror.ServiceError {
 	if idp == nil {

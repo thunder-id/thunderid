@@ -76,6 +76,8 @@ curl -kL -X POST https://localhost:8090/identity-providers \
 | `logout_endpoint` | The provider's logout endpoint URL. |
 | `prompt` | The `prompt` parameter to send in authorization requests. |
 
+To map this provider's claims to local user attributes, set the top-level `attributeConfiguration` field — see [Attribute Configuration](../add-oidc-provider#attribute-configuration).
+
 Example with optional properties:
 
 ```bash

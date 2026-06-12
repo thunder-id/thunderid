@@ -54,6 +54,7 @@ type oidcAuthExecutor struct {
 	authService   authnoidc.OIDCAuthnCoreServiceInterface
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface
 	idpType       idp.IDPType
+	idpService    idp.IDPServiceInterface
 	logger        *log.Logger
 }
 
@@ -89,6 +90,7 @@ func newOIDCAuthExecutor(
 		authService:            authService,
 		authnProvider:          authnProvider,
 		idpType:                idpType,
+		idpService:             idpService,
 		logger:                 logger,
 	}
 }
@@ -194,6 +196,10 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		}
 	}
 
+	// Apply IDP claim mappings before identifier consistency checks and user attribute propagation.
+	basicResult.ExternalClaims = applyIDPAttributeMappings(
+		ctx.Context, o.idpService, idpID, basicResult.ExternalClaims, logger)
+
 	if !validateFederatedIdentifierConsistency(ctx, basicResult) {
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
@@ -238,7 +244,6 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 }
 
 // getContextUserAttributes extracts user-facing attributes from the external claims map.
-// TODO: Need to convert attributes as per the IDP to local attribute mapping when the support is implemented.
 func (o *oidcAuthExecutor) getContextUserAttributes(execResp *common.ExecutorResponse,
 	claims map[string]interface{}) map[string]interface{} {
 	userClaims := make(map[string]interface{})

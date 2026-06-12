@@ -67,10 +67,11 @@ func (ih *idpHandler) HandleIDPPostRequest(w http.ResponseWriter, r *http.Reques
 	}
 
 	idpDTO := &IDPDTO{
-		Name:        sysutils.SanitizeString(createRequest.Name),
-		Description: sysutils.SanitizeString(createRequest.Description),
-		Type:        IDPType(sysutils.SanitizeString(createRequest.Type)),
-		Properties:  properties,
+		Name:                   sysutils.SanitizeString(createRequest.Name),
+		Description:            sysutils.SanitizeString(createRequest.Description),
+		Type:                   IDPType(sysutils.SanitizeString(createRequest.Type)),
+		Properties:             properties,
+		AttributeConfiguration: sanitizeAttributeConfiguration(createRequest.AttributeConfiguration),
 	}
 	createdIDP, svcErr := ih.idpService.CreateIdentityProvider(ctx, idpDTO)
 	if svcErr != nil {
@@ -178,10 +179,11 @@ func (ih *idpHandler) HandleIDPPutRequest(w http.ResponseWriter, r *http.Request
 	}
 
 	idpDTO := &IDPDTO{
-		Name:        sysutils.SanitizeString(updateRequest.Name),
-		Description: sysutils.SanitizeString(updateRequest.Description),
-		Type:        IDPType(sysutils.SanitizeString(updateRequest.Type)),
-		Properties:  properties,
+		Name:                   sysutils.SanitizeString(updateRequest.Name),
+		Description:            sysutils.SanitizeString(updateRequest.Description),
+		Type:                   IDPType(sysutils.SanitizeString(updateRequest.Type)),
+		Properties:             properties,
+		AttributeConfiguration: sanitizeAttributeConfiguration(updateRequest.AttributeConfiguration),
 	}
 	idpDTO.ID = id
 
@@ -254,6 +256,40 @@ func getClientErrorStatusCode(errorCode string) int {
 	}
 }
 
+// sanitizeAttributeConfiguration sanitizes the resolved user type and each user type's claim mappings
+// in the attribute configuration. Returns nil when no profile is provided.
+func sanitizeAttributeConfiguration(profile *AttributeConfiguration) *AttributeConfiguration {
+	if profile == nil {
+		return nil
+	}
+	sanitized := &AttributeConfiguration{}
+	if profile.UserTypeResolution != nil {
+		sanitized.UserTypeResolution = &UserTypeResolution{
+			Default: sysutils.SanitizeString(profile.UserTypeResolution.Default),
+		}
+	}
+	if len(profile.UserTypeAttributeMappings) > 0 {
+		sanitized.UserTypeAttributeMappings = make(
+			[]UserTypeAttributeMapping, 0, len(profile.UserTypeAttributeMappings))
+		for _, entry := range profile.UserTypeAttributeMappings {
+			sanitizedEntry := UserTypeAttributeMapping{
+				UserType: sysutils.SanitizeString(entry.UserType),
+			}
+			if len(entry.Attributes) > 0 {
+				sanitizedEntry.Attributes = make([]AttributeMapping, 0, len(entry.Attributes))
+				for _, m := range entry.Attributes {
+					sanitizedEntry.Attributes = append(sanitizedEntry.Attributes, AttributeMapping{
+						ExternalAttribute: sysutils.SanitizeString(m.ExternalAttribute),
+						LocalAttribute:    sysutils.SanitizeString(m.LocalAttribute),
+					})
+				}
+			}
+			sanitized.UserTypeAttributeMappings = append(sanitized.UserTypeAttributeMappings, sanitizedEntry)
+		}
+	}
+	return sanitized
+}
+
 // getSanitizedProperties sanitizes a slice of PropertyDTOs and converts them to Properties.
 func getSanitizedProperties(propDTOs []cmodels.PropertyDTO) ([]cmodels.Property, error) {
 	properties := make([]cmodels.Property, 0, len(propDTOs))
@@ -275,10 +311,11 @@ func getSanitizedProperties(propDTOs []cmodels.PropertyDTO) ([]cmodels.Property,
 // getIDPResponse constructs the response for a identity provider.
 func getIDPResponse(idp IDPDTO) (idpResponse, error) {
 	returnIDP := idpResponse{
-		ID:          idp.ID,
-		Name:        idp.Name,
-		Description: idp.Description,
-		Type:        string(idp.Type),
+		ID:                     idp.ID,
+		Name:                   idp.Name,
+		Description:            idp.Description,
+		Type:                   string(idp.Type),
+		AttributeConfiguration: idp.AttributeConfiguration,
 	}
 
 	// Convert Property to PropertyDTO and mask secret properties in the response.

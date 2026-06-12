@@ -19,6 +19,7 @@
 package executor
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,8 +29,33 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
+
+// applyIDPAttributeMappings transforms external IDP claims into local attributes using the IDP's
+// configured attribute mapping. On any error loading the IDP it logs and returns the claims
+// unchanged, so a misconfiguration never blocks federated login (the mapping is validated when
+// the IDP is created or updated).
+func applyIDPAttributeMappings(ctx context.Context, idpService idp.IDPServiceInterface, idpID string,
+	claims map[string]interface{}, logger *log.Logger) map[string]interface{} {
+	if idpService == nil || idpID == "" || len(claims) == 0 {
+		return claims
+	}
+
+	idpDTO, svcErr := idpService.GetIdentityProvider(ctx, idpID)
+	if svcErr != nil {
+		logger.ErrorWithContext(ctx, "Failed to load identity provider for attribute mapping",
+			log.String("idpID", idpID), log.String("errorCode", svcErr.Code))
+		return claims
+	}
+	if idpDTO == nil {
+		return claims
+	}
+
+	return idp.ApplyAttributeMappings(claims, idp.GetAttributeMappings(idpDTO))
+}
 
 // getAuthnServiceName returns the authn service name for an executor.
 // Returns empty string if executor doesn't map to an authn service.
@@ -143,7 +169,8 @@ func validateFederatedIdentifierConsistency(ctx *core.NodeContext,
 		federatedIdentifiers[userAttributeEmail] = systemutils.ConvertInterfaceValueToString(email)
 	}
 
-	// TODO: Refine this well-known-key comparison when IDP-to-local attribute mapping is supported
+	// External claims are mapped to local claim names (via the IDP's attribute mapping) before this
+	// check runs, so the well-known local keys below match the federated identifiers.
 	fedIdfConsistencyKeys := []string{userAttributeEmail, userAttributeSub}
 	for _, key := range fedIdfConsistencyKeys {
 		federatedValue := federatedIdentifiers[key]

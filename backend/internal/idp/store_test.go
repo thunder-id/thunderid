@@ -89,7 +89,7 @@ func (s *IDPStoreTestSuite) TestCreateIdentityProvider_Success() {
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryCreateIdentityProvider, idp.ID, idp.Name,
-		idp.Description, idp.Type, `{"client_id":{"value":"test-client","isSecret":false}}`, testDeploymentID).
+		idp.Description, idp.Type, `{"client_id":{"value":"test-client","isSecret":false}}`, nil, testDeploymentID).
 		Return(int64(1), nil)
 
 	err := s.store.CreateIdentityProvider(context.Background(), idp)
@@ -111,7 +111,7 @@ func (s *IDPStoreTestSuite) TestCreateIdentityProvider_NoProperties() {
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryCreateIdentityProvider, idp.ID, idp.Name,
-		idp.Description, idp.Type, "", testDeploymentID).Return(int64(1), nil)
+		idp.Description, idp.Type, "", nil, testDeploymentID).Return(int64(1), nil)
 
 	err := s.store.CreateIdentityProvider(context.Background(), idp)
 
@@ -139,7 +139,7 @@ func (s *IDPStoreTestSuite) TestCreateIdentityProvider_ExecuteError() {
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryCreateIdentityProvider, idp.ID, idp.Name,
-		idp.Description, idp.Type, "", testDeploymentID).Return(int64(0), errors.New("execute error"))
+		idp.Description, idp.Type, "", nil, testDeploymentID).Return(int64(0), errors.New("execute error"))
 
 	err := s.store.CreateIdentityProvider(context.Background(), idp)
 
@@ -388,7 +388,7 @@ func (s *IDPStoreTestSuite) TestUpdateIdentityProvider_Success() {
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpdateIdentityProviderByID, idp.ID, idp.Name,
-		idp.Description, idp.Type, "", testDeploymentID).Return(int64(1), nil)
+		idp.Description, idp.Type, "", nil, testDeploymentID).Return(int64(1), nil)
 
 	err := s.store.UpdateIdentityProvider(context.Background(), idp)
 
@@ -410,7 +410,7 @@ func (s *IDPStoreTestSuite) TestUpdateIdentityProvider_WithProperties() {
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpdateIdentityProviderByID, idp.ID, idp.Name,
-		idp.Description, idp.Type, `{"client_id":{"value":"test","isSecret":false}}`, testDeploymentID).
+		idp.Description, idp.Type, `{"client_id":{"value":"test","isSecret":false}}`, nil, testDeploymentID).
 		Return(int64(1), nil)
 
 	err := s.store.UpdateIdentityProvider(context.Background(), idp)
@@ -439,7 +439,7 @@ func (s *IDPStoreTestSuite) TestUpdateIdentityProvider_ExecuteError() {
 
 	s.mockDBProvider.On("GetConfigDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpdateIdentityProviderByID, idp.ID, idp.Name,
-		idp.Description, idp.Type, "", testDeploymentID).Return(int64(0), errors.New("execute error"))
+		idp.Description, idp.Type, "", nil, testDeploymentID).Return(int64(0), errors.New("execute error"))
 
 	err := s.store.UpdateIdentityProvider(context.Background(), idp)
 
@@ -767,4 +767,74 @@ func (s *IDPStoreTestSuite) TestGetIdentityProvidersByProperty_QueryError() {
 	s.Contains(err.Error(), "failed to execute query")
 	s.mockDBProvider.AssertExpectations(s.T())
 	s.mockDBClient.AssertExpectations(s.T())
+}
+
+func (s *IDPStoreTestSuite) TestSerializeAttributeConfiguration_Nil() {
+	result, err := serializeAttributeConfiguration(nil)
+	s.NoError(err)
+	s.Nil(result)
+}
+
+func (s *IDPStoreTestSuite) TestSerializeAttributeConfiguration_WithMapping() {
+	am := &AttributeConfiguration{
+		UserTypeResolution: &UserTypeResolution{Default: "person"},
+		UserTypeAttributeMappings: []UserTypeAttributeMapping{
+			{
+				UserType:   "person",
+				Attributes: []AttributeMapping{{ExternalAttribute: "given_name", LocalAttribute: "firstName"}},
+			},
+		},
+	}
+	result, err := serializeAttributeConfiguration(am)
+	s.NoError(err)
+	s.NotNil(result)
+	s.Contains(result.(string), `"userTypeResolution":{"default":"person"}`)
+	s.Contains(result.(string), `"userType":"person"`)
+	s.Contains(result.(string), `"externalAttribute":"given_name"`)
+	s.Contains(result.(string), `"localAttribute":"firstName"`)
+}
+
+func (s *IDPStoreTestSuite) TestParseAttributeConfigurationFromRow_Missing() {
+	result, err := parseAttributeConfigurationFromRow(map[string]interface{}{})
+	s.NoError(err)
+	s.Nil(result)
+}
+
+func (s *IDPStoreTestSuite) TestParseAttributeConfigurationFromRow_StringValue() {
+	row := map[string]interface{}{
+		"attribute_configuration": `{"userTypeResolution":{"default":"person"},` +
+			`"userTypeAttributeMappings":[{"userType":"person","attributes":` +
+			`[{"externalAttribute":"given_name","localAttribute":"firstName"}]}]}`,
+	}
+	result, err := parseAttributeConfigurationFromRow(row)
+	s.NoError(err)
+	s.Require().NotNil(result)
+	s.Require().NotNil(result.UserTypeResolution)
+	s.Equal("person", result.UserTypeResolution.Default)
+	s.Require().Len(result.UserTypeAttributeMappings, 1)
+	s.Equal("person", result.UserTypeAttributeMappings[0].UserType)
+	s.Require().Len(result.UserTypeAttributeMappings[0].Attributes, 1)
+	s.Equal("given_name", result.UserTypeAttributeMappings[0].Attributes[0].ExternalAttribute)
+	s.Equal("firstName", result.UserTypeAttributeMappings[0].Attributes[0].LocalAttribute)
+}
+
+func (s *IDPStoreTestSuite) TestParseAttributeConfigurationFromRow_ByteSliceValue() {
+	row := map[string]interface{}{
+		"attribute_configuration": []byte(`{"userTypeResolution":{"default":"admin"}}`),
+	}
+	result, err := parseAttributeConfigurationFromRow(row)
+	s.NoError(err)
+	s.Require().NotNil(result)
+	s.Require().NotNil(result.UserTypeResolution)
+	s.Equal("admin", result.UserTypeResolution.Default)
+}
+
+func (s *IDPStoreTestSuite) TestParseAttributeConfigurationFromRow_InvalidJSON() {
+	row := map[string]interface{}{
+		"attribute_configuration": `{invalid json}`,
+	}
+	result, err := parseAttributeConfigurationFromRow(row)
+	s.Error(err)
+	s.Nil(result)
+	s.Contains(err.Error(), "failed to deserialize attribute mapping from JSON")
 }

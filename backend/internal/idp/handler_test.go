@@ -567,3 +567,38 @@ func (s *IDPHandlerTestSuite) TestHandleIDPPostRequest_WithSecretProperty() {
 	s.Len(response.Properties, 1)
 	s.Equal("******", response.Properties[0].Value)
 }
+
+func (s *IDPHandlerTestSuite) TestSanitizeAttributeConfiguration_Nil() {
+	s.Nil(sanitizeAttributeConfiguration(nil))
+}
+
+func (s *IDPHandlerTestSuite) TestSanitizeAttributeConfiguration_NoMappings() {
+	result := sanitizeAttributeConfiguration(&AttributeConfiguration{
+		UserTypeResolution: &UserTypeResolution{Default: "  person  "},
+	})
+	s.Require().NotNil(result.UserTypeResolution)
+	s.Equal("person", result.UserTypeResolution.Default)
+	s.Empty(result.UserTypeAttributeMappings)
+}
+
+func (s *IDPHandlerTestSuite) TestSanitizeAttributeConfiguration_TrimsMappings() {
+	am := &AttributeConfiguration{
+		UserTypeResolution: &UserTypeResolution{Default: " person "},
+		UserTypeAttributeMappings: []UserTypeAttributeMapping{
+			{
+				UserType: " person ",
+				Attributes: []AttributeMapping{
+					{ExternalAttribute: " given_name ", LocalAttribute: " firstName "},
+				},
+			},
+		},
+	}
+	result := sanitizeAttributeConfiguration(am)
+	s.Require().NotNil(result.UserTypeResolution)
+	s.Equal("person", result.UserTypeResolution.Default)
+	s.Require().Len(result.UserTypeAttributeMappings, 1)
+	s.Equal("person", result.UserTypeAttributeMappings[0].UserType)
+	s.Require().Len(result.UserTypeAttributeMappings[0].Attributes, 1)
+	s.Equal("given_name", result.UserTypeAttributeMappings[0].Attributes[0].ExternalAttribute)
+	s.Equal("firstName", result.UserTypeAttributeMappings[0].Attributes[0].LocalAttribute)
+}

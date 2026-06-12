@@ -192,6 +192,8 @@ Create an IDP via the `/identity-providers` API with the following properties:
 | `jwks_endpoint` | Yes | The IDP's JWKS URL for signature verification. |
 | `token_exchange_enabled` | Yes | Set to `"true"` to enable this IDP for token exchange. |
 
+To rename external attributes to local attributes during exchange, set the IDP's `attributeConfiguration` field (separate from `properties`). See [Attribute Configuration](#attribute-configuration).
+
 For token-exchange-only IDPs, only the three properties above are required. The redirect-flow OIDC
 properties (`client_secret`, `redirect_uri`, `authorization_endpoint`, `token_endpoint`) are **not**
 required. They are only needed when the same IDP is also used for redirect-based login.
@@ -259,6 +261,10 @@ Response:
 
 The issued token's `sub` claim contains the external user's subject identifier from the original token.
 
+### Attribute Configuration
+
+Attribute configuration for token exchange follows the same `attributeConfiguration` structure as federated sign-in. See [Add an OIDC Identity Provider](../identity-providers/add-oidc-provider#attribute-configuration) for the full reference.
+
 ### Validation Rules
 
 When processing an external token for exchange, <ProductName />:
@@ -275,7 +281,7 @@ If any step fails, the exchange returns HTTP 400 with `error=invalid_request` an
 
 - Only JWT tokens are supported for external exchange. Opaque tokens from providers like GitHub cannot be exchanged.
 - The external user's `sub` is passed through as-is — no local user lookup or JIT provisioning is performed.
-- No scope or claim mapping is applied. External token scopes use the existing intersection logic; external claims pass through filtered by the app's `userAttributes` configuration.
+- No scope mapping is applied. External token scopes use the existing intersection logic. External claims can be renamed to local attributes with the IDP's `attributeConfiguration` (see [Attribute Configuration](#attribute-configuration)); the resulting attributes are still filtered by the app's `userAttributes` configuration.
 - Trust is global: all token-exchange-enabled IDPs are available to all applications that have the `token-exchange` grant type.
 
 ## Reference

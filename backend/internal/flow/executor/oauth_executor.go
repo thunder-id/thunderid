@@ -255,6 +255,11 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return errors.New("OAuth authentication failed")
 	}
 
+	// Rename external IDP claims to their configured local names before they are used for
+	// identifier consistency checks and propagated to the authenticated user attributes.
+	basicResult.ExternalClaims = applyIDPAttributeMappings(
+		ctx.Context, o.idpService, idpID, basicResult.ExternalClaims, logger)
+
 	if !validateFederatedIdentifierConsistency(ctx, basicResult) {
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
@@ -504,6 +509,28 @@ func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext
 	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Resolving user type for automatic provisioning")
 
+	// If the IDP's attribute mapping names a target user type, provision into it directly
+	// (it is validated at IDP configuration time), bypassing app-level auto-resolution.
+	mappedUserType := o.mappedUserTypeForIDP(ctx)
+	if mappedUserType != "" {
+		entityType, svcErr := o.entityTypeService.GetEntityTypeByName(ctx.Context,
+			entitytype.TypeCategoryUser, mappedUserType)
+		if svcErr != nil {
+			if svcErr.Type == serviceerror.ClientErrorType {
+				execResp.Status = common.ExecFailure
+				execResp.Error = svcErr
+				return nil
+			}
+			logger.ErrorWithContext(ctx.Context, "Error while retrieving IDP-configured user type",
+				log.String("errorCode", svcErr.Code),
+				log.String("description", svcErr.ErrorDescription.DefaultValue))
+			return errors.New("error while retrieving user type")
+		}
+		execResp.RuntimeData[userTypeKey] = entityType.Name
+		execResp.RuntimeData[defaultOUIDKey] = entityType.OUID
+		return nil
+	}
+
 	if len(ctx.Application.AllowedUserTypes) == 0 {
 		logger.Debug(ctx.Context, "No allowed user types configured for the application")
 		execResp.Status = common.ExecFailure
@@ -558,8 +585,22 @@ func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext
 	return nil
 }
 
+// mappedUserTypeForIDP returns the user type configured in the IDP's attribute mapping, or an
+// empty string if none is configured or the IDP cannot be loaded (in which case the caller falls
+// back to app-level user type resolution).
+func (o *oAuthExecutor) mappedUserTypeForIDP(ctx *core.NodeContext) string {
+	idpID, err := o.GetIdpID(ctx)
+	if err != nil {
+		return ""
+	}
+	idpDTO, svcErr := o.idpService.GetIdentityProvider(ctx.Context, idpID)
+	if svcErr != nil || idpDTO == nil {
+		return ""
+	}
+	return idp.GetMappedUserType(idpDTO)
+}
+
 // getContextUserAttributes extracts and returns user attributes from the user info map.
-// TODO: Need to convert attributes as per the IDP to local attribute mapping when the support is implemented.
 func (o *oAuthExecutor) getContextUserAttributes(execResp *common.ExecutorResponse,
 	userInfo map[string]string) map[string]interface{} {
 	attributes := make(map[string]interface{})

@@ -20,6 +20,7 @@ package idp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
@@ -82,8 +83,14 @@ func (s *idpStore) CreateIdentityProvider(ctx context.Context, idp IDPDTO) error
 		}
 	}
 
+	attributeConfigurationJSON, err := serializeAttributeConfiguration(idp.AttributeConfiguration)
+	if err != nil {
+		return err
+	}
+
 	_, err = dbClient.ExecuteContext(ctx,
-		queryCreateIdentityProvider, idp.ID, idp.Name, idp.Description, idp.Type, propertiesJSON, s.deploymentID,
+		queryCreateIdentityProvider, idp.ID, idp.Name, idp.Description, idp.Type, propertiesJSON,
+		attributeConfigurationJSON, s.deploymentID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
@@ -198,12 +205,18 @@ func (s *idpStore) GetIdentityProvidersByProperty(ctx context.Context,
 			}
 		}
 
+		attributeConfiguration, err := parseAttributeConfigurationFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+
 		idps = append(idps, IDPDTO{
-			ID:          basicIDP.ID,
-			Name:        basicIDP.Name,
-			Description: basicIDP.Description,
-			Type:        basicIDP.Type,
-			Properties:  properties,
+			ID:                     basicIDP.ID,
+			Name:                   basicIDP.Name,
+			Description:            basicIDP.Description,
+			Type:                   basicIDP.Type,
+			Properties:             properties,
+			AttributeConfiguration: attributeConfiguration,
 		})
 	}
 	return idps, nil
@@ -253,12 +266,18 @@ func (s *idpStore) getIDP(ctx context.Context, query dbmodel.DBQuery, identifier
 		}
 	}
 
+	attributeConfiguration, err := parseAttributeConfigurationFromRow(row)
+	if err != nil {
+		return nil, err
+	}
+
 	idp := &IDPDTO{
-		ID:          basicIDP.ID,
-		Name:        basicIDP.Name,
-		Description: basicIDP.Description,
-		Type:        basicIDP.Type,
-		Properties:  properties,
+		ID:                     basicIDP.ID,
+		Name:                   basicIDP.Name,
+		Description:            basicIDP.Description,
+		Type:                   basicIDP.Type,
+		Properties:             properties,
+		AttributeConfiguration: attributeConfiguration,
 	}
 
 	return idp, nil
@@ -279,9 +298,14 @@ func (s *idpStore) UpdateIdentityProvider(ctx context.Context, idp *IDPDTO) erro
 		}
 	}
 
+	attributeConfigurationJSON, err := serializeAttributeConfiguration(idp.AttributeConfiguration)
+	if err != nil {
+		return err
+	}
+
 	// Update the IDP in the database
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateIdentityProviderByID, idp.ID, idp.Name,
-		idp.Description, idp.Type, propertiesJSON, s.deploymentID)
+		idp.Description, idp.Type, propertiesJSON, attributeConfigurationJSON, s.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -338,4 +362,39 @@ func buildIDPFromResultRow(row map[string]interface{}) (*BasicIDPDTO, error) {
 	}
 
 	return &idp, nil
+}
+
+// serializeAttributeConfiguration marshals the attribute mapping to a JSON string. Returns nil when
+// no mapping is configured so the database column receives SQL NULL instead of an empty string
+// (required for PostgreSQL JSONB columns).
+func serializeAttributeConfiguration(am *AttributeConfiguration) (interface{}, error) {
+	if am == nil {
+		return nil, nil
+	}
+	bytes, err := json.Marshal(am)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize attribute mapping to JSON: %w", err)
+	}
+	return string(bytes), nil
+}
+
+// parseAttributeConfigurationFromRow deserializes the ATTRIBUTE_CONFIGURATION column (string or []byte) into
+// an AttributeConfiguration, returning nil when the column is empty.
+func parseAttributeConfigurationFromRow(row map[string]interface{}) (*AttributeConfiguration, error) {
+	var raw string
+	switch v := row["attribute_configuration"].(type) {
+	case string:
+		raw = v
+	case []byte:
+		raw = string(v)
+	}
+	if raw == "" {
+		return nil, nil
+	}
+
+	var am AttributeConfiguration
+	if err := json.Unmarshal([]byte(raw), &am); err != nil {
+		return nil, fmt.Errorf("failed to deserialize attribute mapping from JSON: %w", err)
+	}
+	return &am, nil
 }

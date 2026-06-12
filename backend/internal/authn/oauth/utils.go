@@ -72,6 +72,9 @@ func parseIDPConfig(idp *idpPkg.IDPDTO) (*OAuthClientConfig, error) {
 			oAuthClientConfig.OAuthEndpoints.LogoutEndpoint = value
 		case idpPkg.PropJwksEndpoint:
 			oAuthClientConfig.OAuthEndpoints.JwksEndpoint = value
+		case idpPkg.PropIssuer, idpPkg.PropTokenExchangeEnabled:
+			// Server-side configuration consumed elsewhere (token exchange).
+			// These must not be forwarded as query parameters on the external authorize request.
 		default:
 			if value != "" {
 				oAuthClientConfig.AdditionalParams[name] = value

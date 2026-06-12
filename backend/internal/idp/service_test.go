@@ -881,7 +881,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_FailsForDeclarativeIDP(
 	fileStore.On("GetIdentityProviderByName", context.Background(), "Updated Name").
 		Return((*IDPDTO)(nil), ErrIDPNotFound)
 
-	service := newIDPService(compositeStore, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, &mockTransactioner{})
 
 	updatedIDP := &IDPDTO{
 		Name:        "Updated Name",
@@ -932,7 +932,7 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_SucceedsForMutableIDP()
 		return dto.ID == idpID && dto.Name == "Updated Name"
 	})).Return(nil)
 
-	service := newIDPService(compositeStore, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, &mockTransactioner{})
 
 	updatedIDP := &IDPDTO{
 		Name:        "Updated Name",
@@ -974,7 +974,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_FailsForDeclarativeIDP(
 	dbStore.On("GetIdentityProvider", context.Background(), idpID).Return((*IDPDTO)(nil), ErrIDPNotFound)
 	fileStore.On("GetIdentityProvider", context.Background(), idpID).Return(existingIDP, nil)
 
-	service := newIDPService(compositeStore, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, &mockTransactioner{})
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
 
@@ -1011,7 +1011,7 @@ func (s *IDPServiceTestSuite) TestDeleteIdentityProvider_SucceedsForMutableIDP()
 	dbStore.On("GetIdentityProvider", context.Background(), idpID).Return(existingIDP, nil)
 	dbStore.On("DeleteIdentityProvider", context.Background(), idpID).Return(nil)
 
-	service := newIDPService(compositeStore, &mockTransactioner{})
+	service := newIDPService(compositeStore, nil, &mockTransactioner{})
 
 	err := service.DeleteIdentityProvider(context.Background(), idpID)
 

@@ -19,6 +19,7 @@
 package executor
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -29,7 +30,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
+	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
 
 type UtilsTestSuite struct {
@@ -714,4 +719,62 @@ func (s *UtilsTestSuite) TestGetAuthenticatedIdentifierValue() {
 			s.Equal(tt.expectedValue, value)
 		})
 	}
+}
+
+func (s *UtilsTestSuite) TestApplyIDPAttributeMappings_RenamesClaims() {
+	mockIDP := idpmock.NewIDPServiceInterfaceMock(s.T())
+	mockIDP.On("GetIdentityProvider", mock.Anything, "idp-1").
+		Return(&idp.IDPDTO{ID: "idp-1", AttributeConfiguration: &idp.AttributeConfiguration{
+			UserTypeResolution: &idp.UserTypeResolution{Default: "person"},
+			UserTypeAttributeMappings: []idp.UserTypeAttributeMapping{{UserType: "person",
+				Attributes: []idp.AttributeMapping{{
+					ExternalAttribute: "given_name", LocalAttribute: "firstName"}}}}}}, nil)
+
+	claims := map[string]interface{}{"given_name": "Jane", "email": "jane@example.com"}
+	result := applyIDPAttributeMappings(context.Background(), mockIDP, "idp-1", claims, log.GetLogger())
+
+	s.Equal("Jane", result["firstName"])
+	s.Equal("jane@example.com", result["email"])
+	_, present := result["given_name"]
+	s.False(present)
+}
+
+func (s *UtilsTestSuite) TestApplyIDPAttributeMappings_NoMappings_Passthrough() {
+	mockIDP := idpmock.NewIDPServiceInterfaceMock(s.T())
+	mockIDP.On("GetIdentityProvider", mock.Anything, "idp-1").
+		Return(&idp.IDPDTO{ID: "idp-1"}, nil)
+
+	claims := map[string]interface{}{"given_name": "Jane"}
+	result := applyIDPAttributeMappings(context.Background(), mockIDP, "idp-1", claims, log.GetLogger())
+
+	s.Equal("Jane", result["given_name"])
+}
+
+func (s *UtilsTestSuite) TestApplyIDPAttributeMappings_ServiceError_Passthrough() {
+	mockIDP := idpmock.NewIDPServiceInterfaceMock(s.T())
+	mockIDP.On("GetIdentityProvider", mock.Anything, "idp-1").
+		Return((*idp.IDPDTO)(nil), &serviceerror.ServiceError{Code: "IDP-1001"})
+
+	claims := map[string]interface{}{"given_name": "Jane"}
+	result := applyIDPAttributeMappings(context.Background(), mockIDP, "idp-1", claims, log.GetLogger())
+
+	s.Equal("Jane", result["given_name"])
+}
+
+func (s *UtilsTestSuite) TestApplyIDPAttributeMappings_NilIDPDTO_Passthrough() {
+	mockIDP := idpmock.NewIDPServiceInterfaceMock(s.T())
+	mockIDP.On("GetIdentityProvider", mock.Anything, "idp-1").
+		Return((*idp.IDPDTO)(nil), (*serviceerror.ServiceError)(nil))
+
+	claims := map[string]interface{}{"given_name": "Jane"}
+	result := applyIDPAttributeMappings(context.Background(), mockIDP, "idp-1", claims, log.GetLogger())
+
+	s.Equal("Jane", result["given_name"])
+}
+
+func (s *UtilsTestSuite) TestApplyIDPAttributeMappings_EmptyClaims_NoLookup() {
+	mockIDP := idpmock.NewIDPServiceInterfaceMock(s.T())
+	result := applyIDPAttributeMappings(
+		context.Background(), mockIDP, "idp-1", map[string]interface{}{}, log.GetLogger())
+	s.Empty(result)
 }
