@@ -39,9 +39,9 @@ const (
 	TargetDir                   = "../../target/dist"
 	ExtractedDir                = "../../target/out/.test"
 	TestDeploymentYamlPath      = "./resources/deployment.yaml"
-	DefaultConfigJSONPath       = "../../backend/cmd/server/repository/resources/conf/default.json"
+	DefaultConfigJSONPath       = "../../backend/cmd/server/config/default.json"
 	TestDatabaseSchemaDirectory = "resources/dbscripts"
-	DatabaseFileBasePath        = "repository/database/"
+	DatabaseFileBasePath        = "database/"
 )
 
 // ServerBinary is the name of the server binary, platform-dependent.
@@ -366,7 +366,7 @@ func ReplaceResources(zipFilePattern string) error {
 		log.Printf("Current working directory: %s", cwd)
 	}
 
-	destPath := filepath.Join(extractedProductHome, "repository", "conf", "deployment.yaml")
+	destPath := filepath.Join(extractedProductHome, "deployment.yaml")
 
 	// Ensure the destination directory exists
 	if err := os.MkdirAll(filepath.Dir(destPath), os.ModePerm); err != nil {
@@ -378,7 +378,7 @@ func ReplaceResources(zipFilePattern string) error {
 		return fmt.Errorf("failed to replace deployment.yaml: %v", err)
 	}
 
-	defaultConfigDestPath := filepath.Join(extractedProductHome, "repository", "resources", "conf", "default.json")
+	defaultConfigDestPath := filepath.Join(extractedProductHome, "config", "default.json")
 
 	if err := os.MkdirAll(filepath.Dir(defaultConfigDestPath), os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create resources conf directory: %v", err)
@@ -393,13 +393,13 @@ func ReplaceResources(zipFilePattern string) error {
 }
 
 // CopyDeclarativeResources copies declarative resource fixtures from the test resources directory
-// into the extracted product's repository/resources directory.
+// into the extracted product's config/resources directory.
 // This enables the server to load declarative resources on startup.
 func CopyDeclarativeResources(zipFilePattern string) error {
 	log.Println("Copying declarative resources...")
 
 	srcPath := "./resources/declarative_resources"
-	destPath := filepath.Join(extractedProductHome, "repository", "resources")
+	destPath := filepath.Join(extractedProductHome, "config", "resources")
 
 	// Check if source directory exists
 	if _, err := os.Stat(srcPath); os.IsNotExist(err) {
@@ -855,7 +855,7 @@ func waitForServerReady(timeout time.Duration) error {
 func UpdateDeploymentConfig(srcPath string) error {
 	ensureInitialized()
 
-	destPath := filepath.Join(extractedProductHome, "repository", "conf", "deployment.yaml")
+	destPath := filepath.Join(extractedProductHome, "deployment.yaml")
 	if err := os.MkdirAll(filepath.Dir(destPath), os.ModePerm); err != nil {
 		return fmt.Errorf("failed to ensure conf directory exists: %w", err)
 	}
@@ -875,7 +875,7 @@ func UpdateDeploymentConfig(srcPath string) error {
 func PatchDeploymentConfig(patch map[string]interface{}) error {
 	ensureInitialized()
 
-	configPath := filepath.Join(extractedProductHome, "repository", "conf", "deployment.yaml")
+	configPath := filepath.Join(extractedProductHome, "deployment.yaml")
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -910,7 +910,7 @@ func PatchDeploymentConfig(patch map[string]interface{}) error {
 func ReadDeploymentConfigKey(key string) (interface{}, error) {
 	ensureInitialized()
 
-	configPath := filepath.Join(extractedProductHome, "repository", "conf", "deployment.yaml")
+	configPath := filepath.Join(extractedProductHome, "deployment.yaml")
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {

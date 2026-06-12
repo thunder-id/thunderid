@@ -114,11 +114,10 @@ BUILD_DIR=$OUTPUT_DIR/.build
 LOCAL_CERT_DIR=$OUTPUT_DIR/.cert
 BACKEND_BASE_DIR=backend
 BACKEND_DIR=$BACKEND_BASE_DIR/cmd/server
-REPOSITORY_DIR=$BACKEND_BASE_DIR/cmd/server/repository
-REPOSITORY_DB_DIR=$REPOSITORY_DIR/database
+REPOSITORY_DB_DIR=$BACKEND_DIR/database
 SERVER_SCRIPTS_DIR=$BACKEND_BASE_DIR/scripts
 SERVER_DB_SCRIPTS_DIR=$BACKEND_BASE_DIR/dbscripts
-SECURITY_DIR=repository/resources/security
+SECURITY_DIR=config/certs
 FRONTEND_BASE_DIR=frontend
 GATE_APP_DIST_DIR=apps/gate
 CONSOLE_APP_DIST_DIR=apps/console
@@ -157,7 +156,7 @@ PNPM_VERSION="11.0.9"
 # Read Configuration from deployment.yaml
 # ============================================================================
 
-CONFIG_FILE="./backend/cmd/server/repository/conf/deployment.yaml"
+CONFIG_FILE="./backend/cmd/server/deployment.yaml"
 
 # Function to read config with fallback
 read_config() {
@@ -465,7 +464,11 @@ function prepare_backend_for_packaging() {
     fi
 
     cp "$BUILD_DIR/$binary_name" "$DIST_DIR/$PRODUCT_FOLDER/"
-    cp -r "$REPOSITORY_DIR" "$DIST_DIR/$PRODUCT_FOLDER/"
+    cp "$BACKEND_DIR/deployment.yaml" "$DIST_DIR/$PRODUCT_FOLDER/"
+    cp -r "$BACKEND_DIR/config" "$DIST_DIR/$PRODUCT_FOLDER/"
+    if [ -d "$REPOSITORY_DB_DIR" ]; then
+        cp -r "$REPOSITORY_DB_DIR" "$DIST_DIR/$PRODUCT_FOLDER/"
+    fi
     cp "$VERSION_FILE" "$DIST_DIR/$PRODUCT_FOLDER/"
     cp -r "$SERVER_SCRIPTS_DIR" "$DIST_DIR/$PRODUCT_FOLDER/"
     cp -r "$SERVER_DB_SCRIPTS_DIR" "$DIST_DIR/$PRODUCT_FOLDER/"
@@ -566,7 +569,7 @@ function package() {
                 "$GO_OS" "$GO_ARCH" "$(cd "$DIST_DIR/$PRODUCT_FOLDER" && pwd)"
     else
         echo "Skipping consent server packaging (--without-consent)..."
-        local target_yaml="$DIST_DIR/$PRODUCT_FOLDER/repository/conf/deployment.yaml"
+        local target_yaml="$DIST_DIR/$PRODUCT_FOLDER/deployment.yaml"
         if command -v yq >/dev/null 2>&1; then
             yq eval '.consent.enabled = false' -i "$target_yaml" 2>/dev/null || sed -i.bak '/^consent:/ { n; s/enabled: true/enabled: false/; }' "$target_yaml" || true
         else
@@ -576,6 +579,7 @@ function package() {
     fi
 
     echo "Creating zip file..."
+    rm -f "$DIST_DIR/$PRODUCT_FOLDER.zip"
     (cd "$DIST_DIR" && find "$PRODUCT_FOLDER" | sort | zip "$PRODUCT_FOLDER.zip" -@)
     rm -rf "${DIST_DIR:?}/$PRODUCT_FOLDER" "$BUILD_DIR"
     echo "================================================================"

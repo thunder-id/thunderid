@@ -1102,7 +1102,7 @@ this is not valid yaml:
 //nolint:dupl // Similar test setup required for different error scenarios
 func TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML(t *testing.T) {
 	tmpDir := t.TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	schemaDir := confDir + "/user_types"
 
 	err := os.MkdirAll(schemaDir, 0750)
@@ -1152,14 +1152,14 @@ func TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML(t *testing.T) {
 //nolint:dupl // Similar test setup required for different error scenarios
 func TestInitialize_WithDeclarativeResourcesEnabled_ValidationFailure(t *testing.T) {
 	tmpDir := t.TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	schemaDir := confDir + "/user_types"
 
 	err := os.MkdirAll(schemaDir, 0750)
 	assert.NoError(t, err)
 
 	// Create crypto directory
-	cryptoDir := tmpDir + "/repository/conf"
+	cryptoDir := tmpDir + "/config/certs"
 	err = os.MkdirAll(cryptoDir, 0750)
 	assert.NoError(t, err)
 
@@ -1211,14 +1211,14 @@ schema: |
 // ou_handle in a declarative resource cannot be resolved.
 func TestInitialize_WithDeclarativeResourcesEnabled_OUHandleNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	schemaDir := confDir + "/user_types"
 
 	err := os.MkdirAll(schemaDir, 0750)
 	assert.NoError(t, err)
 
 	// Create crypto directory
-	cryptoDir := tmpDir + "/repository/conf"
+	cryptoDir := tmpDir + "/config/certs"
 	err = os.MkdirAll(cryptoDir, 0750)
 	assert.NoError(t, err)
 
@@ -1288,14 +1288,14 @@ schema: |
 //nolint:dupl // Similar test setup required for different error scenarios
 func TestInitialize_WithDeclarativeResourcesEnabled_InvalidJSONSchema(t *testing.T) {
 	tmpDir := t.TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	schemaDir := confDir + "/user_types"
 
 	err := os.MkdirAll(schemaDir, 0750)
 	assert.NoError(t, err)
 
 	// Create crypto directory
-	cryptoDir := tmpDir + "/repository/conf"
+	cryptoDir := tmpDir + "/config/certs"
 	err = os.MkdirAll(cryptoDir, 0750)
 	assert.NoError(t, err)
 

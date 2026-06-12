@@ -727,7 +727,7 @@ func (suite *InitTestSuite) TestInitialize_StoreInitError() {
 	testDir := suite.T().TempDir()
 
 	// Create invalid roles yaml
-	rolesDir := filepath.Join(testDir, "repository", "resources", "roles")
+	rolesDir := filepath.Join(testDir, "config", "resources", "roles")
 	err := os.MkdirAll(rolesDir, 0750)
 	suite.NoError(err)
 	err = os.WriteFile(filepath.Join(rolesDir, "invalid.yaml"), []byte("invalid yaml content: ["), 0600)

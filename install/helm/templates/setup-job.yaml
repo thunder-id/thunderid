@@ -98,7 +98,7 @@ spec:
             - |
               if [ ! -f /data/.initialized ]; then
                 echo "Copying database directory from image..."
-                cp -r /opt/thunderid/repository/database/* /data/
+                cp -r /opt/thunderid/database/* /data/
                 touch /data/.initialized
                 echo "Database initialization complete"
               else
@@ -192,7 +192,7 @@ spec:
           volumeMounts:
             {{- if or .Values.persistence.enabled $usingSqlite }}
             - name: database-storage
-              mountPath: /opt/thunderid/repository/database
+              mountPath: /opt/thunderid/database
             {{- end }}
             {{- if and .Values.configuration.consent.enabled (eq .Values.configuration.consent.database.type "sqlite") }}
             - name: database-storage
@@ -200,7 +200,7 @@ spec:
               subPath: consent
             {{- end }}
             - name: deployment-yaml-volume
-              mountPath: /opt/thunderid/repository/conf/deployment.yaml
+              mountPath: /opt/thunderid/deployment.yaml
               subPath: deployment.yaml
             {{- if .Values.configuration.consent.enabled }}
             - name: deployment-yaml-volume

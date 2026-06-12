@@ -3,24 +3,24 @@ server:
   port: 8095
 
 tls:
-  cert_file: "repository/resources/security/server.cert"
-  key_file: "repository/resources/security/server.key"
+  cert_file: "config/certs/server.cert"
+  key_file: "config/certs/server.key"
 
 database:
   config:
     type: "sqlite"
     sqlite:
-      path: "repository/database/configdb.db"
+      path: "database/configdb.db"
       options: "_journal_mode=WAL&_busy_timeout=60000&_pragma=foreign_keys(1)"
   runtime:
     type: "sqlite"
     sqlite:
-      path: "repository/database/runtimedb.db"
+      path: "database/runtimedb.db"
       options: "_journal_mode=WAL&_busy_timeout=60000&_pragma=foreign_keys(1)"
   user:
     type: "sqlite"
     sqlite:
-      path: "repository/database/userdb.db"
+      path: "database/userdb.db"
       options: "_journal_mode=WAL&_busy_timeout=60000&_pragma=foreign_keys(1)"
 
 flow:

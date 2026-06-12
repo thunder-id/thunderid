@@ -9,8 +9,8 @@ server:
 
 
 tls:
-  cert_file: "repository/resources/security/server.cert"
-  key_file: "repository/resources/security/server.key"
+  cert_file: "config/certs/server.cert"
+  key_file: "config/certs/server.key"
 
 database:
 EOF
@@ -52,7 +52,7 @@ elif [ "$DB_TYPE" = "redis" ]; then
   config:
     type: sqlite
     sqlite:
-      path: "repository/database/configdb.db"
+      path: "database/configdb.db"
       options: "cache=shared"
 
   runtime:
@@ -65,7 +65,7 @@ elif [ "$DB_TYPE" = "redis" ]; then
   user:
     type: sqlite
     sqlite:
-      path: "repository/database/userdb.db"
+      path: "database/userdb.db"
       options: "cache=shared"
 EOF
 else
@@ -73,19 +73,19 @@ else
   config:
     type: sqlite
     sqlite:
-      path: "repository/database/configdb.db"
+      path: "database/configdb.db"
       options: "cache=shared"
 
   runtime:
     type: sqlite
     sqlite:
-      path: "repository/database/runtimedb.db"
+      path: "database/runtimedb.db"
       options: "cache=shared"
 
   user:
     type: sqlite
     sqlite:
-      path: "repository/database/userdb.db"
+      path: "database/userdb.db"
       options: "cache=shared"
 EOF
 fi

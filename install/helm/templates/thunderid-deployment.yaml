@@ -156,7 +156,7 @@ spec:
           volumeMounts:
             {{- if or .Values.persistence.enabled $usingSqlite }}
             - name: database-storage
-              mountPath: /opt/thunderid/repository/database
+              mountPath: /opt/thunderid/database
             {{- end }}
             {{- if and .Values.configuration.consent.enabled (eq .Values.configuration.consent.database.type "sqlite") }}
             - name: database-storage
@@ -164,7 +164,7 @@ spec:
               subPath: consent
             {{- end }}
             - name: deployment-yaml-volume
-              mountPath: /opt/thunderid/repository/conf/deployment.yaml
+              mountPath: /opt/thunderid/deployment.yaml
               subPath: deployment.yaml
             - name: gate-config-volume
               mountPath: /opt/thunderid/apps/gate/config.js

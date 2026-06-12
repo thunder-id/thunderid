@@ -99,7 +99,7 @@ func (suite *InitTestSuite) TestInitialize() {
 func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesEnabled_FileLoading() {
 	// Create a temporary directory for declarative resources
 	tmpDir := suite.T().TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	senderDir := confDir + "/notification_senders"
 
 	// Create the directory structure
@@ -475,7 +475,7 @@ func (suite *InitTestSuite) TestParseProviderType_CaseSensitivity() {
 //nolint:dupl // Similar test setup required for different error scenarios
 func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML() {
 	tmpDir := suite.T().TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	senderDir := confDir + "/notification_senders"
 
 	err := os.MkdirAll(senderDir, 0750)
@@ -548,7 +548,7 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesEnabled_Inval
 //nolint:dupl // Similar test setup required for different error scenarios
 func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesEnabled_ValidationFailure() {
 	tmpDir := suite.T().TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	senderDir := confDir + "/notification_senders"
 
 	err := os.MkdirAll(senderDir, 0750)

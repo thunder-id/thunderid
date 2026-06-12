@@ -119,13 +119,13 @@ func documentMatchesResourceType(doc []byte, resourceType string) bool {
 	return false
 }
 
-// GetConfigsFromRootDir scans the repository/resources/ directory for YAML files (*.yaml, *.yml)
+// GetConfigsFromRootDir scans the config/resources/ directory for YAML files (*.yaml, *.yml)
 // that sit directly in that directory (not in subdirectories) and returns all documents whose
 // resource_type header matches resourceType.  Returns nil, nil when no matching YAML files exist
 // so callers can fall through to directory-based loading.
 func GetConfigsFromRootDir(resourceType string) ([][]byte, error) {
 	serverHome := config.GetServerRuntime().ServerHome
-	rootDir := filepath.Join(serverHome, "repository", "resources")
+	rootDir := filepath.Join(serverHome, "config", "resources")
 
 	entries, err := os.ReadDir(rootDir)
 	if err != nil {
@@ -160,7 +160,7 @@ func GetConfigs(configDirectoryPath string) ([][]byte, error) {
 	ctx := context.Background()
 	logger := log.GetLogger().With(log.String("component", "FileBasedRuntime"))
 	serverHome := config.GetServerRuntime().ServerHome
-	immutableConfigFilePath := path.Join(serverHome, "repository/resources/")
+	immutableConfigFilePath := path.Join(serverHome, "config/resources/")
 	absoluteDirectoryPath := filepath.Join(immutableConfigFilePath, configDirectoryPath)
 	files, err := os.ReadDir(absoluteDirectoryPath)
 	if err != nil {

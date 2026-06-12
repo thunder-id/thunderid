@@ -100,7 +100,7 @@ func (suite *ResourceLoaderTestSuite) SetupSuite() {
 	suite.Require().NoError(err, "Failed to initialize server runtime")
 
 	// Create the resources directory structure
-	suite.resourcesDir = filepath.Join(tempThunderHome, "repository", "resources")
+	suite.resourcesDir = filepath.Join(tempThunderHome, "config", "resources")
 	err = os.MkdirAll(suite.resourcesDir, 0750)
 	suite.Require().NoError(err)
 }
@@ -629,19 +629,19 @@ func TestResourceLoader(t *testing.T) {
 
 // ─── Three-level precedence tests ────────────────────────────────────────────
 
-// createRootYAMLFile creates a multi-document YAML file directly in repository/resources/.
+// createRootYAMLFile creates a multi-document YAML file directly in config/resources/.
 func (suite *ResourceLoaderTestSuite) createRootYAMLFile(filename, content string) {
 	err := os.WriteFile(filepath.Join(suite.resourcesDir, filename), []byte(content), 0600)
 	suite.Require().NoError(err)
 }
 
-// removeRootYAMLFile removes a file from repository/resources/.
+// removeRootYAMLFile removes a file from config/resources/.
 func (suite *ResourceLoaderTestSuite) removeRootYAMLFile(filename string) {
 	_ = os.Remove(filepath.Join(suite.resourcesDir, filename))
 }
 
 // TestLoadResources_FromRootDirFile verifies that a YAML file placed directly in
-// repository/resources/ is picked up when no --resources flag is set and no subdir exists.
+// config/resources/ is picked up when no --resources flag is set and no subdir exists.
 func (suite *ResourceLoaderTestSuite) TestLoadResources_FromRootDirFile() {
 	content := `# resource_type: testresource
 id: root-res-1
@@ -749,7 +749,7 @@ value: 99
 }
 
 // TestLoadResources_FallsBackToSubdirWhenNoRootFiles verifies that when no YAML files
-// matching the resource type exist in repository/resources/, the loader falls through to
+// matching the resource type exist in config/resources/, the loader falls through to
 // the subdirectory (level-3).
 func (suite *ResourceLoaderTestSuite) TestLoadResources_FallsBackToSubdirWhenNoRootFiles() {
 	suite.createYAMLFile("fallback-subdir", "sub.yaml", `id: sub-only

@@ -22,14 +22,14 @@
   },
   "tls": {
     "min_version": "1.3",
-    "cert_file": "repository/resources/security/server.cert",
-    "key_file": "repository/resources/security/server.key"
+    "cert_file": "config/certs/server.cert",
+    "key_file": "config/certs/server.key"
   },
   "database": {
     "config": {
       "type": "sqlite",
       "sqlite": {
-        "path": "repository/database/configdb.db",
+        "path": "database/configdb.db",
         "options": "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)",
         "max_open_conns": 500,
         "max_idle_conns": 100,
@@ -42,7 +42,7 @@
     "runtime": {
       "type": "sqlite",
       "sqlite": {
-        "path": "repository/database/runtimedb.db",
+        "path": "database/runtimedb.db",
         "options": "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)",
         "max_open_conns": 500,
         "max_idle_conns": 100,
@@ -68,7 +68,7 @@
     "user": {
       "type": "sqlite",
       "sqlite": {
-        "path": "repository/database/userdb.db",
+        "path": "database/userdb.db",
         "options": "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)",
         "max_open_conns": 500,
         "max_idle_conns": 100,
@@ -164,7 +164,7 @@
   },
   "crypto": {
     "encryption": {
-      "key": "file://repository/resources/security/crypto.key"
+      "key": "file://config/certs/crypto.key"
     },
     "password_hashing": {
       "algorithm": "PBKDF2",
@@ -187,8 +187,8 @@
     "keys": [
       {
         "id": "default-key",
-        "cert_file": "repository/resources/security/signing.cert",
-        "key_file": "repository/resources/security/signing.key"
+        "cert_file": "config/certs/signing.cert",
+        "key_file": "config/certs/signing.key"
       }
     ]
   },
@@ -266,7 +266,7 @@
         "trusted_issuers": [
           {
             "issuer": "https://demo.pid-issuer.bundesdruckerei.de/c",
-            "cert_file": "repository/resources/security/signing.cert"
+            "cert_file": "config/certs/signing.cert"
           }
         ]
       }

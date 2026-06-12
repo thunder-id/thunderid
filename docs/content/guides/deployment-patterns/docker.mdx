@@ -54,7 +54,7 @@ If you are using SQLite, mount a named volume so the initialized database is ava
 
 ```bash
 docker run -it --rm \
-  -v thunderid-data:/opt/thunder/repository/database \
+  -v thunderid-data:/opt/thunder/database \
   ghcr.io/thunder-id/thunderid:latest \
   ./setup.sh
 ```
@@ -70,7 +70,7 @@ docker run -d \
   --name thunderid \
   --restart unless-stopped \
   -p 8090:8090 \
-  -v thunderid-data:/opt/thunder/repository/database \
+  -v thunderid-data:/opt/thunder/database \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
@@ -84,15 +84,15 @@ docker logs -f thunderid
 
 ### Customize the Configuration
 
-To override the default server configuration, mount a custom `deployment.yaml` file. Create a `deployment.yaml` based on the <RepoLink path="/blob/main/backend/cmd/server/repository/conf/deployment.yaml">default configuration</RepoLink> and pass it to the container:
+To override the default server configuration, mount a custom `deployment.yaml` file. Create a `deployment.yaml` based on the <RepoLink path="/blob/main/backend/cmd/server/deployment.yaml">default configuration</RepoLink> and pass it to the container:
 
 ```bash
 docker run -d \
   --name thunderid \
   --restart unless-stopped \
   -p 8090:8090 \
-  -v $(pwd)/deployment.yaml:/opt/thunder/repository/conf/deployment.yaml \
-  -v thunderid-data:/opt/thunder/repository/database \
+  -v $(pwd)/deployment.yaml:/opt/thunder/deployment.yaml \
+  -v thunderid-data:/opt/thunder/database \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
@@ -103,10 +103,10 @@ docker run -d \
   --name thunderid \
   --restart unless-stopped \
   -p 8090:8090 \
-  -v $(pwd)/deployment.yaml:/opt/thunder/repository/conf/deployment.yaml \
-  -v $(pwd)/certs/server.cert:/opt/thunder/repository/resources/security/server.cert \
-  -v $(pwd)/certs/server.key:/opt/thunder/repository/resources/security/server.key \
-  -v thunderid-data:/opt/thunder/repository/database \
+  -v $(pwd)/deployment.yaml:/opt/thunder/deployment.yaml \
+  -v $(pwd)/certs/server.cert:/opt/thunder/config/certs/server.cert \
+  -v $(pwd)/certs/server.key:/opt/thunder/config/certs/server.key \
+  -v thunderid-data:/opt/thunder/database \
   ghcr.io/thunder-id/thunderid:latest
 ```
 
@@ -122,7 +122,7 @@ services:
     ports:
       - "8090:8090"
     volumes:
-      - ./deployment.yaml:/opt/thunder/repository/conf/deployment.yaml
+      - ./deployment.yaml:/opt/thunder/deployment.yaml
     depends_on:
       postgres:
         condition: service_healthy
@@ -195,7 +195,7 @@ Once the container is running, access <ProductName /> at the following endpoints
 Mount a named volume to persist the database across container restarts:
 
 ```bash
--v thunderid-data:/opt/thunder/repository/database
+-v thunderid-data:/opt/thunder/database
 ```
 
 ### External PostgreSQL

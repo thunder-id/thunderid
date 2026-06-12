@@ -285,7 +285,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_Success() {
 	defer config.ResetServerRuntime()
 
 	// Create translations directory
-	translationsDir := filepath.Join(tempDir, "repository", "resources", "translations")
+	translationsDir := filepath.Join(tempDir, "config", "resources", "translations")
 	err = os.MkdirAll(translationsDir, 0750)
 	assert.NoError(s.T(), err)
 

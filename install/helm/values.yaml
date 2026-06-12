@@ -216,14 +216,14 @@ configuration:
   # TLS configuration
   tls:
     minVersion: "1.3"
-    certFile: "repository/resources/security/server.cert"
-    keyFile: "repository/resources/security/server.key"
+    certFile: "config/certs/server.cert"
+    keyFile: "config/certs/server.key"
 
   # Crypto configuration
   crypto:
     encryption:
       # WARNING: Replace the default key with a 32-byte (64 character) hex string in production deployments
-      key: "file://repository/resources/security/crypto.key"
+      key: "file://config/certs/crypto.key"
     passwordHashing:
       algorithm: "PBKDF2"
       argon2id:
@@ -240,8 +240,8 @@ configuration:
         salt_size: 16
     keys:
       - id: "default-key"
-        certFile: "repository/resources/security/signing.cert"
-        keyFile: "repository/resources/security/signing.key"
+        certFile: "config/certs/signing.cert"
+        keyFile: "config/certs/signing.key"
 
   # Database configuration
   database:
@@ -265,7 +265,7 @@ configuration:
         min_retry_backoff_ms: 50
         max_retry_backoff_ms: 2000
       sqlite:
-        path: "repository/database/configdb.db"
+        path: "database/configdb.db"
         options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
         max_open_conns: 500
         max_idle_conns: 100
@@ -294,7 +294,7 @@ configuration:
         min_retry_backoff_ms: 50
         max_retry_backoff_ms: 2000
       sqlite:
-        path: "repository/database/runtimedb.db"
+        path: "database/runtimedb.db"
         options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
         max_open_conns: 500
         max_idle_conns: 100
@@ -331,7 +331,7 @@ configuration:
         min_retry_backoff_ms: 50
         max_retry_backoff_ms: 2000
       sqlite:
-        path: "repository/database/userdb.db"
+        path: "database/userdb.db"
         options: "_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)"
         max_open_conns: 500
         max_idle_conns: 100
@@ -429,12 +429,12 @@ persistence:
   annotations: {}
 
 # Declarative resources mount configuration.
-# Mounts files under ThunderID's repository/resources directory.
+# Mounts files under ThunderID's config/resources directory.
 declarativeResources:
   # Enable mounting declarative resources into ThunderID pods.
   enabled: false
   # Mount path inside ThunderID container.
-  mountPath: /opt/thunderid/repository/resources
+  mountPath: /opt/thunderid/config/resources
   # Mount resources as read-only.
   readOnly: true
   # Combined file mode.
@@ -464,13 +464,13 @@ declarativeResources:
     # items:
     #   - key: my-web-app
     #     path: applications/my-web-app.yaml
-    #     mountPath: /opt/thunderid/repository/resources/applications/my-web-app.yaml
+    #     mountPath: /opt/thunderid/config/resources/applications/my-web-app.yaml
     #   - key: google-idp
     #     path: identity_providers/google.yaml
-    #     mountPath: /opt/thunderid/repository/resources/identity_providers/google.yaml
+    #     mountPath: /opt/thunderid/config/resources/identity_providers/google.yaml
     #   - key: default-org
     #     path: organization_units/default.yaml
-    #     mountPath: /opt/thunderid/repository/resources/organization_units/default.yaml
+    #     mountPath: /opt/thunderid/config/resources/organization_units/default.yaml
   # Source from an existing Secret.
   # Use this when resource files contain sensitive values (e.g. pre-substituted secrets).
   # Supports the same string/object item formats as configMap above.
@@ -482,10 +482,10 @@ declarativeResources:
     # items:
     #   - key: my-app-with-secrets
     #     path: applications/my-app.yaml
-    #     mountPath: /opt/thunderid/repository/resources/applications/my-app.yaml
+    #     mountPath: /opt/thunderid/config/resources/applications/my-app.yaml
     #   - key: google-idp
     #     path: identity_providers/google.yaml
-    #     mountPath: /opt/thunderid/repository/resources/identity_providers/google.yaml
+    #     mountPath: /opt/thunderid/config/resources/identity_providers/google.yaml
 
 # Setup Job configuration
 # Runs setup.sh as a one-time initialization job during Helm install

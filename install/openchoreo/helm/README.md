@@ -218,9 +218,9 @@ To promote ThunderID to `staging` or `production`:
 |-----------|-------------|---------|
 | `thunderid-component.database.type` | Database engine: `sqlite` or `postgres` | `sqlite` |
 | `thunderid-component.database.storageSize` | PVC size for SQLite files | `1Gi` |
-| `thunderid-component.database.config.path` | SQLite config DB path (relative to ThunderID working directory) | `repository/database/configdb.db` |
-| `thunderid-component.database.runtime.path` | SQLite runtime DB path | `repository/database/runtimedb.db` |
-| `thunderid-component.database.user.path` | SQLite user DB path | `repository/database/userdb.db` |
+| `thunderid-component.database.config.path` | SQLite config DB path (relative to ThunderID working directory) | `database/configdb.db` |
+| `thunderid-component.database.runtime.path` | SQLite runtime DB path | `database/runtimedb.db` |
+| `thunderid-component.database.user.path` | SQLite user DB path | `database/userdb.db` |
 | `thunderid-component.database.host` | PostgreSQL hostname (`postgres` only) | — |
 | `thunderid-component.database.port` | PostgreSQL port — rendered as an integer in the ConfigMap (`postgres` only) | `5432` |
 | `thunderid-component.database.config.database` | Config DB name (`postgres` only) | `postgredb` |
@@ -250,7 +250,7 @@ To promote ThunderID to `staging` or `production`:
 |-----------|-------------|---------|
 | `thunderid-component.jwt.validity` | JWT token validity in seconds | `3600` |
 | `thunderid-component.oauth.refresh_token_validity` | Refresh token validity in seconds | `86400` |
-| `thunderid-component.crypto.encryption.key` | Crypto encryption key (path or raw value) | `file://repository/resources/security/crypto.key` |
+| `thunderid-component.crypto.encryption.key` | Crypto encryption key (path or raw value) | `file://config/certs/crypto.key` |
 
 ### Cache and Consent
 

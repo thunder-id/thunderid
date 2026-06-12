@@ -351,7 +351,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_EmptyDirectory(t *testing.T)
 
 	// Create a temporary directory structure for file-based runtime
 	tmpDir := t.TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	idpDir := confDir + "/identity_providers"
 
 	// Create the directory structure
@@ -386,7 +386,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_EmptyDirectory(t *testing.T)
 func TestInitialize_WithDeclarativeResourcesEnabled_ValidConfigs(t *testing.T) {
 	// Create a temporary directory structure for file-based runtime
 	tmpDir := t.TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	idpDir := confDir + "/identity_providers"
 
 	// Create the directory structure
@@ -511,7 +511,7 @@ properties:
 //nolint:dupl // Similar test setup required for different error scenarios
 func TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML(t *testing.T) {
 	tmpDir := t.TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	idpDir := confDir + "/identity_providers"
 
 	err := os.MkdirAll(idpDir, 0750)
@@ -567,7 +567,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML(t *testing.T) {
 //nolint:dupl // Similar test setup required for different error scenarios
 func TestInitialize_WithDeclarativeResourcesEnabled_ValidationFailure(t *testing.T) {
 	tmpDir := t.TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	idpDir := confDir + "/identity_providers"
 
 	err := os.MkdirAll(idpDir, 0750)
@@ -628,7 +628,7 @@ properties:
 //nolint:dupl // Similar test setup required for different error scenarios
 func TestInitialize_WithDeclarativeResourcesEnabled_InvalidIDPType(t *testing.T) {
 	tmpDir := t.TempDir()
-	confDir := tmpDir + "/repository/resources"
+	confDir := tmpDir + "/config/resources"
 	idpDir := confDir + "/identity_providers"
 
 	err := os.MkdirAll(idpDir, 0750)

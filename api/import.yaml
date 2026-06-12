@@ -189,7 +189,7 @@ paths:
               example:
                 resourceType: "Application"
                 resourceKey: "my-app"
-                deletedFile: "repository/resources/applications/my-app.yaml"
+                deletedFile: "config/resources/applications/my-app.yaml"
         "400":
           description: Invalid delete request or deletion error
           content:
@@ -426,7 +426,7 @@ components:
           description: >
             File path of the deleted declarative resource file,
             relative to the repository root.
-          example: "repository/resources/applications/my-app.yaml"
+          example: "config/resources/applications/my-app.yaml"
 
     Error:
       type: object

@@ -316,7 +316,7 @@ func (s *ThemeDeclarativeSuite) TestLoadDeclarativeResources_Integration() {
 
 func (s *ThemeDeclarativeSuite) TestLoadDeclarativeResources_WithDBStore() {
 	serverHome := config.GetServerRuntime().ServerHome
-	resourceDir := filepath.Join(serverHome, "repository", "resources", "themes")
+	resourceDir := filepath.Join(serverHome, "config", "resources", "themes")
 	err := os.MkdirAll(resourceDir, 0o750)
 	s.Require().NoError(err)
 

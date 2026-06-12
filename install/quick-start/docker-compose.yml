@@ -18,7 +18,7 @@ services:
   # Initialize database from the image
   thunderid-db-init:
     image: ghcr.io/thunder-id/thunderid:latest
-    command: sh -c "cp -r /opt/thunderid/repository/database/* /data/ && (cp -r /opt/thunderid/consent/repository/database/* /consent-data/ 2>/dev/null || true)"
+    command: sh -c "cp -r /opt/thunderid/database/* /data/ && (cp -r /opt/thunderid/consent/repository/database/* /consent-data/ 2>/dev/null || true)"
     volumes:
       - thunderid-db:/data
       - consent-db:/consent-data
@@ -29,7 +29,7 @@ services:
     image: ghcr.io/thunder-id/thunderid:latest
     command: ./setup.sh
     volumes:
-      - thunderid-db:/opt/thunderid/repository/database
+      - thunderid-db:/opt/thunderid/database
       - consent-db:/opt/thunderid/consent/repository/database
     depends_on:
       thunderid-db-init:
@@ -45,7 +45,7 @@ services:
     ports:
       - "8090:8090"
     volumes:
-      - thunderid-db:/opt/thunderid/repository/database
+      - thunderid-db:/opt/thunderid/database
       - consent-db:/opt/thunderid/consent/repository/database
 
 volumes:

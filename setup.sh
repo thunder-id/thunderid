@@ -236,7 +236,7 @@ fi
 # Read Configuration from deployment.yaml
 # ============================================================================
 
-CONFIG_FILE="./repository/conf/deployment.yaml"
+CONFIG_FILE="./deployment.yaml"
 
 # Function to read config with fallback
 read_config() {
@@ -244,7 +244,7 @@ read_config() {
 
     if [ ! -f "$config_file" ]; then
         # Try alternative path (for packaged distribution)
-        config_file="./backend/cmd/server/repository/conf/deployment.yaml"
+        config_file="./backend/cmd/server/deployment.yaml"
     fi
 
     if [ ! -f "$config_file" ]; then

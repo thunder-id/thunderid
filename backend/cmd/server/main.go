@@ -154,8 +154,8 @@ func getThunderHome(ctx context.Context, logger *log.Logger) string {
 // initThunderConfigurations initializes the configurations.
 func initThunderConfigurations(ctx context.Context, logger *log.Logger, serverHome string) *config.Config {
 	// Load the configurations.
-	configFilePath := path.Join(serverHome, "repository/conf/deployment.yaml")
-	defaultConfigPath := path.Join(serverHome, "repository/resources/conf/default.json")
+	configFilePath := path.Join(serverHome, "deployment.yaml")
+	defaultConfigPath := path.Join(serverHome, "config/default.json")
 	cfg, err := config.LoadConfig(configFilePath, defaultConfigPath, serverHome)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to load configurations", log.Error(err))

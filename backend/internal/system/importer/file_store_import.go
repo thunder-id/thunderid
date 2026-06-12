@@ -64,7 +64,7 @@ func deleteFileBackedResource(resourceType, resourceKey string) (string, *servic
 			core.I18nMessage{Key: "error.import.dynamic", DefaultValue: err.Error()})
 	}
 
-	targetDir := filepath.Join(serverHome, "repository", "resources", directory)
+	targetDir := filepath.Join(serverHome, "config", "resources", directory)
 	entries, readErr := os.ReadDir(targetDir)
 	if readErr != nil {
 		if errors.Is(readErr, os.ErrNotExist) {

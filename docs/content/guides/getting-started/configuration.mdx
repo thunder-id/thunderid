@@ -12,7 +12,7 @@ sidebar_position: 3
 <ProductName /> uses a two-tier configuration system:
 
 1. **Default Configuration** — Provides sensible defaults for all settings. These are built into <ProductName />.
-2. **Deployment Configuration** — Located at `repository/conf/deployment.yaml` in your <ProductName /> installation directory. This file overrides specific defaults for your deployment.
+2. **Deployment Configuration** — Located at `deployment.yaml` in your <ProductName /> installation directory. This file overrides specific defaults for your deployment.
 
 :::note
 Only settings you want to override need to be specified in `deployment.yaml`. All other values will use the built-in defaults.
@@ -51,11 +51,11 @@ Controls HTTPS/TLS settings for secure communication.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `tls.min_version` | `1.3` | Minimum TLS version to accept (`1.2` or `1.3`) |
-| `tls.cert_file` | `repository/resources/security/server.cert` | Path to TLS certificate file |
-| `tls.key_file` | `repository/resources/security/server.key` | Path to TLS private key file |
+| `tls.cert_file` | `config/certs/server.cert` | Path to TLS certificate file |
+| `tls.key_file` | `config/certs/server.key` | Path to TLS private key file |
 
 :::warning Self-Signed Certificate
-<ProductName /> ships with a self-signed certificate for local development at `repository/resources/security/server.cert`. For production, replace it with a certificate from a trusted Certificate Authority.
+<ProductName /> ships with a self-signed certificate for local development at `config/certs/server.cert`. For production, replace it with a certificate from a trusted Certificate Authority.
 :::
 
 ## Database Configuration
@@ -93,7 +93,7 @@ Stores identity provider configurations, applications, and authentication flows.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database.config.sqlite.path` | `repository/database/configdb.db` | SQLite database file path |
+| `database.config.sqlite.path` | `database/configdb.db` | SQLite database file path |
 | `database.config.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
 | `database.config.sqlite.max_open_conns` | `500` | Maximum number of open connections |
 | `database.config.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
@@ -131,7 +131,7 @@ Stores runtime data like sessions, tokens, and temporary data. The runtime datab
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database.runtime.sqlite.path` | `repository/database/runtimedb.db` | SQLite database file path |
+| `database.runtime.sqlite.path` | `database/runtimedb.db` | SQLite database file path |
 | `database.runtime.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
 | `database.runtime.sqlite.max_open_conns` | `500` | Maximum number of open connections |
 | `database.runtime.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
@@ -203,7 +203,7 @@ Stores user profiles and credentials.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `database.user.sqlite.path` | `repository/database/userdb.db` | SQLite database file path |
+| `database.user.sqlite.path` | `database/userdb.db` | SQLite database file path |
 | `database.user.sqlite.options` | `_journal_mode=WAL&_busy_timeout=5000&_pragma=foreign_keys(1)` | SQLite connection options |
 | `database.user.sqlite.max_open_conns` | `500` | Maximum number of open connections |
 | `database.user.sqlite.max_idle_conns` | `100` | Maximum number of idle connections |
@@ -396,10 +396,10 @@ At startup, <ProductName /> resolves declarative resources using the following p
 | Priority | Source | When active |
 |----------|--------|-------------|
 | 1 | Single file passed via `./start.sh <file>` | `--resources` flag is set |
-| 2 | `*.yaml`/`*.yml` files placed directly in `repository/resources/` (not in subdirectories) | Flag not set; at least one root-level YAML file exists |
-| 3 | Per-type subdirectories under `repository/resources/` (e.g. `repository/resources/groups/`) | Flag not set; no root-level YAML files found |
+| 2 | `*.yaml`/`*.yml` files placed directly in `config/resources/` (not in subdirectories) | Flag not set; at least one root-level YAML file exists |
+| 3 | Per-type subdirectories under `config/resources/` (e.g. `config/resources/groups/`) | Flag not set; no root-level YAML files found |
 
-If `--resources` is set, `repository/resources/` is not read at all, regardless of what files it contains. The two sources never merge.
+If `--resources` is set, `config/resources/` is not read at all, regardless of what files it contains. The two sources never merge.
 
 ### Start <ProductName/> With a Resources File
 
@@ -436,14 +436,14 @@ description: Administrators
 ```
 
 :::warning
-When `--resources` is active, any files in `repository/resources/` — including per-type subdirectories — are silently ignored. If you need files from the directory to be loaded, do not pass a `--resources` argument.
+When `--resources` is active, any files in `config/resources/` — including per-type subdirectories — are silently ignored. If you need files from the directory to be loaded, do not pass a `--resources` argument.
 :::
 
 ### Resources Directory (No Startup Flag)
 
-If you do not pass a `--resources` argument, <ProductName /> automatically picks up multi-document YAML files placed directly in the `repository/resources/` directory (not in subdirectories). This is priority 2 in the loading precedence and requires no configuration change or restart argument.
+If you do not pass a `--resources` argument, <ProductName /> automatically picks up multi-document YAML files placed directly in the `config/resources/` directory (not in subdirectories). This is priority 2 in the loading precedence and requires no configuration change or restart argument.
 
-Place a multi-document YAML file in `repository/resources/`:
+Place a multi-document YAML file in `config/resources/`:
 
 ```
 repository/
@@ -456,18 +456,18 @@ repository/
 The file must use the same `# resource_type: <type>` document headers as the single-file startup format. On startup, <ProductName /> scans all `*.yaml` and `*.yml` files at that root level and loads every document whose `resource_type` matches a configured declarative resource type.
 
 :::note
-If any `*.yaml` or `*.yml` file is found at the `repository/resources/` root, per-type subdirectories (priority 3) are skipped entirely for that resource type.
+If any `*.yaml` or `*.yml` file is found at the `config/resources/` root, per-type subdirectories (priority 3) are skipped entirely for that resource type.
 :::
 
 ### Helm Deployment
 
-For Helm deployments, this setting is managed through `declarativeResources.enabled` in the Helm values. When enabled, the chart mounts declarative resource files from either a ConfigMap or Secret into the <ProductName /> `repository/resources` directory.
+For Helm deployments, this setting is managed through `declarativeResources.enabled` in the Helm values. When enabled, the chart mounts declarative resource files from either a ConfigMap or Secret into the <ProductName /> `config/resources` directory.
 
 Two mounting modes are available — use the one that fits your resource layout.
 
 #### Combined File Mode
 
-Use `singleFile.keys` to mount one or more combined YAML files (multi-document format with `# resource_type: <type>` headers) directly under `repository/resources`. Each key in your ConfigMap or Secret is mounted as `<key>.yaml` at that path. <ProductName /> scans the directory at startup and loads every document whose `resource_type` matches a configured declarative resource type.
+Use `singleFile.keys` to mount one or more combined YAML files (multi-document format with `# resource_type: <type>` headers) directly under `config/resources`. Each key in your ConfigMap or Secret is mounted as `<key>.yaml` at that path. <ProductName /> scans the directory at startup and loads every document whose `resource_type` matches a configured declarative resource type.
 
 ```yaml
 declarativeResources:
@@ -475,8 +475,8 @@ declarativeResources:
   readOnly: true
   singleFile:
     keys:
-      - resources          # mounted as repository/resources/resources.yaml
-      - extra-resources    # mounted as repository/resources/extra-resources.yaml
+      - resources          # mounted as config/resources/resources.yaml
+      - extra-resources    # mounted as config/resources/extra-resources.yaml
   configMap:
     name: declarative-resources
 ```
@@ -496,7 +496,7 @@ declarativeResources:
 
 #### Individual Files Mode
 
-Use `configMap.items` (or `secret.items`) to mount individual files into typed subdirectories under `repository/resources`. Each item maps a ConfigMap/Secret key to a specific path.
+Use `configMap.items` (or `secret.items`) to mount individual files into typed subdirectories under `config/resources`. Each item maps a ConfigMap/Secret key to a specific path.
 
 ```yaml
 declarativeResources:
@@ -513,7 +513,7 @@ declarativeResources:
       # Format 3 — per-item mountPath override (absolute path)
       - key: org-default
         path: organization_units/default.yaml
-        mountPath: /opt/thunderid/repository/resources/organization_units/default.yaml
+        mountPath: /opt/thunderid/config/resources/organization_units/default.yaml
 ```
 
 :::note
@@ -625,7 +625,7 @@ Cryptographic settings for encryption and signing.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `crypto.encryption.key` | `file://repository/resources/security/crypto.key` | Path to encryption key file |
+| `crypto.encryption.key` | `file://config/certs/crypto.key` | Path to encryption key file |
 
 ### Password Hashing
 
@@ -649,15 +649,15 @@ Signing keys are configured as an array. Each key has the following properties:
 **Default Key:**
 ```yaml
 - id: "default-key"
-  cert_file: "repository/resources/security/signing.cert"
-  key_file: "repository/resources/security/signing.key"
+  cert_file: "config/certs/signing.cert"
+  key_file: "config/certs/signing.key"
 ```
 
 The key type under `crypto.keys` determines the algorithm in `id_token_signing_alg_values_supported` in the OIDC discovery document. RSA keys advertise `RS256`; ECDSA `P-256`, `P-384`, and `P-521` keys advertise `ES256`, `ES384`, and `ES512`; Ed25519 keys advertise `EdDSA`. If multiple keys are configured, all resulting algorithms are included without duplicates.
 
 ## Email Configuration
 
-<ProductName /> sends emails through an SMTP server for features such as magic link authentication and user invitations. This configuration is optional. Without a configured SMTP server, email-dependent features remain unavailable. Add the following configuration to `repository/conf/deployment.yaml` to configure an SMTP server.
+<ProductName /> sends emails through an SMTP server for features such as magic link authentication and user invitations. This configuration is optional. Without a configured SMTP server, email-dependent features remain unavailable. Add the following configuration to `deployment.yaml` to configure an SMTP server.
 
 ```yaml
 email:

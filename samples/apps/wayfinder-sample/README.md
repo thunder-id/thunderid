@@ -93,7 +93,7 @@ Each subdirectory has its own README with the environment variables it reads.
 
 The Wayfinder web app runs on `http://localhost:5173` and calls Thunder directly for `/oauth2/authorize`, `/oauth2/token`, and `/users/me`. Browsers block these cross-origin calls unless Thunder's CORS allow-list includes the frontend origin.
 
-Edit `backend/cmd/server/repository/conf/deployment.yaml` and add `http://localhost:5173` under `cors.allowed_origins`. Leave any existing entries in place — they belong to other samples.
+Edit `backend/cmd/server/deployment.yaml` and add `http://localhost:5173` under `cors.allowed_origins`. Leave any existing entries in place — they belong to other samples.
 
 ```yaml
 cors:

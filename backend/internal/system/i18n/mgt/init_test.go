@@ -103,7 +103,7 @@ func (suite *InitTestSuite) TestInitialize_DeclarativeMode_LoadError() {
 	}()
 
 	// Create translations directory
-	translationsDir := filepath.Join(tempDir, "repository", "resources", "translations")
+	translationsDir := filepath.Join(tempDir, "config", "resources", "translations")
 	err = os.MkdirAll(translationsDir, 0750)
 	suite.NoError(err)
 

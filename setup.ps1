@@ -291,14 +291,14 @@ while ($i -lt $args.Count) {
 # Read Configuration from deployment.yaml
 # ============================================================================
 
-$CONFIG_FILE = ".\repository\conf\deployment.yaml"
+$CONFIG_FILE = ".\deployment.yaml"
 
 function Read-Config {
     $configFile = $CONFIG_FILE
 
     if (-not (Test-Path $configFile)) {
         # Try alternative path (for packaged distribution)
-        $configFile = ".\backend\cmd\server\repository\conf\deployment.yaml"
+        $configFile = ".\backend\cmd\server\deployment.yaml"
     }
 
     if (-not (Test-Path $configFile)) {
