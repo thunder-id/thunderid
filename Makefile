@@ -135,6 +135,15 @@ test_sdks:
 lint_sdks:
 	./build.sh lint_sdks
 
+build_tools:
+	./build.sh build_tools
+
+test_tools:
+	./build.sh test_tools
+
+lint_tools:
+	./build.sh lint_tools
+
 lint_docs:
 	@command -v vale >/dev/null 2>&1 || (echo "vale is not installed. See https://vale.sh/docs/vale-cli/installation/ for installation instructions." && exit 1)
 	vale docs/
@@ -218,6 +227,9 @@ help:
 	@echo "  build_sdks                    - Build all SDK packages."
 	@echo "  test_sdks                     - Run tests for all SDK packages."
 	@echo "  lint_sdks                     - Run linting on all SDK packages."
+	@echo "  build_tools                   - Build all tool binaries (CLI + i18n-extractor + npm tools)."
+	@echo "  test_tools                    - Run tests for all tools."
+	@echo "  lint_tools                    - Run linting on all tools."
 	@echo "  lint                          - Run linting on backend, frontend, and SDK code."
 	@echo "  lint_backend                  - Run golangci-lint on the backend code."
 	@echo "  lint_frontend                 - Run ESLint on the frontend code."

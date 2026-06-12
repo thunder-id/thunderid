@@ -43,6 +43,7 @@ import { buildResultsPath, readCriteria } from "./utils/routes";
 
 const AGENT_CHAT_URL = import.meta.env.VITE_AGENT_CHAT_URL || "http://localhost:8790/chat";
 const THUNDER_BASE_URL = import.meta.env.VITE_THUNDER_BASE_URL || "";
+const AI_FEATURES_ENABLED = import.meta.env.VITE_AI_FEATURES_ENABLED === "true";
 
 function createChatMessage(role, content) {
   return {
@@ -819,11 +820,13 @@ function AppRoutes({ authReady, criteria, locations, onSearch }) {
         path="/profile"
         element={authReady ? <ProfilePage /> : <BookingsUnavailable />}
       />
-      <Route path="/agent-callback" element={<AgentCallbackRoute />} />
-      <Route
-        path="/signin-as-agent"
-        element={authReady ? <AgentSignInRoute /> : <BookingsUnavailable />}
-      />
+      {AI_FEATURES_ENABLED && <Route path="/agent-callback" element={<AgentCallbackRoute />} />}
+      {AI_FEATURES_ENABLED && (
+        <Route
+          path="/signin-as-agent"
+          element={authReady ? <AgentSignInRoute /> : <BookingsUnavailable />}
+        />
+      )}
       <Route path="*" element={<Navigate to="/flights" replace />} />
     </Routes>
   );
@@ -921,7 +924,7 @@ function App({ authReady }) {
         locations={locations}
         onSearch={handleSearch}
       />
-      <ChatWidget authReady={authReady} />
+      {AI_FEATURES_ENABLED && <ChatWidget authReady={authReady} />}
       <SiteFooter authReady={authReady} />
     </div>
   );

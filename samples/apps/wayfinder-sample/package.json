@@ -10,7 +10,8 @@
     "frontend"
   ],
   "scripts": {
-    "dev": "concurrently \"npm --workspace backend run dev\" \"npm --workspace smtp-server run dev\" \"npm --workspace ai-agent run dev\" \"npm --workspace frontend run dev\""
+    "dev": "concurrently \"npm --workspace backend run dev\" \"npm --workspace smtp-server run dev\" \"npm --workspace ai-agent run dev\" \"npm --workspace frontend run dev\"",
+    "dev:b2c": "concurrently \"npm --workspace backend run dev\" \"npm --workspace smtp-server run dev\" \"npm --workspace frontend run dev\""
   },
   "devDependencies": {
     "concurrently": "10.0.3"

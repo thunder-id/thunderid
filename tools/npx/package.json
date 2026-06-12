@@ -1,0 +1,35 @@
+{
+  "name": "thunderid",
+  "version": "0.1.1",
+  "description": "ThunderID: Auth for the Modern Dev — instantly via npx",
+  "keywords": [
+    "thunderid",
+    "cli",
+    "npx"
+  ],
+  "homepage": "https://github.com/thunder-id/thunderid/tree/main/tools/npx#readme",
+  "bugs": {
+    "url": "https://github.com/thunder-id/thunderid/issues"
+  },
+  "author": "WSO2",
+  "license": "Apache-2.0",
+  "bin": {
+    "thunderid": "./bin/thunderid.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thunder-id/thunderid",
+    "directory": "tools/npx"
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "clean": "node scripts/clean.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

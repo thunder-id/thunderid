@@ -1,0 +1,87 @@
+# ------------------------------------------------------------------------------
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# ------------------------------------------------------------------------------
+
+run:
+  timeout: 5m
+  allow-parallel-runners: true
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gocritic
+    - gofmt
+    - goimports
+    - gosimple
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - revive
+    - staticcheck
+    - typecheck
+    - unused
+    - whitespace
+
+linters-settings:
+  errcheck:
+    check-blank: false
+    check-type-assertions: false
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/thunder-id/thunderid/tools/cli)
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment
+      - shadow
+  gocritic:
+    disabled-checks:
+      - exitAfterDefer
+      - ifElseChain
+      - elseif
+    enabled-tags:
+      - diagnostic
+  goimports:
+    local-prefixes: github.com/thunder-id/thunderid/tools/cli
+  misspell:
+    locale: US
+    ignore-words:
+      - cancelled
+  lll:
+    line-length: 140
+    tab-width: 4
+  revive:
+    rules:
+      - name: var-naming
+      - name: redundant-import-alias
+      - name: comment-spacings
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+      - name: package-comments
+
+issues:
+  max-same-issues: 0
+  max-issues-per-linter: 0
+  exclude-use-default: false
+
+output:
+  show-stats: true
