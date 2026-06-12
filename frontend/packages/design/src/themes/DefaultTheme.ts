@@ -32,6 +32,7 @@ export const DefaultThemeConfig = {
           dark: '#2d78e0',
           light: '#6ba8f5',
           contrastText: '#ffffff',
+          mainChannel: '54 136 255',
         },
         secondary: {
           main: '#5498b4',
@@ -73,6 +74,7 @@ export const DefaultThemeConfig = {
           dark: '#2d78e0',
           light: '#6ba8f5',
           contrastText: '#ffffff',
+          mainChannel: '54 136 255',
         },
         secondary: {
           main: '#5498b4',
@@ -217,6 +219,15 @@ export const DefaultThemeConfig = {
         outlined: {
           borderColor: 'currentColor',
         },
+      },
+    },
+    MuiSwitch: {
+      styleOverrides: {
+        switchBase: ({theme}: {theme: OxygenThemeType}) => ({
+          '&.Mui-checked.Mui-disabled': {
+            color: theme.vars.palette.primary.dark,
+          },
+        }),
       },
     },
     MuiLinearProgress: {
