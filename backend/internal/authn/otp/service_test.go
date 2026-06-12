@@ -19,17 +19,15 @@
 package otp
 
 import (
-	"github.com/thunder-id/thunderid/internal/system/i18n/core"
-
 	"context"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 )
@@ -168,33 +166,21 @@ func (suite *OTPAuthnServiceTestSuite) TestSendOTPWithServiceError() {
 func (suite *OTPAuthnServiceTestSuite) TestAuthenticateSuccess() {
 	otp := "123456"
 	recipient := "+1234567890"
-	userID := "user123"
-	orgUnit := "test-ou"
 
 	verifyResult := &notifcommon.VerifyOTPResultDTO{
 		Status:    notifcommon.OTPVerifyStatusVerified,
 		Recipient: recipient,
 	}
-	user := &entityprovider.Entity{
-		ID:   userID,
-		Type: "person",
-		OUID: orgUnit,
-	}
 
 	suite.mockOTPService.On("VerifyOTP", mock.Anything, mock.MatchedBy(func(dto notifcommon.VerifyOTPDTO) bool {
 		return dto.SessionToken == testSessionToken && dto.OTPCode == otp
 	})).Return(verifyResult, nil)
-	suite.mockEntityService.On("IdentifyEntity", mock.MatchedBy(func(filters map[string]interface{}) bool {
-		return filters["mobileNumber"] == recipient
-	})).Return(&userID, nil)
-	suite.mockEntityService.On("GetEntity", userID).Return(user, nil)
 
 	result, err := suite.service.Authenticate(context.Background(), testSessionToken, otp)
 	suite.Nil(err)
 	suite.NotNil(result)
-	suite.NotNil(result.InternalEntity)
-	suite.Equal(userID, result.InternalEntity.ID)
-	suite.Equal(orgUnit, result.InternalEntity.OUID)
+	suite.Equal(recipient, result.Token["mobileNumber"])
+	suite.Equal(recipient, result.AuthenticatedClaims["mobileNumber"])
 }
 
 func (suite *OTPAuthnServiceTestSuite) TestAuthenticateWithInvalidInputs() {
@@ -285,83 +271,6 @@ func (suite *OTPAuthnServiceTestSuite) TestAuthenticateWithOTPServiceError() {
 
 			if tc.expectedDescSubstr != "" {
 				suite.Contains(err.ErrorDescription.DefaultValue, tc.expectedDescSubstr)
-			}
-		})
-	}
-}
-
-func (suite *OTPAuthnServiceTestSuite) TestAuthenticateWithUserServiceError() {
-	verifyResult := &notifcommon.VerifyOTPResultDTO{
-		Status:    notifcommon.OTPVerifyStatusVerified,
-		Recipient: "+1234567890",
-	}
-	serverErr := &entityprovider.EntityProviderError{
-		Code:        entityprovider.ErrorCodeSystemError,
-		Description: "Database unavailable",
-	}
-
-	// Prepare a userID for cases that require a valid identify result
-	userID := "user123"
-
-	tests := []struct {
-		name         string
-		identifyRet  *string
-		identifyErr  *entityprovider.EntityProviderError
-		getUserRet   *entityprovider.Entity
-		getUserErr   *entityprovider.EntityProviderError
-		expectNoUser bool
-		expectedCode string
-	}{
-		{
-			name:         "NonExistentUser",
-			identifyRet:  nil,
-			identifyErr:  &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound},
-			expectNoUser: true,
-		},
-		{
-			name:         "IdentifyServerError",
-			identifyRet:  nil,
-			identifyErr:  serverErr,
-			expectedCode: serviceerror.InternalServerError.Code,
-		},
-		{
-			name:         "GetUserServerError",
-			identifyRet:  &userID,
-			getUserErr:   serverErr,
-			expectedCode: serviceerror.InternalServerError.Code,
-		},
-		{
-			name:         "UserIDNil",
-			identifyRet:  nil,
-			identifyErr:  (*entityprovider.EntityProviderError)(nil),
-			expectNoUser: true,
-		},
-	}
-
-	for _, tc := range tests {
-		suite.Run(tc.name, func() {
-			freshOTP := notificationmock.NewOTPServiceInterfaceMock(suite.T())
-			freshUser := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-			suite.service = newOTPAuthnService(freshOTP, freshUser)
-
-			freshOTP.On("VerifyOTP", mock.Anything, mock.Anything).Return(verifyResult, nil)
-			freshUser.On("IdentifyEntity", mock.Anything).Return(tc.identifyRet, tc.identifyErr)
-
-			// only set GetUser expectation when identify returns a user id
-			if tc.getUserRet != nil || tc.getUserErr != nil {
-				freshUser.On("GetEntity", *tc.identifyRet).Return(tc.getUserRet, tc.getUserErr)
-			}
-
-			result, err := suite.service.Authenticate(context.Background(), testSessionToken, "123456")
-			if tc.expectNoUser {
-				suite.NotNil(result)
-				suite.Nil(result.InternalEntity)
-				suite.Nil(err)
-				suite.Equal("+1234567890", result.VerifiedIdentifiers["mobileNumber"])
-			} else {
-				suite.Nil(result)
-				suite.NotNil(err)
-				suite.Equal(tc.expectedCode, err.Code)
 			}
 		})
 	}

@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -80,8 +81,9 @@ type errorHandlingConfig struct {
 // httpRequestExecutor implements the ExecutorInterface for making HTTP requests to external endpoints.
 type httpRequestExecutor struct {
 	core.ExecutorInterface
-	ouService ou.OrganizationUnitServiceInterface
-	logger    *log.Logger
+	ouService     ou.OrganizationUnitServiceInterface
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface
+	logger        *log.Logger
 }
 
 var _ core.ExecutorInterface = (*httpRequestExecutor)(nil)
@@ -90,6 +92,7 @@ var _ core.ExecutorInterface = (*httpRequestExecutor)(nil)
 func newHTTPRequestExecutor(
 	flowFactory core.FlowFactoryInterface,
 	ouService ou.OrganizationUnitServiceInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *httpRequestExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpRequestLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameHTTPRequest))
@@ -100,6 +103,7 @@ func newHTTPRequestExecutor(
 	return &httpRequestExecutor{
 		ExecutorInterface: base,
 		ouService:         ouService,
+		authnProvider:     authnProvider,
 		logger:            logger,
 	}
 }
@@ -112,6 +116,7 @@ func (h *httpRequestExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
+		AuthUser:       ctx.AuthUser,
 	}
 
 	config, err := h.parseAndValidateConfig(ctx.Context, ctx.NodeProperties)
@@ -122,8 +127,8 @@ func (h *httpRequestExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 		return execResp, nil
 	}
 
-	h.enrichOURuntimeData(ctx, config)
-	h.resolvePlaceholders(ctx, config)
+	h.enrichOURuntimeData(ctx, config, execResp)
+	h.resolvePlaceholders(ctx, config, execResp)
 
 	response, err := h.executeRequestWithRetry(ctx, config)
 	if err != nil {
@@ -296,7 +301,8 @@ func (h *httpRequestExecutor) parseErrorHandling(
 // so that placeholders like {{ context.ouHandle }} can be resolved for the current request.
 // It only performs the fetch when an OU placeholder is referenced in the config and the OU ID
 // is available in the context.
-func (h *httpRequestExecutor) enrichOURuntimeData(ctx *core.NodeContext, config *httpRequestConfig) {
+func (h *httpRequestExecutor) enrichOURuntimeData(ctx *core.NodeContext, config *httpRequestConfig,
+	execResp *common.ExecutorResponse) {
 	if h.ouService == nil {
 		return
 	}
@@ -316,9 +322,15 @@ func (h *httpRequestExecutor) enrichOURuntimeData(ctx *core.NodeContext, config 
 		return
 	}
 
-	ouID := ctx.AuthenticatedUser.OUID
+	ouID := ctx.RuntimeData[ouIDKey]
 	if ouID == "" {
-		ouID = ctx.RuntimeData[ouIDKey]
+		authUser, entityRef, svcErr := h.authnProvider.GetEntityReference(ctx.Context, execResp.AuthUser)
+		execResp.AuthUser = authUser
+		if svcErr != nil {
+			h.logger.Warn(ctx.Context, "Failed to fetch entity reference for OU enrichment",
+				log.String("error", svcErr.ErrorDescription.DefaultValue))
+		}
+		ouID = entityRef.EntityID
 	}
 	if ouID == "" {
 		return
@@ -338,35 +350,37 @@ func (h *httpRequestExecutor) enrichOURuntimeData(ctx *core.NodeContext, config 
 }
 
 // resolvePlaceholders resolves placeholders in the configuration using context data.
-func (h *httpRequestExecutor) resolvePlaceholders(ctx *core.NodeContext, config *httpRequestConfig) {
-	config.URL = core.ResolvePlaceholder(ctx, config.URL)
+func (h *httpRequestExecutor) resolvePlaceholders(
+	ctx *core.NodeContext, config *httpRequestConfig, execResp *common.ExecutorResponse) {
+	config.URL = core.ResolvePlaceholder(ctx, config.URL, execResp, h.authnProvider, h.logger)
 
 	// Resolve headers
 	for key, value := range config.Headers {
-		config.Headers[key] = core.ResolvePlaceholder(ctx, value)
+		config.Headers[key] = core.ResolvePlaceholder(ctx, value, execResp, h.authnProvider, h.logger)
 	}
 
 	// Resolve body
-	config.Body = h.resolveMapPlaceholders(ctx, config.Body).(map[string]interface{})
+	config.Body = h.resolveMapPlaceholders(ctx, config.Body, execResp).(map[string]interface{})
 }
 
 // resolveMapPlaceholders recursively resolves placeholders in a map or slice.
-func (h *httpRequestExecutor) resolveMapPlaceholders(ctx *core.NodeContext, data interface{}) interface{} {
+func (h *httpRequestExecutor) resolveMapPlaceholders(
+	ctx *core.NodeContext, data interface{}, execResp *common.ExecutorResponse) interface{} {
 	switch v := data.(type) {
 	case map[string]interface{}:
 		result := make(map[string]interface{})
 		for key, value := range v {
-			result[key] = h.resolveMapPlaceholders(ctx, value)
+			result[key] = h.resolveMapPlaceholders(ctx, value, execResp)
 		}
 		return result
 	case []interface{}:
 		result := make([]interface{}, len(v))
 		for i, value := range v {
-			result[i] = h.resolveMapPlaceholders(ctx, value)
+			result[i] = h.resolveMapPlaceholders(ctx, value, execResp)
 		}
 		return result
 	case string:
-		return core.ResolvePlaceholder(ctx, v)
+		return core.ResolvePlaceholder(ctx, v, execResp, h.authnProvider, h.logger)
 	default:
 		return v
 	}

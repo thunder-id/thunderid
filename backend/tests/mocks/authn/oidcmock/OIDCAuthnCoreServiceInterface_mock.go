@@ -10,7 +10,6 @@ import (
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/oauth"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
@@ -42,23 +41,23 @@ func (_m *OIDCAuthnCoreServiceInterfaceMock) EXPECT() *OIDCAuthnCoreServiceInter
 }
 
 // Authenticate provides a mock function for the type OIDCAuthnCoreServiceInterfaceMock
-func (_mock *OIDCAuthnCoreServiceInterfaceMock) Authenticate(ctx context.Context, idpID string, code string) (*common.FederatedAuthResult, *serviceerror.ServiceError) {
+func (_mock *OIDCAuthnCoreServiceInterfaceMock) Authenticate(ctx context.Context, idpID string, code string) (*common.AuthnResult, *serviceerror.ServiceError) {
 	ret := _mock.Called(ctx, idpID, code)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Authenticate")
 	}
 
-	var r0 *common.FederatedAuthResult
+	var r0 *common.AuthnResult
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*common.FederatedAuthResult, *serviceerror.ServiceError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*common.AuthnResult, *serviceerror.ServiceError)); ok {
 		return returnFunc(ctx, idpID, code)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.FederatedAuthResult); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.AuthnResult); ok {
 		r0 = returnFunc(ctx, idpID, code)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*common.FederatedAuthResult)
+			r0 = ret.Get(0).(*common.AuthnResult)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *serviceerror.ServiceError); ok {
@@ -107,12 +106,12 @@ func (_c *OIDCAuthnCoreServiceInterfaceMock_Authenticate_Call) Run(run func(ctx 
 	return _c
 }
 
-func (_c *OIDCAuthnCoreServiceInterfaceMock_Authenticate_Call) Return(federatedAuthResult *common.FederatedAuthResult, serviceError *serviceerror.ServiceError) *OIDCAuthnCoreServiceInterfaceMock_Authenticate_Call {
-	_c.Call.Return(federatedAuthResult, serviceError)
+func (_c *OIDCAuthnCoreServiceInterfaceMock_Authenticate_Call) Return(authnResult *common.AuthnResult, serviceError *serviceerror.ServiceError) *OIDCAuthnCoreServiceInterfaceMock_Authenticate_Call {
+	_c.Call.Return(authnResult, serviceError)
 	return _c
 }
 
-func (_c *OIDCAuthnCoreServiceInterfaceMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, idpID string, code string) (*common.FederatedAuthResult, *serviceerror.ServiceError)) *OIDCAuthnCoreServiceInterfaceMock_Authenticate_Call {
+func (_c *OIDCAuthnCoreServiceInterfaceMock_Authenticate_Call) RunAndReturn(run func(ctx context.Context, idpID string, code string) (*common.AuthnResult, *serviceerror.ServiceError)) *OIDCAuthnCoreServiceInterfaceMock_Authenticate_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -409,76 +408,6 @@ func (_c *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call) Return(string
 }
 
 func (_c *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call) RunAndReturn(run func(ctx context.Context, idToken string) (map[string]interface{}, *serviceerror.ServiceError)) *OIDCAuthnCoreServiceInterfaceMock_GetIDTokenClaims_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetInternalUser provides a mock function for the type OIDCAuthnCoreServiceInterfaceMock
-func (_mock *OIDCAuthnCoreServiceInterfaceMock) GetInternalUser(ctx context.Context, sub string) (*entityprovider.Entity, *serviceerror.ServiceError) {
-	ret := _mock.Called(ctx, sub)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetInternalUser")
-	}
-
-	var r0 *entityprovider.Entity
-	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*entityprovider.Entity, *serviceerror.ServiceError)); ok {
-		return returnFunc(ctx, sub)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *entityprovider.Entity); ok {
-		r0 = returnFunc(ctx, sub)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*entityprovider.Entity)
-		}
-	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *serviceerror.ServiceError); ok {
-		r1 = returnFunc(ctx, sub)
-	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*serviceerror.ServiceError)
-		}
-	}
-	return r0, r1
-}
-
-// OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetInternalUser'
-type OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call struct {
-	*mock.Call
-}
-
-// GetInternalUser is a helper method to define mock.On call
-//   - ctx context.Context
-//   - sub string
-func (_e *OIDCAuthnCoreServiceInterfaceMock_Expecter) GetInternalUser(ctx interface{}, sub interface{}) *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call {
-	return &OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call{Call: _e.mock.On("GetInternalUser", ctx, sub)}
-}
-
-func (_c *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call) Run(run func(ctx context.Context, sub string)) *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 string
-		if args[1] != nil {
-			arg1 = args[1].(string)
-		}
-		run(
-			arg0,
-			arg1,
-		)
-	})
-	return _c
-}
-
-func (_c *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call) Return(entity *entityprovider.Entity, serviceError *serviceerror.ServiceError) *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call {
-	_c.Call.Return(entity, serviceError)
-	return _c
-}
-
-func (_c *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call) RunAndReturn(run func(ctx context.Context, sub string) (*entityprovider.Entity, *serviceerror.ServiceError)) *OIDCAuthnCoreServiceInterfaceMock_GetInternalUser_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -19,12 +19,10 @@
 package executor
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 
-	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -34,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // mobileNumberInput is the default input definition for mobile number collection.
@@ -100,16 +99,32 @@ func (s *smsOTPAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
+		AuthUser:       ctx.AuthUser,
 	}
 
 	// Determine the executor mode
 	switch ctx.ExecutorMode {
 	case ExecutorModeSend:
-		if !s.ValidatePrerequisites(ctx, execResp) {
-			logger.Debug(ctx.Context, "Prerequisites not met for SMS OTP authentication executor")
-			return execResp, nil
+		mobileNumber, err := s.getUserMobileFromContext(ctx, execResp)
+		if err != nil {
+			logger.Error(ctx.Context, "Failed to retrieve user mobile number from context",
+				log.Error(err))
+			return execResp, fmt.Errorf("failed to retrieve user mobile number from context: %w", err)
 		}
-		return s.executeSend(ctx, execResp)
+		if mobileNumber == "" {
+			logger.Debug(ctx.Context,
+				"Prerequisites not met for SMS OTP authentication executor")
+			if ctx.FlowType == common.FlowTypeRegistration {
+				logger.Debug(ctx.Context,
+					"Prerequisites not met for registration flow, prompting for mobile number")
+				execResp.Status = common.ExecUserInputRequired
+				execResp.Inputs = []common.Input{s.resolvePhoneInput(ctx, mobileNumberInput)}
+				return execResp, nil
+			}
+			execResp.Status = common.ExecFailure
+			execResp.Error = &ErrPrerequisitesFailed
+		}
+		return s.executeSend(ctx, execResp, mobileNumber)
 	case ExecutorModeVerify:
 		return s.executeVerify(ctx, execResp)
 	default:
@@ -119,10 +134,10 @@ func (s *smsOTPAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 
 // executeSend executes the OTP sending step.
 func (s *smsOTPAuthExecutor) executeSend(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
+	execResp *common.ExecutorResponse, mobileNumber string) (*common.ExecutorResponse, error) {
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	err := s.InitiateOTP(ctx, execResp)
+	err := s.InitiateOTP(ctx, execResp, mobileNumber)
 	if err != nil {
 		return execResp, err
 	}
@@ -150,37 +165,35 @@ func (s *smsOTPAuthExecutor) executeVerify(ctx *core.NodeContext,
 
 	logger.Debug(ctx.Context, "SMS OTP verify completed",
 		log.String("status", string(execResp.Status)),
-		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
+		log.Bool("isAuthenticated", execResp.AuthUser.IsAuthenticated()))
 
 	return execResp, nil
 }
 
 // InitiateOTP initiates the OTP sending process to the user's mobile number.
 func (s *smsOTPAuthExecutor) InitiateOTP(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) error {
+	execResp *common.ExecutorResponse, mobileNumber string) error {
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Sending SMS OTP to user")
 
 	phoneAttr := s.resolvePhoneInput(ctx, mobileNumberInput).Identifier
-	mobileNumber, err := s.getUserMobileFromContext(ctx, phoneAttr)
-	if err != nil {
-		return err
-	}
 
 	var userID *string
-	if ctx.AuthenticatedUser.IsAuthenticated {
-		userIDVal := s.GetUserIDFromContext(ctx)
-		if userIDVal == "" {
-			return errors.New("user ID is empty in the context")
+	if ctx.AuthUser.IsAuthenticated() {
+		userIDVal := s.GetUserIDFromContext(ctx, execResp, s.authnProvider)
+		if userIDVal != "" {
+			userID = &userIDVal
 		}
-		userID = &userIDVal
-	} else {
-		// Identify user by mobile number if not authenticated
+	}
+
+	if userID == nil {
+		// Identify user by mobile number if not already identified from context
 		if mobileNumber == "" {
 			logger.Error(ctx.Context, "Mobile number is empty in the context")
 		}
 
 		filter := map[string]interface{}{phoneAttr: mobileNumber}
+		var err error
 		userID, err = s.IdentifyUser(ctx.Context, filter, execResp)
 		if err != nil {
 			logger.Error(ctx.Context, "Failed to identify user", log.Error(err))
@@ -243,7 +256,7 @@ func (s *smsOTPAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Processing authentication flow response for SMS OTP")
 
-	authenticatedUser, err := s.getAuthenticatedUser(ctx, execResp)
+	err := s.getAuthenticatedUser(ctx, execResp)
 	if err != nil {
 		logger.Error(ctx.Context, "Failed to get authenticated user details", log.Error(err))
 		return fmt.Errorf("failed to get authenticated user details: %w", err)
@@ -251,8 +264,6 @@ func (s *smsOTPAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 	if execResp.Status == common.ExecFailure || execResp.Status == common.ExecUserInputRequired {
 		return nil
 	}
-
-	execResp.AuthenticatedUser = *authenticatedUser
 	execResp.Status = common.ExecComplete
 
 	return nil
@@ -260,7 +271,8 @@ func (s *smsOTPAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 
 // ValidatePrerequisites validates whether the prerequisites for the SMSOTPAuthExecutor are met.
 func (s *smsOTPAuthExecutor) ValidatePrerequisites(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) bool {
+	execResp *common.ExecutorResponse,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface) bool {
 	if s.isPhonePrerequisiteMet(ctx) {
 		return true
 	}
@@ -268,13 +280,15 @@ func (s *smsOTPAuthExecutor) ValidatePrerequisites(ctx *core.NodeContext,
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	if ctx.FlowType == common.FlowTypeRegistration {
-		logger.Debug(ctx.Context, "Prerequisites not met for registration flow, prompting for mobile number")
+		logger.Debug(ctx.Context,
+			"Prerequisites not met for registration flow, prompting for mobile number")
 		execResp.Status = common.ExecUserInputRequired
 		execResp.Inputs = []common.Input{s.resolvePhoneInput(ctx, mobileNumberInput)}
 		return false
 	}
 
-	logger.Debug(ctx.Context, "Trying to satisfy prerequisites for SMS OTP authentication executor")
+	logger.Debug(ctx.Context,
+		"Trying to satisfy prerequisites for SMS OTP authentication executor")
 
 	s.satisfyPrerequisites(ctx, execResp)
 	if execResp.Status == common.ExecFailure {
@@ -313,24 +327,49 @@ func (s *smsOTPAuthExecutor) resolvePhoneInput(ctx *core.NodeContext, fallback c
 }
 
 // getUserMobileFromContext retrieves the user's mobile number from the context.
-func (s *smsOTPAuthExecutor) getUserMobileFromContext(ctx *core.NodeContext, phoneAttr string) (string, error) {
-	mobileNumber := ctx.RuntimeData[phoneAttr]
+func (s *smsOTPAuthExecutor) getUserMobileFromContext(
+	ctx *core.NodeContext, execResp *common.ExecutorResponse) (string, error) {
+	mobileAttrName := s.resolvePhoneInput(ctx, mobileNumberInput).Identifier
+
+	mobileNumber := ctx.RuntimeData[mobileAttrName]
 
 	if mobileNumber == "" {
-		mobileNumber = ctx.UserInputs[phoneAttr]
+		mobileNumber = ctx.UserInputs[mobileAttrName]
 	}
 
-	if mobileNumber == "" && ctx.AuthenticatedUser.Attributes != nil {
-		if mobile, ok := ctx.AuthenticatedUser.Attributes[phoneAttr]; ok {
-			if mobileStr, valid := mobile.(string); valid && mobileStr != "" {
-				mobileNumber = mobileStr
+	if mobileNumber == "" {
+		if val, ok := ctx.ForwardedData[mobileAttrName]; ok {
+			if strVal, isString := val.(string); isString && strVal != "" {
+				mobileNumber = strVal
 			}
 		}
 	}
 
 	if mobileNumber == "" {
-		return "", errors.New("mobile number not found in context")
+		mobileNumber = s.resolveUserMobileNumber(ctx, mobileAttrName)
 	}
+
+	if mobileNumber == "" && execResp.AuthUser.IsAuthenticated() {
+		authUser, attributes, svsErr := s.authnProvider.GetUserAttributes(ctx.Context, nil, nil, execResp.AuthUser)
+		execResp.AuthUser = authUser
+		if svsErr != nil {
+			return "", fmt.Errorf("failed to get authenticated user attributes: %v", svsErr)
+		}
+		if attributes != nil && attributes.Attributes != nil {
+			if attr, ok := attributes.Attributes[mobileAttrName]; ok {
+				if strVal, isString := attr.Value.(string); isString && strVal != "" {
+					mobileNumber = strVal
+				}
+			}
+		}
+	}
+
+	// Store the resolved mobile number in runtime data for downstream use.
+	if ctx.RuntimeData == nil {
+		ctx.RuntimeData = make(map[string]string)
+	}
+	ctx.RuntimeData[mobileAttrName] = mobileNumber
+
 	return mobileNumber, nil
 }
 
@@ -358,10 +397,6 @@ func (s *smsOTPAuthExecutor) satisfyPrerequisites(ctx *core.NodeContext,
 	}
 	userID := ctx.RuntimeData[userAttributeUserID]
 
-	// TODO: If the mobile number is not found, but the user is authenticated, this method will
-	//  prompt the user to enter their mobile number.
-	//  We should verify whether this is the expected behavior.
-
 	logger.Debug(ctx.Context, "Retrieving mobile number from user ID",
 		log.MaskedString(log.LoggerKeyUserID, userID))
 	mobileNumber, err := s.getUserMobileNumber(userID, ctx, execResp)
@@ -386,12 +421,11 @@ func (s *smsOTPAuthExecutor) satisfyPrerequisites(ctx *core.NodeContext,
 }
 
 // resolveUserID resolves the user ID from the context based on various attributes.
-// TODO: Move to a separate resolver when the support is added.
 func (s *smsOTPAuthExecutor) resolveUserID(ctx *core.NodeContext) (bool, error) {
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	// First, check if the user ID is already available in the context.
-	userID := s.GetUserIDFromContext(ctx)
+	userID := s.GetUserIDFromContext(ctx, nil, s.authnProvider)
 	if userID != "" {
 		logger.Debug(ctx.Context, "User ID found in context data",
 			log.MaskedString(log.LoggerKeyUserID, userID))
@@ -439,7 +473,8 @@ func (s *smsOTPAuthExecutor) resolveUserID(ctx *core.NodeContext) (bool, error) 
 // resolveUserIDFromAttribute attempts to resolve the user ID from a specific attribute in the context.
 func (s *smsOTPAuthExecutor) resolveUserIDFromAttribute(ctx *core.NodeContext,
 	attributeName string, logger *log.Logger) (bool, error) {
-	logger.Debug(ctx.Context, "Resolving user ID from attribute", log.String("attributeName", attributeName))
+	logger.Debug(ctx.Context, "Resolving user ID from attribute",
+		log.String("attributeName", attributeName))
 
 	attributeValue := ctx.UserInputs[attributeName]
 	if attributeValue == "" {
@@ -475,8 +510,18 @@ func (s *smsOTPAuthExecutor) getUserMobileNumber(userID string, ctx *core.NodeCo
 
 	// Try to get mobile number from context
 	phoneAttr := s.resolvePhoneInput(ctx, mobileNumberInput).Identifier
-	mobileNumber, err := s.getUserMobileFromContext(ctx, phoneAttr)
-	if err == nil && mobileNumber != "" {
+	mobileNumber := ctx.RuntimeData[phoneAttr]
+	if mobileNumber == "" {
+		mobileNumber = ctx.UserInputs[phoneAttr]
+	}
+	if mobileNumber == "" {
+		if val, ok := ctx.ForwardedData[phoneAttr]; ok {
+			if strVal, isString := val.(string); isString && strVal != "" {
+				mobileNumber = strVal
+			}
+		}
+	}
+	if mobileNumber != "" {
 		logger.Debug(ctx.Context, "Mobile number found in context, skipping user store call")
 		return mobileNumber, nil
 	}
@@ -488,21 +533,8 @@ func (s *smsOTPAuthExecutor) getUserMobileNumber(userID string, ctx *core.NodeCo
 		return "", fmt.Errorf("failed to retrieve user details: %s", providerErr.Error())
 	}
 
-	// Extract mobile number from user attributes
-	attrs := make(map[string]interface{})
-	if len(user.Attributes) > 0 {
-		if err := json.Unmarshal(user.Attributes, &attrs); err != nil {
-			return "", fmt.Errorf("failed to unmarshal user attributes: %w", err)
-		}
-	}
-
-	mobileNumber = ""
-	mobileNumberAttr := attrs[s.resolvePhoneInput(ctx, mobileNumberInput).Identifier]
-	if mobileStr, ok := mobileNumberAttr.(string); ok && mobileStr != "" {
-		mobileNumber = mobileStr
-	}
-
-	if mobileNumber == "" {
+	mobileNumber, err := GetUserAttribute(user, s.resolvePhoneInput(ctx, mobileNumberInput).Identifier)
+	if err != nil {
 		logger.Debug(ctx.Context, "Mobile number not found in user attributes or context")
 		execResp.Status = common.ExecFailure
 		execResp.Error = errAttributeNotFoundFor("mobile")
@@ -590,16 +622,12 @@ func (s *smsOTPAuthExecutor) getOTPMaxAttempts() int {
 
 // getAuthenticatedUser returns the authenticated user details for the given user ID.
 func (s *smsOTPAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*authncm.AuthenticatedUser, error) {
+	execResp *common.ExecutorResponse) error {
 	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	phoneAttr := ctx.RuntimeData[common.RuntimeKeySMSOTPPhoneAttr]
-	if phoneAttr == "" {
-		phoneAttr = s.resolvePhoneInput(ctx, mobileNumberInput).Identifier
-	}
 	mobileNumber := ctx.RuntimeData[common.RuntimeKeySMSOTPMobileNumber]
 	if mobileNumber == "" {
-		return nil, errors.New("mobile number not found in context")
+		return errors.New("mobile number not found in context")
 	}
 
 	userID := ctx.RuntimeData[userAttributeUserID]
@@ -608,18 +636,19 @@ func (s *smsOTPAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 
 	providedOTP := ctx.UserInputs[userInputOTP]
 	if providedOTP == "" {
-		logger.Debug(ctx.Context, "Provided OTP is empty", log.MaskedString(log.LoggerKeyUserID, userID))
+		logger.Debug(ctx.Context, "Provided OTP is empty",
+			log.MaskedString(log.LoggerKeyUserID, userID))
 		execResp.Status = common.ExecUserInputRequired
 		execResp.Inputs = s.GetRequiredInputs(ctx)
 		execResp.Error = &ErrInvalidOTP
-		return nil, nil
+		return nil
 	}
 
 	sessionToken := ctx.RuntimeData["otpSessionToken"]
 	if sessionToken == "" {
 		logger.Error(ctx.Context, "No session token found for OTP validation",
 			log.MaskedString(log.LoggerKeyUserID, userID))
-		return nil, fmt.Errorf("no session token found for OTP validation")
+		return fmt.Errorf("no session token found for OTP validation")
 	}
 
 	creds := map[string]interface{}{
@@ -629,44 +658,9 @@ func (s *smsOTPAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 		},
 	}
 
-	// Handle registration flows.
-	if ctx.FlowType == common.FlowTypeRegistration {
-		newAuthUser, authnResult, svcErr := s.authnProvider.AuthenticateUser(
-			ctx.Context, nil, creds, nil, nil, ctx.AuthUser)
-		if svcErr != nil {
-			if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code {
-				logger.Debug(ctx.Context, "OTP verification failed",
-					log.MaskedString(log.LoggerKeyUserID, userID))
-				execResp.Status = common.ExecUserInputRequired
-				execResp.Inputs = s.GetRequiredInputs(ctx)
-				execResp.Error = &ErrInvalidOTP
-				return nil, nil
-			}
-			logger.Error(ctx.Context, "Failed to verify OTP",
-				log.MaskedString(log.LoggerKeyUserID, userID), log.Any("serviceError", svcErr))
-			return nil, fmt.Errorf("failed to verify OTP: %s", svcErr.ErrorDescription.DefaultValue)
-		}
-		execResp.AuthUser = newAuthUser
-		if authnResult.IsExistingUser {
-			execResp.Status = common.ExecFailure
-			execResp.Error = serviceerror.CustomServiceError(ErrUserAlreadyExists, i18ncore.I18nMessage{
-				Key:          ErrUserAlreadyExists.ErrorDescription.Key,
-				DefaultValue: "User already exists with the provided mobile number",
-			})
-			return nil, nil
-		}
-		execResp.Status = common.ExecComplete
-		execResp.Error = nil
-		return &authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-			Attributes: map[string]interface{}{
-				phoneAttr: mobileNumber,
-			},
-		}, nil
-	}
-
-	newAuthUser, authnResult, svcErr := s.authnProvider.AuthenticateUser(
-		ctx.Context, nil, creds, nil, nil, ctx.AuthUser)
+	newAuthUser, authenticatedClaims, svcErr := s.authnProvider.AuthenticateUser(
+		ctx.Context, nil, creds, nil, nil, execResp.AuthUser)
+	execResp.AuthUser = newAuthUser
 	if svcErr != nil {
 		if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code {
 			logger.Debug(ctx.Context, "OTP verification failed",
@@ -674,56 +668,77 @@ func (s *smsOTPAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 			execResp.Status = common.ExecUserInputRequired
 			execResp.Inputs = s.GetRequiredInputs(ctx)
 			execResp.Error = &ErrInvalidOTP
-			return nil, nil
+			return nil
 		}
 		logger.Error(ctx.Context, "Failed to verify OTP",
 			log.MaskedString(log.LoggerKeyUserID, userID), log.Any("serviceError", svcErr))
-		return nil, fmt.Errorf("failed to verify OTP: %s", svcErr.ErrorDescription.DefaultValue)
+		return fmt.Errorf("failed to verify OTP: %s", svcErr.ErrorDescription.DefaultValue)
 	}
-	execResp.AuthUser = newAuthUser
-
 	execResp.RuntimeData["otpSessionToken"] = ""
-	logger.Debug(ctx.Context, "OTP validated successfully", log.MaskedString(log.LoggerKeyUserID, userID))
-
-	// Check if user is already authenticated
-	if ctx.AuthenticatedUser.IsAuthenticated && ctx.AuthenticatedUser.UserID != "" {
-		if ctx.AuthenticatedUser.Attributes == nil {
-			ctx.AuthenticatedUser.Attributes = make(map[string]interface{})
-		}
-		ctx.AuthenticatedUser.Attributes[phoneAttr] = mobileNumber
-		return &ctx.AuthenticatedUser, nil
-	}
-
-	// User not available in context, try to retrieve the user and get the attributes
-	userID = authnResult.UserID
-
-	logger.Debug(ctx.Context, "Fetching user details from user store",
+	logger.Debug(ctx.Context, "OTP validated successfully",
 		log.MaskedString(log.LoggerKeyUserID, userID))
+	for key, value := range authenticatedClaims {
+		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
+	}
+	execResp.Status = common.ExecComplete
+	execResp.Error = nil
+	return nil
+}
 
-	attrs := map[string]interface{}{}
-	user, err := s.entityProvider.GetEntity(userID)
+// resolveUserMobileNumber attempts to resolve the user's mobile number by identifying
+// the user from available context attributes (username, email) and fetching
+// the mobile number from the user store.
+func (s *smsOTPAuthExecutor) resolveUserMobileNumber(ctx *core.NodeContext, mobileAttrName string) string {
+	logger := s.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+
+	userID := ctx.RuntimeData[userAttributeUserID]
+	if userID == "" {
+		userID = s.resolveUserIDFromAttributeSimple(ctx, userAttributeUsername, logger)
+	}
+	if userID == "" {
+		userID = s.resolveUserIDFromAttributeSimple(ctx, userAttributeEmail, logger)
+	}
+	if userID == "" {
+		return ""
+	}
+
+	user, providerErr := s.entityProvider.GetEntity(userID)
+	if providerErr != nil {
+		logger.Error(ctx.Context, "Failed to retrieve user details", log.Error(providerErr))
+		return ""
+	}
+
+	mobileNumber, err := GetUserAttribute(user, mobileAttrName)
 	if err != nil {
-		if err.Code != entityprovider.ErrorCodeNotImplemented {
-			logger.Error(ctx.Context, "Failed to get user attributes", log.Error(err))
-			return nil, errors.New("failed to get user attributes")
-		}
-		logger.Debug(ctx.Context, "User provider is not implemented. User attributes will be empty.")
+		logger.Debug(ctx.Context, "Mobile number not found in user attributes", log.Error(err))
+		return ""
 	}
 
-	if err == nil && user != nil {
-		if err := json.Unmarshal(user.Attributes, &attrs); err != nil {
-			logger.Error(ctx.Context, "Failed to unmarshal user attributes", log.Error(err))
-			return nil, errors.New("failed to unmarshal user attributes")
-		}
+	return mobileNumber
+}
+
+// resolveUserIDFromAttributeSimple attempts to resolve a user ID by looking up a specific
+// attribute value from user inputs or runtime data. Returns the user ID string directly.
+func (s *smsOTPAuthExecutor) resolveUserIDFromAttributeSimple(ctx *core.NodeContext,
+	attributeName string, logger *log.Logger) string {
+	attributeValue := ctx.UserInputs[attributeName]
+	if attributeValue == "" {
+		attributeValue = ctx.RuntimeData[attributeName]
+	}
+	if attributeValue == "" {
+		return ""
 	}
 
-	authenticatedUser := &authncm.AuthenticatedUser{
-		IsAuthenticated: true,
-		UserID:          user.ID,
-		OUID:            user.OUID,
-		UserType:        user.Type,
-		Attributes:      attrs,
+	filters := map[string]interface{}{attributeName: attributeValue}
+	userID, providerErr := s.entityProvider.IdentifyEntity(filters)
+	if providerErr != nil {
+		logger.Error(ctx.Context, "Failed to identify user by attribute",
+			log.String("attributeName", attributeName), log.Error(providerErr))
+		return ""
+	}
+	if userID != nil && *userID != "" {
+		return *userID
 	}
 
-	return authenticatedUser, nil
+	return ""
 }

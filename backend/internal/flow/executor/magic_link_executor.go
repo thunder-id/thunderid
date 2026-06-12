@@ -23,7 +23,6 @@ import (
 	"slices"
 	"strconv"
 
-	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -96,8 +95,9 @@ func (m *magicLinkExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 	logger.Debug(ctx.Context, "Executing Magic Link authentication executor")
 
 	execResp := newMagicLinkExecutorResponse()
+	execResp.AuthUser = ctx.AuthUser
 
-	if !m.ValidatePrerequisites(ctx, execResp) {
+	if !m.ValidatePrerequisites(ctx, execResp, m.authnProvider) {
 		logger.Debug(ctx.Context, "Prerequisites not met for Magic Link authentication executor")
 		return execResp, nil
 	}
@@ -140,6 +140,7 @@ func (m *magicLinkExecutor) executeGenerate(ctx *core.NodeContext) (*common.Exec
 func (m *magicLinkExecutor) InitiateMagicLink(ctx *core.NodeContext,
 	logger *log.Logger) (*common.ExecutorResponse, error) {
 	execResp := newMagicLinkExecutorResponse()
+	execResp.AuthUser = ctx.AuthUser
 	isRegistration := ctx.FlowType == common.FlowTypeRegistration
 	searchAttrs := m.buildUserSearchAttributes(ctx)
 
@@ -170,8 +171,8 @@ func (m *magicLinkExecutor) InitiateMagicLink(ctx *core.NodeContext,
 		subject = destValue
 	} else {
 		var userID string
-		if ctx.AuthenticatedUser.IsAuthenticated {
-			userID = m.GetUserIDFromContext(ctx)
+		if ctx.AuthUser.IsAuthenticated() {
+			userID = m.GetUserIDFromContext(ctx, execResp, m.authnProvider)
 			if userID == "" {
 				return execResp, errors.New("user ID is empty in the context")
 			}
@@ -297,30 +298,11 @@ func isSearchableIdentifier(identifier string) bool {
 	return true
 }
 
-// getAuthenticatedUser retrieves the authenticated user details from the user provider.
-func (m *magicLinkExecutor) getAuthenticatedUser(
-	userID string) (*authncm.AuthenticatedUser, error) {
-	if userID == "" {
-		return nil, errors.New("user ID is empty")
-	}
-
-	user, err := m.entityProvider.GetEntity(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
-	}
-
-	return &authncm.AuthenticatedUser{
-		IsAuthenticated: true,
-		UserID:          user.ID,
-		UserType:        user.Type,
-		OUID:            user.OUID,
-	}, nil
-}
-
 // executeVerify handles the verification of the magic link token
 func (m *magicLinkExecutor) executeVerify(ctx *core.NodeContext) (*common.ExecutorResponse, error) {
 	logger := m.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	execResp := newMagicLinkExecutorResponse()
+	execResp.AuthUser = ctx.AuthUser
 
 	if !m.HasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required inputs for Magic Link verification are not provided")
@@ -345,8 +327,9 @@ func (m *magicLinkExecutor) executeVerify(ctx *core.NodeContext) (*common.Execut
 		},
 	}
 
-	newAuthUser, authnResult, svcErr := m.authnProvider.AuthenticateUser(
-		ctx.Context, nil, creds, nil, nil, ctx.AuthUser)
+	newAuthUser, authenticatedClaims, svcErr := m.authnProvider.AuthenticateUser(
+		ctx.Context, nil, creds, nil, nil, execResp.AuthUser)
+	execResp.AuthUser = newAuthUser
 	if svcErr != nil {
 		if svcErr.Code == authnprovidermgr.ErrorAuthenticationFailed.Code {
 			execResp.Status = common.ExecFailure
@@ -355,7 +338,9 @@ func (m *magicLinkExecutor) executeVerify(ctx *core.NodeContext) (*common.Execut
 		}
 		return execResp, fmt.Errorf("failed to verify magic link: %s", svcErr.ErrorDescription.DefaultValue)
 	}
-	execResp.AuthUser = newAuthUser
+	for key, value := range authenticatedClaims {
+		execResp.RuntimeData[key] = utils.ConvertInterfaceValueToString(value)
+	}
 
 	tokenJTI, execErr := m.validateFlowClaims(ctx, token, logger)
 	if execErr != nil {
@@ -364,24 +349,6 @@ func (m *magicLinkExecutor) executeVerify(ctx *core.NodeContext) (*common.Execut
 		return execResp, nil
 	}
 	execResp.RuntimeData[common.RuntimeKeyMagicLinkUsedJti] = tokenJTI
-
-	if ctx.FlowType == common.FlowTypeRegistration {
-		if authnResult.IsExistingUser {
-			logger.Debug(ctx.Context, "User already exists during magic link registration verification.")
-			execResp.Status = common.ExecFailure
-			execResp.Error = &ErrUserAlreadyExists
-			return execResp, nil
-		}
-		execResp.Status = common.ExecComplete
-		return execResp, nil
-	}
-
-	userID := authnResult.UserID
-	authenticatedUser, err := m.getAuthenticatedUser(userID)
-	if err != nil {
-		return execResp, fmt.Errorf("failed to get authenticated user details: %w", err)
-	}
-	execResp.AuthenticatedUser = *authenticatedUser
 
 	execResp.Status = common.ExecComplete
 	logger.Debug(ctx.Context, "Magic link verify completed successfully")

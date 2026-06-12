@@ -49,7 +49,7 @@ type AuthenticateRequest struct {
 
 // GetAttributesRequest is the request body for the attributes endpoint.
 type GetAttributesRequest struct {
-	Token               string                                 `json:"token"`
+	Token               any                                    `json:"token"`
 	RequestedAttributes *authnprovidercm.RequestedAttributes   `json:"requestedAttributes"`
 	Metadata            *authnprovidercm.GetAttributesMetadata `json:"metadata"`
 }
@@ -81,17 +81,24 @@ func (p *restAuthnProvider) Authenticate(ctx context.Context, identifiers, crede
 	return postAndDecode[authnprovidercm.AuthnResult](p, ctx, p.baseURL+"/authenticate", reqBody)
 }
 
+// GetEntityReference retrieves the entity reference from the external service.
+func (p *restAuthnProvider) GetEntityReference(ctx context.Context, entityReferenceToken any,
+) (*authnprovidercm.EntityReference, *serviceerror.ServiceError) {
+	return postAndDecode[authnprovidercm.EntityReference](p, ctx, p.baseURL+"/entity-reference",
+		entityReferenceToken)
+}
+
 // GetAttributes retrieves the attributes of a user.
-func (p *restAuthnProvider) GetAttributes(ctx context.Context, token string,
+func (p *restAuthnProvider) GetAttributes(ctx context.Context, token any,
 	requestedAttributes *authnprovidercm.RequestedAttributes,
 	metadata *authnprovidercm.GetAttributesMetadata) (
-	*authnprovidercm.GetAttributesResult, *serviceerror.ServiceError) {
+	*authnprovidercm.AttributesResponse, *serviceerror.ServiceError) {
 	reqBody := GetAttributesRequest{
 		Token:               token,
 		RequestedAttributes: requestedAttributes,
 		Metadata:            metadata,
 	}
-	return postAndDecode[authnprovidercm.GetAttributesResult](p, ctx, p.baseURL+"/attributes", reqBody)
+	return postAndDecode[authnprovidercm.AttributesResponse](p, ctx, p.baseURL+"/attributes", reqBody)
 }
 
 // postAndDecode marshals reqBody as JSON, posts it to url, and decodes the response into T.

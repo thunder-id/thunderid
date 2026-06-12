@@ -21,10 +21,8 @@
 package executor
 
 import (
-	"encoding/json"
 	"errors"
 
-	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -90,6 +88,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
+		AuthUser:       ctx.AuthUser,
 	}
 
 	// When a userID is pre-resolved (e.g., by an IdentifyingExecutor in resolve mode),
@@ -118,7 +117,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 	// TODO: Should handle client errors here. Service should return a ServiceError and
 	//  client errors should be appended as a failure.
 	//  For the moment handling returned error as a authentication failure.
-	authenticatedUser, err := b.getAuthenticatedUser(ctx, execResp)
+	err := b.authenticateUser(ctx, execResp)
 	if err != nil {
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrUserAuthFailed
@@ -127,12 +126,7 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 	if execResp.Status == common.ExecFailure || execResp.Status == common.ExecUserInputRequired {
 		return execResp, nil
 	}
-	if authenticatedUser == nil {
-		execResp.Status = common.ExecFailure
-		execResp.Error = &ErrUserAuthFailed
-		return execResp, nil
-	}
-	if !authenticatedUser.IsAuthenticated && ctx.FlowType != common.FlowTypeRegistration {
+	if !execResp.AuthUser.IsAuthenticated() && ctx.FlowType != common.FlowTypeRegistration {
 		execResp.Status = common.ExecUserInputRequired
 		if hasPreResolvedUser {
 			execResp.Inputs = b.getCredentialInputs(ctx)
@@ -143,12 +137,11 @@ func (b *basicAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResp
 		return execResp, nil
 	}
 
-	execResp.AuthenticatedUser = *authenticatedUser
 	execResp.Status = common.ExecComplete
 
 	logger.Debug(ctx.Context, "Basic authentication executor execution completed",
 		log.String("status", string(execResp.Status)),
-		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
+		log.Bool("isAuthenticated", execResp.AuthUser.IsAuthenticated()))
 
 	return execResp, nil
 }
@@ -164,10 +157,10 @@ func (b *basicAuthExecutor) getCredentialInputs(ctx *core.NodeContext) []common.
 	return credentials
 }
 
-// getAuthenticatedUser perform authentication based on the provided identifying and
+// authenticateUser perform authentication based on the provided identifying and
 // credential attributes and returns the authenticated user details.
-func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) (*authncm.AuthenticatedUser, error) {
+func (b *basicAuthExecutor) authenticateUser(ctx *core.NodeContext,
+	execResp *common.ExecutorResponse) error {
 	logger := b.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	userIdentifiers := map[string]interface{}{}
@@ -192,30 +185,28 @@ func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 	if ctx.FlowType == common.FlowTypeRegistration {
 		_, err := b.IdentifyUser(ctx.Context, userIdentifiers, execResp)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if execResp.Status == common.ExecFailure {
 			if execResp.Error != nil && execResp.Error.Code == ErrUserNotFound.Code {
 				logger.Debug(ctx.Context,
 					"User not found for the provided attributes. Proceeding with registration flow.")
 				execResp.Status = common.ExecComplete
-				return &authncm.AuthenticatedUser{
-					IsAuthenticated: false,
-					Attributes:      userIdentifiers,
-				}, nil
+				return nil
 			}
-			return nil, nil
+			return nil
 		}
 		// User found - fail registration.
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrUserAlreadyExists
-		return nil, nil
+		return nil
 	}
 
 	// For authentication flows, call Authenticate directly.
 	metadata := b.buildAuthnMetadata(ctx)
-	newAuthUser, authnResult, svcErr := b.authnProvider.AuthenticateUser(ctx.Context, userIdentifiers,
-		userCredentials, nil, metadata, ctx.AuthUser)
+	authUser, authenticatedClaims, svcErr := b.authnProvider.AuthenticateUser(ctx.Context, userIdentifiers,
+		userCredentials, nil, metadata, execResp.AuthUser)
+	execResp.AuthUser = authUser
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
 			execResp.Status = common.ExecUserInputRequired
@@ -230,41 +221,20 @@ func (b *basicAuthExecutor) getAuthenticatedUser(ctx *core.NodeContext,
 				execResp.Error = &ErrUserAuthFailed
 			}
 
-			return nil, nil
+			return nil
 		}
 
 		logger.Error(ctx.Context, "Failed to authenticate user",
 			log.String("errorCode", svcErr.Code), log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
-		return nil, errors.New("failed to authenticate user")
+		return errors.New("failed to authenticate user")
 	}
-	execResp.AuthUser = newAuthUser
-
-	// Try to retrieve the user and get the attributes
-	userAttributes := map[string]interface{}{}
-	user, err := b.entityProvider.GetEntity(authnResult.UserID)
-
-	if err != nil {
-		if err.Code != entityprovider.ErrorCodeNotImplemented {
-			logger.Error(ctx.Context, "Failed to get user attributes", log.Error(err))
-			return nil, errors.New("failed to get user attributes")
-		}
-		logger.Debug(ctx.Context, "User provider is not implemented. User attributes will be empty.")
-	}
-
-	if err == nil && user != nil && len(user.Attributes) > 0 {
-		if err := json.Unmarshal(user.Attributes, &userAttributes); err != nil {
-			logger.Error(ctx.Context, "Failed to unmarshal user attributes", log.Error(err))
-			return nil, errors.New("failed to unmarshal user attributes")
+	for key, value := range authenticatedClaims {
+		if strVal, ok := value.(string); ok {
+			execResp.RuntimeData[key] = strVal
 		}
 	}
 
-	return &authncm.AuthenticatedUser{
-		IsAuthenticated: true,
-		UserID:          authnResult.UserID,
-		OUID:            authnResult.OUID,
-		UserType:        authnResult.UserType,
-		Attributes:      userAttributes,
-	}, nil
+	return nil
 }
 
 // buildAuthnMetadata constructs the metadata for authentication.

@@ -28,6 +28,8 @@ import (
 	"net/url"
 	"time"
 
+	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 )
 
@@ -50,6 +52,7 @@ type OpenID4VPServiceInterface interface {
 	ResultRedirectURI(state string) string
 	InitiateForRP(ctx context.Context, definitionID, rpID string) (*Initiation, error)
 	LookupState(ctx context.Context, state string) (*RequestState, error)
+	Authenticate(ctx context.Context, state string) (*authncommon.AuthnResult, *serviceerror.ServiceError)
 }
 
 var _ OpenID4VPServiceInterface = (*service)(nil)
@@ -275,6 +278,40 @@ func (s *service) LookupState(ctx context.Context, state string) (*RequestState,
 		return rs, ErrExpiredState
 	}
 	return rs, nil
+}
+
+// Authenticate retrieves the completed verified presentation for the given state
+// and converts it to an AuthnResult for use by the authn provider chain.
+// It returns an error when the state is unknown, expired, or the presentation
+// has not yet reached StatusCompleted.
+func (s *service) Authenticate(ctx context.Context, state string) (
+	*authncommon.AuthnResult, *serviceerror.ServiceError) {
+	rs, err := s.Result(ctx, state)
+	if err != nil {
+		return nil, &ErrorUnknownState
+	}
+	if rs.Status != StatusCompleted {
+		return nil, &ErrorVerificationFailed
+	}
+	vp := rs.Result
+	if vp == nil {
+		return nil, &serviceerror.InternalServerError
+	}
+
+	token := make(map[string]interface{}, len(vp.Claims)+3)
+	for k, v := range vp.Claims {
+		token[k] = v
+	}
+	token["openid4vp_issuer"] = vp.Issuer
+	token["openid4vp_vct"] = vp.VCT
+	if vp.Subject != "" {
+		token["sub"] = vp.Subject
+	}
+
+	return &authncommon.AuthnResult{
+		Token:               token,
+		AuthenticatedClaims: token,
+	}, nil
 }
 
 // ResultRedirectURIBase returns the engine-configured result-redirect base URL

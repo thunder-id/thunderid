@@ -22,7 +22,6 @@ import (
 	authngoogle "github.com/thunder-id/thunderid/internal/authn/google"
 	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
-	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
@@ -40,7 +39,6 @@ var _ core.ExecutorInterface = (*googleOIDCAuthExecutor)(nil)
 func newGoogleOIDCAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	idpService idp.IDPServiceInterface,
-	entityTypeService entitytype.EntityTypeServiceInterface,
 	authService authngoogle.GoogleOIDCAuthnServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) oidcAuthExecutorInterface {
@@ -63,7 +61,7 @@ func newGoogleOIDCAuthExecutor(
 	}
 
 	base := newOIDCAuthExecutor(ExecutorNameGoogleAuth, defaultInputs, []common.Input{},
-		flowFactory, idpService, entityTypeService, oidcSvcCast, authnProvider, idp.IDPTypeGoogle)
+		flowFactory, idpService, oidcSvcCast, authnProvider, idp.IDPTypeGoogle)
 
 	return &googleOIDCAuthExecutor{
 		oidcAuthExecutorInterface: base,

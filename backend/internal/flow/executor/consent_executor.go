@@ -95,43 +95,69 @@ func (e *consentExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRespon
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
 		ForwardedData:  make(map[string]interface{}),
+		AuthUser:       ctx.AuthUser,
 	}
 
-	if !e.ValidatePrerequisites(ctx, execResp) {
+	if !e.ValidatePrerequisites(ctx, execResp, e.authnProvider) {
 		logger.Debug(ctx.Context, "Prerequisites validation failed for consent executor")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrConsentPrereqFailed
 		return execResp, nil
 	}
 
+	if !execResp.AuthUser.IsAuthenticated() {
+		execResp.Status = common.ExecFailure
+		execResp.Error = &ErrUserNotAuthenticated
+		return execResp, nil
+	}
+
+	authUser, entityRef, svcErr := e.authnProvider.GetEntityReference(ctx.Context, execResp.AuthUser)
+	execResp.AuthUser = authUser
+	if svcErr != nil {
+		logger.Error(ctx.Context, "Failed to get entity reference from AuthUser", log.Any("error", svcErr))
+		execResp.Status = common.ExecFailure
+		execResp.Error = &ErrFailedToIdentifyUser
+		return execResp, nil
+	}
+
+	availableAttrs, svcErr := e.authnProvider.GetUserAvailableAttributes(ctx.Context, execResp.AuthUser)
+	execResp.AuthUser = authUser
+	if svcErr != nil {
+		e.logger.Debug(ctx.Context, "Failed to get available attributes from AuthUser",
+			log.Any("error", svcErr))
+	}
+
 	// TODO: Replace with application's actual OU when OU support is added
 	ouID := "default"
 	appID := ctx.EntityID
-	userID := ctx.AuthenticatedUser.UserID
+	entityID := entityRef.EntityID
 
 	if !e.HasRequiredInputs(ctx, execResp) {
 		logger.Debug(ctx.Context, "Required consent decisions not provided; checking if consent is needed")
-		return e.checkConsent(ctx, execResp, ouID, appID, userID)
+		return e.checkConsent(ctx, execResp, ouID, appID, availableAttrs, entityRef)
 	}
 
 	logger.Debug(ctx.Context, "Consent decisions provided; processing consent decisions")
-	return e.handleConsentDecisions(ctx, execResp, ouID, appID, userID)
+	return e.handleConsentDecisions(ctx, execResp, ouID, appID, entityID)
 }
 
 // checkConsent resolves whether consent is needed and either completes or forwards to a prompt.
 func (e *consentExecutor) checkConsent(ctx *core.NodeContext, execResp *common.ExecutorResponse,
-	ouID, appID, userID string) (*common.ExecutorResponse, error) {
+	ouID, appID string,
+	availableAttrResp *authnprovidercm.AttributesResponse,
+	entityRef *authnprovidercm.EntityReference,
+) (*common.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Checking if user consent is required")
 
 	essentialAttributes, optionalAttributes := e.getRequiredAttributes(ctx)
 	authorizedPermissions := strings.Fields(ctx.RuntimeData["authorized_permissions"])
-	availableAttributes := e.buildAugmentedAvailableAttributes(ctx)
+	availableAttributes := e.buildAugmentedAvailableAttributes(availableAttrResp, entityRef)
 	appName := ctx.Application.Name
 
 	// Resolve consent to determine if any required consents are missing and need to be prompted
 	promptData, svcErr := e.consentEnforcer.ResolveConsent(
-		ctx.Context, ouID, appID, appName, userID,
+		ctx.Context, ouID, appID, appName, entityRef.EntityID,
 		essentialAttributes, optionalAttributes, authorizedPermissions,
 		availableAttributes)
 	if svcErr != nil {
@@ -308,40 +334,22 @@ func (e *consentExecutor) getRequiredAttributes(ctx *core.NodeContext) (
 // construction in the authenticated user context but are never included in AttributesResponse
 // by authentication providers.
 //
-// It uses AuthenticatedUser.AvailableAttributes (legacy) as the base and merges in any
-// attributes from AuthUser via the AuthnProviderManager (new pattern used by BasicAuth).
-// This temporary dual-source merge will be simplified once AuthenticatedUser is removed.
-// When both sources are empty, nil is returned so that the downstream consent enforcer
+// When the source is empty, nil is returned so that the downstream consent enforcer
 // skips profile-presence filtering entirely.
-func (e *consentExecutor) buildAugmentedAvailableAttributes(ctx *core.NodeContext) *authnprovidercm.AttributesResponse {
+func (e *consentExecutor) buildAugmentedAvailableAttributes(
+	availableAttrResp *authnprovidercm.AttributesResponse, entityRef *authnprovidercm.EntityReference,
+) *authnprovidercm.AttributesResponse {
 	augmented := make(map[string]*authnprovidercm.AttributeResponse)
 	baseVerifications := make(map[string]*authnprovidercm.VerificationResponse)
 	hasSource := false
 
-	if base := ctx.AuthenticatedUser.AvailableAttributes; base != nil {
+	if base := availableAttrResp; base != nil {
 		hasSource = true
 		for k, v := range base.Attributes {
 			augmented[k] = v
 		}
 		for k, v := range base.Verifications {
 			baseVerifications[k] = v
-		}
-	}
-
-	if ctx.AuthUser.IsAuthenticated() {
-		attrs, svcErr := e.authnProvider.GetUserAvailableAttributes(ctx.Context, ctx.AuthUser)
-		if svcErr != nil {
-			e.logger.Debug(ctx.Context,
-				"Failed to get available attributes from AuthUser; using AuthenticatedUser only",
-				log.Any("error", svcErr))
-		} else if attrs != nil {
-			hasSource = true
-			for k, v := range attrs.Attributes {
-				augmented[k] = v
-			}
-			for k, v := range attrs.Verifications {
-				baseVerifications[k] = v
-			}
 		}
 	}
 
@@ -352,15 +360,15 @@ func (e *consentExecutor) buildAugmentedAvailableAttributes(ctx *core.NodeContex
 	// Inject special attribute keys.
 	// Value is set to empty since the consent enforcer only checks for presence of the key, and the actual values
 	// can be obtained from the authenticated user context if needed
-	if ctx.AuthenticatedUser.UserType != "" {
+	if entityRef.EntityType != "" {
 		augmented[oauth2const.ClaimUserType] = &authnprovidercm.AttributeResponse{}
 	}
-	if ctx.AuthenticatedUser.OUID != "" {
+	if entityRef.OUID != "" {
 		augmented[oauth2const.ClaimOUID] = &authnprovidercm.AttributeResponse{}
 		augmented[oauth2const.ClaimOUName] = &authnprovidercm.AttributeResponse{}
 		augmented[oauth2const.ClaimOUHandle] = &authnprovidercm.AttributeResponse{}
 	}
-	if ctx.AuthenticatedUser.UserID != "" {
+	if entityRef.EntityID != "" {
 		augmented[oauth2const.UserAttributeGroups] = &authnprovidercm.AttributeResponse{}
 	}
 

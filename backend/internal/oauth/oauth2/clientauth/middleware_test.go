@@ -32,6 +32,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -61,7 +62,7 @@ func (suite *ClientAuthMiddlewareTestSuite) SetupTest() {
 	// Individual tests can override with Once() for specific behavior.
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{UserID: testClientID},
+		Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{"userId": testClientID},
 			(*serviceerror.ServiceError)(nil)).Maybe()
 }
 
@@ -223,7 +224,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_InvalidClie
 	failAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
 	failAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil),
+		Return(authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
 			&serviceerror.ServiceError{
 				Type:             serviceerror.ClientErrorType,
 				Code:             authnprovidermgr.ErrorAuthenticationFailed.Code,
@@ -375,7 +376,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_BasicAuth_I
 	failAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
 	failAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil),
+		Return(authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
 			&serviceerror.ServiceError{
 				Type:             serviceerror.ClientErrorType,
 				Code:             authnprovidermgr.ErrorAuthenticationFailed.Code,

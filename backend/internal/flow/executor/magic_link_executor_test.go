@@ -29,8 +29,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
-	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -54,6 +54,14 @@ const (
 	magicLinkTestMagicLinkURL = "https://example.com/verify"
 	magicLinkTestJWTHeader    = `{"alg":"HS256","typ":"JWT"}`
 )
+
+func toStringPtr(s string) *string { return &s }
+
+func newMagicLinkAuthenticatedUser() authnprovidermgr.AuthUser {
+	var authUser authnprovidermgr.AuthUser
+	_ = authUser.UnmarshalJSON([]byte(`{"entityReferenceToken":"tok","attributeToken":"tok"}`))
+	return authUser
+}
 
 // createTestJWTWithClaims creates a test JWT string with the given executionId and jti
 func createTestJWTWithClaims(executionID, jti string) string {
@@ -143,7 +151,7 @@ func createMockMagicLinkExecutor(t *testing.T) core.ExecutorInterface {
 	mockExec.On("GetDefaultInputs").Return([]common.Input{testMagicLinkTokenInput}).Maybe()
 	mockExec.On("GetRequiredInputs", mock.Anything).Return([]common.Input{testMagicLinkTokenInput}).Maybe()
 	mockExec.On("GetPrerequisites").Return([]common.Input{emailInput}).Maybe()
-	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything).Return(true).Maybe()
+	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).Return(true).Maybe()
 	mockExec.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(
 		func(ctx *core.NodeContext, execResp *common.ExecutorResponse) bool {
 			token, exists := ctx.UserInputs[userInputMagicLinkToken]
@@ -179,7 +187,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_Authen
 
 	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
-	}).Return(new(magicLinkTestUserID), nil)
+	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
 	suite.mockMagicLinkService.On("GenerateMagicLink", ctx.Context, magicLinkTestUserID,
 		defaultExpiryMatcher(), map[string]string{
@@ -310,7 +318,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_AntiEnumeratio
 
 	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
-	}).Return(new(magicLinkTestUserID), nil)
+	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -340,7 +348,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithCu
 
 	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
-	}).Return(new(magicLinkTestUserID), nil)
+	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
 	suite.mockMagicLinkService.On("GenerateMagicLink", ctx.Context, magicLinkTestUserID,
 		mock.MatchedBy(func(val int64) bool { return val == 600 }),
@@ -383,7 +391,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithCu
 
 	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
-	}).Return(new(magicLinkTestUserID), nil)
+	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
 	suite.mockMagicLinkService.On("GenerateMagicLink", ctx.Context, magicLinkTestUserID,
 		defaultExpiryMatcher(), map[string]string{
@@ -417,7 +425,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Failure_Genera
 
 	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
-	}).Return(new(magicLinkTestUserID), nil)
+	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
 	suite.mockMagicLinkService.On("GenerateMagicLink", ctx.Context, magicLinkTestUserID,
 		defaultExpiryMatcher(), map[string]string{
@@ -450,7 +458,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Failure_Client
 
 	suite.mockEntityProvider.On("IdentifyEntity", map[string]interface{}{
 		userAttributeEmail: magicLinkTestEmail,
-	}).Return(new(magicLinkTestUserID), nil)
+	}).Return(toStringPtr(magicLinkTestUserID), nil)
 
 	clientErr := &serviceerror.ServiceError{
 		Type:             serviceerror.ClientErrorType,
@@ -517,10 +525,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithAu
 		RuntimeData: map[string]string{
 			userAttributeUserID: magicLinkTestUserID,
 		},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			IsAuthenticated: true,
-			UserID:          magicLinkTestUserID,
-		},
+		AuthUser: newMagicLinkAuthenticatedUser(),
 	}
 
 	mockExec := coremock.NewExecutorInterfaceMock(suite.T())
@@ -529,8 +534,8 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithAu
 	mockExec.On("GetDefaultInputs").Return([]common.Input{testMagicLinkTokenInput}).Maybe()
 	mockExec.On("GetRequiredInputs", mock.Anything).Return([]common.Input{testMagicLinkTokenInput}).Maybe()
 	mockExec.On("GetPrerequisites").Return([]common.Input{emailInput}).Maybe()
-	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything).Return(true).Maybe()
-	mockExec.On("GetUserIDFromContext", mock.Anything).Return(magicLinkTestUserID).Maybe()
+	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).Return(true).Maybe()
+	mockExec.On("GetUserIDFromContext", mock.Anything, mock.Anything, mock.Anything).Return(magicLinkTestUserID).Maybe()
 	suite.executor.ExecutorInterface = mockExec
 
 	suite.mockMagicLinkService.On("GenerateMagicLink", ctx.Context, magicLinkTestUserID,
@@ -556,11 +561,6 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_Success_WithAu
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success() {
 	testToken := createTestJWTWithClaims(magicLinkTestExecutionID, "jti-success")
-	user := &entityprovider.Entity{
-		ID:   magicLinkTestUserID,
-		Type: magicLinkTestUserType,
-		OUID: magicLinkTestOUID,
-	}
 
 	ctx := &core.NodeContext{
 		Context:      context.Background(),
@@ -575,29 +575,19 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success() {
 		},
 	}
 
+	authenticatedAuthUser := newMagicLinkAuthenticatedUser()
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{},
-		&authnprovidermgr.AuthnBasicResult{
-			UserID:         magicLinkTestUserID,
-			OUID:           magicLinkTestOUID,
-			UserType:       magicLinkTestUserType,
-			IsExistingUser: true,
-		}, nil)
-	suite.mockEntityProvider.On("GetEntity", magicLinkTestUserID).Return(user, nil)
+		authenticatedAuthUser, authnprovidercm.AuthenticatedClaims{}, (*serviceerror.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
-	assert.True(suite.T(), resp.AuthenticatedUser.IsAuthenticated)
-	assert.Equal(suite.T(), magicLinkTestUserID, resp.AuthenticatedUser.UserID)
-	assert.Equal(suite.T(), magicLinkTestUserType, resp.AuthenticatedUser.UserType)
-	assert.Equal(suite.T(), magicLinkTestOUID, resp.AuthenticatedUser.OUID)
+	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
 	assert.Equal(suite.T(), "jti-success", resp.RuntimeData[common.RuntimeKeyMagicLinkUsedJti])
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
-	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_RegistrationFlow() {
@@ -618,10 +608,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_Registra
 
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{},
-		&authnprovidermgr.AuthnBasicResult{
-			IsExistingUser: false,
-		}, nil)
+		authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, (*serviceerror.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -630,7 +617,6 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_Registra
 	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), "jti-registration", resp.RuntimeData[common.RuntimeKeyMagicLinkUsedJti])
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "GetEntity", mock.Anything)
 }
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_RegistrationFlow_MobileNumber() {
@@ -651,10 +637,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_Registra
 
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{},
-		&authnprovidermgr.AuthnBasicResult{
-			IsExistingUser: false,
-		}, nil)
+		authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, (*serviceerror.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -663,7 +646,6 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_Registra
 	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), "jti-registration", resp.RuntimeData[common.RuntimeKeyMagicLinkUsedJti])
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
-	suite.mockEntityProvider.AssertNotCalled(suite.T(), "GetEntity", mock.Anything)
 }
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_RegistrationFlow_UsesStoredDestinationAttribute() {
@@ -688,10 +670,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_RegistrationFlow
 
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{},
-		&authnprovidermgr.AuthnBasicResult{
-			IsExistingUser: false,
-		}, nil)
+		authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, (*serviceerror.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -757,7 +736,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_InvalidT
 
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{}, nil,
+		authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
 		&serviceerror.ServiceError{
 			Type:             serviceerror.ClientErrorType,
 			Code:             authnprovidermgr.ErrorAuthenticationFailed.Code,
@@ -791,11 +770,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_ReplayAt
 
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{},
-		&authnprovidermgr.AuthnBasicResult{
-			UserID:         magicLinkTestUserID,
-			IsExistingUser: true,
-		}, nil)
+		authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, (*serviceerror.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -807,11 +782,6 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_ReplayAt
 
 func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_ReplacesStoredJTI() {
 	testToken := createTestJWTWithClaims(magicLinkTestExecutionID, "jti-new")
-	user := &entityprovider.Entity{
-		ID:   magicLinkTestUserID,
-		Type: magicLinkTestUserType,
-		OUID: magicLinkTestOUID,
-	}
 
 	ctx := &core.NodeContext{
 		Context:      context.Background(),
@@ -827,14 +797,10 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_Replaces
 		},
 	}
 
+	authenticatedAuthUser := newMagicLinkAuthenticatedUser()
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{},
-		&authnprovidermgr.AuthnBasicResult{
-			UserID:         magicLinkTestUserID,
-			IsExistingUser: true,
-		}, nil)
-	suite.mockEntityProvider.On("GetEntity", magicLinkTestUserID).Return(user, nil)
+		authenticatedAuthUser, authnprovidercm.AuthenticatedClaims{}, (*serviceerror.ServiceError)(nil))
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -843,11 +809,10 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Success_Replaces
 	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), "jti-new", resp.RuntimeData[common.RuntimeKeyMagicLinkUsedJti])
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
-	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
-func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_GetUserError() {
-	testToken := createTestJWTWithClaims(magicLinkTestExecutionID, "jti-get-user-error")
+func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_AuthenticateUserServerError() {
+	testToken := createTestJWTWithClaims(magicLinkTestExecutionID, "jti-server-error")
 
 	ctx := &core.NodeContext{
 		Context:      context.Background(),
@@ -864,20 +829,18 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_VerifyMode_Failure_GetUserE
 
 	suite.mockAuthnProvider.On("AuthenticateUser", ctx.Context, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{},
-		&authnprovidermgr.AuthnBasicResult{
-			UserID:         magicLinkTestUserID,
-			IsExistingUser: true,
-		}, nil)
-	suite.mockEntityProvider.On("GetEntity", magicLinkTestUserID).Return(nil,
-		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "database error", ""))
+		authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
+		&serviceerror.ServiceError{
+			Type:             serviceerror.ServerErrorType,
+			Code:             "AUTH-5000",
+			ErrorDescription: i18ncore.I18nMessage{DefaultValue: "database error"},
+		})
 
 	_, err := suite.executor.Execute(ctx)
 
 	assert.Error(suite.T(), err)
-	assert.Contains(suite.T(), err.Error(), "failed to get user")
+	assert.Contains(suite.T(), err.Error(), "failed to verify magic link")
 	suite.mockAuthnProvider.AssertExpectations(suite.T())
-	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
 // Test Invalid Executor Mode
@@ -909,7 +872,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_PrerequisitesNotMet() {
 	mockExec.On("GetType").Return(common.ExecutorTypeAuthentication).Maybe()
 	mockExec.On("GetDefaultInputs").Return([]common.Input{testMagicLinkTokenInput}).Maybe()
 	mockExec.On("GetPrerequisites").Return([]common.Input{emailInput}).Maybe()
-	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything).Return(false)
+	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).Return(false)
 	suite.executor.ExecutorInterface = mockExec
 
 	ctx := &core.NodeContext{
@@ -953,46 +916,6 @@ func (suite *MagicLinkExecutorTestSuite) TestBuildUserSearchAttributes_NotFound(
 	attrs := suite.executor.buildUserSearchAttributes(ctx)
 
 	assert.Empty(suite.T(), attrs)
-}
-
-func (suite *MagicLinkExecutorTestSuite) TestGetAuthenticatedUser_Success() {
-	user := &entityprovider.Entity{
-		ID:   magicLinkTestUserID,
-		Type: magicLinkTestUserType,
-		OUID: magicLinkTestOUID,
-	}
-
-	suite.mockEntityProvider.On("GetEntity", magicLinkTestUserID).Return(user, nil)
-
-	authenticatedUser, err := suite.executor.getAuthenticatedUser(magicLinkTestUserID)
-
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), authenticatedUser)
-	assert.True(suite.T(), authenticatedUser.IsAuthenticated)
-	assert.Equal(suite.T(), magicLinkTestUserID, authenticatedUser.UserID)
-	assert.Equal(suite.T(), magicLinkTestUserType, authenticatedUser.UserType)
-	assert.Equal(suite.T(), magicLinkTestOUID, authenticatedUser.OUID)
-	suite.mockEntityProvider.AssertExpectations(suite.T())
-}
-
-func (suite *MagicLinkExecutorTestSuite) TestGetAuthenticatedUser_UserIDNotFound() {
-	authenticatedUser, err := suite.executor.getAuthenticatedUser("")
-
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), authenticatedUser)
-	assert.Contains(suite.T(), err.Error(), "user ID is empty")
-}
-
-func (suite *MagicLinkExecutorTestSuite) TestGetAuthenticatedUser_GetUserError() {
-	suite.mockEntityProvider.On("GetEntity", magicLinkTestUserID).Return(nil,
-		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "user not found", ""))
-
-	authenticatedUser, err := suite.executor.getAuthenticatedUser(magicLinkTestUserID)
-
-	assert.Error(suite.T(), err)
-	assert.Nil(suite.T(), authenticatedUser)
-	assert.Contains(suite.T(), err.Error(), "failed to get user")
-	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
 // Test Property Getters
@@ -1113,10 +1036,7 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_AuthenticatedU
 			userAttributeEmail: magicLinkTestEmail,
 		},
 		RuntimeData: make(map[string]string),
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			IsAuthenticated: true,
-			UserID:          "",
-		},
+		AuthUser:    newMagicLinkAuthenticatedUser(),
 	}
 
 	mockExec := coremock.NewExecutorInterfaceMock(suite.T())
@@ -1124,8 +1044,8 @@ func (suite *MagicLinkExecutorTestSuite) TestExecute_GenerateMode_AuthenticatedU
 	mockExec.On("GetType").Return(common.ExecutorTypeAuthentication).Maybe()
 	mockExec.On("GetDefaultInputs").Return([]common.Input{testMagicLinkTokenInput}).Maybe()
 	mockExec.On("GetPrerequisites").Return([]common.Input{emailInput}).Maybe()
-	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything).Return(true).Maybe()
-	mockExec.On("GetUserIDFromContext", mock.Anything).Return("")
+	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).Return(true).Maybe()
+	mockExec.On("GetUserIDFromContext", mock.Anything, mock.Anything, mock.Anything).Return("")
 	suite.executor.ExecutorInterface = mockExec
 
 	_, err := suite.executor.Execute(ctx)

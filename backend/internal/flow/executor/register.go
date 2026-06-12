@@ -171,33 +171,34 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameOAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOAuth, newOAuthExecutor(
-				"", []common.Input{}, []common.Input{}, deps.FlowFactory, deps.IDPService, deps.EntityTypeService,
+				"", []common.Input{}, []common.Input{}, deps.FlowFactory, deps.IDPService,
 				deps.OAuthSvc, deps.AuthnProvider, idp.IDPTypeOAuth))
 		},
 		ExecutorNameOIDCAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOIDCAuth, newOIDCAuthExecutor(
-				"", []common.Input{}, []common.Input{}, deps.FlowFactory, deps.IDPService, deps.EntityTypeService,
+				"", []common.Input{}, []common.Input{}, deps.FlowFactory, deps.IDPService,
 				deps.OIDCSvc, deps.AuthnProvider, idp.IDPTypeOIDC))
 		},
 		ExecutorNameGitHubAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameGitHubAuth, newGithubOAuthExecutor(
-				deps.FlowFactory, deps.IDPService, deps.EntityTypeService, deps.GithubSvc, deps.AuthnProvider))
+				deps.FlowFactory, deps.IDPService, deps.GithubSvc, deps.AuthnProvider))
 		},
 		ExecutorNameGoogleAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameGoogleAuth, newGoogleOIDCAuthExecutor(
-				deps.FlowFactory, deps.IDPService, deps.EntityTypeService, deps.GoogleSvc, deps.AuthnProvider))
+				deps.FlowFactory, deps.IDPService, deps.GoogleSvc, deps.AuthnProvider))
 		},
 		ExecutorNameProvisioning: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameProvisioning, newProvisioningExecutor(
 				deps.FlowFactory, deps.GroupService, deps.RoleService, deps.RoleAssignmentService,
-				deps.EntityProvider, deps.EntityTypeService))
+				deps.EntityProvider, deps.EntityTypeService, deps.AuthnProvider))
 		},
 		ExecutorNameOUCreation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameOUCreation, newOUExecutor(deps.FlowFactory, deps.OUService))
+			reg.RegisterExecutor(ExecutorNameOUCreation, newOUExecutor(deps.FlowFactory, deps.OUService,
+				deps.AuthnProvider, deps.EntityTypeService))
 		},
 		ExecutorNameAttributeCollect: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAttributeCollect, newAttributeCollector(
-				deps.FlowFactory, deps.EntityProvider))
+				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider))
 		},
 		ExecutorNameAuthAssert: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthAssert, newAuthAssertExecutor(deps.FlowFactory, deps.JWTService,
@@ -206,10 +207,11 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameAuthorization: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthorization, newAuthorizationExecutor(
-				deps.FlowFactory, deps.AuthZService, deps.EntityProvider))
+				deps.FlowFactory, deps.AuthZService, deps.EntityProvider, deps.AuthnProvider))
 		},
 		ExecutorNameHTTPRequest: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameHTTPRequest, newHTTPRequestExecutor(deps.FlowFactory, deps.OUService))
+			reg.RegisterExecutor(ExecutorNameHTTPRequest, newHTTPRequestExecutor(deps.FlowFactory, deps.OUService,
+				deps.AuthnProvider))
 		},
 		ExecutorNameUserTypeResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameUserTypeResolver, newUserTypeResolver(
@@ -224,7 +226,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameCredentialSetter: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialSetter, newCredentialSetter(
-				deps.FlowFactory, deps.EntityProvider))
+				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider))
 		},
 		ExecutorNamePermissionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePermissionValidator, newPermissionValidator(deps.FlowFactory))
@@ -245,18 +247,19 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameAttributeUniquenessValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAttributeUniquenessValidator, newAttributeUniquenessValidator(
-				deps.FlowFactory, deps.EntityTypeService, deps.EntityProvider))
+				deps.FlowFactory, deps.EntityTypeService, deps.EntityProvider, deps.AuthnProvider))
 		},
 		ExecutorNameSMSExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSMSExecutor, newSMSExecutor(
 				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateService, deps.EntityProvider))
 		},
 		ExecutorNameFederatedAuthResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameFederatedAuthResolver, newFederatedAuthResolverExecutor(deps.FlowFactory))
+			reg.RegisterExecutor(ExecutorNameFederatedAuthResolver, newFederatedAuthResolverExecutor(deps.FlowFactory,
+				deps.AuthnProvider))
 		},
 		ExecutorNameOpenID4VPVerify: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOpenID4VPVerify, newOpenID4VPVerifier(
-				deps.FlowFactory, deps.OpenID4VPVerifierSvc, deps.EntityTypeService, deps.EntityProvider))
+				deps.FlowFactory, deps.OpenID4VPVerifierSvc, deps.EntityTypeService, deps.AuthnProvider))
 		},
 	}
 }

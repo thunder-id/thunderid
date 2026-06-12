@@ -30,7 +30,9 @@ import (
 type AuthnProviderInterface interface {
 	Authenticate(ctx context.Context, identifiers, credentials map[string]interface{},
 		metadata *authnprovidercm.AuthnMetadata) (*authnprovidercm.AuthnResult, *serviceerror.ServiceError)
-	GetAttributes(ctx context.Context, token string, requestedAttributes *authnprovidercm.RequestedAttributes,
+	GetEntityReference(ctx context.Context, entityReferenceToken any) (*authnprovidercm.EntityReference,
+		*serviceerror.ServiceError)
+	GetAttributes(ctx context.Context, attributeToken any, consentedAttributes *authnprovidercm.RequestedAttributes,
 		metadata *authnprovidercm.GetAttributesMetadata) (
-		*authnprovidercm.GetAttributesResult, *serviceerror.ServiceError)
+		*authnprovidercm.AttributesResponse, *serviceerror.ServiceError)
 }

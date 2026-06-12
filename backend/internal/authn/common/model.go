@@ -84,6 +84,11 @@ type FederatedAuthCredential struct {
 	Code    string
 }
 
+// OpenID4VPCredential carries the presentation session state to the authn provider.
+type OpenID4VPCredential struct {
+	State string
+}
+
 // FederatedAuthResult is the result of a federated authentication attempt.
 // InternalEntity is nil when no local user was found or when the user is ambiguous.
 type FederatedAuthResult struct {
@@ -97,5 +102,12 @@ type FederatedAuthResult struct {
 // Authenticate performs the full flow (code exchange, claims extraction, internal user lookup).
 // It returns an error only for actual failures; a missing internal user is NOT an error.
 type FederatedAuthenticator interface {
-	Authenticate(ctx context.Context, idpID, code string) (*FederatedAuthResult, *serviceerror.ServiceError)
+	Authenticate(ctx context.Context, idpID, code string) (*AuthnResult, *serviceerror.ServiceError)
+}
+
+// AuthnResult represents the result of an authentication attempt,
+// including the issued token and any authenticated claims.
+type AuthnResult struct {
+	Token               map[string]interface{} `json:"token"`
+	AuthenticatedClaims map[string]interface{} `json:"authenticatedClaims,omitempty"`
 }

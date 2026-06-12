@@ -43,9 +43,11 @@ import (
 )
 
 const (
-	testIDPID   = "idp123"
-	testSub     = "user_sub_123"
-	testAuthURL = "https://idp.com/authorize?client_id=test_client&redirect_uri=https%3A%2F%2Fapp.com%2Fcallback&response_type=code&scope=openid&state=random_state" //nolint:lll
+	testIDPID         = "idp123"
+	testSub           = "user_sub_123"
+	testAuthURL       = "https://idp.com/authorize?client_id=test_client&redirect_uri=https%3A%2F%2Fapp.com%2Fcallback&response_type=code&scope=openid&state=random_state" //nolint:lll
+	testTokenRespJSON = `{"access_token":"access123","token_type":"Bearer"}`
+	testUserID        = "user123"
 )
 
 type OAuthAuthnServiceTestSuite struct {
@@ -344,7 +346,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestExchangeCodeForTokenSuccess() {
 				},
 			}
 
-			tokenRespJSON := `{"access_token":"access123","token_type":"Bearer"}`
+			tokenRespJSON := testTokenRespJSON
 			resp := &http.Response{
 				StatusCode: 200,
 				Body:       io.NopCloser(bytes.NewReader([]byte(tokenRespJSON))),
@@ -517,7 +519,9 @@ func (suite *OAuthAuthnServiceTestSuite) TestFetchUserInfoWithClientConfigEmptyA
 }
 
 func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserSuccess() {
-	userID := "user123"
+	svcImpl := suite.service.(*oAuthAuthnService)
+
+	userID := testUserID
 	user := &entityprovider.Entity{
 		ID:   userID,
 		Type: "person",
@@ -531,27 +535,43 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserSuccess() {
 	).Return(&userID, nil)
 	suite.mockEntityProvider.On("GetEntity", userID).Return(user, nil)
 
-	result, err := suite.service.GetInternalUser(context.Background(), testSub)
+	result, err := svcImpl.GetInternalUser(context.Background(), testSub)
 	suite.Nil(err)
 	suite.NotNil(result)
 	suite.Equal(userID, result.ID)
 }
 
 func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithError_EmptySub() {
-	result, err := suite.service.GetInternalUser(context.Background(), "")
+	svcImpl := suite.service.(*oAuthAuthnService)
+
+	result, err := svcImpl.GetInternalUser(context.Background(), "")
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorEmptySubClaim.Code, err.Code)
 }
 
 func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithError_UserNotFound() {
+	svcImpl := suite.service.(*oAuthAuthnService)
+
 	upErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeEntityNotFound}
 	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil, upErr)
 
-	result, err := suite.service.GetInternalUser(context.Background(), testSub)
+	result, err := svcImpl.GetInternalUser(context.Background(), testSub)
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(common.ErrorUserNotFound.Code, err.Code)
+}
+
+func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithError_AmbiguousUser() {
+	svcImpl := suite.service.(*oAuthAuthnService)
+
+	upErr := &entityprovider.EntityProviderError{Code: entityprovider.ErrorCodeAmbiguousEntity}
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything).Return(nil, upErr)
+
+	result, err := svcImpl.GetInternalUser(context.Background(), testSub)
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(common.ErrorAmbiguousUser.Code, err.Code)
 }
 
 func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithServiceError() {
@@ -574,7 +594,7 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithServiceError() {
 		{
 			name: "GetUserServerError",
 			mockSetup: func(m *entityprovidermock.EntityProviderInterfaceMock) {
-				userID := "user123"
+				userID := testUserID
 				serverErr := &entityprovider.EntityProviderError{
 					Code:    entityprovider.ErrorCodeSystemError,
 					Message: "Database unavailable",
@@ -583,6 +603,18 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithServiceError() {
 				m.On("GetEntity", userID).Return(nil, serverErr)
 			},
 			expectedErrCode: serviceerror.InternalServerError.Code,
+		},
+		{
+			name: "GetUserNotFound",
+			mockSetup: func(m *entityprovidermock.EntityProviderInterfaceMock) {
+				userID := testUserID
+				notFoundErr := &entityprovider.EntityProviderError{
+					Code: entityprovider.ErrorCodeEntityNotFound,
+				}
+				m.On("IdentifyEntity", mock.Anything).Return(&userID, nil)
+				m.On("GetEntity", userID).Return(nil, notFoundErr)
+			},
+			expectedErrCode: common.ErrorUserNotFound.Code,
 		},
 		{
 			name: "IdentifyNilUserID",
@@ -596,15 +628,14 @@ func (suite *OAuthAuthnServiceTestSuite) TestGetInternalUserWithServiceError() {
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
 			freshUserMock := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-			if svcImpl, ok := suite.service.(*oAuthAuthnService); ok {
-				svcImpl.entityProvider = freshUserMock
-			}
+			svcImpl := suite.service.(*oAuthAuthnService)
+			svcImpl.entityProvider = freshUserMock
 
 			if tc.mockSetup != nil {
 				tc.mockSetup(freshUserMock)
 			}
 
-			result, err := suite.service.GetInternalUser(context.Background(), testSub)
+			result, err := svcImpl.GetInternalUser(context.Background(), testSub)
 			suite.Nil(result)
 			suite.NotNil(err)
 			suite.Equal(tc.expectedErrCode, err.Code)
@@ -779,4 +810,157 @@ func (suite *OAuthAuthnServiceTestSuite) TestFetchUserInfoMissingUserInfoEndpoin
 	suite.Nil(userInfo)
 	suite.NotNil(err)
 	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *OAuthAuthnServiceTestSuite) TestAuthenticateSuccess() {
+	clientIDProp, _ := cmodels.NewProperty("client_id", "test_client", false)
+	clientSecretProp, _ := cmodels.NewProperty("client_secret", "test_secret", false)
+	redirectURIProp, _ := cmodels.NewProperty("redirect_uri", "https://app.com/callback", false)
+	scopesProp, _ := cmodels.NewProperty("scopes", "openid", false)
+	tokenEndpointProp, _ := cmodels.NewProperty("token_endpoint", "https://idp.com/token", false)
+	userInfoEndpointProp, _ := cmodels.NewProperty("userinfo_endpoint", "https://idp.com/userinfo", false)
+
+	idpDTO := &idp.IDPDTO{
+		ID:   testIDPID,
+		Name: "Test IDP",
+		Type: idp.IDPTypeOAuth,
+		Properties: []cmodels.Property{
+			*clientIDProp, *clientSecretProp, *redirectURIProp, *scopesProp, *tokenEndpointProp, *userInfoEndpointProp,
+		},
+	}
+
+	tokenRespJSON := testTokenRespJSON
+	tokenHTTPResp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewReader([]byte(tokenRespJSON))),
+	}
+
+	userInfoMap := map[string]interface{}{
+		"sub":   "user_sub_123",
+		"email": "user@example.com",
+	}
+	userInfoJSON, _ := json.Marshal(userInfoMap)
+	userInfoHTTPResp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewReader(userInfoJSON)),
+	}
+
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
+	suite.mockHTTPClient.On("Do", mock.Anything).Return(tokenHTTPResp, nil).Once()
+	suite.mockHTTPClient.On("Do", mock.Anything).Return(userInfoHTTPResp, nil).Once()
+
+	result, err := suite.service.Authenticate(context.Background(), testIDPID, "auth_code")
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Equal("user_sub_123", result.Token["sub"])
+	suite.Equal("user@example.com", result.AuthenticatedClaims["email"])
+}
+
+func (suite *OAuthAuthnServiceTestSuite) TestAuthenticateTokenExchangeFailure() {
+	result, err := suite.service.Authenticate(context.Background(), testIDPID, "")
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorEmptyAuthorizationCode.Code, err.Code)
+}
+
+func (suite *OAuthAuthnServiceTestSuite) TestAuthenticateFetchUserInfoFailure() {
+	clientIDProp, _ := cmodels.NewProperty("client_id", "test_client", false)
+	clientSecretProp, _ := cmodels.NewProperty("client_secret", "test_secret", false)
+	redirectURIProp, _ := cmodels.NewProperty("redirect_uri", "https://app.com/callback", false)
+	scopesProp, _ := cmodels.NewProperty("scopes", "openid", false)
+	tokenEndpointProp, _ := cmodels.NewProperty("token_endpoint", "https://idp.com/token", false)
+
+	idpDTO := &idp.IDPDTO{
+		ID:   testIDPID,
+		Name: "Test IDP",
+		Type: idp.IDPTypeOAuth,
+		Properties: []cmodels.Property{
+			*clientIDProp, *clientSecretProp, *redirectURIProp, *scopesProp, *tokenEndpointProp,
+		},
+	}
+
+	tokenRespJSON := testTokenRespJSON
+	tokenHTTPResp := &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewReader([]byte(tokenRespJSON))),
+	}
+
+	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
+	suite.mockHTTPClient.On("Do", mock.Anything).Return(tokenHTTPResp, nil).Once()
+
+	result, err := suite.service.Authenticate(context.Background(), testIDPID, "auth_code")
+	suite.Nil(result)
+	suite.NotNil(err)
+}
+
+func (suite *OAuthAuthnServiceTestSuite) TestAuthenticateMissingSub() {
+	tests := []struct {
+		name     string
+		userInfo map[string]interface{}
+	}{
+		{
+			name:     "SubKeyMissing",
+			userInfo: map[string]interface{}{"email": "user@example.com"},
+		},
+		{
+			name:     "SubIsNil",
+			userInfo: map[string]interface{}{"sub": nil, "email": "user@example.com"},
+		},
+		{
+			name:     "SubIsEmptyString",
+			userInfo: map[string]interface{}{"sub": "", "email": "user@example.com"},
+		},
+		{
+			name:     "SubIsNonString",
+			userInfo: map[string]interface{}{"sub": 12345, "email": "user@example.com"},
+		},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			freshIDPMock := idpmock.NewIDPServiceInterfaceMock(suite.T())
+			freshHTTPMock := httpmock.NewHTTPClientInterfaceMock(suite.T())
+			svcImpl := suite.service.(*oAuthAuthnService)
+			svcImpl.idpService = freshIDPMock
+			svcImpl.httpClient = freshHTTPMock
+
+			clientIDProp, _ := cmodels.NewProperty("client_id", "test_client", false)
+			clientSecretProp, _ := cmodels.NewProperty("client_secret", "test_secret", false)
+			redirectURIProp, _ := cmodels.NewProperty("redirect_uri", "https://app.com/callback", false)
+			scopesProp, _ := cmodels.NewProperty("scopes", "openid", false)
+			tokenEndpointProp, _ := cmodels.NewProperty("token_endpoint", "https://idp.com/token", false)
+			userInfoEndpointProp, _ := cmodels.NewProperty("userinfo_endpoint", "https://idp.com/userinfo", false)
+
+			idpDTO := &idp.IDPDTO{
+				ID:   testIDPID,
+				Name: "Test IDP",
+				Type: idp.IDPTypeOAuth,
+				Properties: []cmodels.Property{
+					*clientIDProp, *clientSecretProp, *redirectURIProp, *scopesProp,
+					*tokenEndpointProp, *userInfoEndpointProp,
+				},
+			}
+
+			tokenRespJSON := testTokenRespJSON
+			tokenHTTPResp := &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewReader([]byte(tokenRespJSON))),
+			}
+
+			userInfoJSON, _ := json.Marshal(tc.userInfo)
+			userInfoHTTPResp := &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(bytes.NewReader(userInfoJSON)),
+			}
+
+			freshIDPMock.On("GetIdentityProvider", mock.Anything, testIDPID).Return(idpDTO, nil)
+			freshHTTPMock.On("Do", mock.Anything).Return(tokenHTTPResp, nil).Once()
+			freshHTTPMock.On("Do", mock.Anything).Return(userInfoHTTPResp, nil).Once()
+
+			result, err := suite.service.Authenticate(context.Background(), testIDPID, "auth_code")
+			suite.Nil(result)
+			suite.NotNil(err)
+			suite.Equal(common.ErrorSubClaimNotFound.Code, err.Code)
+		})
+	}
 }

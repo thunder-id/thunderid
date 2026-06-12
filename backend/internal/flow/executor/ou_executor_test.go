@@ -25,12 +25,15 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
@@ -39,9 +42,11 @@ const testOUID = "ou-123"
 
 type OUExecutorTestSuite struct {
 	suite.Suite
-	mockOUService   *oumock.OrganizationUnitServiceInterfaceMock
-	mockFlowFactory *coremock.FlowFactoryInterfaceMock
-	executor        *ouExecutor
+	mockOUService         *oumock.OrganizationUnitServiceInterfaceMock
+	mockFlowFactory       *coremock.FlowFactoryInterfaceMock
+	mockAuthnProvider     *managermock.AuthnProviderManagerInterfaceMock
+	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
+	executor              *ouExecutor
 }
 
 func TestOUExecutorSuite(t *testing.T) {
@@ -51,6 +56,8 @@ func TestOUExecutorSuite(t *testing.T) {
 func (suite *OUExecutorTestSuite) SetupTest() {
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 
 	defaultInputs := []common.Input{
 		{
@@ -70,7 +77,8 @@ func (suite *OUExecutorTestSuite) SetupTest() {
 		defaultInputs, []common.Input{}).
 		Return(newMockExecutor("TestOUExecutor", common.ExecutorTypeUtility, defaultInputs, []common.Input{}))
 
-	suite.executor = newOUExecutor(suite.mockFlowFactory, suite.mockOUService)
+	suite.executor = newOUExecutor(
+		suite.mockFlowFactory, suite.mockOUService, suite.mockAuthnProvider, suite.mockEntityTypeService)
 }
 
 // newMockExecutor creates a mock executor for testing purposes
@@ -105,8 +113,8 @@ func newMockExecutor(name string, executorType common.ExecutorType, defaultInput
 			}
 			return !requireData
 		})
-	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything).Return(true)
-	mockExec.On("GetUserIDFromContext", mock.Anything).Return("")
+	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	mockExec.On("GetUserIDFromContext", mock.Anything, mock.Anything, mock.Anything).Return("")
 	return mockExec
 }
 
@@ -132,7 +140,9 @@ func (suite *OUExecutorTestSuite) TestNewOUExecutor() {
 		defaultInputs, []common.Input{}).
 		Return(newMockExecutor("OUExecutor", common.ExecutorTypeRegistration, defaultInputs, []common.Input{}))
 
-	executor := newOUExecutor(mockFlowFactory, mockOUService)
+	mockAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	mockEntityTypeService := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
+	executor := newOUExecutor(mockFlowFactory, mockOUService, mockAuthnProvider, mockEntityTypeService)
 
 	assert.NotNil(suite.T(), executor)
 	assert.Equal(suite.T(), "OUExecutor", executor.GetName())
@@ -293,8 +303,12 @@ func (suite *OUExecutorTestSuite) TestExecute_PrerequisitesFailure() {
 	mockExec.On("GetType").Return(common.ExecutorTypeUtility).Maybe()
 	mockExec.On("GetDefaultInputs").Return(defaultInputs).Maybe()
 	mockExec.On("GetPrerequisites").Return(prerequisites).Maybe()
-	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything).Return(
-		func(ctx *core.NodeContext, execResp *common.ExecutorResponse) bool {
+	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).Return(
+		func(
+			ctx *core.NodeContext,
+			execResp *common.ExecutorResponse,
+			_ authnprovidermgr.AuthnProviderManagerInterface,
+		) bool {
 			for _, prerequisite := range prerequisites {
 				if _, ok := ctx.UserInputs[prerequisite.Identifier]; !ok {
 					if _, ok := ctx.RuntimeData[prerequisite.Identifier]; !ok {
@@ -676,7 +690,7 @@ func (suite *OUExecutorTestSuite) TestExecutorHelperMethods() {
 					RuntimeData:    make(map[string]string),
 				}
 
-				result := suite.executor.ValidatePrerequisites(ctx, execResp)
+				result := suite.executor.ValidatePrerequisites(ctx, execResp, suite.mockAuthnProvider)
 
 				assert.True(suite.T(), result)
 			},
@@ -688,8 +702,11 @@ func (suite *OUExecutorTestSuite) TestExecutorHelperMethods() {
 					UserInputs:  map[string]string{},
 					RuntimeData: map[string]string{},
 				}
+				execResp := &common.ExecutorResponse{
+					RuntimeData: make(map[string]string),
+				}
 
-				userID := suite.executor.GetUserIDFromContext(ctx)
+				userID := suite.executor.GetUserIDFromContext(ctx, execResp, suite.mockAuthnProvider)
 				assert.Empty(suite.T(), userID)
 			},
 		},

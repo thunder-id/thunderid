@@ -32,6 +32,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
 const (
@@ -518,6 +521,10 @@ func (s *stubService) LookupState(context.Context, string) (*RequestState, error
 		return nil, s.lookupErr
 	}
 	return &RequestState{State: "stub-state", Status: StatusPending}, nil
+}
+
+func (s *stubService) Authenticate(context.Context, string) (*authncommon.AuthnResult, *serviceerror.ServiceError) {
+	return nil, nil
 }
 
 func postForm(h *openID4VPHandler, form url.Values) *httptest.ResponseRecorder {

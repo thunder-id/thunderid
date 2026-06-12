@@ -22,6 +22,8 @@ import (
 	"regexp"
 	"strings"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -33,10 +35,13 @@ var placeholderPattern = regexp.MustCompile(`{{\s*context\.\s*(\w+)\s*}}`)
 // ResolvePlaceholder resolves a single placeholder string using the "{{ context.key }}" syntax.
 // If no placeholder is found, the original value is returned.
 // If a placeholder is found but the key doesn't exist in any data source, the placeholder is kept as-is.
-func ResolvePlaceholder(ctx *NodeContext, value string) string {
+func ResolvePlaceholder(ctx *NodeContext, value string, execResp *common.ExecutorResponse,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface, logger *log.Logger) string {
 	if ctx == nil {
 		return value
 	}
+
+	var contextUserRef *authnprovidercm.EntityReference
 
 	return placeholderPattern.ReplaceAllStringFunc(value, func(match string) string {
 		submatches := placeholderPattern.FindStringSubmatch(match)
@@ -48,22 +53,29 @@ func ResolvePlaceholder(ctx *NodeContext, value string) string {
 
 		// Special handling for userId - only resolve from runtime data or authenticated user
 		if key == "userId" {
-			if ctx.AuthenticatedUser.UserID != "" {
-				return ctx.AuthenticatedUser.UserID
-			}
 			if runtimeValue, ok := ctx.RuntimeData["userId"]; ok && runtimeValue != "" {
 				return runtimeValue
 			}
+			if authnProvider != nil && execResp != nil && ctx.AuthUser.IsAuthenticated() && contextUserRef == nil {
+				contextUserRef = fetchContextUserRef(authnProvider, ctx, execResp, logger, contextUserRef)
+			}
+			if contextUserRef != nil && contextUserRef.EntityID != "" {
+				return contextUserRef.EntityID
+			}
+
 			return match // Keep placeholder if not found
 		}
 
 		// Special handling for ouId - only resolve from runtime data or authenticated user
 		if key == "ouId" {
-			if ctx.AuthenticatedUser.OUID != "" {
-				return ctx.AuthenticatedUser.OUID
-			}
 			if runtimeValue, ok := ctx.RuntimeData["ouId"]; ok && runtimeValue != "" {
 				return runtimeValue
+			}
+			if authnProvider != nil && execResp != nil && ctx.AuthUser.IsAuthenticated() && contextUserRef == nil {
+				contextUserRef = fetchContextUserRef(authnProvider, ctx, execResp, logger, contextUserRef)
+			}
+			if contextUserRef != nil && contextUserRef.OUID != "" {
+				return contextUserRef.OUID
 			}
 			return match // Keep placeholder if not found
 		}
@@ -81,6 +93,23 @@ func ResolvePlaceholder(ctx *NodeContext, value string) string {
 		// If not found, keep the placeholder as-is
 		return match
 	})
+}
+
+func fetchContextUserRef(
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	ctx *NodeContext,
+	execResp *common.ExecutorResponse,
+	logger *log.Logger,
+	contextUserRef *authnprovidercm.EntityReference,
+) *authnprovidercm.EntityReference {
+	authUser, userRef, err := authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
+	execResp.AuthUser = authUser
+	if err != nil {
+		logger.Warn(ctx.Context, "Failed to resolve authenticated user reference for userId placeholder")
+	} else {
+		contextUserRef = userRef
+	}
+	return contextUserRef
 }
 
 // ParsePresentedOptionalInputIdentifiers converts a space-separated identifier list into a set.

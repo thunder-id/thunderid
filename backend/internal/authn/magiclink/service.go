@@ -33,13 +33,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
-// MagicLinkAuthnResult holds the result of a magic link authentication attempt.
-// When InternalEntity is nil the token was valid but no local user exists yet (registration flow);
-// VerifiedIdentifiers then carries the proven channel identifiers (e.g. email).
-type MagicLinkAuthnResult struct {
-	InternalEntity      *entityprovider.Entity
-	VerifiedIdentifiers map[string]interface{}
-}
+// userAttributeUserID is the user attribute key for user ID in authentication results.
+const userAttributeUserID = "userID"
 
 // MagicLinkAuthnServiceInterface defines the interface for magic link authentication operations.
 type MagicLinkAuthnServiceInterface interface {
@@ -52,7 +47,7 @@ type MagicLinkAuthnServiceInterface interface {
 		magicLinkURL string,
 	) (string, *serviceerror.ServiceError)
 	Authenticate(ctx context.Context, token string,
-		subjectAttribute string) (*MagicLinkAuthnResult, *serviceerror.ServiceError)
+		subjectAttribute string) (*common.AuthnResult, *serviceerror.ServiceError)
 }
 
 // magicLinkAuthnService is the default implementation of MagicLinkAuthnServiceInterface.
@@ -126,7 +121,7 @@ func (s *magicLinkAuthnService) GenerateMagicLink(ctx context.Context,
 // A missing local user is NOT an error — the result carries VerifiedIdentifiers instead,
 // allowing callers to handle registration flows.
 func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
-	token string, subjectAttribute string) (*MagicLinkAuthnResult, *serviceerror.ServiceError) {
+	token string, subjectAttribute string) (*common.AuthnResult, *serviceerror.ServiceError) {
 	s.logger.Debug(ctx, "Authenticating with magic link token")
 
 	token = strings.TrimSpace(token)
@@ -144,22 +139,16 @@ func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
 	}
 
 	subjectAttribute = strings.TrimSpace(subjectAttribute)
-	user, resolveErr := s.resolveUserFromSubject(ctx, subject, subjectAttribute)
-	if resolveErr != nil {
-		if resolveErr.Code == common.ErrorUserNotFound.Code {
-			identifiers := map[string]interface{}{}
-			if subjectAttribute != "" {
-				identifiers[subjectAttribute] = subject
-			}
-			return &MagicLinkAuthnResult{
-				VerifiedIdentifiers: identifiers,
-			}, nil
-		}
-		return nil, resolveErr
+	if subjectAttribute == "" {
+		subjectAttribute = userAttributeUserID
 	}
 
-	s.logger.Debug(ctx, "Magic link authentication successful", log.String("userId", user.ID))
-	return &MagicLinkAuthnResult{InternalEntity: user}, nil
+	s.logger.Debug(ctx, "Magic link authentication successful", log.String("subjectAttribute", subject))
+
+	return &common.AuthnResult{
+		Token:               map[string]interface{}{subjectAttribute: subject},
+		AuthenticatedClaims: map[string]interface{}{subjectAttribute: subject},
+	}, nil
 }
 
 // verifyToken checks the validity of the provided JWT token and returns service errors for invalid or expired tokens.
@@ -194,32 +183,6 @@ func (s *magicLinkAuthnService) extractSubject(ctx context.Context, token string
 	return subject, nil
 }
 
-// resolveUserFromSubject resolves the token subject either as a user ID or as a configured destination attribute.
-func (s *magicLinkAuthnService) resolveUserFromSubject(ctx context.Context,
-	subject string, subjectAttribute string) (*entityprovider.Entity, *serviceerror.ServiceError) {
-	if subjectAttribute == "" {
-		user, upErr := s.entityProvider.GetEntity(subject)
-		if upErr != nil {
-			return nil, s.handleEntityProviderError(ctx, upErr)
-		}
-		return user, nil
-	}
-
-	userID, upErr := s.entityProvider.IdentifyEntity(map[string]interface{}{subjectAttribute: subject})
-	if upErr != nil {
-		return nil, s.handleEntityProviderError(ctx, upErr)
-	}
-	if userID == nil || *userID == "" {
-		return nil, &common.ErrorUserNotFound
-	}
-
-	user, upErr := s.entityProvider.GetEntity(*userID)
-	if upErr != nil {
-		return nil, s.handleEntityProviderError(ctx, upErr)
-	}
-	return user, nil
-}
-
 // buildMagicLinkURL constructs a magic link URL by appending query parameters to a base URL or default configuration.
 func (s *magicLinkAuthnService) buildMagicLinkURL(ctx context.Context, magicLinkURL string, token string,
 	queryParams map[string]string) string {
@@ -247,21 +210,6 @@ func (s *magicLinkAuthnService) buildMagicLinkURL(ctx context.Context, magicLink
 	u.RawQuery = q.Encode()
 
 	return u.String()
-}
-
-// handleEntityProviderError maps entity provider errors to appropriate service errors with localization support.
-func (s *magicLinkAuthnService) handleEntityProviderError(ctx context.Context,
-	upErr *entityprovider.EntityProviderError,
-) *serviceerror.ServiceError {
-	if upErr.Code == entityprovider.ErrorCodeEntityNotFound {
-		return &common.ErrorUserNotFound
-	}
-	if upErr.Code == entityprovider.ErrorCodeSystemError {
-		return &serviceerror.InternalServerError
-	}
-	s.logger.Debug(ctx, "User provider returned an error while resolving user",
-		log.String("description", upErr.Description))
-	return &ErrorClientErrorWhileResolvingUser
 }
 
 // getMetadata returns the metadata information for the magic link authenticator.

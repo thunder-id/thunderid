@@ -40,6 +40,9 @@ const (
 
 	// passkeyCredentialType is the credential type key.
 	passkeyCredentialType = "passkey"
+
+	// userAttributeUserID is the user attribute key for user ID in authentication results.
+	userAttributeUserID = "userID"
 )
 
 // PasskeyServiceInterface defines the interface for passkey authentication and registration operations.
@@ -58,7 +61,7 @@ type PasskeyServiceInterface interface {
 	) (*PasskeyAuthenticationStartData, *serviceerror.ServiceError)
 	FinishAuthentication(
 		ctx context.Context, req *PasskeyAuthenticationFinishRequest,
-	) (*common.AuthenticationResponse, *serviceerror.ServiceError)
+	) (*common.AuthnResult, *serviceerror.ServiceError)
 }
 
 // passkeyService is the default implementation of PasskeyServiceInterface.
@@ -386,7 +389,7 @@ func (w *passkeyService) StartAuthentication(ctx context.Context, req *PasskeyAu
 
 // FinishAuthentication completes passkey authentication.
 func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyAuthenticationFinishRequest) (
-	*common.AuthenticationResponse, *serviceerror.ServiceError) {
+	*common.AuthnResult, *serviceerror.ServiceError) {
 	logger := w.logger.With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Finishing passkey authentication")
 
@@ -517,17 +520,13 @@ func (w *passkeyService) FinishAuthentication(ctx context.Context, req *PasskeyA
 	// Clear session data
 	w.clearSessionData(ctx, req.SessionToken)
 
-	// Build authentication response
-	authResponse := &common.AuthenticationResponse{
-		ID:   coreEntity.ID,
-		Type: coreEntity.Type,
-		OUID: coreEntity.OUID,
-	}
-
 	logger.Debug(ctx, "Passkey authentication completed successfully",
 		log.MaskedString("entityID", userID))
 
-	return authResponse, nil
+	return &common.AuthnResult{
+		Token:               map[string]interface{}{userAttributeUserID: coreEntity.ID},
+		AuthenticatedClaims: map[string]interface{}{userAttributeUserID: coreEntity.ID},
+	}, nil
 }
 
 // getEntity retrieves an entity by ID, mapping entity-layer errors to passkey service errors.

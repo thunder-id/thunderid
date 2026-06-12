@@ -170,10 +170,12 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentials() {
 			setupMocks: func() {
 				suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, identifiers,
 					authnCredentials, mock.Anything, mock.Anything, mock.Anything).
-					Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-						UserID:   testUserID,
-						UserType: testUserType,
-						OUID:     testOrgUnit,
+					Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+				suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+					Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+						EntityID:   testUserID,
+						EntityType: testUserType,
+						OUID:       testOrgUnit,
 					}, nil).Once()
 				suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything,
 					mock.Anything, mock.Anything).
@@ -191,10 +193,12 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentials() {
 			setupMocks: func() {
 				suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, identifiers,
 					authnCredentials, mock.Anything, mock.Anything, mock.Anything).
-					Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-						UserID:   testUserID,
-						UserType: testUserType,
-						OUID:     testOrgUnit,
+					Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+				suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+					Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+						EntityID:   testUserID,
+						EntityType: testUserType,
+						OUID:       testOrgUnit,
 					}, nil).Once()
 				suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything,
 					mock.Anything, mock.Anything).
@@ -226,10 +230,12 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentials() {
 			setupMocks: func() {
 				suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, identifiers,
 					authnCredentials, mock.Anything, mock.Anything, mock.Anything).
-					Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-						UserID:   testUserID,
-						UserType: testUserType,
-						OUID:     testOrgUnit,
+					Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+				suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+					Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+						EntityID:   testUserID,
+						EntityType: testUserType,
+						OUID:       testOrgUnit,
 					}, nil).Once()
 				suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything,
 					mock.Anything, mock.Anything).
@@ -283,7 +289,7 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsServ
 
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, identifiers,
 		authnCredentials, mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil),
+		authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
 		&authnprovidermgr.ErrorAuthenticationFailed)
 
 	result, err := suite.service.AuthenticateWithCredentials(context.Background(), identifiers,
@@ -304,10 +310,12 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsJWTG
 
 	suite.mockAuthnProvider.On("AuthenticateUser",
 		mock.Anything, identifiers, authnCredentials, mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID:   testUserID,
-			UserType: testUserType,
-			OUID:     testOrgUnit,
+		authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil)
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: testUserType,
+			OUID:       testOrgUnit,
 		}, nil)
 	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
@@ -352,10 +360,12 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsSubj
 
 	suite.mockAuthnProvider.On("AuthenticateUser",
 		mock.Anything, identifiers, authnCredentials, mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID:   testUserID,
-			UserType: testUserType,
-			OUID:     testOrgUnit,
+		authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil)
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: testUserType,
+			OUID:       testOrgUnit,
 		}, nil)
 	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
@@ -379,10 +389,12 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsInva
 
 	suite.mockAuthnProvider.On("AuthenticateUser",
 		mock.Anything, identifiers, authnCredentials, mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID:   testUserID,
-			UserType: testUserType,
-			OUID:     testOrgUnit,
+		authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil)
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: testUserType,
+			OUID:       testOrgUnit,
 		}, nil)
 	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		authnprovidermgr.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
@@ -417,10 +429,12 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsExis
 
 	suite.mockAuthnProvider.On("AuthenticateUser",
 		mock.Anything, identifiers, authnCredentials, mock.Anything, mock.Anything, mock.Anything).Return(
-		authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID:   testUserID,
-			UserType: testUserType,
-			OUID:     testOrgUnit,
+		authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil)
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: testUserType,
+			OUID:       testOrgUnit,
 		}, nil)
 	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		authnprovidermgr.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
@@ -471,10 +485,10 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPServiceError() {
 func (suite *AuthenticationServiceTestSuite) TestVerifyOTP() {
 	sessionToken := testSessionTkn
 	otpCode := "123456"
-	testAuthnResult := &authnprovidermgr.AuthnBasicResult{
-		UserID:   testUserID,
-		UserType: "person",
-		OUID:     testOrgUnit,
+	testEntityRef := &authnprovidercm.EntityReference{
+		EntityID:   testUserID,
+		EntityType: "person",
+		OUID:       testOrgUnit,
 	}
 
 	testCases := []struct {
@@ -493,7 +507,9 @@ func (suite *AuthenticationServiceTestSuite) TestVerifyOTP() {
 			setupMocks: func() {
 				suite.mockAuthnProvider.On("AuthenticateUser",
 					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(authnprovidermgr.AuthUser{}, testAuthnResult, nil).Once()
+					Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+				suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+					Return(authnprovidermgr.AuthUser{}, testEntityRef, nil).Once()
 			},
 			validateAssertion: func(result *common.AuthenticationResponse) {
 				suite.Empty(result.Assertion)
@@ -507,7 +523,9 @@ func (suite *AuthenticationServiceTestSuite) TestVerifyOTP() {
 			setupMocks: func() {
 				suite.mockAuthnProvider.On("AuthenticateUser",
 					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(authnprovidermgr.AuthUser{}, testAuthnResult, nil).Once()
+					Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+				suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+					Return(authnprovidermgr.AuthUser{}, testEntityRef, nil).Once()
 				suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).Return(
 					&assert.AssertionResult{
 						Context: &assert.AssuranceContext{
@@ -535,7 +553,9 @@ func (suite *AuthenticationServiceTestSuite) TestVerifyOTP() {
 				existingAssertion := suite.createTestAssertion(testUserID)
 				suite.mockAuthnProvider.On("AuthenticateUser",
 					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(authnprovidermgr.AuthUser{}, testAuthnResult, nil).Once()
+					Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+				suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+					Return(authnprovidermgr.AuthUser{}, testEntityRef, nil).Once()
 				suite.mockJWTService.
 					On("VerifyJWT", mock.Anything, existingAssertion, "", mock.Anything).Return(nil).Once()
 				suite.mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything, mock.Anything).Return(
@@ -580,7 +600,7 @@ func (suite *AuthenticationServiceTestSuite) TestVerifyOTPServiceError() {
 
 	suite.mockAuthnProvider.On("AuthenticateUser",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil),
+		Return(authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
 			&authnprovidermgr.ErrorAuthenticationFailed)
 
 	result, err := suite.service.VerifyOTP(context.Background(), sessionToken, false, "", otpCode)
@@ -777,11 +797,12 @@ func (suite *AuthenticationServiceTestSuite) mockFederatedAuthnSuccess(idpType i
 			_, ok := creds["federated"]
 			return ok
 		}), mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID:         testUserID,
-			UserType:       "person",
-			OUID:           testOrgUnit,
-			IsExistingUser: true,
+		Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: "person",
+			OUID:       testOrgUnit,
 		}, nil).Once()
 	return sessionToken
 }
@@ -844,11 +865,12 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationWithAsse
 						_, ok := creds["federated"]
 						return ok
 					}), mock.Anything, mock.Anything, mock.Anything).
-					Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-						UserID:         testUserID,
-						UserType:       "person",
-						OUID:           testOrgUnit,
-						IsExistingUser: true,
+					Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+				suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+					Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+						EntityID:   testUserID,
+						EntityType: "person",
+						OUID:       testOrgUnit,
 					}, nil).Once()
 				suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).Return(
 					&assert.AssertionResult{
@@ -881,11 +903,12 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationWithAsse
 						_, ok := creds["federated"]
 						return ok
 					}), mock.Anything, mock.Anything, mock.Anything).
-					Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-						UserID:         testUserID,
-						UserType:       "person",
-						OUID:           testOrgUnit,
-						IsExistingUser: true,
+					Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+				suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+					Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+						EntityID:   testUserID,
+						EntityType: "person",
+						OUID:       testOrgUnit,
 					}, nil).Once()
 				suite.mockAssertGenerator.On("UpdateAssertion", mock.Anything, mock.Anything, mock.Anything).Return(
 					&assert.AssertionResult{
@@ -976,7 +999,7 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationTypeMism
 	suite.Equal(common.ErrorInvalidIDPType.Code, err.Code)
 }
 
-func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationUserNotFound() {
+func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationUserNotFound() { //nolint:dupl
 	sessionToken := suite.createSessionToken(idp.IDPTypeOAuth)
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, sessionToken, "auth-svc", mock.Anything).Return(nil)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
@@ -984,9 +1007,8 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationUserNotF
 			_, ok := creds["federated"]
 			return ok
 		}), mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			IsExistingUser: false,
-		}, nil).Once()
+		Return(authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
+			&authnprovidermgr.ErrorUserNotFound).Once()
 
 	result, err := suite.service.FinishIDPAuthentication(
 		context.Background(), idp.IDPTypeOAuth, sessionToken, false, "",
@@ -994,10 +1016,10 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationUserNotF
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(common.ErrorUserNotFound.Code, err.Code)
+	suite.Equal(ErrorFederatedAuthenticationFailed.Code, err.Code)
 }
 
-func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationProviderAuthFailure() {
+func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationProviderAuthFailure() { //nolint:dupl
 	sessionToken := suite.createSessionToken(idp.IDPTypeOAuth)
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, sessionToken, "auth-svc", mock.Anything).Return(nil)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
@@ -1005,7 +1027,8 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationProvider
 			_, ok := creds["federated"]
 			return ok
 		}), mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, nil, &authnprovidermgr.ErrorAuthenticationFailed).Once()
+		Return(authnprovidermgr.AuthUser{},
+			(authnprovidercm.AuthenticatedClaims)(nil), &authnprovidermgr.ErrorAuthenticationFailed).Once()
 
 	result, err := suite.service.FinishIDPAuthentication(
 		context.Background(), idp.IDPTypeOAuth, sessionToken, false, "",
@@ -1125,7 +1148,8 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationProvider
 			_, ok := creds["federated"]
 			return ok
 		}), mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, nil, &serviceerror.InternalServerError).Once()
+		Return(authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
+			&serviceerror.InternalServerError).Once()
 
 	result, err := suite.service.FinishIDPAuthentication(context.Background(), idp.IDPTypeOIDC, sessionToken, true, "",
 		testAuthCode)
@@ -1196,11 +1220,12 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationAssertio
 			_, ok := creds["federated"]
 			return ok
 		}), mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID:         testUserID,
-			UserType:       "person",
-			OUID:           testOrgUnit,
-			IsExistingUser: true,
+		Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: "person",
+			OUID:       testOrgUnit,
 		}, nil).Once()
 
 	// Create invalid existing assertion that will fail JWT verification
@@ -1423,15 +1448,16 @@ func (suite *AuthenticationServiceTestSuite) TestExtractClaimsFromAssertionUnmar
 func (suite *AuthenticationServiceTestSuite) TestVerifyOTPJWTGenerationError() {
 	sessionToken := testSessionTkn
 	otpCode := "123456"
-	testAuthnResult := &authnprovidermgr.AuthnBasicResult{
-		UserID:   testUserID,
-		UserType: "person",
-		OUID:     testOrgUnit,
-	}
 
 	suite.mockAuthnProvider.On("AuthenticateUser",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, testAuthnResult, nil)
+		Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil)
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: "person",
+			OUID:       testOrgUnit,
+		}, nil)
 	suite.mockAssertGenerator.On("GenerateAssertion", mock.Anything, mock.Anything).Return(
 		&assert.AssertionResult{
 			Context: &assert.AssuranceContext{
@@ -1781,15 +1807,15 @@ func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_Suc
 	}
 	sessionToken := testSessionTkn
 
-	authResultFromPasskey := &authnprovidermgr.AuthnBasicResult{
-		UserID:   testUserID,
-		UserType: "person",
-		OUID:     testOrgUnit,
-	}
-
 	suite.mockAuthnProvider.On(
 		"AuthenticateUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything).Return(authnprovidermgr.AuthUser{}, authResultFromPasskey, nil).Once()
+		mock.Anything).Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: "person",
+			OUID:       testOrgUnit,
+		}, nil).Once()
 
 	// Mock assertion generation
 	mockAssertionResult := &assert.AssertionResult{
@@ -1834,15 +1860,15 @@ func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_Wit
 	}
 	sessionToken := testSessionTkn
 
-	authResultFromPasskey := &authnprovidermgr.AuthnBasicResult{
-		UserID:   testUserID,
-		UserType: "person",
-		OUID:     testOrgUnit,
-	}
-
 	suite.mockAuthnProvider.On(
 		"AuthenticateUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything).Return(authnprovidermgr.AuthUser{}, authResultFromPasskey, nil).Once()
+		mock.Anything).Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: "person",
+			OUID:       testOrgUnit,
+		}, nil).Once()
 
 	result, err := suite.service.FinishPasskeyAuthentication(
 		context.Background(), testCredentialID, testCredentialType, response, sessionToken, true, "")
@@ -1863,15 +1889,15 @@ func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_Wit
 	sessionToken := testSessionTkn
 	existingAssertion := suite.createTestAssertion(testUserID)
 
-	authResultFromPasskey := &authnprovidermgr.AuthnBasicResult{
-		UserID:   testUserID,
-		UserType: "person",
-		OUID:     testOrgUnit,
-	}
-
 	suite.mockAuthnProvider.On(
 		"AuthenticateUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything).Return(authnprovidermgr.AuthUser{}, authResultFromPasskey, nil).Once()
+		mock.Anything).Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: "person",
+			OUID:       testOrgUnit,
+		}, nil).Once()
 
 	// Mock JWT verification for existing assertion
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, existingAssertion, "", mock.Anything).Return(nil).Once()
@@ -1921,7 +1947,7 @@ func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_Ser
 	suite.mockAuthnProvider.On(
 		"AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil), serviceError).Once()
+		Return(authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil), serviceError).Once()
 
 	result, err := suite.service.FinishPasskeyAuthentication(
 		context.Background(), testCredentialID, testCredentialType, response, testSessionTkn, false, "")
@@ -1932,122 +1958,222 @@ func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_Ser
 	suite.mockPasskeyService.AssertExpectations(suite.T())
 }
 
-func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsNilBasicResult() {
-	identifiers := map[string]interface{}{
-		"username": "testuser",
-	}
-	authnCredentials := map[string]interface{}{
-		"password": "testpass",
-	}
-
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, identifiers,
-		authnCredentials, mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil), nil).Once()
-
-	result, err := suite.service.AuthenticateWithCredentials(context.Background(), identifiers,
-		authnCredentials, true, "")
-
+func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsEmptyInputs() {
+	result, err := suite.service.AuthenticateWithCredentials(
+		context.Background(), map[string]interface{}{}, map[string]interface{}{"password": "pass"}, false, "")
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(ErrorEmptyAttributesOrCredentials.Code, err.Code)
+
+	result, err = suite.service.AuthenticateWithCredentials(
+		context.Background(), map[string]interface{}{"user": "u"}, map[string]interface{}{}, false, "")
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorEmptyAttributesOrCredentials.Code, err.Code)
 }
 
-func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsMarshalError() {
-	identifiers := map[string]interface{}{
-		"username": "testuser",
-	}
-	authnCredentials := map[string]interface{}{
-		"password": "testpass",
-	}
+func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsGetEntityReferenceError() {
+	identifiers := map[string]interface{}{"username": "testuser"}
+	authnCredentials := map[string]interface{}{"password": "testpass"}
 
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, identifiers,
-		authnCredentials, mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID:   testUserID,
-			UserType: testUserType,
-			OUID:     testOrgUnit,
-		}, nil).Once()
-	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.AttributesResponse{
-			Attributes: map[string]*authnprovidercm.AttributeResponse{
-				"bad": {Value: make(chan int)},
-			},
-		}, nil).Once()
+	suite.mockAuthnProvider.On("AuthenticateUser",
+		mock.Anything, identifiers, authnCredentials, mock.Anything, mock.Anything, mock.Anything).Return(
+		authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil)
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (*authnprovidercm.EntityReference)(nil),
+			&authnprovidermgr.ErrorGetEntityReferenceClientError)
 
 	result, err := suite.service.AuthenticateWithCredentials(context.Background(), identifiers,
 		authnCredentials, false, "")
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(ErrorInvalidToken.Code, err.Code)
 }
 
-func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsGetAttributesDefaultError() {
-	identifiers := map[string]interface{}{
-		"username": "testuser",
-	}
-	authnCredentials := map[string]interface{}{
-		"password": "testpass",
-	}
+func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsGetUserAttributesError() {
+	identifiers := map[string]interface{}{"username": "testuser"}
+	authnCredentials := map[string]interface{}{"password": "testpass"}
 
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, identifiers,
-		authnCredentials, mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID:   testUserID,
-			UserType: testUserType,
-			OUID:     testOrgUnit,
-		}, nil).Once()
-	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
+	suite.mockAuthnProvider.On("AuthenticateUser",
+		mock.Anything, identifiers, authnCredentials, mock.Anything, mock.Anything, mock.Anything).Return(
+		authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil)
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, &authnprovidercm.EntityReference{
+			EntityID:   testUserID,
+			EntityType: testUserType,
+			OUID:       testOrgUnit,
+		}, nil)
+	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(authnprovidermgr.AuthUser{}, (*authnprovidercm.AttributesResponse)(nil),
-			&serviceerror.ServiceError{
-				Type:             serviceerror.ServerErrorType,
-				Code:             "UNMATCHED_ATTR_ERROR",
-				Error:            core.I18nMessage{Key: "error.test.attr", DefaultValue: "attr error"},
-				ErrorDescription: core.I18nMessage{Key: "error.test.attr_desc", DefaultValue: "attr desc"},
-			}).Once()
+			&authnprovidermgr.ErrorGetAttributesClientError)
 
 	result, err := suite.service.AuthenticateWithCredentials(context.Background(), identifiers,
 		authnCredentials, false, "")
 
 	suite.Nil(result)
 	suite.NotNil(err)
+	suite.Equal(ErrorInvalidToken.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestMapCredentialsAuthnErrorCases() {
+	logger := log.GetLogger()
+
+	err := suite.service.mapCredentialsAuthnError(context.Background(), &authnprovidermgr.ErrorUserNotFound, logger)
+	suite.Equal(common.ErrorUserNotFound.Code, err.Code)
+
+	err = suite.service.mapCredentialsAuthnError(context.Background(), &authnprovidermgr.ErrorInvalidRequest, logger)
+	suite.Equal(ErrorEmptyAttributesOrCredentials.Code, err.Code)
+
+	err = suite.service.mapCredentialsAuthnError(context.Background(), &serviceerror.InternalServerError, logger)
 	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
 }
 
-func (suite *AuthenticationServiceTestSuite) TestMapCredentialsAuthnErrorDefault() {
+func (suite *AuthenticationServiceTestSuite) TestMapCredentialsGetAttributesErrorCases() {
 	logger := log.GetLogger()
-	svcErr := &serviceerror.ServiceError{
-		Type:             serviceerror.ServerErrorType,
-		Code:             "UNMATCHED_CREDENTIALS_ERROR",
-		Error:            core.I18nMessage{Key: "error.test.cred", DefaultValue: "cred error"},
-		ErrorDescription: core.I18nMessage{Key: "error.test.cred_desc", DefaultValue: "cred desc"},
-	}
 
-	result := suite.service.mapCredentialsAuthnError(context.Background(), svcErr, logger)
+	err := suite.service.mapCredentialsGetAttributesError(context.Background(),
+		&authnprovidermgr.ErrorGetAttributesClientError, logger)
+	suite.Equal(ErrorInvalidToken.Code, err.Code)
 
-	suite.NotNil(result)
-	suite.Equal(serviceerror.InternalServerError.Code, result.Code)
+	err = suite.service.mapCredentialsGetAttributesError(context.Background(),
+		&authnprovidermgr.ErrorGetEntityReferenceClientError, logger)
+	suite.Equal(ErrorInvalidToken.Code, err.Code)
+
+	err = suite.service.mapCredentialsGetAttributesError(context.Background(),
+		&serviceerror.InternalServerError, logger)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
 }
 
-func (suite *AuthenticationServiceTestSuite) TestStartIDPAuthenticationUnsupportedType() {
-	idpID := testIDPID
-	identityProvider := &idp.IDPDTO{
-		ID:   idpID,
-		Type: idp.IDPType("UNSUPPORTED"),
-	}
+func (suite *AuthenticationServiceTestSuite) TestMapFederatedAuthnErrorInvalidRequest() {
+	logger := log.GetLogger()
 
-	suite.mockIDPService.On("GetIdentityProvider", mock.Anything, idpID).Return(identityProvider, nil)
+	err := suite.service.mapFederatedAuthnError(context.Background(),
+		&authnprovidermgr.ErrorInvalidRequest, logger)
+	suite.Equal(ErrorFederatedAuthenticationFailed.Code, err.Code)
+}
 
-	result, err := suite.service.StartIDPAuthentication(context.Background(), "", idpID)
+func (suite *AuthenticationServiceTestSuite) TestVerifyOTPServerError() {
+	sessionToken := testSessionTkn
+	otpCode := "123456"
+
+	suite.mockAuthnProvider.On("AuthenticateUser",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
+			&serviceerror.InternalServerError)
+
+	result, err := suite.service.VerifyOTP(context.Background(), sessionToken, false, "", otpCode)
 
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
 }
 
-func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationNilBasicResult() {
+func (suite *AuthenticationServiceTestSuite) TestVerifyOTPPassThroughError() {
+	sessionToken := testSessionTkn
+	otpCode := "123456"
+	customErr := &serviceerror.ServiceError{
+		Type:             serviceerror.ClientErrorType,
+		Code:             "CUSTOM_ERROR",
+		Error:            core.I18nMessage{Key: "error.test.custom", DefaultValue: "Custom error"},
+		ErrorDescription: core.I18nMessage{Key: "error.test.custom_desc", DefaultValue: "Custom error description"},
+	}
+
+	suite.mockAuthnProvider.On("AuthenticateUser",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil), customErr)
+
+	result, err := suite.service.VerifyOTP(context.Background(), sessionToken, false, "", otpCode)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal("CUSTOM_ERROR", err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestVerifyOTPGetEntityReferenceError() {
+	sessionToken := testSessionTkn
+	otpCode := "123456"
+
+	suite.mockAuthnProvider.On("AuthenticateUser",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil)
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (*authnprovidercm.EntityReference)(nil),
+			&authnprovidermgr.ErrorGetEntityReferenceClientError)
+
+	result, err := suite.service.VerifyOTP(context.Background(), sessionToken, false, "", otpCode)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidToken.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_ServerError() {
+	response := PasskeyCredentialResponseDTO{
+		ClientDataJSON:    "base64-client-data",
+		AuthenticatorData: "base64-auth-data",
+		Signature:         "base64-signature",
+	}
+
+	suite.mockAuthnProvider.On(
+		"AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
+			&serviceerror.InternalServerError).Once()
+
+	result, err := suite.service.FinishPasskeyAuthentication(
+		context.Background(), testCredentialID, testCredentialType, response, testSessionTkn, false, "")
+
+	suite.NotNil(err)
+	suite.Nil(result)
+	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_AuthnFailed() {
+	response := PasskeyCredentialResponseDTO{
+		ClientDataJSON:    "base64-client-data",
+		AuthenticatorData: "base64-auth-data",
+		Signature:         "base64-signature",
+	}
+
+	suite.mockAuthnProvider.On(
+		"AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil),
+			&authnprovidermgr.ErrorAuthenticationFailed).Once()
+
+	result, err := suite.service.FinishPasskeyAuthentication(
+		context.Background(), testCredentialID, testCredentialType, response, testSessionTkn, false, "")
+
+	suite.NotNil(err)
+	suite.Nil(result)
+	suite.Equal(ErrorPasskeyAuthenticationFailed.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestFinishPasskeyAuthentication_GetEntityReferenceError() {
+	response := PasskeyCredentialResponseDTO{
+		ClientDataJSON:    "base64-client-data",
+		AuthenticatorData: "base64-auth-data",
+		Signature:         "base64-signature",
+	}
+
+	suite.mockAuthnProvider.On(
+		"AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (*authnprovidercm.EntityReference)(nil),
+			&authnprovidermgr.ErrorGetEntityReferenceClientError).Once()
+
+	result, err := suite.service.FinishPasskeyAuthentication(
+		context.Background(), testCredentialID, testCredentialType, response, testSessionTkn, false, "")
+
+	suite.NotNil(err)
+	suite.Nil(result)
+	suite.Equal(ErrorInvalidToken.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationGetEntityReferenceError() {
 	sessionToken := suite.createSessionToken(idp.IDPTypeOAuth)
 	suite.mockJWTService.On("VerifyJWT", mock.Anything, sessionToken, "auth-svc", mock.Anything).Return(nil)
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
@@ -2055,55 +2181,52 @@ func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationNilBasic
 			_, ok := creds["federated"]
 			return ok
 		}), mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, (*authnprovidermgr.AuthnBasicResult)(nil), nil).Once()
+		Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{}, nil).Once()
+	suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, (*authnprovidercm.EntityReference)(nil),
+			&authnprovidermgr.ErrorGetEntityReferenceClientError).Once()
 
 	result, err := suite.service.FinishIDPAuthentication(
-		context.Background(), idp.IDPTypeOAuth, sessionToken, true, "", testAuthCode)
+		context.Background(), idp.IDPTypeOAuth, sessionToken, false, "", testAuthCode)
 
 	suite.Nil(result)
 	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
+	suite.Equal(ErrorInvalidToken.Code, err.Code)
 }
 
-func (suite *AuthenticationServiceTestSuite) TestFinishIDPAuthenticationAuthenticatorNameError() {
-	sessionToken := suite.createSessionToken("")
-	suite.mockJWTService.On("VerifyJWT", mock.Anything, sessionToken, "auth-svc", mock.Anything).Return(nil)
-	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
-		mock.MatchedBy(func(creds map[string]interface{}) bool {
-			_, ok := creds["federated"]
-			return ok
-		}), mock.Anything, mock.Anything, mock.Anything).
-		Return(authnprovidermgr.AuthUser{}, &authnprovidermgr.AuthnBasicResult{
-			UserID:         testUserID,
-			UserType:       "person",
-			OUID:           testOrgUnit,
-			IsExistingUser: true,
-		}, nil).Once()
-
-	result, err := suite.service.FinishIDPAuthentication(
-		context.Background(), "", sessionToken, false, "", testAuthCode)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(serviceerror.InternalServerError.Code, err.Code)
-}
-
-func (suite *AuthenticationServiceTestSuite) TestVerifyAndDecodeSessionTokenUnmarshalError() {
+func (suite *AuthenticationServiceTestSuite) TestVerifyAndDecodeSessionTokenInvalidAuthData() {
 	logger := log.GetLogger()
 	payload := map[string]interface{}{
-		"auth_data": "not-an-object",
+		"auth_data": "invalid_string_not_object",
 	}
 	payloadBytes, _ := json.Marshal(payload)
 	encoded := base64.RawURLEncoding.EncodeToString(payloadBytes)
-	token := "header." + encoded + ".signature"
+	badToken := "header." + encoded + ".signature"
 
-	suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "auth-svc", mock.Anything).Return(nil)
+	suite.mockJWTService.On("VerifyJWT", mock.Anything, badToken, "auth-svc", mock.Anything).Return(nil)
 
-	result, err := suite.service.verifyAndDecodeSessionToken(context.Background(), token, logger)
+	result, err := suite.service.verifyAndDecodeSessionToken(context.Background(), badToken, logger)
 
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(common.ErrorInvalidSessionToken.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestNewAuthenticationService() {
+	svc := newAuthenticationService(
+		suite.mockIDPService,
+		suite.mockJWTService,
+		suite.mockAssertGenerator,
+		suite.mockAuthnProvider,
+		suite.mockOTPService,
+		nil,
+		suite.mockOAuthService,
+		suite.mockOIDCService,
+		suite.mockGoogleService,
+		suite.mockGithubService,
+		suite.mockPasskeyService,
+	)
+	suite.NotNil(svc)
 }
 
 func (suite *AuthenticationServiceTestSuite) createTestAssertion(subject string) string {

@@ -185,8 +185,6 @@ const (
 	RuntimeKeyUserEligibleForProvisioning = "userEligibleForProvisioning"
 	// RuntimeKeyUserAmbiguous indicates the user exists in multiple OUs and requires disambiguation
 	RuntimeKeyUserAmbiguous = "userAmbiguous"
-	// RuntimeKeySkipProvisioning indicates whether to skip provisioning
-	RuntimeKeySkipProvisioning = "skipProvisioning"
 	// RuntimeKeyClientID holds the OAuth client ID for the current flow execution, if applicable.
 	RuntimeKeyClientID = "clientId"
 	// RuntimeKeyRequestedPermissions holds the space-separated permission scopes requested by the OAuth client.
@@ -245,11 +243,15 @@ const (
 	RuntimeKeySelectedAuthClass = "selected_auth_class"
 	// RuntimeKeyAllowedLoginOptions holds the space-separated action refs allowed on a LOGIN_OPTIONS node.
 	RuntimeKeyAllowedLoginOptions = "allowed_login_options"
+	// RuntimeKeyAllowRegistrationWithExistingUser indicates whether registration is allowed with an existing user
+	RuntimeKeyAllowRegistrationWithExistingUser = "allowRegistrationWithExistingUser"
 	// RuntimeKeyCIBAAuthReqID holds the CIBA auth_req_id bound to the current flow execution, if applicable.
 	RuntimeKeyCIBAAuthReqID = "cibaAuthReqId"
 	// RuntimeKeyBindingMessage holds the human-readable binding message displayed to the user
 	// on both the consumption device and the authentication device to correlate the CIBA request.
 	RuntimeKeyBindingMessage = "bindingMessage"
+	// RuntimeKeyEntityState holds the entity existence state set by the IdentifyingExecutor in check_state mode.
+	RuntimeKeyEntityState = "entityState"
 )
 
 // User input key constants for well-known keys used in UserInputs across flow executors.
