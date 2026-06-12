@@ -27,7 +27,9 @@ const clientId = import.meta.env.VITE_THUNDER_CLIENT_ID;
 const baseUrl = import.meta.env.VITE_THUNDER_BASE_URL;
 const thunderidReady = Boolean(clientId && baseUrl);
 
-const SCOPES = ["openid", "profile", "email", "ou", "agent:access", "booking:read", "booking:create", "booking:cancel"];
+const AI_FEATURES_ENABLED = import.meta.env.VITE_AI_FEATURES_ENABLED === "true";
+const SCOPES = ["openid", "profile", "email", "ou", "booking:read", "booking:create", "booking:cancel",
+  ...(AI_FEATURES_ENABLED ? ["agent:access"] : [])];
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

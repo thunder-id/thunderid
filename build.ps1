@@ -531,6 +531,105 @@ function Lint-SDKs {
     Write-Host "================================================================"
 }
 
+function Build-CLI {
+    Write-Host "Building CLI tool..."
+    & bash "$PSScriptRoot/tools/cli/scripts/build.sh"
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+function Test-CLI {
+    Write-Host "Running CLI tool tests..."
+    Push-Location "$PSScriptRoot/tools/cli"
+    try {
+        & go test -v -race -count=1 ./...
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Build-I18n-Extractor {
+    $toolBin = Join-Path $PSScriptRoot "backend/bin/tools"
+    New-Item -ItemType Directory -Force -Path $toolBin | Out-Null
+    Write-Host "Building i18n-extractor..."
+    Push-Location "$PSScriptRoot/tools/i18n-extractor"
+    try {
+        & go build -o "$toolBin/i18n-extractor.exe" .
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Test-I18n-Extractor {
+    Write-Host "Running i18n-extractor tests..."
+    Push-Location "$PSScriptRoot/tools/i18n-extractor"
+    try {
+        & go test -v .
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Lint-CLI {
+    $golangciLint = Join-Path $PSScriptRoot "backend/bin/tools/golangci-lint.exe"
+    Write-Host "Linting CLI tool..."
+    Push-Location "$PSScriptRoot/tools/cli"
+    try {
+        & $golangciLint run ./...
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Lint-I18n-Extractor {
+    $golangciLint = Join-Path $PSScriptRoot "backend/bin/tools/golangci-lint.exe"
+    Write-Host "Linting i18n-extractor..."
+    Push-Location "$PSScriptRoot/tools/i18n-extractor"
+    try {
+        & $golangciLint run ./...
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+    }
+}
+
+function Lint-Tools {
+    Write-Host "================================================================"
+    Write-Host "Linting tools..."
+    Lint-CLI
+    Lint-I18n-Extractor
+    Write-Host "================================================================"
+}
+
+function Build-Npm-Tools {
+    Ensure-Pnpm
+    Write-Host "Installing tools dependencies..."
+    & pnpm install --frozen-lockfile
+    Write-Host "Building npm-based tools..."
+    & pnpm --filter './tools/**' build
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+function Build-Tools {
+    Write-Host "================================================================"
+    Write-Host "Building tools..."
+    Build-CLI
+    Build-I18n-Extractor
+    Build-Npm-Tools
+    Write-Host "================================================================"
+}
+
+function Test-Tools {
+    Write-Host "================================================================"
+    Write-Host "Running tool tests..."
+    Test-CLI
+    Test-I18n-Extractor
+    Write-Host "================================================================"
+}
+
 function Initialize-Databases {
     param(
         [bool]$override = $false
@@ -1929,6 +2028,15 @@ switch ($Command) {
     'lint_sdks' {
         Lint-SDKs
     }
+    'build_tools' {
+        Build-Tools
+    }
+    'test_tools' {
+        Test-Tools
+    }
+    'lint_tools' {
+        Lint-Tools
+    }
     'build_samples' {
         Build-Sample-App
     }
@@ -1961,7 +2069,7 @@ switch ($Command) {
         Test-Integration
     }
     default {
-        Write-Host "Usage: $($MyInvocation.MyCommand.Name) {clean|build|build_backend|build_frontend|build_docs|build_samples|package_samples|test_unit|test_integration|merge_coverage|run|run_backend|run_frontend|run_docs|test}"
+        Write-Host "Usage: $($MyInvocation.MyCommand.Name) {clean|build|build_backend|build_frontend|build_docs|build_sdks|test_sdks|lint_sdks|build_tools|test_tools|lint_tools|build_samples|package_samples|test_unit|test_integration|merge_coverage|run|run_backend|run_frontend|run_docs|test}"
         exit 1
     }
 }

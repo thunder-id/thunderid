@@ -15,8 +15,8 @@ on:
           - major
         default: patch
 
-      tool_npx_thunderid:
-        description: 'thunderid (npx-thunderid)'
+      npx:
+        description: 'Release npx tool'
         required: false
         type: boolean
         default: false
@@ -35,7 +35,7 @@ env:
 jobs:
   release-npx-thunderid:
     name: ⚡ Release thunderid (npx-thunderid)
-    if: ${{ github.event.inputs.tool_npx_thunderid == 'true' }}
+    if: ${{ github.event.inputs.npx == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout Code
@@ -46,7 +46,7 @@ jobs:
       - name: 🚀 Release
         uses: ./.github/actions/release-tool/npm
         with:
-          tool: npx-thunderid
+          tool: npx
           bump-type: ${{ github.event.inputs.bump_type }}
           git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
           git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}

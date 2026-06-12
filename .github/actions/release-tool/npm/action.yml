@@ -11,7 +11,7 @@ inputs:
     required: false
     default: 'latest'
   tool:
-    description: 'Tool directory name under tools/ (e.g. npx-thunderid)'
+    description: 'Tool directory name under tools/ (e.g. npx)'
     required: true
   bump-type:
     description: 'Semver bump type: major, minor, or patch'
@@ -64,7 +64,7 @@ runs:
 
     - name: 🔨 Build
       shell: bash
-      run: pnpm build:tools
+      run: pnpm --filter "./tools/${{ inputs.tool }}" build
 
     - name: 📤 Commit and Tag Release
       shell: bash
