@@ -51,11 +51,12 @@ const (
 
 // Executor mode constants
 const (
-	ExecutorModeSend     = "send"
-	ExecutorModeGenerate = "generate"
-	ExecutorModeVerify   = "verify"
-	ExecutorModeIdentify = "identify"
-	ExecutorModeResolve  = "resolve"
+	ExecutorModeSend       = "send"
+	ExecutorModeGenerate   = "generate"
+	ExecutorModeVerify     = "verify"
+	ExecutorModeIdentify   = "identify"
+	ExecutorModeResolve    = "resolve"
+	ExecutorModeCheckState = "check_state"
 )
 
 // User attribute and input constants
@@ -85,6 +86,10 @@ const (
 
 	dataValueTrue  = "true"
 	dataValueFalse = "false"
+
+	entityStateNotExists = "not_exists"
+	entityStateExists    = "exists"
+	entityStateAmbiguous = "ambiguous"
 )
 
 // Executor property keys

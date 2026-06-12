@@ -61,10 +61,12 @@ func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Success() {
 		suite.Equal("pass", req.Credentials["password"])
 
 		resp := authnprovidercm.AuthnResult{
-			UserID:   "user123",
-			Token:    "token123",
-			UserType: "customer",
-			OUID:     "ou1",
+			EntityReference: &authnprovidercm.EntityReference{
+				EntityID:       "user123",
+				EntityCategory: "user",
+				EntityType:     "customer",
+				OUID:           "ou1",
+			},
 		}
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(resp)
@@ -78,8 +80,9 @@ func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Success() {
 	result, err := provider.Authenticate(context.Background(), identifiers, credentials, nil)
 
 	suite.Nil(err)
-	suite.Equal("user123", result.UserID)
-	suite.Equal("token123", result.Token)
+	suite.NotNil(result.EntityReference)
+	suite.Equal("user123", result.EntityReference.EntityID)
+	suite.Equal("customer", result.EntityReference.EntityType)
 }
 
 func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Failure() {
@@ -100,6 +103,52 @@ func (suite *RestAuthnProviderTestSuite) TestAuthenticate_Failure() {
 	suite.Equal(authnprovidercm.ErrorCodeAuthenticationFailed, err.Code)
 }
 
+func (suite *RestAuthnProviderTestSuite) TestGetEntityReference_Success() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		suite.Equal("/entity-reference", r.URL.Path)
+		suite.Equal(http.MethodPost, r.Method)
+		suite.Equal("apikey123", r.Header.Get("API-KEY"))
+
+		resp := authnprovidercm.EntityReference{
+			EntityID:       "user123",
+			EntityCategory: "user",
+			EntityType:     "customer",
+			OUID:           "ou1",
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "apikey123", suite.setupMockClient())
+	result, err := provider.GetEntityReference(context.Background(), "ref-token-123")
+
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Equal("user123", result.EntityID)
+	suite.Equal("user", result.EntityCategory)
+	suite.Equal("customer", result.EntityType)
+	suite.Equal("ou1", result.OUID)
+}
+
+func (suite *RestAuthnProviderTestSuite) TestGetEntityReference_Failure() {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(apiErrorResponse{
+			Code:    authnprovidercm.ErrorCodeInvalidToken,
+			Message: "Invalid token",
+		})
+	}))
+	defer ts.Close()
+
+	provider := newRestAuthnProvider(ts.URL, "", suite.setupMockClient())
+	result, err := provider.GetEntityReference(context.Background(), "invalid-token")
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(authnprovidercm.ErrorCodeInvalidToken, err.Code)
+}
+
 func (suite *RestAuthnProviderTestSuite) TestGetAttributes_Success() {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		suite.Equal("/attributes", r.URL.Path)
@@ -112,12 +161,9 @@ func (suite *RestAuthnProviderTestSuite) TestGetAttributes_Success() {
 		suite.Len(req.RequestedAttributes.Attributes, 1)
 		suite.Contains(req.RequestedAttributes.Attributes, "email")
 
-		resp := authnprovidercm.GetAttributesResult{
-			UserID: "user123",
-			AttributesResponse: &authnprovidercm.AttributesResponse{
-				Attributes: map[string]*authnprovidercm.AttributeResponse{
-					"email": {Value: "test@example.com"},
-				},
+		resp := authnprovidercm.AttributesResponse{
+			Attributes: map[string]*authnprovidercm.AttributeResponse{
+				"email": {Value: "test@example.com"},
 			},
 		}
 		w.WriteHeader(http.StatusOK)
@@ -134,9 +180,8 @@ func (suite *RestAuthnProviderTestSuite) TestGetAttributes_Success() {
 	result, err := provider.GetAttributes(context.Background(), "token123", reqAttrs, nil)
 
 	suite.Nil(err)
-	suite.Equal("user123", result.UserID)
-	suite.NotNil(result.AttributesResponse)
-	suite.Equal("test@example.com", result.AttributesResponse.Attributes["email"].Value)
+	suite.NotNil(result)
+	suite.Equal("test@example.com", result.Attributes["email"].Value)
 }
 
 func (suite *RestAuthnProviderTestSuite) TestGetAttributes_InvalidToken() {

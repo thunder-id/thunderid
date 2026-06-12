@@ -26,8 +26,6 @@ import (
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
-	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
@@ -65,7 +63,6 @@ func newOIDCAuthExecutor(
 	defaultInputs, prerequisites []common.Input,
 	flowFactory core.FlowFactoryInterface,
 	idpService idp.IDPServiceInterface,
-	entityTypeService entitytype.EntityTypeServiceInterface,
 	authService authnoidc.OIDCAuthnCoreServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 	idpType idp.IDPType,
@@ -82,7 +79,7 @@ func newOIDCAuthExecutor(
 	}
 
 	base := newOAuthExecutor(name, defaultInputs, prerequisites,
-		flowFactory, idpService, entityTypeService, oauthSvcCast, authnProvider, idpType)
+		flowFactory, idpService, oauthSvcCast, authnProvider, idpType)
 
 	return &oidcAuthExecutor{
 		oAuthExecutorInterface: base,
@@ -103,6 +100,7 @@ func (o *oidcAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRespo
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
+		AuthUser:       ctx.AuthUser,
 	}
 
 	if !o.HasRequiredInputs(ctx, execResp) {
@@ -120,7 +118,7 @@ func (o *oidcAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRespo
 
 	logger.Debug(ctx.Context, "OIDC authentication executor execution completed",
 		log.String("status", string(execResp.Status)),
-		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
+		log.Bool("isAuthenticated", execResp.AuthUser.IsAuthenticated()))
 
 	return execResp, nil
 }
@@ -133,9 +131,7 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 
 	code, ok := ctx.UserInputs[userInputCode]
 	if !ok || code == "" {
-		execResp.AuthenticatedUser = authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-		}
+		execResp.AuthUser = authnprovidermgr.AuthUser{}
 		return nil
 	}
 
@@ -158,6 +154,20 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return err
 	}
 
+	existingCtxUserAttributes := make(map[string]interface{})
+	if execResp.AuthUser.IsAuthenticated() {
+		authUser, attributes, err := o.authnProvider.GetUserAttributes(ctx.Context, nil, nil, execResp.AuthUser)
+		execResp.AuthUser = authUser
+		if err != nil {
+			logger.Warn(ctx.Context,
+				"Failed to fetch user attributes for authenticated user, proceeding without attributes")
+		} else {
+			for key, value := range attributes.Attributes {
+				existingCtxUserAttributes[key] = value
+			}
+		}
+	}
+
 	credentials := map[string]interface{}{
 		"federated": &authncm.FederatedAuthCredential{
 			IDPID:   idpID,
@@ -165,8 +175,9 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 			Code:    code,
 		},
 	}
-	newAuthUser, basicResult, svcErr := o.authnProvider.AuthenticateUser(
-		ctx.Context, nil, credentials, nil, nil, ctx.AuthUser)
+	authUser, federatedAttributes, svcErr := o.authnProvider.AuthenticateUser(
+		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
+	execResp.AuthUser = authUser
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
 			execResp.Status = common.ExecFailure
@@ -179,61 +190,42 @@ func (o *oidcAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return errors.New("OIDC authentication failed")
 	}
 
-	if basicResult == nil {
-		logger.Error(ctx.Context, "authnProvider.AuthenticateUser returned nil result")
-		return errors.New("OIDC authentication failed")
-	}
-
 	// Validate nonce if configured
-	if nonce, ok := ctx.UserInputs[userInputNonce]; ok && nonce != "" {
-		claimNonce := basicResult.ExternalClaims[userInputNonce]
-		if claimNonce != nonce {
+	if claimNonce, ok := federatedAttributes[userInputNonce]; ok && claimNonce != "" {
+		expectedNonce := ctx.UserInputs[userInputNonce]
+		if expectedNonce != "" && claimNonce != expectedNonce {
 			execResp.Status = common.ExecFailure
 			execResp.Error = &ErrNonceMismatch
 			return nil
 		}
 	}
 
-	if !validateFederatedIdentifierConsistency(ctx, basicResult) {
+	if !validateFederatedIdentifierConsistency(ctx, federatedAttributes, existingCtxUserAttributes) {
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
 		return nil
 	}
 
-	sub := basicResult.ExternalSub
-
-	if basicResult.IsAmbiguousUser {
+	if len(federatedAttributes) > 0 {
 		if execResp.RuntimeData == nil {
 			execResp.RuntimeData = make(map[string]string)
 		}
-		execResp.RuntimeData[common.RuntimeKeyUserAmbiguous] = dataValueTrue
-	}
-
-	var internalUser *entityprovider.Entity
-	if basicResult.IsExistingUser {
-		internalUser = &entityprovider.Entity{
-			ID:   basicResult.UserID,
-			OUID: basicResult.OUID,
-			Type: basicResult.UserType,
+		for key, value := range federatedAttributes {
+			execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
 		}
 	}
 
-	contextUser, err := o.ResolveContextUser(ctx, execResp, sub, internalUser, basicResult.IsAmbiguousUser)
-	if err != nil {
-		return err
-	}
-	if execResp.Status == common.ExecFailure {
-		return nil
-	}
-	if contextUser == nil {
-		logger.Error(ctx.Context, "Failed to resolve context user after OIDC authentication")
-		return errors.New("unexpected error occurred while resolving user")
+	if ctx.FlowType == common.FlowTypeAuthentication {
+		if isAuthenticationWithoutLocalUserAllowed(ctx) {
+			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
+		}
+	} else if ctx.FlowType == common.FlowTypeRegistration {
+		if isRegistrationWithExistingUserAllowed(ctx) {
+			execResp.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
+		}
 	}
 
-	contextUser.Attributes = o.getContextUserAttributes(execResp, basicResult.ExternalClaims)
-	execResp.AuthenticatedUser = *contextUser
-	execResp.AuthUser = newAuthUser
-
+	execResp.Status = common.ExecComplete
 	return nil
 }
 

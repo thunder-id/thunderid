@@ -481,3 +481,96 @@ func TestRegistryListEmpty(t *testing.T) {
 	r := newRegistry()
 	assert.Empty(t, r.list())
 }
+
+func TestAuthenticate_UnknownState(t *testing.T) {
+	svc, _ := newTestService(t, newPIDBuilder(t))
+	result, err := svc.Authenticate(context.Background(), "no-such-state")
+	assert.Nil(t, result)
+	assert.NotNil(t, err)
+	assert.Equal(t, ErrorUnknownState.Code, err.Code)
+}
+
+func TestAuthenticate_PendingState(t *testing.T) {
+	svc, store := newTestService(t, newPIDBuilder(t))
+	store.m["s1"] = &RequestState{
+		State:     "s1",
+		Status:    StatusPending,
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+	result, err := svc.Authenticate(context.Background(), "s1")
+	assert.Nil(t, result)
+	assert.NotNil(t, err)
+	assert.Equal(t, ErrorVerificationFailed.Code, err.Code)
+}
+
+func TestAuthenticate_FailedState(t *testing.T) {
+	svc, store := newTestService(t, newPIDBuilder(t))
+	store.m["s2"] = &RequestState{
+		State:         "s2",
+		Status:        StatusFailed,
+		FailureReason: "nonce mismatch",
+		ExpiresAt:     time.Now().Add(time.Minute),
+	}
+	result, err := svc.Authenticate(context.Background(), "s2")
+	assert.Nil(t, result)
+	assert.NotNil(t, err)
+	assert.Equal(t, ErrorVerificationFailed.Code, err.Code)
+}
+
+func TestAuthenticate_CompletedNilPresentation(t *testing.T) {
+	svc, store := newTestService(t, newPIDBuilder(t))
+	store.m["s3"] = &RequestState{
+		State:     "s3",
+		Status:    StatusCompleted,
+		Result:    nil,
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+	result, err := svc.Authenticate(context.Background(), "s3")
+	assert.Nil(t, result)
+	assert.NotNil(t, err)
+}
+
+func TestAuthenticate_CompletedValidPresentation(t *testing.T) {
+	svc, store := newTestService(t, newPIDBuilder(t))
+	store.m["s4"] = &RequestState{
+		State:  "s4",
+		Status: StatusCompleted,
+		Result: &VerifiedPresentation{
+			Subject: "sub-42",
+			Issuer:  "https://issuer.example",
+			VCT:     testVCT,
+			Claims:  map[string]interface{}{"given_name": "Ada", "family_name": "Lovelace"},
+		},
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+	result, err := svc.Authenticate(context.Background(), "s4")
+	require.Nil(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "sub-42", result.Token["sub"])
+	assert.Equal(t, "https://issuer.example", result.Token["openid4vp_issuer"])
+	assert.Equal(t, testVCT, result.Token["openid4vp_vct"])
+	assert.Equal(t, "Ada", result.Token["given_name"])
+	assert.Equal(t, "Lovelace", result.Token["family_name"])
+	// AuthenticatedClaims is the same map as Token
+	assert.Equal(t, result.Token, result.AuthenticatedClaims)
+}
+
+func TestAuthenticate_CompletedNoSubject(t *testing.T) {
+	svc, store := newTestService(t, newPIDBuilder(t))
+	store.m["s5"] = &RequestState{
+		State:  "s5",
+		Status: StatusCompleted,
+		Result: &VerifiedPresentation{
+			Issuer: "https://issuer.example",
+			VCT:    testVCT,
+			Claims: map[string]interface{}{"tax_id": "DE123456"},
+		},
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+	result, err := svc.Authenticate(context.Background(), "s5")
+	require.Nil(t, err)
+	require.NotNil(t, result)
+	_, hasSub := result.Token["sub"]
+	assert.False(t, hasSub, "sub should not be present when VerifiedPresentation.Subject is empty")
+	assert.Equal(t, "DE123456", result.Token["tax_id"])
+}

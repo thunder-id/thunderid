@@ -31,7 +31,9 @@ type AuthnProviderManagerInterface interface {
 	AuthenticateUser(ctx context.Context, identifiers, credentials map[string]interface{},
 		requestedAttributes *authnprovidercm.RequestedAttributes,
 		metadata *authnprovidercm.AuthnMetadata,
-		authUser AuthUser) (AuthUser, *AuthnBasicResult, *serviceerror.ServiceError)
+		authUser AuthUser) (AuthUser, authnprovidercm.AuthenticatedClaims, *serviceerror.ServiceError)
+	GetEntityReference(ctx context.Context, authUser AuthUser) (
+		AuthUser, *authnprovidercm.EntityReference, *serviceerror.ServiceError)
 	GetUserAvailableAttributes(ctx context.Context,
 		authUser AuthUser) (*authnprovidercm.AttributesResponse, *serviceerror.ServiceError)
 	GetUserAttributes(ctx context.Context,

@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -37,8 +39,10 @@ const (
 // ouExecutor is responsible for creating organizational units (OUs) within the system.
 type ouExecutor struct {
 	core.ExecutorInterface
-	ouService ou.OrganizationUnitServiceInterface
-	logger    *log.Logger
+	ouService         ou.OrganizationUnitServiceInterface
+	authnProvider     authnprovidermgr.AuthnProviderManagerInterface
+	entityTypeService entitytype.EntityTypeServiceInterface
+	logger            *log.Logger
 }
 
 var _ core.ExecutorInterface = (*ouExecutor)(nil)
@@ -47,6 +51,8 @@ var _ core.ExecutorInterface = (*ouExecutor)(nil)
 func newOUExecutor(
 	flowFactory core.FlowFactoryInterface,
 	ouService ou.OrganizationUnitServiceInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
+	entityTypeService entitytype.EntityTypeServiceInterface,
 ) *ouExecutor {
 	defaultInputs := []common.Input{
 		{
@@ -70,6 +76,8 @@ func newOUExecutor(
 	return &ouExecutor{
 		ExecutorInterface: base,
 		ouService:         ouService,
+		authnProvider:     authnProvider,
+		entityTypeService: entityTypeService,
 		logger:            logger,
 	}
 }
@@ -82,13 +90,37 @@ func (o *ouExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, e
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
+		AuthUser:       ctx.AuthUser,
 	}
 
-	if !o.ValidatePrerequisites(ctx, execResp) {
+	if !o.ValidatePrerequisites(ctx, execResp, o.authnProvider) {
 		logger.Debug(ctx.Context, "Prerequisites validation failed for OU creation")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrOUCreationPrereqFailed
 		return execResp, nil
+	}
+
+	if execResp.AuthUser.IsAuthenticated() {
+		// Check if the user already has an entity reference (existing user).
+		// If so, skip OU creation as the user already belongs to an OU.
+		authUser, entityRef, svcErr := o.authnProvider.GetEntityReference(ctx.Context, execResp.AuthUser)
+		if svcErr != nil {
+			if svcErr.Code != authnprovidermgr.ErrorUserNotFound.Code &&
+				svcErr.Code != authnprovidermgr.ErrorAmbiguousUser.Code {
+				logger.Error(ctx.Context, "Failed to get entity reference", log.String("errorCode", svcErr.Code),
+					log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+				execResp.Status = common.ExecFailure
+				execResp.Error = &ErrFailedToIdentifyUser
+				return execResp, nil
+			}
+			logger.Debug(ctx.Context, "User not found or ambiguous, proceeding with OU creation")
+		}
+		ctx.AuthUser = authUser
+		if entityRef != nil {
+			logger.Debug(ctx.Context, "User already has an entity reference, skipping OU creation")
+			execResp.Status = common.ExecComplete
+			return execResp, nil
+		}
 	}
 
 	if !o.HasRequiredInputs(ctx, execResp) {
@@ -163,7 +195,56 @@ func (o *ouExecutor) getOrganizationUnitRequest(ctx *core.NodeContext) (ou.Organ
 		}
 	} else if val, ok := ctx.RuntimeData[defaultOUIDKey]; ok && val != "" {
 		ouRequest.Parent = &val
+	} else {
+		defaultOUID, err := o.getDefaultOUID(ctx)
+		if err != nil {
+			return ouRequest, err
+		}
+		if defaultOUID != "" {
+			ouRequest.Parent = &defaultOUID
+		}
 	}
 
 	return ouRequest, nil
+}
+
+// getDefaultOUID resolves the default OU ID from the application's allowed user types.
+func (o *ouExecutor) getDefaultOUID(ctx *core.NodeContext) (string, error) {
+	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+
+	if len(ctx.Application.AllowedUserTypes) == 0 {
+		logger.Debug(ctx.Context, "No allowed user types configured for the application")
+		return "", nil
+	}
+
+	selfRegEnabledSchemas := make([]entitytype.EntityType, 0)
+	for _, userType := range ctx.Application.AllowedUserTypes {
+		et, svcErr := o.entityTypeService.GetEntityTypeByName(ctx.Context,
+			entitytype.TypeCategoryUser, userType)
+		if svcErr != nil {
+			logger.Error(ctx.Context,
+				"Failed to retrieve entity type for allowed user type",
+				log.String("userType", userType),
+				log.String("errorCode", svcErr.Code),
+				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+			return "", fmt.Errorf("failed to retrieve entity type for user type %q: %s",
+				userType, svcErr.ErrorDescription.DefaultValue)
+		}
+		if et.AllowSelfRegistration {
+			selfRegEnabledSchemas = append(selfRegEnabledSchemas, *et)
+		}
+	}
+
+	if len(selfRegEnabledSchemas) == 0 {
+		logger.Debug(ctx.Context, "No user types with self-registration enabled, cannot resolve default OU")
+		return "", nil
+	}
+
+	if len(selfRegEnabledSchemas) > 1 {
+		logger.Debug(ctx.Context,
+			"Multiple user types with self-registration enabled, cannot resolve default OU automatically")
+		return "", nil
+	}
+
+	return selfRegEnabledSchemas[0].OUID, nil
 }

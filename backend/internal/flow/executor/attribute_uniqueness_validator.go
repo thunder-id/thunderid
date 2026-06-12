@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
@@ -38,6 +39,7 @@ type attributeUniquenessValidator struct {
 	core.ExecutorInterface
 	entityTypeService entitytype.EntityTypeServiceInterface
 	entityProvider    entityprovider.EntityProviderInterface
+	authnProvider     authnprovidermgr.AuthnProviderManagerInterface
 	logger            *log.Logger
 }
 
@@ -46,6 +48,7 @@ func newAttributeUniquenessValidator(
 	flowFactory core.FlowFactoryInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *attributeUniquenessValidator {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameAttributeUniquenessValidator))
 	prerequisites := []common.Input{
@@ -60,6 +63,7 @@ func newAttributeUniquenessValidator(
 		ExecutorInterface: base,
 		entityTypeService: entityTypeService,
 		entityProvider:    entityProvider,
+		authnProvider:     authnProvider,
 		logger:            logger,
 	}
 }
@@ -77,7 +81,7 @@ func (e *attributeUniquenessValidator) Execute(ctx *core.NodeContext) (*common.E
 		RuntimeData:    make(map[string]string),
 	}
 
-	if !e.ValidatePrerequisites(ctx, execResp) {
+	if !e.ValidatePrerequisites(ctx, execResp, e.authnProvider) {
 		return execResp, nil
 	}
 

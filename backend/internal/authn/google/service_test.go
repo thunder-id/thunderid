@@ -32,9 +32,9 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/oauth"
 	"github.com/thunder-id/thunderid/internal/authn/oidc"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -807,18 +807,221 @@ func (suite *GoogleOIDCAuthnServiceTestSuite) TestFetchUserInfoSuccess() {
 	suite.Equal(userInfo["sub"], result["sub"])
 }
 
-func (suite *GoogleOIDCAuthnServiceTestSuite) TestGetInternalUserSuccess() {
-	sub := "user123"
-	user := &entityprovider.Entity{
-		ID:   "user123",
-		Type: "person",
+func (suite *GoogleOIDCAuthnServiceTestSuite) TestGetOAuthClientConfigSuccess() {
+	expectedConfig := &oauth.OAuthClientConfig{
+		ClientID:     testClientID,
+		ClientSecret: "test-secret",
+		OAuthEndpoints: oauth.OAuthEndpoints{
+			JwksEndpoint: "https://www.googleapis.com/oauth2/v3/certs",
+		},
 	}
-	suite.mockOIDCService.On("GetInternalUser", mock.Anything, sub).Return(user, nil)
+	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(expectedConfig, nil)
 
-	result, err := suite.service.GetInternalUser(context.Background(), sub)
+	result, err := suite.service.GetOAuthClientConfig(context.Background(), testGoogleIDPID)
 	suite.Nil(err)
 	suite.NotNil(result)
-	suite.Equal(user.ID, result.ID)
+	suite.Equal(testClientID, result.ClientID)
+}
+
+func (suite *GoogleOIDCAuthnServiceTestSuite) TestGetOAuthClientConfigFailure() {
+	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).
+		Return(nil, &serviceerror.ServiceError{Code: "CONFIG-001"})
+
+	result, err := suite.service.GetOAuthClientConfig(context.Background(), testGoogleIDPID)
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal("CONFIG-001", err.Code)
+}
+
+func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateSuccess() {
+	now := time.Now()
+	validClaims := map[string]interface{}{
+		"iss": Issuer1,
+		"aud": testClientID,
+		"sub": "user123",
+		"exp": float64(now.Add(1 * time.Hour).Unix()),
+		"iat": float64(now.Add(-1 * time.Minute).Unix()),
+	}
+	idToken := generateTestJWT(validClaims)
+
+	tokenResp := &oauth.TokenResponse{
+		AccessToken: "access_token",
+		IDToken:     idToken,
+		TokenType:   "Bearer",
+	}
+
+	oAuthConfig := &oauth.OAuthClientConfig{
+		ClientID:       testClientID,
+		ClientSecret:   "test-secret",
+		OAuthEndpoints: oauth.OAuthEndpoints{},
+	}
+
+	suite.mockOIDCService.On("ExchangeCodeForToken", mock.Anything, testGoogleIDPID, testAuthCode, false).
+		Return(tokenResp, nil)
+	suite.mockOIDCService.On("ValidateTokenResponse", mock.Anything, testGoogleIDPID, tokenResp, false).
+		Return(nil)
+	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
+	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).Return(validClaims, nil)
+
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Equal("user123", result.Token["sub"])
+	suite.Equal(validClaims, result.AuthenticatedClaims)
+}
+
+func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateExchangeCodeFailure() {
+	suite.mockOIDCService.On("ExchangeCodeForToken", mock.Anything, testGoogleIDPID, testAuthCode, false).
+		Return(nil, &serviceerror.ServiceError{Code: "TOKEN-001"})
+
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal("TOKEN-001", err.Code)
+}
+
+func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateGetIDTokenClaimsFailure() {
+	now := time.Now()
+	validClaims := map[string]interface{}{
+		"iss": Issuer1,
+		"aud": testClientID,
+		"sub": "user123",
+		"exp": float64(now.Add(1 * time.Hour).Unix()),
+		"iat": float64(now.Add(-1 * time.Minute).Unix()),
+	}
+	idToken := generateTestJWT(validClaims)
+
+	tokenResp := &oauth.TokenResponse{
+		AccessToken: "access_token",
+		IDToken:     idToken,
+		TokenType:   "Bearer",
+	}
+
+	oAuthConfig := &oauth.OAuthClientConfig{
+		ClientID:       testClientID,
+		ClientSecret:   "test-secret",
+		OAuthEndpoints: oauth.OAuthEndpoints{},
+	}
+
+	suite.mockOIDCService.On("ExchangeCodeForToken", mock.Anything, testGoogleIDPID, testAuthCode, false).
+		Return(tokenResp, nil)
+	suite.mockOIDCService.On("ValidateTokenResponse", mock.Anything, testGoogleIDPID, tokenResp, false).
+		Return(nil)
+	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
+	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).
+		Return(nil, &serviceerror.ServiceError{Code: "CLAIMS-001"})
+
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal("CLAIMS-001", err.Code)
+}
+
+func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateMissingSub() {
+	now := time.Now()
+	claimsWithoutSub := map[string]interface{}{
+		"iss": Issuer1,
+		"aud": testClientID,
+		"exp": float64(now.Add(1 * time.Hour).Unix()),
+		"iat": float64(now.Add(-1 * time.Minute).Unix()),
+	}
+	idToken := generateTestJWT(claimsWithoutSub)
+
+	tokenResp := &oauth.TokenResponse{
+		AccessToken: "access_token",
+		IDToken:     idToken,
+		TokenType:   "Bearer",
+	}
+
+	oAuthConfig := &oauth.OAuthClientConfig{
+		ClientID:       testClientID,
+		ClientSecret:   "test-secret",
+		OAuthEndpoints: oauth.OAuthEndpoints{},
+	}
+
+	suite.mockOIDCService.On("ExchangeCodeForToken", mock.Anything, testGoogleIDPID, testAuthCode, false).
+		Return(tokenResp, nil)
+	suite.mockOIDCService.On("ValidateTokenResponse", mock.Anything, testGoogleIDPID, tokenResp, false).
+		Return(nil)
+	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
+	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).Return(claimsWithoutSub, nil)
+
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(common.ErrorSubClaimNotFound.Code, err.Code)
+}
+
+func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateEmptySub() {
+	now := time.Now()
+	claimsWithEmptySub := map[string]interface{}{
+		"iss": Issuer1,
+		"aud": testClientID,
+		"sub": "",
+		"exp": float64(now.Add(1 * time.Hour).Unix()),
+		"iat": float64(now.Add(-1 * time.Minute).Unix()),
+	}
+	idToken := generateTestJWT(claimsWithEmptySub)
+
+	tokenResp := &oauth.TokenResponse{
+		AccessToken: "access_token",
+		IDToken:     idToken,
+		TokenType:   "Bearer",
+	}
+
+	oAuthConfig := &oauth.OAuthClientConfig{
+		ClientID:       testClientID,
+		ClientSecret:   "test-secret",
+		OAuthEndpoints: oauth.OAuthEndpoints{},
+	}
+
+	suite.mockOIDCService.On("ExchangeCodeForToken", mock.Anything, testGoogleIDPID, testAuthCode, false).
+		Return(tokenResp, nil)
+	suite.mockOIDCService.On("ValidateTokenResponse", mock.Anything, testGoogleIDPID, tokenResp, false).
+		Return(nil)
+	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
+	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).Return(claimsWithEmptySub, nil)
+
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(common.ErrorSubClaimNotFound.Code, err.Code)
+}
+
+func (suite *GoogleOIDCAuthnServiceTestSuite) TestAuthenticateSubNilValue() {
+	now := time.Now()
+	claimsWithNilSub := map[string]interface{}{
+		"iss": Issuer1,
+		"aud": testClientID,
+		"sub": nil,
+		"exp": float64(now.Add(1 * time.Hour).Unix()),
+		"iat": float64(now.Add(-1 * time.Minute).Unix()),
+	}
+	idToken := generateTestJWT(claimsWithNilSub)
+
+	tokenResp := &oauth.TokenResponse{
+		AccessToken: "access_token",
+		IDToken:     idToken,
+		TokenType:   "Bearer",
+	}
+
+	oAuthConfig := &oauth.OAuthClientConfig{
+		ClientID:       testClientID,
+		ClientSecret:   "test-secret",
+		OAuthEndpoints: oauth.OAuthEndpoints{},
+	}
+
+	suite.mockOIDCService.On("ExchangeCodeForToken", mock.Anything, testGoogleIDPID, testAuthCode, false).
+		Return(tokenResp, nil)
+	suite.mockOIDCService.On("ValidateTokenResponse", mock.Anything, testGoogleIDPID, tokenResp, false).
+		Return(nil)
+	suite.mockOIDCService.On("GetOAuthClientConfig", mock.Anything, testGoogleIDPID).Return(oAuthConfig, nil)
+	suite.mockOIDCService.On("GetIDTokenClaims", mock.Anything, idToken).Return(claimsWithNilSub, nil)
+
+	result, err := suite.service.Authenticate(context.Background(), testGoogleIDPID, testAuthCode)
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(common.ErrorSubClaimNotFound.Code, err.Code)
 }
 
 // generateTestJWT creates a valid JWT token with the specified claims.

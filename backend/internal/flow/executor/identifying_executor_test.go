@@ -724,6 +724,88 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_FilteredToNone() {
 	assert.Equal(suite.T(), ErrUserNotFound.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
+// --- check_state mode tests ---
+
+func (suite *IdentifyingExecutorTestSuite) TestExecuteCheckState_NoMatch() {
+	ctx := &core.NodeContext{
+		ExecutionID:  "flow-123",
+		ExecutorMode: ExecutorModeCheckState,
+		UserInputs:   map[string]string{"given_name": "Alex"},
+		RuntimeData:  make(map[string]string),
+	}
+
+	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]common.Input{
+		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
+	})
+
+	suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{
+		"given_name": "Alex",
+	}).Return([]*entityprovider.Entity{}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), entityStateNotExists, resp.RuntimeData[common.RuntimeKeyEntityState])
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecuteCheckState_SingleMatch() {
+	ctx := &core.NodeContext{
+		ExecutionID:  "flow-123",
+		ExecutorMode: ExecutorModeCheckState,
+		UserInputs:   map[string]string{"given_name": "Alex"},
+		RuntimeData:  make(map[string]string),
+	}
+
+	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]common.Input{
+		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
+	})
+
+	suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{
+		"given_name": "Alex",
+	}).Return([]*entityprovider.Entity{
+		{ID: "user-1", Type: "Person", Attributes: attrsAlex},
+	}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), entityStateExists, resp.RuntimeData[common.RuntimeKeyEntityState])
+}
+
+func (suite *IdentifyingExecutorTestSuite) TestExecuteCheckState_MultipleMatches() {
+	ctx := &core.NodeContext{
+		ExecutionID:  "flow-123",
+		ExecutorMode: ExecutorModeCheckState,
+		UserInputs:   map[string]string{"given_name": "Alex"},
+		RuntimeData:  make(map[string]string),
+	}
+
+	mockBase := suite.executor.ExecutorInterface.(*coremock.ExecutorInterfaceMock)
+	mockBase.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
+	mockBase.On("GetRequiredInputs", mock.Anything).Return([]common.Input{
+		{Identifier: "given_name", Type: "TEXT_INPUT", Required: true},
+	})
+
+	suite.mockEntityProvider.On("SearchEntities", map[string]interface{}{
+		"given_name": "Alex",
+	}).Return([]*entityprovider.Entity{
+		{ID: "user-1", Type: "Person", Attributes: attrsAlexJohnson},
+		{ID: "user-2", Type: "Engineer", Attributes: attrsAlexSmith},
+	}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
+	assert.Equal(suite.T(), entityStateAmbiguous, resp.RuntimeData[common.RuntimeKeyEntityState])
+}
+
 func (suite *IdentifyingExecutorTestSuite) TestExecute_IdentifyMode_AmbiguousUser() {
 	ctx := &core.NodeContext{
 		ExecutionID:  "flow-123",

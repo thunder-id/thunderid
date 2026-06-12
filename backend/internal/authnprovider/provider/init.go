@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/openid4vp"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	systemhttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -39,6 +40,7 @@ func InitializeAuthnProvider(
 	passkeySvc passkey.PasskeyServiceInterface,
 	otpSvc otp.OTPAuthnServiceInterface,
 	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
+	openid4vpSvc openid4vp.OpenID4VPServiceInterface,
 	federatedAuths map[idp.IDPType]authncommon.FederatedAuthenticator,
 ) AuthnProviderInterface {
 	authnProviderConfig := config.GetServerRuntime().Config.AuthnProvider
@@ -46,7 +48,7 @@ func InitializeAuthnProvider(
 	case "rest":
 		return initializeRestAuthnProvider()
 	default:
-		return initializeDefaultAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, federatedAuths)
+		return initializeDefaultAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, openid4vpSvc, federatedAuths)
 	}
 }
 
@@ -56,9 +58,10 @@ func initializeDefaultAuthnProvider(
 	passkeySvc passkey.PasskeyServiceInterface,
 	otpSvc otp.OTPAuthnServiceInterface,
 	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
+	openid4vpSvc openid4vp.OpenID4VPServiceInterface,
 	federatedAuths map[idp.IDPType]authncommon.FederatedAuthenticator,
 ) AuthnProviderInterface {
-	return newDefaultAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, federatedAuths)
+	return newDefaultAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, openid4vpSvc, federatedAuths)
 }
 
 // initializeRestAuthnProvider initializes the REST authentication provider.

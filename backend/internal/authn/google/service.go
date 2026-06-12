@@ -27,7 +27,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/common"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	authnoidc "github.com/thunder-id/thunderid/internal/authn/oidc"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
@@ -228,12 +227,6 @@ func (g *googleOIDCAuthnService) FetchUserInfo(ctx context.Context, idpID, acces
 	return g.internal.FetchUserInfo(ctx, idpID, accessToken)
 }
 
-// GetInternalUser retrieves the internal user based on the external subject identifier.
-func (g *googleOIDCAuthnService) GetInternalUser(
-	ctx context.Context, sub string) (*entityprovider.Entity, *serviceerror.ServiceError) {
-	return g.internal.GetInternalUser(ctx, sub)
-}
-
 // GetOAuthClientConfig retrieves and validates the OAuth client configuration for the given identity provider ID.
 func (g *googleOIDCAuthnService) GetOAuthClientConfig(ctx context.Context, idpID string) (
 	*authnoauth.OAuthClientConfig, *serviceerror.ServiceError) {
@@ -244,7 +237,7 @@ func (g *googleOIDCAuthnService) GetOAuthClientConfig(ctx context.Context, idpID
 // extracts ID token claims, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (g *googleOIDCAuthnService) Authenticate(ctx context.Context, idpID, code string) (
-	*common.FederatedAuthResult, *serviceerror.ServiceError) {
+	*common.AuthnResult, *serviceerror.ServiceError) {
 	logger := g.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Performing federated Google OIDC authentication")
 
@@ -269,21 +262,10 @@ func (g *googleOIDCAuthnService) Authenticate(ctx context.Context, idpID, code s
 		return nil, &common.ErrorSubClaimNotFound
 	}
 
-	result := &common.FederatedAuthResult{
-		Sub:    sub,
-		Claims: claims,
-	}
-	user, svcErr := g.GetInternalUser(ctx, sub)
-	if svcErr != nil {
-		if svcErr.Code == common.ErrorUserNotFound.Code {
-			return result, nil
-		}
-		if svcErr.Code == common.ErrorAmbiguousUser.Code {
-			result.IsAmbiguousUser = true
-			return result, nil
-		}
-		return nil, svcErr
-	}
-	result.InternalEntity = user
-	return result, nil
+	return &common.AuthnResult{
+		Token: map[string]interface{}{
+			"sub": sub,
+		},
+		AuthenticatedClaims: claims,
+	}, nil
 }

@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -40,6 +41,7 @@ const (
 type attributeCollector struct {
 	core.ExecutorInterface
 	entityProvider entityprovider.EntityProviderInterface
+	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
 	logger         *log.Logger
 }
 
@@ -49,6 +51,7 @@ var _ core.ExecutorInterface = (*attributeCollector)(nil)
 func newAttributeCollector(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *attributeCollector {
 	prerequisites := []common.Input{
 		{
@@ -66,6 +69,7 @@ func newAttributeCollector(
 	return &attributeCollector{
 		ExecutorInterface: base,
 		entityProvider:    entityProvider,
+		authnProvider:     authnProvider,
 		logger:            logger,
 	}
 }
@@ -78,6 +82,7 @@ func (a *attributeCollector) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
+		AuthUser:       ctx.AuthUser,
 	}
 
 	if ctx.FlowType == common.FlowTypeRegistration {
@@ -86,14 +91,14 @@ func (a *attributeCollector) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 		return execResp, nil
 	}
 
-	if !ctx.AuthenticatedUser.IsAuthenticated {
+	if !execResp.AuthUser.IsAuthenticated() {
 		logger.Debug(ctx.Context, "User is not authenticated, cannot collect attributes")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrUserNotAuthenticated
 		return execResp, nil
 	}
 
-	if !a.ValidatePrerequisites(ctx, execResp) {
+	if !a.ValidatePrerequisites(ctx, execResp, a.authnProvider) {
 		logger.Debug(ctx.Context, "Prerequisites validation failed for attribute collector")
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrPrerequisitesFailed
@@ -106,7 +111,7 @@ func (a *attributeCollector) Execute(ctx *core.NodeContext) (*common.ExecutorRes
 		return execResp, nil
 	}
 
-	if err := a.updateUserInStore(ctx); err != nil {
+	if err := a.updateUserInStore(ctx, execResp); err != nil {
 		logger.Error(ctx.Context, "Failed to update user attributes", log.Error(err))
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrAttributeCollectFailed
@@ -133,8 +138,13 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 	}
 
 	// Update the executor response with the required inputs retrieved from authenticated user attributes.
-	authnUserAttrs := ctx.AuthenticatedUser.Attributes
-	if len(authnUserAttrs) > 0 {
+	authUser, authnUserAttrs, svcErr := a.authnProvider.GetUserAttributes(ctx.Context, nil, nil, execResp.AuthUser)
+	if svcErr != nil {
+		logger.Warn(ctx.Context, "Failed to retrieve authenticated user attributes")
+	}
+	execResp.AuthUser = authUser
+
+	if authnUserAttrs != nil && len(authnUserAttrs.Attributes) > 0 {
 		logger.Debug(ctx.Context,
 			"Authenticated user attributes found, updating executor response required inputs")
 
@@ -146,14 +156,14 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 		}
 
 		for _, input := range missingAttributes {
-			attribute, exists := authnUserAttrs[input.Identifier]
+			attribute, exists := authnUserAttrs.Attributes[input.Identifier]
 			if exists {
 				// If the attribute is a password, do not retrieve it from the profile.
 				if input.Identifier == userAttributePassword {
 					continue
 				}
 
-				attributeStr, ok := attribute.(string)
+				attributeStr, ok := attribute.Value.(string)
 				if ok {
 					logger.Debug(ctx.Context,
 						"Input exists in authenticated user attributes, adding to runtime data",
@@ -176,7 +186,7 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 	}
 
 	// Update the executor response with the required inputs by checking the user profile.
-	userAttributes, err := a.getUserAttributes(ctx)
+	userAttributes, err := a.getUserAttributes(ctx, execResp)
 	if err != nil {
 		// Silently log the error and proceed with prompting for required inputs.
 		logger.Error(ctx.Context, "Failed to retrieve user attributes", log.Error(err))
@@ -229,11 +239,13 @@ func (a *attributeCollector) HasRequiredInputs(ctx *core.NodeContext,
 }
 
 // getUserAttributes retrieves the user attributes from the user profile.
-func (a *attributeCollector) getUserAttributes(ctx *core.NodeContext) (map[string]interface{}, error) {
+func (a *attributeCollector) getUserAttributes(
+	ctx *core.NodeContext, execResp *common.ExecutorResponse,
+) (map[string]interface{}, error) {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Retrieving user attributes from the user profile")
 
-	user, err := a.getUserFromStore(ctx)
+	user, err := a.getUserFromStore(ctx, execResp)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve user from store: %w", err)
 	}
@@ -256,11 +268,11 @@ func (a *attributeCollector) getUserAttributes(ctx *core.NodeContext) (map[strin
 }
 
 // updateUserInStore updates the user profile with the collected attributes.
-func (a *attributeCollector) updateUserInStore(ctx *core.NodeContext) error {
+func (a *attributeCollector) updateUserInStore(ctx *core.NodeContext, execResp *common.ExecutorResponse) error {
 	logger := a.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 	logger.Debug(ctx.Context, "Updating user attributes")
 
-	user, err := a.getUserFromStore(ctx)
+	user, err := a.getUserFromStore(ctx, execResp)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve user from store: %w", err)
 	}
@@ -291,8 +303,10 @@ func (a *attributeCollector) updateUserInStore(ctx *core.NodeContext) error {
 }
 
 // getUserFromStore retrieves the user profile from the user store.
-func (a *attributeCollector) getUserFromStore(ctx *core.NodeContext) (*entityprovider.Entity, error) {
-	userID := a.GetUserIDFromContext(ctx)
+func (a *attributeCollector) getUserFromStore(
+	ctx *core.NodeContext, execResp *common.ExecutorResponse,
+) (*entityprovider.Entity, error) {
+	userID := a.GetUserIDFromContext(ctx, execResp, a.authnProvider)
 	if userID == "" {
 		return nil, errors.New("user ID is not available in the context")
 	}

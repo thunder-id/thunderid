@@ -19,12 +19,18 @@
 package core
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 )
 
 const (
@@ -171,8 +177,8 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 			},
 			map[string]string{testInputName: testInputValue},
 			map[string]string{},
-			true, // Both inputs satisfied (username from UserInputs, password from ForwardedData)
-			0,    // No missing inputs
+			true,
+			0,
 		},
 		{
 			"All sources empty",
@@ -209,14 +215,13 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 				RuntimeData: tt.runtimeData,
 			}
 
-			// Add ForwardedData for specific test cases
 			if tt.name == "Data in forwarded data (string)" {
 				ctx.ForwardedData = map[string]interface{}{
 					testInputName: testInputValue,
 				}
 			} else if tt.name == "Data in forwarded data (non-string)" {
 				ctx.ForwardedData = map[string]interface{}{
-					testInputName: 123, // Non-string value
+					testInputName: 123,
 				}
 			} else if tt.name == "Partial data with forwarded data" {
 				ctx.ForwardedData = map[string]interface{}{
@@ -236,23 +241,35 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 	}
 }
 
+func (s *ExecutorTestSuite) newAuthenticatedAuthUser() manager.AuthUser {
+	raw := `{"entityReferenceToken":"tok","entityReference":{"entityId":"user-123","entityCategory":"","entityType":"","ouId":""},"attributeToken":"atok","attributes":{"attributes":{"email":{"value":"test@example.com"}}}}` //nolint:lll
+	var authUser manager.AuthUser
+	err := json.Unmarshal([]byte(raw), &authUser)
+	s.Require().NoError(err)
+	return authUser
+}
+
 func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 	tests := []struct {
-		name              string
-		prerequisites     []common.Input
-		authenticatedUser authncm.AuthenticatedUser
-		userInputs        map[string]string
-		runtimeData       map[string]string
-		expectedValid     bool
-		expectedStatus    common.ExecutorStatus
-		expectError       bool
+		name           string
+		prerequisites  []common.Input
+		authUser       manager.AuthUser
+		setupMock      func(*managermock.AuthnProviderManagerInterfaceMock)
+		userInputs     map[string]string
+		runtimeData    map[string]string
+		forwardedData  map[string]interface{}
+		expectedValid  bool
+		expectedStatus common.ExecutorStatus
+		expectError    bool
 	}{
 		{
 			"No prerequisites",
 			[]common.Input{},
-			authncm.AuthenticatedUser{},
+			manager.AuthUser{},
+			nil,
 			map[string]string{},
 			map[string]string{},
+			nil,
 			true,
 			"",
 			false,
@@ -260,19 +277,28 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"UserID prerequisite met via authenticated user",
 			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
-			authncm.AuthenticatedUser{UserID: "user-123"},
+			manager.AuthUser{},
+			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: "user-123"}, nil)
+				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
+			},
 			map[string]string{},
 			map[string]string{},
+			nil,
 			true,
 			"",
 			false,
 		},
 		{
-			"UserID prerequisite not met",
+			"UserID prerequisite not met - no authn provider",
 			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
-			authncm.AuthenticatedUser{},
+			manager.AuthUser{},
+			nil,
 			map[string]string{},
 			map[string]string{},
+			nil,
 			false,
 			common.ExecFailure,
 			true,
@@ -280,9 +306,11 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Other prerequisite met via user input",
 			[]common.Input{{Identifier: "email", Required: true}},
-			authncm.AuthenticatedUser{},
+			manager.AuthUser{},
+			nil,
 			map[string]string{"email": "test@example.com"},
 			map[string]string{},
+			nil,
 			true,
 			"",
 			false,
@@ -290,9 +318,11 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Other prerequisite met via runtime data",
 			[]common.Input{{Identifier: "token", Required: true}},
-			authncm.AuthenticatedUser{},
+			manager.AuthUser{},
+			nil,
 			map[string]string{},
 			map[string]string{"token": "abc123"},
+			nil,
 			true,
 			"",
 			false,
@@ -300,9 +330,11 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Prerequisite not met",
 			[]common.Input{{Identifier: "apiKey", Required: true}},
-			authncm.AuthenticatedUser{},
+			manager.AuthUser{},
+			nil,
 			map[string]string{},
 			map[string]string{},
+			nil,
 			false,
 			common.ExecFailure,
 			true,
@@ -310,9 +342,11 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Optional prerequisite not met",
 			[]common.Input{{Identifier: "optionalKey", Required: false}},
-			authncm.AuthenticatedUser{},
+			manager.AuthUser{},
+			nil,
 			map[string]string{},
 			map[string]string{},
+			nil,
 			true,
 			"",
 			false,
@@ -320,9 +354,11 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Prerequisite met via forwarded data (string)",
 			[]common.Input{{Identifier: "email", Required: true}},
-			authncm.AuthenticatedUser{},
+			manager.AuthUser{},
+			nil,
 			map[string]string{},
 			map[string]string{},
+			map[string]interface{}{"email": "test@example.com"},
 			true,
 			"",
 			false,
@@ -330,9 +366,83 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		{
 			"Prerequisite not met via forwarded data (non-string)",
 			[]common.Input{{Identifier: "email", Required: true}},
-			authncm.AuthenticatedUser{},
+			manager.AuthUser{},
+			nil,
 			map[string]string{},
 			map[string]string{},
+			map[string]interface{}{"email": 12345},
+			false,
+			common.ExecFailure,
+			true,
+		},
+		{
+			"UserID prerequisite met via authenticated user attributes",
+			[]common.Input{{Identifier: "email", Required: true}},
+			manager.AuthUser{},
+			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: "user-123"}, nil)
+				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, &authnprovidercm.AttributesResponse{
+						Attributes: map[string]*authnprovidercm.AttributeResponse{
+							"email": {Value: "test@example.com"},
+						},
+					}, nil)
+			},
+			map[string]string{},
+			map[string]string{},
+			nil,
+			true,
+			"",
+			false,
+		},
+		{
+			"GetEntityReference fails - prerequisite not met",
+			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
+			manager.AuthUser{},
+			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, nil, &serviceerror.InternalServerError)
+				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
+			},
+			map[string]string{},
+			map[string]string{},
+			nil,
+			false,
+			common.ExecFailure,
+			true,
+		},
+		{
+			"GetUserAttributes fails - falls back to other sources",
+			[]common.Input{{Identifier: "email", Required: true}},
+			manager.AuthUser{},
+			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: "user-123"}, nil)
+				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, nil, &serviceerror.InternalServerError)
+			},
+			map[string]string{"email": "test@example.com"},
+			map[string]string{},
+			nil,
+			true,
+			"",
+			false,
+		},
+		{
+			"Entity reference empty ID - attribute still checked",
+			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
+			manager.AuthUser{},
+			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: ""}, nil)
+				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, &authnprovidercm.AttributesResponse{}, nil)
+			},
+			map[string]string{},
+			map[string]string{},
+			nil,
 			false,
 			common.ExecFailure,
 			true,
@@ -342,27 +452,28 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, tt.prerequisites)
-			ctx := &NodeContext{
-				ExecutionID:       "test-flow",
-				AuthenticatedUser: tt.authenticatedUser,
-				UserInputs:        tt.userInputs,
-				RuntimeData:       tt.runtimeData,
+
+			var authnProvider manager.AuthnProviderManagerInterface
+			if tt.setupMock != nil {
+				authUser := s.newAuthenticatedAuthUser()
+				tt.authUser = authUser
+				mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+				tt.setupMock(mockProvider)
+				authnProvider = mockProvider
 			}
 
-			// Add ForwardedData for specific test cases
-			if tt.name == "Prerequisite met via forwarded data (string)" {
-				ctx.ForwardedData = map[string]interface{}{
-					"email": "test@example.com",
-				}
-			} else if tt.name == "Prerequisite not met via forwarded data (non-string)" {
-				ctx.ForwardedData = map[string]interface{}{
-					"email": 12345, // Non-string value
-				}
+			ctx := &NodeContext{
+				Context:       context.Background(),
+				ExecutionID:   "test-flow",
+				AuthUser:      tt.authUser,
+				UserInputs:    tt.userInputs,
+				RuntimeData:   tt.runtimeData,
+				ForwardedData: tt.forwardedData,
 			}
 
 			execResp := &common.ExecutorResponse{}
 
-			result := exec.ValidatePrerequisites(ctx, execResp)
+			result := exec.ValidatePrerequisites(ctx, execResp, authnProvider)
 
 			s.Equal(tt.expectedValid, result)
 			s.Equal(tt.expectedStatus, execResp.Status)
@@ -373,36 +484,74 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 
 func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 	tests := []struct {
-		name              string
-		authenticatedUser authncm.AuthenticatedUser
-		runtimeData       map[string]string
-		userInputs        map[string]string
-		expectedUserID    string
+		name           string
+		authUser       manager.AuthUser
+		setupMock      func(*managermock.AuthnProviderManagerInterfaceMock)
+		runtimeData    map[string]string
+		userInputs     map[string]string
+		expectedUserID string
 	}{
 		{
-			"UserID from authenticated user",
-			authncm.AuthenticatedUser{UserID: "user-123"},
-			map[string]string{},
-			map[string]string{},
-			"user-123",
-		},
-		{
 			"UserID from runtime data",
-			authncm.AuthenticatedUser{},
+			manager.AuthUser{},
+			nil,
 			map[string]string{userAttributeUserID: "user-456"},
 			map[string]string{},
 			"user-456",
 		},
 		{
-			"Priority: authenticated user over runtime data",
-			authncm.AuthenticatedUser{UserID: "user-auth"},
-			map[string]string{userAttributeUserID: "user-runtime"},
+			"UserID from authenticated user via authn provider",
+			manager.AuthUser{},
+			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: "user-123"}, nil)
+			},
 			map[string]string{},
-			"user-auth",
+			map[string]string{},
+			"user-123",
 		},
 		{
-			"No userID available",
-			authncm.AuthenticatedUser{},
+			"Priority: runtime data over authenticated user",
+			manager.AuthUser{},
+			nil,
+			map[string]string{userAttributeUserID: "user-runtime"},
+			map[string]string{},
+			"user-runtime",
+		},
+		{
+			"No userID available - no authn provider",
+			manager.AuthUser{},
+			nil,
+			map[string]string{},
+			map[string]string{},
+			"",
+		},
+		{
+			"GetEntityReference fails - returns empty",
+			manager.AuthUser{},
+			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, nil, &serviceerror.InternalServerError)
+			},
+			map[string]string{},
+			map[string]string{},
+			"",
+		},
+		{
+			"Entity reference with empty ID - returns empty",
+			manager.AuthUser{},
+			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
+					Return(manager.AuthUser{}, &authnprovidercm.EntityReference{EntityID: ""}, nil)
+			},
+			map[string]string{},
+			map[string]string{},
+			"",
+		},
+		{
+			"Nil authn provider with unauthenticated user",
+			manager.AuthUser{},
+			nil,
 			map[string]string{},
 			map[string]string{},
 			"",
@@ -412,13 +561,27 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, nil)
-			ctx := &NodeContext{
-				AuthenticatedUser: tt.authenticatedUser,
-				RuntimeData:       tt.runtimeData,
-				UserInputs:        tt.userInputs,
+
+			var authnProvider manager.AuthnProviderManagerInterface
+			if tt.setupMock != nil {
+				authUser := s.newAuthenticatedAuthUser()
+				tt.authUser = authUser
+				mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+				tt.setupMock(mockProvider)
+				authnProvider = mockProvider
 			}
 
-			result := exec.GetUserIDFromContext(ctx)
+			ctx := &NodeContext{
+				Context:     context.Background(),
+				ExecutionID: "test-flow",
+				AuthUser:    tt.authUser,
+				RuntimeData: tt.runtimeData,
+				UserInputs:  tt.userInputs,
+			}
+
+			execResp := &common.ExecutorResponse{}
+
+			result := exec.GetUserIDFromContext(ctx, execResp, authnProvider)
 
 			s.Equal(tt.expectedUserID, result)
 		})
@@ -483,4 +646,12 @@ func (s *ExecutorTestSuite) TestGetRequiredInputs() {
 			}
 		})
 	}
+}
+
+func (s *ExecutorTestSuite) TestGetExecutionPolicy() {
+	exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, nil)
+
+	s.Nil(exec.GetExecutionPolicy("default"))
+	s.Nil(exec.GetExecutionPolicy(""))
+	s.Nil(exec.GetExecutionPolicy("custom"))
 }

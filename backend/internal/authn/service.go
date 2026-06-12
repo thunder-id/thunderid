@@ -138,15 +138,15 @@ func (as *authenticationService) AuthenticateWithCredentials(ctx context.Context
 		return nil, &ErrorEmptyAttributesOrCredentials
 	}
 
-	newAuthUser, basicResult, svcErr := as.authnProvider.AuthenticateUser(ctx, identifiers, credentials, nil, nil,
+	newAuthUser, _, svcErr := as.authnProvider.AuthenticateUser(ctx, identifiers, credentials, nil, nil,
 		authnprovidermgr.AuthUser{})
 	if svcErr != nil {
 		return nil, as.mapCredentialsAuthnError(ctx, svcErr, logger)
 	}
 
-	if basicResult == nil {
-		logger.Error(ctx, "Credentials authenticate response is nil")
-		return nil, &serviceerror.InternalServerError
+	newAuthUser, entityRef, svcErr := as.authnProvider.GetEntityReference(ctx, newAuthUser)
+	if svcErr != nil {
+		return nil, as.mapCredentialsGetAttributesError(ctx, svcErr, logger)
 	}
 
 	_, attrsResponse, svcErr := as.authnProvider.GetUserAttributes(ctx, nil, nil, newAuthUser)
@@ -155,9 +155,9 @@ func (as *authenticationService) AuthenticateWithCredentials(ctx context.Context
 	}
 
 	authResponse := &common.AuthenticationResponse{
-		ID:   basicResult.UserID,
-		Type: basicResult.UserType,
-		OUID: basicResult.OUID,
+		ID:   entityRef.EntityID,
+		Type: entityRef.EntityType,
+		OUID: entityRef.OUID,
 	}
 
 	// Generate assertion if not skipped
@@ -175,9 +175,9 @@ func (as *authenticationService) AuthenticateWithCredentials(ctx context.Context
 		}
 
 		authenticatedUser := &entityprovider.Entity{
-			ID:         basicResult.UserID,
-			Type:       basicResult.UserType,
-			OUID:       basicResult.OUID,
+			ID:         entityRef.EntityID,
+			Type:       entityRef.EntityType,
+			OUID:       entityRef.OUID,
 			Attributes: authUserAttributesJSON,
 		}
 		svcErr = as.validateAndAppendAuthAssertion(
@@ -208,7 +208,7 @@ func (as *authenticationService) VerifyOTP(ctx context.Context, sessionToken str
 			"otp":          otpCode,
 		},
 	}
-	_, basicResult, svcErr := as.authnProvider.AuthenticateUser(
+	authUser, _, svcErr := as.authnProvider.AuthenticateUser(
 		ctx, nil, credentials, nil, nil, authnprovidermgr.AuthUser{})
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ServerErrorType {
@@ -220,18 +220,23 @@ func (as *authenticationService) VerifyOTP(ctx context.Context, sessionToken str
 		return nil, svcErr
 	}
 
+	_, entityRef, svcErr := as.authnProvider.GetEntityReference(ctx, authUser)
+	if svcErr != nil {
+		return nil, as.mapCredentialsGetAttributesError(ctx, svcErr, logger)
+	}
+
 	authResponse := &common.AuthenticationResponse{
-		ID:   basicResult.UserID,
-		Type: basicResult.UserType,
-		OUID: basicResult.OUID,
+		ID:   entityRef.EntityID,
+		Type: entityRef.EntityType,
+		OUID: entityRef.OUID,
 	}
 
 	// Generate assertion if not skipped
 	if !skipAssertion {
 		userForAssertion := &entityprovider.Entity{
-			ID:         basicResult.UserID,
-			Type:       basicResult.UserType,
-			OUID:       basicResult.OUID,
+			ID:         entityRef.EntityID,
+			Type:       entityRef.EntityType,
+			OUID:       entityRef.OUID,
 			Attributes: nil, // Attributes not needed for assertion generation in OTP flow
 		}
 		svcErr = as.validateAndAppendAuthAssertion(ctx, authResponse, userForAssertion, common.AuthenticatorSMSOTP,
@@ -330,26 +335,21 @@ func (as *authenticationService) FinishIDPAuthentication(ctx context.Context, re
 			Code:    code,
 		},
 	}
-	_, basicResult, svcErr := as.authnProvider.AuthenticateUser(
+	authUser, _, svcErr := as.authnProvider.AuthenticateUser(
 		ctx, nil, credentials, nil, nil, authnprovidermgr.AuthUser{})
 	if svcErr != nil {
 		return nil, as.mapFederatedAuthnError(ctx, svcErr, logger)
 	}
-	if basicResult == nil {
-		logger.Error(ctx, "Federated authenticate response is nil")
-		return nil, &serviceerror.InternalServerError
-	}
-	if basicResult.IsAmbiguousUser {
-		return nil, &common.ErrorUserNotFound
-	}
-	if !basicResult.IsExistingUser {
-		return nil, &common.ErrorUserNotFound
+
+	_, entityRef, svcErr := as.authnProvider.GetEntityReference(ctx, authUser)
+	if svcErr != nil {
+		return nil, as.mapCredentialsGetAttributesError(ctx, svcErr, logger)
 	}
 
 	user := &entityprovider.Entity{
-		ID:   basicResult.UserID,
-		Type: basicResult.UserType,
-		OUID: basicResult.OUID,
+		ID:   entityRef.EntityID,
+		Type: entityRef.EntityType,
+		OUID: entityRef.OUID,
 	}
 
 	authResponse := &common.AuthenticationResponse{
@@ -558,7 +558,8 @@ func (as *authenticationService) mapCredentialsGetAttributesError(
 	ctx context.Context, svcErr *serviceerror.ServiceError,
 	logger *log.Logger) *serviceerror.ServiceError {
 	switch svcErr.Code {
-	case authnprovidermgr.ErrorGetAttributesClientError.Code:
+	case authnprovidermgr.ErrorGetAttributesClientError.Code,
+		authnprovidermgr.ErrorGetEntityReferenceClientError.Code:
 		return &ErrorInvalidToken
 	default:
 		logger.Error(ctx, "Error occurred while getting attributes for credentials authentication",
@@ -746,7 +747,7 @@ func (as *authenticationService) FinishPasskeyAuthentication(ctx context.Context
 		SessionToken:      sessionToken,
 	}
 	credentials := map[string]interface{}{"passkey": passkeyCredential}
-	_, basicResult, svcErr := as.authnProvider.AuthenticateUser(
+	authUser, _, svcErr := as.authnProvider.AuthenticateUser(
 		ctx, nil, credentials, nil, nil, authnprovidermgr.AuthUser{})
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ServerErrorType {
@@ -758,19 +759,24 @@ func (as *authenticationService) FinishPasskeyAuthentication(ctx context.Context
 		return nil, svcErr
 	}
 
+	_, entityRef, svcErr := as.authnProvider.GetEntityReference(ctx, authUser)
+	if svcErr != nil {
+		return nil, as.mapCredentialsGetAttributesError(ctx, svcErr, logger)
+	}
+
 	authResponse := &common.AuthenticationResponse{
-		ID:   basicResult.UserID,
-		Type: basicResult.UserType,
-		OUID: basicResult.OUID,
+		ID:   entityRef.EntityID,
+		Type: entityRef.EntityType,
+		OUID: entityRef.OUID,
 	}
 
 	// Generate assertion if not skipped
 	if !skipAssertion {
 		// Create entity object from authResponse for assertion generation
 		userForAssertion := &entityprovider.Entity{
-			ID:   basicResult.UserID,
-			Type: basicResult.UserType,
-			OUID: basicResult.OUID,
+			ID:   entityRef.EntityID,
+			Type: entityRef.EntityType,
+			OUID: entityRef.OUID,
 		}
 
 		svcErr = as.validateAndAppendAuthAssertion(ctx, authResponse, userForAssertion, common.AuthenticatorPasskey,

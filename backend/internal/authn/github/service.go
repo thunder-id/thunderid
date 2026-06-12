@@ -25,7 +25,6 @@ import (
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -142,12 +141,6 @@ func (g *githubOAuthAuthnService) fetchPrimaryEmail(ctx context.Context,
 	return "", nil
 }
 
-// GetInternalUser retrieves the internal user based on the external subject identifier.
-func (g *githubOAuthAuthnService) GetInternalUser(
-	ctx context.Context, sub string) (*entityprovider.Entity, *serviceerror.ServiceError) {
-	return g.internal.GetInternalUser(ctx, sub)
-}
-
 // GetOAuthClientConfig retrieves and validates the OAuth client configuration for the given identity provider ID.
 func (g *githubOAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpID string) (
 	*authnoauth.OAuthClientConfig, *serviceerror.ServiceError) {
@@ -158,7 +151,7 @@ func (g *githubOAuthAuthnService) GetOAuthClientConfig(ctx context.Context, idpI
 // fetches user info, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID, code string) (
-	*authncm.FederatedAuthResult, *serviceerror.ServiceError) {
+	*authncm.AuthnResult, *serviceerror.ServiceError) {
 	logger := g.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Performing federated GitHub OAuth authentication")
 
@@ -183,21 +176,10 @@ func (g *githubOAuthAuthnService) Authenticate(ctx context.Context, idpID, code 
 		return nil, &authncm.ErrorSubClaimNotFound
 	}
 
-	result := &authncm.FederatedAuthResult{
-		Sub:    sub,
-		Claims: userInfo,
-	}
-	user, svcErr := g.GetInternalUser(ctx, sub)
-	if svcErr != nil {
-		if svcErr.Code == authncm.ErrorUserNotFound.Code {
-			return result, nil
-		}
-		if svcErr.Code == authncm.ErrorAmbiguousUser.Code {
-			result.IsAmbiguousUser = true
-			return result, nil
-		}
-		return nil, svcErr
-	}
-	result.InternalEntity = user
-	return result, nil
+	return &authncm.AuthnResult{
+		Token: map[string]interface{}{
+			"sub": sub,
+		},
+		AuthenticatedClaims: userInfo,
+	}, nil
 }

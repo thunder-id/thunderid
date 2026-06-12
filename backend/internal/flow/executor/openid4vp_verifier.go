@@ -21,8 +21,8 @@ package executor
 import (
 	"context"
 
-	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
+	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const defaultPresentationDefinitionID = "eudi-pid"
@@ -49,7 +50,7 @@ type openid4vpVerifier struct {
 	core.ExecutorInterface
 	service           openid4vpVerifierService
 	entityTypeService entitytype.EntityTypeServiceInterface
-	entityProvider    entityprovider.EntityProviderInterface
+	authnProvider     authnprovidermgr.AuthnProviderManagerInterface
 	logger            *log.Logger
 }
 
@@ -59,7 +60,7 @@ type openid4vpVerifier struct {
 func newOpenID4VPVerifier(
 	flowFactory core.FlowFactoryInterface, service openid4vpVerifierService,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) core.ExecutorInterface {
 	base := flowFactory.CreateExecutor(
 		ExecutorNameOpenID4VPVerify, common.ExecutorTypeAuthentication, []common.Input{}, []common.Input{})
@@ -67,7 +68,7 @@ func newOpenID4VPVerifier(
 		ExecutorInterface: base,
 		service:           service,
 		entityTypeService: entityTypeService,
-		entityProvider:    entityProvider,
+		authnProvider:     authnProvider,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyExecutorName, ExecutorNameOpenID4VPVerify)),
 	}
 }
@@ -147,9 +148,9 @@ func (e *openid4vpVerifier) poll(
 
 	switch rs.Status {
 	case openid4vp.StatusCompleted:
-		e.setAuthenticatedUser(execResp, rs.Result)
-		if !e.resolveLocalUser(ctx.Context, rs.Result, execResp, logger) {
-			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
+		e.authenticate(ctx, state, execResp, logger)
+		if execResp.Status == common.ExecFailure {
+			return execResp, nil
 		}
 		e.resolveUserType(ctx, execResp, logger)
 		if execResp.Status == common.ExecFailure {
@@ -204,59 +205,33 @@ func (e *openid4vpVerifier) resolveUserType(
 	}
 }
 
-// resolveLocalUser attempts to find an existing local account for the verified
-// credential. It searches by the selectively-disclosed claim values — the exact
-// attributes the provisioning executor stores — rather than all JWT claims
-// (sub, iss, vct, etc.) which are not stored as user attributes.
-// Returns true and sets execResp.AuthenticatedUser.UserID when found.
-func (e *openid4vpVerifier) resolveLocalUser(ctx context.Context,
-	vp *openid4vp.VerifiedPresentation, execResp *common.ExecutorResponse, logger *log.Logger,
-) bool {
-	if e.entityProvider == nil || vp == nil || len(vp.DisclosedPaths) == 0 {
-		return false
-	}
-	filter := make(map[string]interface{}, len(vp.DisclosedPaths))
-	for _, path := range vp.DisclosedPaths {
-		v, ok := vp.Claims[path]
-		if !ok {
-			continue
-		}
-		if strVal, ok := v.(string); ok && strVal != "" {
-			filter[path] = strVal
-		}
-	}
-	if len(filter) == 0 {
-		return false
-	}
-	userID, err := e.entityProvider.IdentifyEntity(filter)
-	if err != nil || userID == nil || *userID == "" {
-		return false
-	}
-	logger.Debug(ctx, "Found existing local account for EUDI credential",
-		log.MaskedString(log.LoggerKeyUserID, *userID))
-	execResp.AuthenticatedUser.UserID = *userID
-	return true
-}
-
-// setAuthenticatedUser maps the verified presentation into the authenticated user.
-func (e *openid4vpVerifier) setAuthenticatedUser(
-	execResp *common.ExecutorResponse, vp *openid4vp.VerifiedPresentation,
+// authenticate passes the presentation session state through the authn provider
+// so that the provider calls the OpenID4VP service and populates AuthUser via
+// the standard chain, just like OAuth/OIDC/Passkey executors.
+func (e *openid4vpVerifier) authenticate(
+	ctx *core.NodeContext, state string,
+	execResp *common.ExecutorResponse, logger *log.Logger,
 ) {
-	if vp == nil {
+	credentials := map[string]interface{}{
+		"openid4vp": &authncommon.OpenID4VPCredential{State: state},
+	}
+
+	authUser, authenticatedClaims, svcErr := e.authnProvider.AuthenticateUser(
+		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
+	execResp.AuthUser = authUser
+	if svcErr != nil {
+		logger.Debug(ctx.Context, "OpenID4VP authentication through provider failed",
+			log.String("errorCode", svcErr.Code))
 		execResp.Status = common.ExecFailure
-		execResp.Error = &ErrOpenID4VPExpired
+		execResp.Error = &ErrOpenID4VPVerificationFailed
 		return
 	}
-	attributes := make(map[string]interface{}, len(vp.Claims)+2)
-	for k, v := range vp.Claims {
-		attributes[k] = v
-	}
-	attributes["openid4vp_issuer"] = vp.Issuer
-	attributes["openid4vp_vct"] = vp.VCT
 
-	execResp.AuthenticatedUser = authncm.AuthenticatedUser{
-		IsAuthenticated: true,
-		UserID:          vp.Subject,
-		Attributes:      attributes,
+	for key, value := range authenticatedClaims {
+		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
+	}
+
+	if !authUser.IsAuthenticated() {
+		execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
 	}
 }

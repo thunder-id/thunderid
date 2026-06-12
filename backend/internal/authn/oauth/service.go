@@ -45,9 +45,8 @@ type OAuthAuthnCoreServiceInterface interface {
 		*TokenResponse, *serviceerror.ServiceError)
 	FetchUserInfo(ctx context.Context, idpID, accessToken string) (
 		map[string]interface{}, *serviceerror.ServiceError)
-	GetInternalUser(ctx context.Context, sub string) (*entityprovider.Entity, *serviceerror.ServiceError)
 	GetOAuthClientConfig(ctx context.Context, idpID string) (*OAuthClientConfig, *serviceerror.ServiceError)
-	Authenticate(ctx context.Context, idpID, code string) (*common.FederatedAuthResult, *serviceerror.ServiceError)
+	Authenticate(ctx context.Context, idpID, code string) (*common.AuthnResult, *serviceerror.ServiceError)
 }
 
 // OAuthAuthnServiceInterface defines the contract for OAuth based authenticator services.
@@ -303,7 +302,7 @@ func (s *oAuthAuthnService) GetInternalUser(
 // fetches user info, extracts the subject claim, and resolves the internal user.
 // A missing internal user is NOT an error — the caller decides how to handle it.
 func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID, code string) (
-	*common.FederatedAuthResult, *serviceerror.ServiceError) {
+	*common.AuthnResult, *serviceerror.ServiceError) {
 	logger := s.logger.With(log.String("idpId", idpID))
 	logger.Debug(ctx, "Performing federated OAuth authentication")
 
@@ -328,21 +327,10 @@ func (s *oAuthAuthnService) Authenticate(ctx context.Context, idpID, code string
 		return nil, &common.ErrorSubClaimNotFound
 	}
 
-	result := &common.FederatedAuthResult{
-		Sub:    sub,
-		Claims: userInfo,
-	}
-	user, svcErr := s.GetInternalUser(ctx, sub)
-	if svcErr != nil {
-		if svcErr.Code == common.ErrorUserNotFound.Code {
-			return result, nil
-		}
-		if svcErr.Code == common.ErrorAmbiguousUser.Code {
-			result.IsAmbiguousUser = true
-			return result, nil
-		}
-		return nil, svcErr
-	}
-	result.InternalEntity = user
-	return result, nil
+	return &common.AuthnResult{
+		Token: map[string]interface{}{
+			"sub": sub,
+		},
+		AuthenticatedClaims: userInfo,
+	}, nil
 }

@@ -26,7 +26,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
@@ -98,9 +97,6 @@ func (s *TaskExecutionNodeTestSuite) TestExecuteSuccess() {
 						Status:         common.ExecComplete,
 						AdditionalData: map[string]string{"key": "value"},
 						RuntimeData:    map[string]string{"runtime": "data"},
-						AuthenticatedUser: authncm.AuthenticatedUser{
-							UserID: "user-123",
-						},
 					}, nil,
 				).Once()
 			},
@@ -540,20 +536,14 @@ func (s *TaskExecutionNodeTestSuite) TestBuildNodeResponseWithNilMaps() {
 
 func (s *TaskExecutionNodeTestSuite) TestBuildNodeResponsePreservesExecutorData() {
 	node := newTaskExecutionNode("task-1", map[string]interface{}{}, false, false).(*taskExecutionNode)
-	authUser := authncm.AuthenticatedUser{
-		UserID:          "user-123",
-		OUID:            "org-456",
-		IsAuthenticated: true,
-	}
 	execResp := &common.ExecutorResponse{
-		Status:            common.ExecComplete,
-		Error:             &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "TEST_FAILURE"}},
-		Inputs:            []common.Input{{Identifier: "email", Required: true}},
-		AdditionalData:    map[string]string{"key1": "value1"},
-		RedirectURL:       "https://example.com",
-		RuntimeData:       map[string]string{"runtime": "data"},
-		AuthenticatedUser: authUser,
-		Assertion:         "assertion-token",
+		Status:         common.ExecComplete,
+		Error:          &serviceerror.ServiceError{Error: i18ncore.I18nMessage{DefaultValue: "TEST_FAILURE"}},
+		Inputs:         []common.Input{{Identifier: "email", Required: true}},
+		AdditionalData: map[string]string{"key1": "value1"},
+		RedirectURL:    "https://example.com",
+		RuntimeData:    map[string]string{"runtime": "data"},
+		Assertion:      "assertion-token",
 	}
 
 	nodeResp := node.buildNodeResponse(execResp)
@@ -565,9 +555,6 @@ func (s *TaskExecutionNodeTestSuite) TestBuildNodeResponsePreservesExecutorData(
 	s.Equal("value1", nodeResp.AdditionalData["key1"])
 	s.Equal("https://example.com", nodeResp.RedirectURL)
 	s.Equal("data", nodeResp.RuntimeData["runtime"])
-	s.Equal("user-123", nodeResp.AuthenticatedUser.UserID)
-	s.Equal("org-456", nodeResp.AuthenticatedUser.OUID)
-	s.True(nodeResp.AuthenticatedUser.IsAuthenticated)
 	s.Equal("assertion-token", nodeResp.Assertion)
 }
 

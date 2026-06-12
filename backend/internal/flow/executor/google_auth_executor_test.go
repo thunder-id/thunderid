@@ -28,19 +28,17 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/googlemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
-	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 )
 
 type GoogleAuthExecutorTestSuite struct {
 	suite.Suite
-	mockFlowFactory       *coremock.FlowFactoryInterfaceMock
-	mockIDPService        *idpmock.IDPServiceInterfaceMock
-	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
-	mockGoogleService     *googlemock.GoogleOIDCAuthnServiceInterfaceMock
-	mockOIDCService       *oidcmock.OIDCAuthnCoreServiceInterfaceMock
-	mockAuthnProvider     *managermock.AuthnProviderManagerInterfaceMock
+	mockFlowFactory   *coremock.FlowFactoryInterfaceMock
+	mockIDPService    *idpmock.IDPServiceInterfaceMock
+	mockGoogleService *googlemock.GoogleOIDCAuthnServiceInterfaceMock
+	mockOIDCService   *oidcmock.OIDCAuthnCoreServiceInterfaceMock
+	mockAuthnProvider *managermock.AuthnProviderManagerInterfaceMock
 }
 
 func TestGoogleAuthExecutorTestSuite(t *testing.T) {
@@ -50,7 +48,6 @@ func TestGoogleAuthExecutorTestSuite(t *testing.T) {
 func (suite *GoogleAuthExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
-	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 	suite.mockGoogleService = googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(suite.T())
 	suite.mockOIDCService = oidcmock.NewOIDCAuthnCoreServiceInterfaceMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
@@ -80,7 +77,7 @@ func (suite *GoogleAuthExecutorTestSuite) TestNewGoogleOIDCAuthExecutor_Success(
 	}
 
 	executor := newGoogleOIDCAuthExecutor(suite.mockFlowFactory, suite.mockIDPService,
-		suite.mockEntityTypeService, mockGoogleSvc, suite.mockAuthnProvider)
+		mockGoogleSvc, suite.mockAuthnProvider)
 
 	suite.NotNil(executor)
 	googleExec, ok := executor.(*googleOIDCAuthExecutor)

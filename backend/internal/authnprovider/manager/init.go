@@ -26,13 +26,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/authnprovider/provider"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/openid4vp"
 )
 
 // InitializeAuthnProviderManager initializes and returns an AuthnProviderManagerInterface.
 func InitializeAuthnProviderManager(entitySvc entity.EntityServiceInterface,
 	passkeySvc passkey.PasskeyServiceInterface, otpSvc otp.OTPAuthnServiceInterface,
 	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
+	openid4vpSvc openid4vp.OpenID4VPServiceInterface,
 	federatedAuths map[idp.IDPType]authncommon.FederatedAuthenticator) AuthnProviderManagerInterface {
-	p := provider.InitializeAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, federatedAuths)
+	p := provider.InitializeAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, openid4vpSvc, federatedAuths)
 	return newAuthnProviderManager(p)
 }

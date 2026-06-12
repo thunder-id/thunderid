@@ -19,11 +19,18 @@
 package core
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
-	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 )
 
 type UtilsTestSuite struct {
@@ -34,8 +41,17 @@ func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(UtilsTestSuite))
 }
 
+// newAuthenticatedAuthUser creates an AuthUser that returns true for IsAuthenticated()
+// by unmarshaling JSON with both entityReferenceToken and attributeToken set.
+func newAuthenticatedAuthUser() authnprovidermgr.AuthUser {
+	var authUser authnprovidermgr.AuthUser
+	data := `{"entityReferenceToken":"token","attributeToken":"token"}`
+	_ = json.Unmarshal([]byte(data), &authUser)
+	return authUser
+}
+
 func (s *UtilsTestSuite) TestResolvePlaceholderWithNilContext() {
-	result := ResolvePlaceholder(nil, "test value")
+	result := ResolvePlaceholder(nil, "test value", nil, nil, nil)
 	s.Equal("test value", result)
 }
 
@@ -45,7 +61,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderNoPlaceholder() {
 		UserInputs:  map[string]string{"key2": "value2"},
 	}
 
-	result := ResolvePlaceholder(ctx, "plain text without placeholders")
+	result := ResolvePlaceholder(ctx, "plain text without placeholders", nil, nil, nil)
 	s.Equal("plain text without placeholders", result)
 }
 
@@ -69,7 +85,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderFromRuntimeData() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			result := ResolvePlaceholder(ctx, tt.input)
+			result := ResolvePlaceholder(ctx, tt.input, nil, nil, nil)
 			s.Equal(tt.expected, result)
 		})
 	}
@@ -93,7 +109,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderFromUserInputs() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			result := ResolvePlaceholder(ctx, tt.input)
+			result := ResolvePlaceholder(ctx, tt.input, nil, nil, nil)
 			s.Equal(tt.expected, result)
 		})
 	}
@@ -105,106 +121,185 @@ func (s *UtilsTestSuite) TestResolvePlaceholderRuntimeTakesPrecedence() {
 		UserInputs:  map[string]string{"key": "user_input_value"},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ context.key }}")
+	result := ResolvePlaceholder(ctx, "{{ context.key }}", nil, nil, nil)
 	s.Equal("runtime_value", result, "RuntimeData should take precedence over UserInputs")
 }
 
-func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromAuthenticatedUser() {
+func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromAuthnProvider() {
+	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	authUser := newAuthenticatedAuthUser()
 	ctx := &NodeContext{
+		Context:     context.Background(),
 		RuntimeData: map[string]string{},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			UserID: "user-123",
-		},
+		AuthUser:    authUser,
 	}
+	execResp := &common.ExecutorResponse{}
+	logger := log.GetLogger()
 
-	result := ResolvePlaceholder(ctx, "{{ context.userId }}")
+	mockProvider.On("GetEntityReference", mock.Anything, authUser).
+		Return(authUser, &authnprovidercm.EntityReference{
+			EntityID: "user-123",
+			OUID:     "ou-456",
+		}, nil)
+
+	result := ResolvePlaceholder(ctx, "{{ context.userId }}", execResp, mockProvider, logger)
 	s.Equal("user-123", result)
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromRuntimeData() {
 	ctx := &NodeContext{
 		RuntimeData: map[string]string{"userId": "runtime-user-456"},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			UserID: "",
-		},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ context.userId }}")
+	result := ResolvePlaceholder(ctx, "{{ context.userId }}", nil, nil, nil)
 	s.Equal("runtime-user-456", result)
 }
 
-func (s *UtilsTestSuite) TestResolvePlaceholderUserIDAuthenticatedUserTakesPrecedence() {
+func (s *UtilsTestSuite) TestResolvePlaceholderUserIDRuntimeDataTakesPrecedence() {
+	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	authUser := newAuthenticatedAuthUser()
 	ctx := &NodeContext{
+		Context:     context.Background(),
 		RuntimeData: map[string]string{"userId": "runtime-user-id"},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			UserID: "auth-user-id",
-		},
+		AuthUser:    authUser,
 	}
+	execResp := &common.ExecutorResponse{}
+	logger := log.GetLogger()
 
-	result := ResolvePlaceholder(ctx, "{{ context.userId }}")
-	s.Equal("auth-user-id", result, "AuthenticatedUser.UserID should take precedence over RuntimeData")
+	result := ResolvePlaceholder(ctx, "{{ context.userId }}", execResp, mockProvider, logger)
+	s.Equal("runtime-user-id", result, "RuntimeData should take precedence over authn provider")
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderUserIDNotFromUserInputs() {
 	ctx := &NodeContext{
 		UserInputs:  map[string]string{"userId": "input-user-id"},
 		RuntimeData: map[string]string{},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			UserID: "",
-		},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ context.userId }}")
+	result := ResolvePlaceholder(ctx, "{{ context.userId }}", nil, nil, nil)
 	s.Equal("{{ context.userId }}", result, "userId should NOT be resolved from UserInputs")
 }
 
-func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromAuthenticatedUser() {
+func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromAuthnProvider() {
+	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	authUser := newAuthenticatedAuthUser()
 	ctx := &NodeContext{
+		Context:     context.Background(),
 		RuntimeData: map[string]string{},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "ou-123",
-		},
+		AuthUser:    authUser,
 	}
+	execResp := &common.ExecutorResponse{}
+	logger := log.GetLogger()
 
-	result := ResolvePlaceholder(ctx, "{{ context.ouId }}")
+	mockProvider.On("GetEntityReference", mock.Anything, authUser).
+		Return(authUser, &authnprovidercm.EntityReference{
+			EntityID: "user-123",
+			OUID:     "ou-123",
+		}, nil)
+
+	result := ResolvePlaceholder(ctx, "{{ context.ouId }}", execResp, mockProvider, logger)
+	s.Equal("ou-123", result)
+}
+
+func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromAuthnProviderWithoutEntityID() {
+	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	authUser := newAuthenticatedAuthUser()
+	ctx := &NodeContext{
+		Context:     context.Background(),
+		RuntimeData: map[string]string{},
+		AuthUser:    authUser,
+	}
+	execResp := &common.ExecutorResponse{}
+	logger := log.GetLogger()
+
+	mockProvider.On("GetEntityReference", mock.Anything, authUser).
+		Return(authUser, &authnprovidercm.EntityReference{
+			OUID: "ou-123",
+		}, nil)
+
+	result := ResolvePlaceholder(ctx, "{{ context.ouId }}", execResp, mockProvider, logger)
 	s.Equal("ou-123", result)
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromRuntimeData() {
 	ctx := &NodeContext{
 		RuntimeData: map[string]string{"ouId": "runtime-ou-456"},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "",
-		},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ context.ouId }}")
+	result := ResolvePlaceholder(ctx, "{{ context.ouId }}", nil, nil, nil)
 	s.Equal("runtime-ou-456", result)
 }
 
-func (s *UtilsTestSuite) TestResolvePlaceholderOUIDAuthenticatedUserTakesPrecedence() {
+func (s *UtilsTestSuite) TestResolvePlaceholderOUIDRuntimeDataTakesPrecedence() {
+	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	authUser := newAuthenticatedAuthUser()
 	ctx := &NodeContext{
+		Context:     context.Background(),
 		RuntimeData: map[string]string{"ouId": "runtime-ou-id"},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "auth-ou-id",
-		},
+		AuthUser:    authUser,
 	}
+	execResp := &common.ExecutorResponse{}
+	logger := log.GetLogger()
 
-	result := ResolvePlaceholder(ctx, "{{ context.ouId }}")
-	s.Equal("auth-ou-id", result, "AuthenticatedUser.OUID should take precedence over RuntimeData")
+	result := ResolvePlaceholder(ctx, "{{ context.ouId }}", execResp, mockProvider, logger)
+	s.Equal("runtime-ou-id", result, "RuntimeData should take precedence over authn provider")
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderOUIDNotFromUserInputs() {
 	ctx := &NodeContext{
 		UserInputs:  map[string]string{"ouId": "input-ou-id"},
 		RuntimeData: map[string]string{},
-		AuthenticatedUser: authncm.AuthenticatedUser{
-			OUID: "",
-		},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ context.ouId }}")
+	result := ResolvePlaceholder(ctx, "{{ context.ouId }}", nil, nil, nil)
 	s.Equal("{{ context.ouId }}", result, "ouId should NOT be resolved from UserInputs")
+}
+
+func (s *UtilsTestSuite) TestResolvePlaceholderUserIDAndOUIDShareSingleFetch() {
+	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	authUser := newAuthenticatedAuthUser()
+	ctx := &NodeContext{
+		Context:     context.Background(),
+		RuntimeData: map[string]string{},
+		AuthUser:    authUser,
+	}
+	execResp := &common.ExecutorResponse{}
+	logger := log.GetLogger()
+
+	mockProvider.On("GetEntityReference", mock.Anything, authUser).
+		Return(authUser, &authnprovidercm.EntityReference{
+			EntityID: "user-789",
+			OUID:     "ou-789",
+		}, nil).Once()
+
+	result := ResolvePlaceholder(ctx, "{{ context.userId }}-{{ context.ouId }}", execResp, mockProvider, logger)
+	s.Equal("user-789-ou-789", result)
+	mockProvider.AssertNumberOfCalls(s.T(), "GetEntityReference", 1)
+}
+
+func (s *UtilsTestSuite) TestResolvePlaceholderUserIDWithNilAuthnProvider() {
+	authUser := newAuthenticatedAuthUser()
+	ctx := &NodeContext{
+		Context:     context.Background(),
+		RuntimeData: map[string]string{},
+		AuthUser:    authUser,
+	}
+
+	result := ResolvePlaceholder(ctx, "{{ context.userId }}", nil, nil, nil)
+	s.Equal("{{ context.userId }}", result, "userId should keep placeholder when authnProvider is nil")
+}
+
+func (s *UtilsTestSuite) TestResolvePlaceholderUserIDWithUnauthenticatedUser() {
+	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	ctx := &NodeContext{
+		Context:     context.Background(),
+		RuntimeData: map[string]string{},
+	}
+	execResp := &common.ExecutorResponse{}
+	logger := log.GetLogger()
+
+	result := ResolvePlaceholder(ctx, "{{ context.userId }}", execResp, mockProvider, logger)
+	s.Equal("{{ context.userId }}", result, "userId should keep placeholder when user is not authenticated")
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderKeyNotFound() {
@@ -213,7 +308,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderKeyNotFound() {
 		UserInputs:  map[string]string{},
 	}
 
-	result := ResolvePlaceholder(ctx, "{{ context.nonexistent }}")
+	result := ResolvePlaceholder(ctx, "{{ context.nonexistent }}", nil, nil, nil)
 	s.Equal("{{ context.nonexistent }}", result, "Non-existent key should keep placeholder as-is")
 }
 
@@ -224,11 +319,11 @@ func (s *UtilsTestSuite) TestResolvePlaceholderEmptyValue() {
 	}
 
 	// Empty runtime value should fall through to user input (but since key doesn't match, keeps placeholder)
-	result := ResolvePlaceholder(ctx, "{{ context.empty }}")
+	result := ResolvePlaceholder(ctx, "{{ context.empty }}", nil, nil, nil)
 	s.Equal("{{ context.empty }}", result, "Empty value should not resolve, keeps placeholder")
 
 	// Non-empty user input should be used
-	result = ResolvePlaceholder(ctx, "{{ context.nonempty }}")
+	result = ResolvePlaceholder(ctx, "{{ context.nonempty }}", nil, nil, nil)
 	s.Equal("value", result)
 }
 
@@ -252,7 +347,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderMixedStaticAndDynamic() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			result := ResolvePlaceholder(ctx, tt.input)
+			result := ResolvePlaceholder(ctx, tt.input, nil, nil, nil)
 			s.Equal(tt.expected, result)
 		})
 	}
@@ -265,7 +360,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderWithNilMaps() {
 	}
 
 	// Should not panic with nil maps
-	result := ResolvePlaceholder(ctx, "{{ context.key }}")
+	result := ResolvePlaceholder(ctx, "{{ context.key }}", nil, nil, nil)
 	s.Equal("{{ context.key }}", result)
 }
 
@@ -274,7 +369,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderEmptyString() {
 		RuntimeData: map[string]string{"key": "value"},
 	}
 
-	result := ResolvePlaceholder(ctx, "")
+	result := ResolvePlaceholder(ctx, "", nil, nil, nil)
 	s.Equal("", result)
 }
 
@@ -299,7 +394,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderSpecialCharactersInValue() {
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			result := ResolvePlaceholder(ctx, tt.input)
+			result := ResolvePlaceholder(ctx, tt.input, nil, nil, nil)
 			s.Equal(tt.expected, result)
 		})
 	}

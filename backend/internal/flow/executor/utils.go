@@ -24,7 +24,6 @@ import (
 	"fmt"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -127,26 +126,28 @@ func isCrossOUProvisioningAllowed(ctx *core.NodeContext) bool {
 	return false
 }
 
+func isAllowRegistrationWithExistingUserRuntimeFlagSet(ctx *core.NodeContext) bool {
+	val, ok := ctx.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser]
+	return ok && val == dataValueTrue
+}
+
 // validateFederatedIdentifierConsistency checks if the federated identifiers from the authentication result
 // are consistent with any existing identifiers in the context (runtime data, user inputs, authenticated
 // user attributes).
 func validateFederatedIdentifierConsistency(ctx *core.NodeContext,
-	basicResult *authnprovidermgr.AuthnBasicResult) bool {
-	if basicResult == nil {
+	federatedIdentifiers, existingIdentifiers map[string]interface{}) bool {
+	if len(federatedIdentifiers) == 0 {
 		return true
-	}
-
-	federatedIdentifiers := map[string]string{
-		userAttributeSub: basicResult.ExternalSub,
-	}
-	if email, ok := basicResult.ExternalClaims[userAttributeEmail]; ok {
-		federatedIdentifiers[userAttributeEmail] = systemutils.ConvertInterfaceValueToString(email)
 	}
 
 	// TODO: Refine this well-known-key comparison when IDP-to-local attribute mapping is supported
 	fedIdfConsistencyKeys := []string{userAttributeEmail, userAttributeSub}
 	for _, key := range fedIdfConsistencyKeys {
-		federatedValue := federatedIdentifiers[key]
+		federatedValue := ""
+		if value, ok := federatedIdentifiers[key]; ok {
+			federatedValue = systemutils.ConvertInterfaceValueToString(value)
+		}
+
 		if federatedValue == "" {
 			continue
 		}
@@ -157,24 +158,12 @@ func validateFederatedIdentifierConsistency(ctx *core.NodeContext,
 		if value, ok := ctx.UserInputs[key]; ok && value != "" && value != federatedValue {
 			return false
 		}
-		if value := getAuthenticatedIdentifierValue(ctx, key); value != "" && value != federatedValue {
+		if value := existingIdentifiers[key]; value != nil &&
+			systemutils.ConvertInterfaceValueToString(value) != "" &&
+			systemutils.ConvertInterfaceValueToString(value) != federatedValue {
 			return false
 		}
 	}
 
 	return true
-}
-
-// getAuthenticatedIdentifierValue retrieves the value of a specific identifier key from the
-// authenticated user's attributes in the context.
-func getAuthenticatedIdentifierValue(ctx *core.NodeContext, key string) string {
-	if ctx.AuthenticatedUser.Attributes == nil {
-		return ""
-	}
-	value, ok := ctx.AuthenticatedUser.Attributes[key]
-	if !ok {
-		return ""
-	}
-
-	return systemutils.ConvertInterfaceValueToString(value)
 }

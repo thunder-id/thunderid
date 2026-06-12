@@ -26,24 +26,36 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
 type FederatedAuthResolverTestSuite struct {
 	suite.Suite
-	mockFlowFactory *coremock.FlowFactoryInterfaceMock
-	executor        *federatedAuthResolverExecutor
+	mockFlowFactory   *coremock.FlowFactoryInterfaceMock
+	mockAuthnProvider *managermock.AuthnProviderManagerInterfaceMock
+	executor          *federatedAuthResolverExecutor
 }
 
 func TestFederatedAuthResolverSuite(t *testing.T) {
 	suite.Run(t, new(FederatedAuthResolverTestSuite))
 }
 
+func newFederatedAuthResolverAuthenticatedUser() authnprovidermgr.AuthUser {
+	var authUser authnprovidermgr.AuthUser
+	_ = authUser.UnmarshalJSON([]byte(`{"entityReferenceToken":"tok","attributeToken":"tok"}`))
+	return authUser
+}
+
 func (suite *FederatedAuthResolverTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
 
 	mockExec := createMockExecutor(suite.T(), ExecutorNameFederatedAuthResolver,
 		common.ExecutorTypeAuthentication)
@@ -51,7 +63,7 @@ func (suite *FederatedAuthResolverTestSuite) SetupTest() {
 		common.ExecutorTypeAuthentication,
 		([]common.Input)(nil), ([]common.Input)(nil)).Return(mockExec)
 
-	suite.executor = newFederatedAuthResolverExecutor(suite.mockFlowFactory)
+	suite.executor = newFederatedAuthResolverExecutor(suite.mockFlowFactory, suite.mockAuthnProvider)
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestNewFederatedAuthResolverExecutor() {
@@ -80,14 +92,19 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_SingleCandidateMatch() 
 		{Identifier: "ouHandle", Type: "TEXT_INPUT", Required: true},
 	})
 
+	authenticatedAuthUser := newFederatedAuthResolverAuthenticatedUser()
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, map[string]interface{}{
+		userAttributeUserID: "user-1",
+	}, map[string]interface{}{
+		userAttributeSub: "sub-123",
+	}, mock.Anything, mock.Anything, mock.Anything).
+		Return(authenticatedAuthUser, authnprovidercm.AuthenticatedClaims{}, nil)
+
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
-	assert.True(suite.T(), resp.AuthenticatedUser.IsAuthenticated)
-	assert.Equal(suite.T(), "user-1", resp.AuthenticatedUser.UserID)
-	assert.Equal(suite.T(), "ou-1", resp.AuthenticatedUser.OUID)
-	assert.Equal(suite.T(), "Customer", resp.AuthenticatedUser.UserType)
+	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_NoCandidatesInRuntimeData() {
@@ -201,7 +218,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_InvalidCandidatesJSON()
 	assert.Nil(suite.T(), resp)
 }
 
-func (suite *FederatedAuthResolverTestSuite) TestExecute_PreservesSubInRuntimeData() {
+func (suite *FederatedAuthResolverTestSuite) TestExecute_PassesSubToAuthnProvider() {
 	candidates := []*entityprovider.Entity{
 		{ID: "user-1", OUID: "ou-1", OUHandle: "org-alpha", Type: "Customer"},
 	}
@@ -222,14 +239,22 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_PreservesSubInRuntimeDa
 		{Identifier: "ouHandle", Type: "TEXT_INPUT", Required: true},
 	})
 
+	authenticatedAuthUser := newFederatedAuthResolverAuthenticatedUser()
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, map[string]interface{}{
+		userAttributeUserID: "user-1",
+	}, map[string]interface{}{
+		userAttributeSub: "federated-sub-123",
+	}, mock.Anything, mock.Anything, mock.Anything).
+		Return(authenticatedAuthUser, authnprovidercm.AuthenticatedClaims{}, nil)
+
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
-	assert.Equal(suite.T(), "federated-sub-123", resp.RuntimeData["sub"])
+	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
-func (suite *FederatedAuthResolverTestSuite) TestExecute_FailsWithoutFederatedSub() {
+func (suite *FederatedAuthResolverTestSuite) TestExecute_FailsWhenAuthnProviderReturnsError() {
 	candidates := []*entityprovider.Entity{
 		{ID: "user-1", OUID: "ou-1", OUHandle: "org-alpha", Type: "Customer"},
 	}
@@ -240,6 +265,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_FailsWithoutFederatedSu
 		UserInputs:  map[string]string{"ouHandle": "org-alpha"},
 		RuntimeData: map[string]string{
 			common.RuntimeKeyCandidateUsers: string(candidatesJSON),
+			"sub":                           "federated-sub-123",
 		},
 	}
 
@@ -249,11 +275,21 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_FailsWithoutFederatedSu
 		{Identifier: "ouHandle", Type: "TEXT_INPUT", Required: true},
 	})
 
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, map[string]interface{}{
+		userAttributeUserID: "user-1",
+	}, map[string]interface{}{
+		userAttributeSub: "federated-sub-123",
+	}, mock.Anything, mock.Anything, mock.Anything).Return(
+		authnprovidermgr.AuthUser{}, (authnprovidercm.AuthenticatedClaims)(nil), &serviceerror.ServiceError{
+			Code: "authentication_failed",
+		})
+
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecFailure, resp.Status)
 	assert.Equal(suite.T(), ErrUserNotAuthenticated.Error.DefaultValue, resp.Error.Error.DefaultValue)
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_IgnoresUnexpectedInputKeys() {
@@ -282,10 +318,18 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_IgnoresUnexpectedInputK
 		{Identifier: "ouHandle", Type: "TEXT_INPUT", Required: true},
 	})
 
+	authenticatedAuthUser := newFederatedAuthResolverAuthenticatedUser()
+	// Should match user-1 (org-alpha), not user-2 despite userID injection
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, map[string]interface{}{
+		userAttributeUserID: "user-1",
+	}, map[string]interface{}{
+		userAttributeSub: "federated-sub-123",
+	}, mock.Anything, mock.Anything, mock.Anything).
+		Return(authenticatedAuthUser, authnprovidercm.AuthenticatedClaims{}, nil)
+
 	resp, err := suite.executor.Execute(ctx)
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), common.ExecComplete, resp.Status)
-	// Should match user-1 (org-alpha), not user-2 despite userID injection
-	assert.Equal(suite.T(), "user-1", resp.AuthenticatedUser.UserID)
+	assert.True(suite.T(), resp.AuthUser.IsAuthenticated())
+	suite.mockAuthnProvider.AssertExpectations(suite.T())
 }

@@ -27,10 +27,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -46,6 +48,7 @@ type AttributeUniquenessValidatorTestSuite struct {
 	mockFlowFactory       *coremock.FlowFactoryInterfaceMock
 	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
 	mockEntityProvider    *entityprovidermock.EntityProviderInterfaceMock
+	mockAuthnProvider     *managermock.AuthnProviderManagerInterfaceMock
 	mockBaseExecutor      *coremock.ExecutorInterfaceMock
 	executor              *attributeUniquenessValidator
 }
@@ -54,10 +57,15 @@ func (suite *AttributeUniquenessValidatorTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
 
 	suite.mockBaseExecutor = coremock.NewExecutorInterfaceMock(suite.T())
-	suite.mockBaseExecutor.On("ValidatePrerequisites", mock.Anything, mock.Anything).
-		Return(func(ctx *core.NodeContext, execResp *common.ExecutorResponse) bool {
+	suite.mockBaseExecutor.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(
+			ctx *core.NodeContext,
+			execResp *common.ExecutorResponse,
+			_ authnprovidermgr.AuthnProviderManagerInterface,
+		) bool {
 			if _, ok := ctx.RuntimeData[userTypeKey]; !ok {
 				execResp.Status = common.ExecFailure
 				execResp.Error = &serviceerror.ServiceError{
@@ -76,7 +84,7 @@ func (suite *AttributeUniquenessValidatorTestSuite) SetupTest() {
 		prerequisites).Return(suite.mockBaseExecutor)
 
 	suite.executor = newAttributeUniquenessValidator(
-		suite.mockFlowFactory, suite.mockEntityTypeService, suite.mockEntityProvider)
+		suite.mockFlowFactory, suite.mockEntityTypeService, suite.mockEntityProvider, suite.mockAuthnProvider)
 }
 
 func (suite *AttributeUniquenessValidatorTestSuite) TestExecute_NoUserType_SkipsCheck() {

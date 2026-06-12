@@ -27,8 +27,6 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnoauth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
-	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
@@ -59,20 +57,17 @@ type oAuthExecutorInterface interface {
 	core.ExecutorInterface
 	BuildAuthorizeFlow(ctx *core.NodeContext, execResp *common.ExecutorResponse) error
 	ProcessAuthFlowResponse(ctx *core.NodeContext, execResp *common.ExecutorResponse) error
-	ResolveContextUser(ctx *core.NodeContext, execResp *common.ExecutorResponse,
-		sub string, internalUser *entityprovider.Entity, isAmbiguous bool) (*authncm.AuthenticatedUser, error)
 	GetIdpID(ctx *core.NodeContext) (string, error)
 }
 
 // oAuthExecutor implements the OAuthExecutorInterface for handling generic OAuth authentication flows.
 type oAuthExecutor struct {
 	core.ExecutorInterface
-	authService       authnoauth.OAuthAuthnCoreServiceInterface
-	authnProvider     authnprovidermgr.AuthnProviderManagerInterface
-	idpType           idp.IDPType
-	idpService        idp.IDPServiceInterface
-	entityTypeService entitytype.EntityTypeServiceInterface
-	logger            *log.Logger
+	authService   authnoauth.OAuthAuthnCoreServiceInterface
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface
+	idpType       idp.IDPType
+	idpService    idp.IDPServiceInterface
+	logger        *log.Logger
 }
 
 var _ core.ExecutorInterface = (*oAuthExecutor)(nil)
@@ -83,7 +78,6 @@ func newOAuthExecutor(
 	defaultInputs, prerequisites []common.Input,
 	flowFactory core.FlowFactoryInterface,
 	idpService idp.IDPServiceInterface,
-	entityTypeService entitytype.EntityTypeServiceInterface,
 	authService authnoauth.OAuthAuthnCoreServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 	idpType idp.IDPType,
@@ -112,7 +106,6 @@ func newOAuthExecutor(
 		authnProvider:     authnProvider,
 		idpType:           idpType,
 		idpService:        idpService,
-		entityTypeService: entityTypeService,
 		logger:            logger,
 	}
 }
@@ -127,6 +120,7 @@ func (o *oAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
+		AuthUser:       ctx.AuthUser,
 	}
 
 	if !o.HasRequiredInputs(ctx, execResp) {
@@ -144,7 +138,7 @@ func (o *oAuthExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse
 
 	logger.Debug(ctx.Context, "OAuth authentication executor execution completed",
 		log.String("status", string(execResp.Status)),
-		log.Bool("isAuthenticated", execResp.AuthenticatedUser.IsAuthenticated))
+		log.Bool("isAuthenticated", execResp.AuthUser.IsAuthenticated()))
 
 	return execResp, nil
 }
@@ -204,9 +198,7 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 
 	code, ok := ctx.UserInputs[userInputCode]
 	if !ok || code == "" {
-		execResp.AuthenticatedUser = authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-		}
+		execResp.AuthUser = authnprovidermgr.AuthUser{}
 		return nil
 	}
 
@@ -229,6 +221,20 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return err
 	}
 
+	existingCtxUserAttributes := make(map[string]interface{})
+	if execResp.AuthUser.IsAuthenticated() {
+		authUser, attributes, err := o.authnProvider.GetUserAttributes(ctx.Context, nil, nil, execResp.AuthUser)
+		execResp.AuthUser = authUser
+		if err != nil {
+			logger.Warn(ctx.Context,
+				"Failed to fetch user attributes for authenticated user, proceeding without attributes")
+		} else {
+			for key, value := range attributes.Attributes {
+				existingCtxUserAttributes[key] = value
+			}
+		}
+	}
+
 	credentials := map[string]interface{}{
 		"federated": &authncm.FederatedAuthCredential{
 			IDPID:   idpID,
@@ -236,8 +242,9 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 			Code:    code,
 		},
 	}
-	newAuthUser, basicResult, svcErr := o.authnProvider.AuthenticateUser(
-		ctx.Context, nil, credentials, nil, nil, ctx.AuthUser)
+	authUser, federatedAttributes, svcErr := o.authnProvider.AuthenticateUser(
+		ctx.Context, nil, credentials, nil, nil, execResp.AuthUser)
+	execResp.AuthUser = authUser
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ClientErrorType {
 			execResp.Status = common.ExecFailure
@@ -250,52 +257,32 @@ func (o *oAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 		return errors.New("federated authentication failed")
 	}
 
-	if basicResult == nil {
-		logger.Error(ctx.Context, "authnProvider.AuthenticateUser returned nil result")
-		return errors.New("OAuth authentication failed")
-	}
-
-	if !validateFederatedIdentifierConsistency(ctx, basicResult) {
+	if !validateFederatedIdentifierConsistency(ctx, federatedAttributes, existingCtxUserAttributes) {
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrInvalidFederatedUser
 		return nil
 	}
 
-	sub := basicResult.ExternalSub
-
-	if basicResult.IsAmbiguousUser {
+	if len(federatedAttributes) > 0 {
 		if execResp.RuntimeData == nil {
 			execResp.RuntimeData = make(map[string]string)
 		}
-		execResp.RuntimeData[common.RuntimeKeyUserAmbiguous] = dataValueTrue
-	}
-
-	var internalUser *entityprovider.Entity
-	if basicResult.IsExistingUser {
-		internalUser = &entityprovider.Entity{
-			ID:   basicResult.UserID,
-			OUID: basicResult.OUID,
-			Type: basicResult.UserType,
+		for key, value := range federatedAttributes {
+			execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
 		}
 	}
 
-	contextUser, err := o.ResolveContextUser(ctx, execResp, sub, internalUser, basicResult.IsAmbiguousUser)
-	if err != nil {
-		return err
-	}
-	if execResp.Status == common.ExecFailure {
-		return nil
-	}
-	if contextUser == nil {
-		logger.Error(ctx.Context, "Failed to resolve context user after OAuth authentication")
-		return errors.New("unexpected error occurred while resolving user")
+	if ctx.FlowType == common.FlowTypeAuthentication {
+		if isAuthenticationWithoutLocalUserAllowed(ctx) {
+			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
+		}
+	} else if ctx.FlowType == common.FlowTypeRegistration {
+		if isRegistrationWithExistingUserAllowed(ctx) {
+			execResp.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
+		}
 	}
 
-	userInfo := systemutils.ConvertInterfaceMapToStringMap(basicResult.ExternalClaims)
-	contextUser.Attributes = o.getContextUserAttributes(execResp, userInfo)
-	execResp.AuthenticatedUser = *contextUser
-	execResp.AuthUser = newAuthUser
-
+	execResp.Status = common.ExecComplete
 	return nil
 }
 
@@ -338,224 +325,6 @@ func (o *oAuthExecutor) getIDPName(ctx context.Context, idpID string) (string, e
 	}
 
 	return idp.Name, nil
-}
-
-// ResolveContextUser resolves the authenticated user in context with the attributes.
-func (o *oAuthExecutor) ResolveContextUser(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse, sub string, internalUser *entityprovider.Entity, isAmbiguous bool) (
-	*authncm.AuthenticatedUser, error) {
-	if ctx.FlowType == common.FlowTypeAuthentication {
-		return o.getContextUserForAuthentication(ctx, execResp, sub, internalUser, isAmbiguous)
-	}
-	return o.getContextUserForRegistration(ctx, execResp, sub, internalUser, isAmbiguous)
-}
-
-// getContextUserForAuthentication resolves the authenticated user in context for authentication flows.
-func (o *oAuthExecutor) getContextUserForAuthentication(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse, sub string, internalUser *entityprovider.Entity, isAmbiguous bool) (
-	*authncm.AuthenticatedUser, error) {
-	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-
-	// If no local user is found, check if authentication without local user is allowed
-	if internalUser == nil {
-		if isAuthenticationWithoutLocalUserAllowed(ctx) {
-			if execResp.RuntimeData == nil {
-				execResp.RuntimeData = make(map[string]string)
-			}
-
-			if isAmbiguous {
-				// Ambiguous user: exists in multiple OUs. Set sub for downstream
-				// disambiguation but do NOT mark as eligible for provisioning since
-				// the user already exists.
-				logger.Debug(ctx.Context, "Ambiguous user detected, deferring to flow for disambiguation")
-				execResp.Status = common.ExecComplete
-				execResp.Error = nil
-				execResp.RuntimeData[userAttributeSub] = sub
-
-				return &authncm.AuthenticatedUser{
-					IsAuthenticated: false,
-				}, nil
-			}
-
-			// Genuinely new user: no local account exists
-			logger.Debug(ctx.Context, "User not found, but authentication is allowed without a local user")
-
-			err := o.resolveUserTypeForAutoProvisioning(ctx, execResp)
-			if err != nil {
-				return nil, err
-			}
-			if execResp.Status == common.ExecFailure {
-				return nil, nil
-			}
-
-			execResp.Status = common.ExecComplete
-			execResp.Error = nil
-			execResp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning] = dataValueTrue
-			execResp.RuntimeData[userAttributeSub] = sub
-
-			return &authncm.AuthenticatedUser{
-				IsAuthenticated: false,
-			}, nil
-		}
-
-		execResp.Status = common.ExecFailure
-		execResp.Error = &ErrUserNotFound
-		return nil, nil
-	}
-
-	// User found, proceed with authentication
-	execResp.Status = common.ExecComplete
-	if execResp.RuntimeData == nil {
-		execResp.RuntimeData = make(map[string]string)
-	}
-	execResp.RuntimeData[userAttributeSub] = sub
-	authenticatedUser := authncm.AuthenticatedUser{
-		IsAuthenticated: true,
-		UserID:          internalUser.ID,
-		OUID:            internalUser.OUID,
-		UserType:        internalUser.Type,
-	}
-
-	return &authenticatedUser, nil
-}
-
-// getContextUserForRegistration resolves the authenticated user in context for registration flows.
-func (o *oAuthExecutor) getContextUserForRegistration(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse, sub string, internalUser *entityprovider.Entity, isAmbiguous bool) (
-	*authncm.AuthenticatedUser, error) {
-	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-
-	if isAmbiguous {
-		// An ambiguous user (exists in multiple OUs) can still be provisioned into a new target
-		// OU when cross-OU provisioning is explicitly allowed. The ProvisioningExecutor enforces
-		// the same-OU duplicate guard, so we don't need to fail here.
-		if isRegistrationWithExistingUserAllowed(ctx) && isCrossOUProvisioningAllowed(ctx) {
-			logger.Debug(ctx.Context,
-				"Ambiguous user detected, proceeding with cross-OU provisioning eligibility")
-			execResp.Status = common.ExecComplete
-			execResp.Error = nil
-			execResp.RuntimeData[userAttributeSub] = sub
-
-			return &authncm.AuthenticatedUser{
-				IsAuthenticated: false,
-			}, nil
-		}
-
-		logger.Debug(ctx.Context,
-			"Ambiguous user detected in registration flow, cannot proceed with registration")
-		execResp.Status = common.ExecFailure
-		execResp.Error = &ErrAmbiguousUserIdentity
-		return nil, nil
-	}
-
-	// If no local user is found, proceed with registration
-	if internalUser == nil {
-		logger.Debug(ctx.Context,
-			"User not found for the provided sub claim. Proceeding with registration flow.")
-		execResp.Status = common.ExecComplete
-		execResp.Error = nil
-		execResp.RuntimeData[userAttributeSub] = sub
-
-		return &authncm.AuthenticatedUser{
-			IsAuthenticated: false,
-		}, nil
-	}
-
-	// If a local user is found, check if registration with existing user is allowed
-	if isRegistrationWithExistingUserAllowed(ctx) {
-		if isCrossOUProvisioningAllowed(ctx) {
-			// Allow the flow to continue so the ProvisioningExecutor can create the user in
-			// the target OU. The same-OU duplicate guard is enforced by the ProvisioningExecutor
-			// itself, which has access to the target OU context. We intentionally do not set
-			// RuntimeKeySkipProvisioning here because we want provisioning to run.
-			logger.Debug(ctx.Context,
-				"User already exists, proceeding with cross-OU provisioning to target OU")
-			execResp.Status = common.ExecComplete
-			execResp.Error = nil
-			execResp.RuntimeData[userAttributeSub] = sub
-
-			return &authncm.AuthenticatedUser{
-				IsAuthenticated: false,
-			}, nil
-		}
-
-		logger.Debug(ctx.Context, "User already exists, but registration flow is allowed to continue")
-		execResp.Status = common.ExecComplete
-		execResp.Error = nil
-		execResp.RuntimeData[common.RuntimeKeySkipProvisioning] = dataValueTrue
-
-		return &authncm.AuthenticatedUser{
-			IsAuthenticated: true,
-			UserID:          internalUser.ID,
-			OUID:            internalUser.OUID,
-			UserType:        internalUser.Type,
-		}, nil
-	}
-
-	// Fail the execution as a unique user is found in the system.
-	execResp.Status = common.ExecFailure
-	execResp.Error = &ErrUserAlreadyExists
-	return nil, nil
-}
-
-// resolveUserTypeForAutoProvisioning resolves the user type for auto provisioning in authentication flows.
-func (o *oAuthExecutor) resolveUserTypeForAutoProvisioning(ctx *core.NodeContext,
-	execResp *common.ExecutorResponse) error {
-	logger := o.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-	logger.Debug(ctx.Context, "Resolving user type for automatic provisioning")
-
-	if len(ctx.Application.AllowedUserTypes) == 0 {
-		logger.Debug(ctx.Context, "No allowed user types configured for the application")
-		execResp.Status = common.ExecFailure
-		execResp.Error = &ErrCannotProvisionAutomatically
-		return nil
-	}
-
-	// Filter allowed user types to only those with self-registration enabled
-	selfRegEnabledSchemas := make([]entitytype.EntityType, 0)
-	for _, userType := range ctx.Application.AllowedUserTypes {
-		entityType, svcErr := o.entityTypeService.GetEntityTypeByName(ctx.Context,
-			entitytype.TypeCategoryUser, userType)
-		if svcErr != nil {
-			if svcErr.Type == serviceerror.ClientErrorType {
-				execResp.Status = common.ExecFailure
-				execResp.Error = svcErr
-				return nil
-			}
-
-			logger.Error(ctx.Context, "Error while retrieving user type",
-				log.String("errorCode", svcErr.Code),
-				log.String("description", svcErr.ErrorDescription.DefaultValue))
-			return errors.New("error while retrieving user type")
-		}
-		if entityType.AllowSelfRegistration {
-			selfRegEnabledSchemas = append(selfRegEnabledSchemas, *entityType)
-		}
-	}
-
-	// Fail if no user types have self-registration enabled
-	if len(selfRegEnabledSchemas) == 0 {
-		logger.Debug(ctx.Context,
-			"No user types with self-registration enabled, cannot provision automatically")
-		execResp.Status = common.ExecFailure
-		execResp.Error = &ErrSelfRegistrationDisabled
-		return nil
-	}
-
-	// Fail if multiple user types have self-registration enabled
-	if len(selfRegEnabledSchemas) > 1 {
-		logger.Debug(ctx.Context,
-			"Multiple user types with self-registration enabled, cannot resolve user type automatically")
-		execResp.Status = common.ExecFailure
-		execResp.Error = &ErrCannotProvisionAutomatically
-		return nil
-	}
-
-	// Proceed with the single resolved user type
-	// Add userType and ouID to runtime data
-	execResp.RuntimeData[userTypeKey] = selfRegEnabledSchemas[0].Name
-	execResp.RuntimeData[defaultOUIDKey] = selfRegEnabledSchemas[0].OUID
-	return nil
 }
 
 // getContextUserAttributes extracts and returns user attributes from the user info map.

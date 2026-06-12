@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
@@ -36,6 +37,7 @@ type CredentialSetterTestSuite struct {
 	suite.Suite
 	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
 	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerInterfaceMock
 	mockBaseExecutor   *coremock.ExecutorInterfaceMock
 	executor           *credentialSetter
 }
@@ -43,6 +45,7 @@ type CredentialSetterTestSuite struct {
 func (suite *CredentialSetterTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
 	suite.mockBaseExecutor = coremock.NewExecutorInterfaceMock(suite.T())
 
 	suite.mockFlowFactory.On("CreateExecutor",
@@ -57,7 +60,7 @@ func (suite *CredentialSetterTestSuite) SetupTest() {
 			},
 		}).Return(suite.mockBaseExecutor)
 
-	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider)
+	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockAuthnProvider)
 }
 
 func (suite *CredentialSetterTestSuite) TestExecute_Success() {
@@ -74,8 +77,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_Success() {
 	}
 
 	suite.mockBaseExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx).Return(userID)
+	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx, mock.Anything, mock.Anything).Return(userID)
 	suite.mockBaseExecutor.On("GetRequiredInputs", ctx).Return([]common.Input{
 		{
 			Identifier: userAttributePassword,
@@ -116,8 +119,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_MissingUserID() {
 	}
 
 	suite.mockBaseExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx).Return("")
+	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx, mock.Anything, mock.Anything).Return("")
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -136,8 +139,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_EmptyPassword() {
 	}
 
 	suite.mockBaseExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx).Return(userID)
+	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx, mock.Anything, mock.Anything).Return(userID)
 	suite.mockBaseExecutor.On("GetRequiredInputs", ctx).Return([]common.Input{
 		{
 			Identifier: userAttributePassword,
@@ -164,8 +167,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_ServiceError() {
 	}
 
 	suite.mockBaseExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx).Return(userID)
+	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx, mock.Anything, mock.Anything).Return(userID)
 	suite.mockBaseExecutor.On("GetRequiredInputs", ctx).Return([]common.Input{
 		{
 			Identifier: userAttributePassword,
@@ -200,8 +203,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_CustomAttribute() {
 	}
 
 	suite.mockBaseExecutor.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("ValidatePrerequisites", mock.Anything, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("GetUserIDFromContext", mock.Anything).Return(userID)
+	suite.mockBaseExecutor.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", mock.Anything, mock.Anything, mock.Anything).Return(userID)
 
 	suite.mockBaseExecutor.On("GetRequiredInputs", mock.Anything).Return([]common.Input{
 		{
@@ -236,8 +239,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_NoRequiredInputs() {
 	}
 
 	suite.mockBaseExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx).Return(userID)
+	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx, mock.Anything, mock.Anything).Return(userID)
 	suite.mockBaseExecutor.On("GetRequiredInputs", ctx).Return([]common.Input{})
 
 	resp, err := suite.executor.Execute(ctx)
@@ -260,8 +263,8 @@ func (suite *CredentialSetterTestSuite) TestExecute_EmptyInputIdentifier() {
 	}
 
 	suite.mockBaseExecutor.On("HasRequiredInputs", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything).Return(true)
-	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx).Return(userID)
+	suite.mockBaseExecutor.On("ValidatePrerequisites", ctx, mock.Anything, mock.Anything).Return(true)
+	suite.mockBaseExecutor.On("GetUserIDFromContext", ctx, mock.Anything, mock.Anything).Return(userID)
 	suite.mockBaseExecutor.On("GetRequiredInputs", ctx).Return([]common.Input{
 		{
 			Identifier: "",

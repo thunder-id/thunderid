@@ -21,6 +21,7 @@ package executor
 import (
 	"encoding/json"
 
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -31,6 +32,7 @@ import (
 type credentialSetter struct {
 	core.ExecutorInterface
 	entityProvider entityprovider.EntityProviderInterface
+	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
 	logger         *log.Logger
 }
 
@@ -38,6 +40,7 @@ type credentialSetter struct {
 func newCredentialSetter(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *credentialSetter {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CredentialSetter"))
 	base := flowFactory.CreateExecutor(
@@ -61,6 +64,7 @@ func newCredentialSetter(
 	return &credentialSetter{
 		ExecutorInterface: base,
 		entityProvider:    entityProvider,
+		authnProvider:     authnProvider,
 		logger:            logger,
 	}
 }
@@ -83,13 +87,13 @@ func (e *credentialSetter) Execute(ctx *core.NodeContext) (*common.ExecutorRespo
 	}
 
 	// Validate prerequisites
-	if !e.ValidatePrerequisites(ctx, execResp) {
+	if !e.ValidatePrerequisites(ctx, execResp, e.authnProvider) {
 		logger.Debug(ctx.Context, "Prerequisites not met for credential setter")
 		return execResp, nil
 	}
 
 	// Get userID from context
-	userID := e.GetUserIDFromContext(ctx)
+	userID := e.GetUserIDFromContext(ctx, execResp, e.authnProvider)
 	if userID == "" {
 		logger.Debug(ctx.Context, "User ID not found in flow context")
 		execResp.Status = common.ExecFailure

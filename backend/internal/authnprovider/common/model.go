@@ -24,49 +24,18 @@ type AuthnMetadata struct {
 	AppMetadata map[string]interface{} `json:"appMetadata,omitempty"`
 }
 
+// AuthenticatedClaims holds claims produced by an authentication mechanism.
+type AuthenticatedClaims map[string]interface{}
+
 // AuthnResult represents the result of an authentication attempt.
 type AuthnResult struct {
-	// Entity-generic fields.
-	EntityID       string `json:"entityId"`
-	EntityCategory string `json:"entityCategory"`
-	EntityType     string `json:"entityType"`
-	OUID           string `json:"ouId"`
-
-	// TODO: Remove after refacoring usages
-	UserID   string `json:"userId"`
-	UserType string `json:"userType"`
-
-	Token                     string              `json:"token"`
-	IsAttributeValuesIncluded bool                `json:"isAttributeValuesIncluded"`
-	AttributesResponse        *AttributesResponse `json:"attributesResponse,omitempty"`
-
-	// Federated authentication fields. Set when the authentication flow is federated
-	// and no internal user was found (IsExistingUser = false).
-	ExternalSub     string                 `json:"externalSub,omitempty"`
-	ExternalClaims  map[string]interface{} `json:"externalClaims,omitempty"`
-	IsExistingUser  bool                   `json:"isExistingUser"`
-	IsAmbiguousUser bool                   `json:"isAmbiguousUser"`
-}
-
-// GetAttributesMetadata contains metadata for fetching attributes.
-type GetAttributesMetadata struct {
-	AppMetadata map[string]interface{} `json:"appMetadata,omitempty"`
-	Locale      string                 `json:"locale"`
-}
-
-// GetAttributesResult represents the result of fetching attributes.
-type GetAttributesResult struct {
-	// Entity-generic fields.
-	EntityID       string `json:"entityId"`
-	EntityCategory string `json:"entityCategory"`
-	EntityType     string `json:"entityType"`
-	OUID           string `json:"ouId"`
-
-	// TODO: Remove after refacoring usages
-	UserID   string `json:"userId"`
-	UserType string `json:"userType"`
-
-	AttributesResponse *AttributesResponse `json:"attributeResponse,omitempty"`
+	AuthenticatedClaims AuthenticatedClaims `json:"authenticatedClaims,omitempty"`
+	// EntityReferenceToken can be nil, iff entity reference is included
+	EntityReferenceToken any              `json:"entityReferenceToken"`
+	EntityReference      *EntityReference `json:"entityReference,omitempty"`
+	// AttributeToken can be nil, iff attribute values are included
+	AttributeToken any                 `json:"attributeToken"`
+	Attributes     *AttributesResponse `json:"attributes,omitempty"`
 }
 
 // AssuranceMetadataResponse contains assurance metadata for an attribute.
@@ -132,4 +101,18 @@ type AttributesResponse struct {
 type AttributeResponse struct {
 	Value                     interface{}                `json:"value,omitempty"`
 	AssuranceMetadataResponse *AssuranceMetadataResponse `json:"assuranceMetadataResponse,omitempty"`
+}
+
+// EntityReference contains the reference to an entity.
+type EntityReference struct {
+	EntityID       string `json:"entityId"`
+	EntityCategory string `json:"entityCategory"`
+	EntityType     string `json:"entityType"`
+	OUID           string `json:"ouId"`
+}
+
+// GetAttributesMetadata holds metadata used when retrieving entity attributes.
+type GetAttributesMetadata struct {
+	AppMetadata map[string]interface{} `json:"appMetadata,omitempty"`
+	Locale      string                 `json:"locale"`
 }

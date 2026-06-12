@@ -135,6 +135,8 @@ func (i *identifyingExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorRe
 	switch ctx.ExecutorMode {
 	case ExecutorModeResolve:
 		return i.executeResolve(ctx, execResp)
+	case ExecutorModeCheckState:
+		return i.executeCheckState(ctx, execResp)
 	default:
 		// Default identify behavior (including explicit "identify" mode and unset).
 		// Fails if zero or more than one user matches.
@@ -242,6 +244,43 @@ func (i *identifyingExecutor) executeResolve(ctx *core.NodeContext,
 	default:
 		return i.handleAmbiguousCandidates(ctx.Context, candidates, execResp, logger)
 	}
+}
+
+// executeCheckState handles the check_state mode which looks up candidates and sets a
+// runtime flag indicating whether zero, one, or multiple entities match. Always returns ExecComplete.
+func (i *identifyingExecutor) executeCheckState(ctx *core.NodeContext,
+	execResp *common.ExecutorResponse) (*common.ExecutorResponse, error) {
+	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+	logger.Debug(ctx.Context, "Executing identifying executor in check_state mode")
+
+	userSearchAttributes := i.buildSearchAttributes(ctx)
+
+	candidates, err := i.getCandidates(ctx, userSearchAttributes, logger)
+	if err != nil {
+		execResp.Status = common.ExecFailure
+		execResp.Error = serviceerror.CustomServiceError(ErrFailedToIdentifyUser, i18ncore.I18nMessage{
+			Key:          ErrFailedToIdentifyUser.ErrorDescription.Key,
+			DefaultValue: err.Error(),
+		})
+		return execResp, nil
+	}
+
+	switch len(candidates) {
+	case 0:
+		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateNotExists
+		logger.Debug(ctx.Context, "No users found for the provided attributes")
+	case 1:
+		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateExists
+		logger.Debug(ctx.Context, "Single user found",
+			log.MaskedString("userID", candidates[0].ID))
+	default:
+		execResp.RuntimeData[common.RuntimeKeyEntityState] = entityStateAmbiguous
+		logger.Debug(ctx.Context, "Multiple users found",
+			log.Int("candidateCount", len(candidates)))
+	}
+
+	execResp.Status = common.ExecComplete
+	return execResp, nil
 }
 
 // buildSearchAttributes collects search attributes from user inputs and runtime data.

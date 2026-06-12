@@ -24,11 +24,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/openid4vp"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
@@ -47,11 +51,17 @@ func (f *fakeOpenID4VPService) Result(ctx context.Context, state string) (*openi
 
 func newTestOpenID4VPExecutor(t *testing.T, service openid4vpVerifierService) core.ExecutorInterface {
 	t.Helper()
+	return newTestOpenID4VPExecutorWithProvider(t, service, nil)
+}
+
+func newTestOpenID4VPExecutorWithProvider(t *testing.T, service openid4vpVerifierService,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface) core.ExecutorInterface {
+	t.Helper()
 	factory := coremock.NewFlowFactoryInterfaceMock(t)
 	base := coremock.NewExecutorInterfaceMock(t)
 	factory.On("CreateExecutor", ExecutorNameOpenID4VPVerify, common.ExecutorTypeAuthentication,
 		[]common.Input{}, []common.Input{}).Return(base).Maybe()
-	return newOpenID4VPVerifier(factory, service, nil, nil)
+	return newOpenID4VPVerifier(factory, service, nil, authnProvider)
 }
 
 func openid4vpNodeContext(runtime map[string]string, properties map[string]interface{}) *core.NodeContext {
@@ -161,17 +171,30 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 			}, nil
 		},
 	}
-	exec := newTestOpenID4VPExecutor(t, svc)
+
+	mockAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(t)
+	mockAuthnProvider.On("AuthenticateUser",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(authnprovidermgr.AuthUser{}, authnprovidercm.AuthenticatedClaims{
+			"given_name":       "Erika",
+			"family_name":      "Mustermann",
+			"openid4vp_issuer": "https://issuer.example",
+			"openid4vp_vct":    "urn:eudi:pid:de:1",
+			userAttributeSub:   "sub-1",
+		}, nil)
+
+	exec := newTestOpenID4VPExecutorWithProvider(t, svc, mockAuthnProvider)
 
 	runtime := map[string]string{common.RuntimeKeyOpenID4VPState: "state-123"}
 	resp, err := exec.Execute(openid4vpNodeContext(runtime, nil))
 	require.NoError(t, err)
 	assert.Equal(t, common.ExecComplete, resp.Status)
-	assert.True(t, resp.AuthenticatedUser.IsAuthenticated)
-	assert.Equal(t, "sub-1", resp.AuthenticatedUser.UserID)
-	assert.Equal(t, "Erika", resp.AuthenticatedUser.Attributes["given_name"])
-	assert.Equal(t, "https://issuer.example", resp.AuthenticatedUser.Attributes["openid4vp_issuer"])
-	assert.Equal(t, "urn:eudi:pid:de:1", resp.AuthenticatedUser.Attributes["openid4vp_vct"])
+	// Runtime attributes from authn provider are stored in RuntimeData
+	assert.Equal(t, "sub-1", resp.RuntimeData[userAttributeSub])
+	assert.Equal(t, "Erika", resp.RuntimeData["given_name"])
+	// AuthUser is not authenticated (no entity reference resolved), so eligible for provisioning
+	assert.Equal(t, dataValueTrue, resp.RuntimeData[common.RuntimeKeyUserEligibleForProvisioning])
+	mockAuthnProvider.AssertExpectations(t)
 }
 
 func TestOpenID4VPExecutorPollFailed(t *testing.T) {

@@ -251,9 +251,17 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		idp.IDPTypeGitHub: githubAuthnService,
 	}
 
+	// Initialize the OpenID4VP verifier engine and register its wallet-facing
+	// endpoints. Presentation definitions are registered from configuration by
+	// the engine itself.
+	openid4vpVerifierSvc, err := openid4vp.Initialize(mux, runtimeCryptoSvc, cacheManager, jwtService)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize OpenID4VP verifier service", log.Error(err))
+	}
+
 	// Initialize authn provider
 	authnProvider := authnprovidermgr.InitializeAuthnProviderManager(entityService, passkeyService, otpCoreService,
-		magicLinkService, federatedAuths)
+		magicLinkService, openid4vpVerifierSvc, federatedAuths)
 
 	// Initialize authentication services.
 	authAssertGen := authnAssert.Initialize()
@@ -263,12 +271,6 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		otpCoreService, magicLinkService, oauthAuthnService, oidcAuthnService, googleAuthnService, githubAuthnService)
 
 	attributeCacheService := attributecache.Initialize()
-
-	// Initialize OpenID4VP verifier service
-	openid4vpVerifierSvc, err := openid4vp.Initialize(mux, runtimeCryptoSvc, cacheManager, jwtService)
-	if err != nil {
-		logger.Fatal(ctx, "Failed to initialize OpenID4VP verifier service", log.Error(err))
-	}
 
 	var emailClient email.EmailClientInterface
 	emailClient, err = email.Initialize()

@@ -26,7 +26,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
+
+const userAttributeUserID = "userID"
+const userAttributeSub = "sub"
 
 // authnProviderManager is a proxy struct that implements AuthnProviderManagerInterface by delegating
 // to an underlying AuthnProviderInterface.
@@ -47,108 +51,196 @@ func newAuthnProviderManager(p provider.AuthnProviderInterface) AuthnProviderMan
 func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers, credentials map[string]interface{},
 	requestedAttributes *authnprovidercm.RequestedAttributes,
 	metadata *authnprovidercm.AuthnMetadata,
-	authUser AuthUser) (AuthUser, *AuthnBasicResult, *serviceerror.ServiceError) {
-	result, svcErr := m.provider.Authenticate(ctx, identifiers, credentials, metadata)
+	authUser AuthUser) (AuthUser, authnprovidercm.AuthenticatedClaims, *serviceerror.ServiceError) {
+	if sub, ok := credentials["sub"]; ok {
+		// Temporary handling of disambiguation after a federated authentication step.
+		// Only works with Thunder's default authn provider
+		if subStr, ok := sub.(string); !ok || subStr == "" {
+			m.logger.Debug(ctx, "disambiguation requested but sub is missing or invalid in credentials")
+			return authUser, nil, &ErrorAuthenticationFailed
+		}
+
+		if !authUser.IsAuthenticated() {
+			m.logger.Debug(ctx, "disambiguation requested but current user is not authenticated")
+			return authUser, nil, &ErrorAuthenticationFailed
+		}
+
+		if authUser.entityReferenceToken == nil {
+			m.logger.Debug(ctx, "disambiguation requested but current user's entity reference token is missing")
+			return authUser, nil, &ErrorAuthenticationFailed
+		}
+
+		if entityRefToken, ok := authUser.entityReferenceToken.(map[string]interface{}); !ok || entityRefToken == nil {
+			m.logger.Debug(ctx,
+				"disambiguation requested but current user's entity reference token is missing or invalid")
+			return authUser, nil, &ErrorAuthenticationFailed
+		}
+
+		if _, ok := authUser.entityReferenceToken.(map[string]interface{})[userAttributeSub]; !ok {
+			m.logger.Debug(ctx,
+				"disambiguation requested but current user's entity reference token is missing sub claim")
+			return authUser, nil, &ErrorAuthenticationFailed
+		}
+
+		if systemutils.ConvertInterfaceValueToString(
+			authUser.entityReferenceToken.(map[string]interface{})[userAttributeSub]) !=
+			systemutils.ConvertInterfaceValueToString(sub) {
+			m.logger.Debug(ctx, "disambiguation requested but sub claim in credentials "+
+				"does not match current user's sub claim")
+			return authUser, nil, &ErrorAuthenticationFailed
+		}
+
+		val, ok := identifiers[userAttributeUserID]
+		if !ok {
+			m.logger.Debug(ctx, "disambiguation requested but userID is missing or invalid in identifiers")
+			return authUser, nil, &ErrorAuthenticationFailed
+		}
+		valStr, ok := val.(string)
+		if !ok || valStr == "" {
+			m.logger.Debug(ctx, "disambiguation requested but userID is missing or invalid in identifiers")
+			return authUser, nil, &ErrorAuthenticationFailed
+		}
+		userID := valStr
+		authUser = AuthUser{
+			entityReferenceToken: map[string]interface{}{
+				"userID": userID,
+			},
+			entityReference: nil,
+			attributeToken: map[string]interface{}{
+				"userID": userID,
+			},
+			attributes: nil,
+		}
+		return authUser, nil, nil
+	}
+
+	authResult, svcErr := m.provider.Authenticate(ctx, identifiers, credentials, metadata)
 	if svcErr != nil {
 		if svcErr.Type == serviceerror.ServerErrorType {
 			m.logger.Error(ctx, "provider returned server error during authentication",
 				log.String("error", svcErr.ErrorDescription.DefaultValue))
-			return AuthUser{}, nil, &serviceerror.InternalServerError
+			return authUser, nil, &serviceerror.InternalServerError
 		}
 		switch svcErr.Code {
 		case authnprovidercm.ErrorCodeUserNotFound:
-			return AuthUser{}, nil, serviceerror.CustomServiceError(ErrorUserNotFound, core.I18nMessage{
-				Key:          "error.authnprovider.user_not_found_description",
-				DefaultValue: svcErr.ErrorDescription.DefaultValue,
-			})
+			m.logger.Debug(ctx, "authentication failed with user not found error from provider",
+				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+			return authUser, nil, &ErrorUserNotFound
 		case authnprovidercm.ErrorCodeInvalidRequest:
-			return AuthUser{}, nil, serviceerror.CustomServiceError(ErrorInvalidRequest, core.I18nMessage{
-				Key:          "error.authnprovider.invalid_request_description",
-				DefaultValue: svcErr.ErrorDescription.DefaultValue,
-			})
+			m.logger.Debug(ctx, "authentication failed with invalid request error from provider",
+				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+			return authUser, nil, &ErrorInvalidRequest
 		default:
-			return AuthUser{}, nil, serviceerror.CustomServiceError(ErrorAuthenticationFailed, core.I18nMessage{
-				Key:          "error.authnprovider.authentication_failed_description",
-				DefaultValue: svcErr.ErrorDescription.DefaultValue,
+			m.logger.Debug(ctx, "authentication failed with client error from provider",
+				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
+			return authUser, nil, &ErrorAuthenticationFailed
+		}
+	}
+	if (authResult.AttributeToken == nil && authResult.Attributes == nil) ||
+		(authResult.EntityReferenceToken == nil && authResult.EntityReference == nil) {
+		m.logger.Error(ctx, "provider Authenticate result is missing both entity reference and attribute values")
+		return authUser, nil, &serviceerror.InternalServerError
+	}
+
+	if authResult.EntityReferenceToken != nil {
+		authUser.entityReferenceToken = authResult.EntityReferenceToken
+		authUser.entityReference = nil
+	} else {
+		authUser.entityReference = authResult.EntityReference
+		authUser.entityReferenceToken = nil
+	}
+
+	if authResult.AttributeToken != nil {
+		authUser.attributeToken = authResult.AttributeToken
+		authUser.attributes = nil
+	} else {
+		authUser.attributes = authResult.Attributes
+		authUser.attributeToken = nil
+	}
+
+	return authUser, authResult.AuthenticatedClaims, nil
+}
+
+// GetEntityReference returns the entity reference for the user.
+func (m *authnProviderManager) GetEntityReference(ctx context.Context, authUser AuthUser) (
+	AuthUser, *authnprovidercm.EntityReference, *serviceerror.ServiceError) {
+	if !authUser.IsAuthenticated() {
+		m.logger.Error(ctx, "GetEntityReference called with unauthenticated authUser")
+		return authUser, nil, &serviceerror.InternalServerError
+	}
+
+	if authUser.entityReferenceToken == nil {
+		// If entity reference token is nil, entity reference is already fetched and can be returned directly.
+		return authUser, authUser.entityReference, nil
+	}
+
+	entityRef, err := m.provider.GetEntityReference(ctx, authUser.entityReferenceToken)
+	if err != nil {
+		if err.Type == serviceerror.ServerErrorType {
+			m.logger.Error(ctx, "provider returned server error while fetching entity reference",
+				log.String("error", err.ErrorDescription.DefaultValue))
+			return authUser, nil, &serviceerror.InternalServerError
+		}
+		switch err.Code {
+		case authnprovidercm.ErrorCodeUserNotFound:
+			m.logger.Debug(ctx, "entity reference resolution failed: user not found",
+				log.String("errorDescription", err.ErrorDescription.DefaultValue))
+			return authUser, nil, &ErrorUserNotFound
+		case authnprovidercm.ErrorCodeAmbiguousUser:
+			m.logger.Debug(ctx, "entity reference resolution failed: ambiguous user",
+				log.String("errorDescription", err.ErrorDescription.DefaultValue))
+			return authUser, nil, &ErrorAmbiguousUser
+		default:
+			return authUser, nil, serviceerror.CustomServiceError(ErrorGetEntityReferenceClientError, core.I18nMessage{
+				Key:          "error.authnmgrservice.get_entity_reference_client_error_description",
+				DefaultValue: err.ErrorDescription.DefaultValue,
 			})
 		}
 	}
-	if !result.IsExistingUser {
-		authUser.setProviderData(defaultProvider, providerData{
-			attributes:                result.AttributesResponse,
-			isAttributeValuesIncluded: result.IsAttributeValuesIncluded,
-		})
-		return authUser, &AuthnBasicResult{
-			ExternalSub:     result.ExternalSub,
-			ExternalClaims:  result.ExternalClaims,
-			IsExistingUser:  false,
-			IsAmbiguousUser: result.IsAmbiguousUser,
-		}, nil
-	}
-	authUser.setIdentity(result.UserID, result.UserType, result.OUID)
-	authUser.setProviderData(defaultProvider, providerData{
-		token:                     result.Token,
-		attributes:                result.AttributesResponse,
-		isAttributeValuesIncluded: result.IsAttributeValuesIncluded,
-	})
-	return authUser, &AuthnBasicResult{
-		UserID:         result.UserID,
-		OUID:           result.OUID,
-		UserType:       result.UserType,
-		IsExistingUser: true,
-		ExternalSub:    result.ExternalSub,
-		ExternalClaims: result.ExternalClaims,
-	}, nil
+
+	authUser.entityReference = entityRef
+	authUser.entityReferenceToken = nil
+
+	return authUser, entityRef, nil
 }
 
-// GetUserAvailableAttributes returns the cached attributes for the default provider without making a provider call.
+// GetUserAvailableAttributes returns the available attributes.
 func (m *authnProviderManager) GetUserAvailableAttributes(ctx context.Context,
 	authUser AuthUser) (*authnprovidercm.AttributesResponse, *serviceerror.ServiceError) {
 	if !authUser.IsAuthenticated() {
 		m.logger.Error(ctx, "GetUserAvailableAttributes called with unauthenticated authUser")
 		return nil, &serviceerror.InternalServerError
 	}
-	data, ok := authUser.getProviderData(defaultProvider)
-	if !ok {
-		m.logger.Error(ctx, "GetUserAvailableAttributes: no provider data found for default provider")
-		return nil, &serviceerror.InternalServerError
-	}
-	return data.attributes, nil
+	return authUser.attributes, nil
 }
 
-// GetUserAttributes returns attributes for the user, fetching from the provider if not already cached.
+// GetUserAttributes returns attributes for the user.
 func (m *authnProviderManager) GetUserAttributes(ctx context.Context,
 	requestedAttributes *authnprovidercm.RequestedAttributes,
 	metadata *authnprovidercm.GetAttributesMetadata,
 	authUser AuthUser) (AuthUser, *authnprovidercm.AttributesResponse, *serviceerror.ServiceError) {
 	if !authUser.IsAuthenticated() {
 		m.logger.Error(ctx, "GetUserAttributes called with unauthenticated authUser")
-		return AuthUser{}, nil, &serviceerror.InternalServerError
+		return authUser, nil, &serviceerror.InternalServerError
 	}
-	data, ok := authUser.getProviderData(defaultProvider)
-	if !ok {
-		m.logger.Error(ctx, "GetUserAttributes: no provider data found for default provider")
-		return AuthUser{}, nil, &serviceerror.InternalServerError
+	if authUser.attributeToken == nil {
+		// If attribute token is nil, attribute values are already fetched and can be returned directly.
+		return authUser, authUser.attributes, nil
 	}
-	if data.isAttributeValuesIncluded {
-		return authUser, data.attributes, nil
-	}
-	result, svcErr := m.provider.GetAttributes(ctx, data.token, requestedAttributes, metadata)
-	if svcErr != nil {
-		if svcErr.Type == serviceerror.ServerErrorType {
+	fetchedAttributes, err := m.provider.GetAttributes(ctx, authUser.attributeToken, requestedAttributes, metadata)
+	if err != nil {
+		if err.Type == serviceerror.ServerErrorType {
 			m.logger.Error(ctx, "provider returned server error while fetching attributes",
-				log.String("error", svcErr.ErrorDescription.DefaultValue))
-			return AuthUser{}, nil, &serviceerror.InternalServerError
+				log.String("error", err.ErrorDescription.DefaultValue))
+			return authUser, nil, &serviceerror.InternalServerError
 		}
-		return AuthUser{}, nil, serviceerror.CustomServiceError(ErrorGetAttributesClientError, core.I18nMessage{
+		return authUser, nil, serviceerror.CustomServiceError(ErrorGetAttributesClientError, core.I18nMessage{
 			Key:          "error.authnprovider.get_attributes_client_error_description",
-			DefaultValue: svcErr.ErrorDescription.DefaultValue,
+			DefaultValue: err.ErrorDescription.DefaultValue,
 		})
 	}
-	authUser.setProviderData(defaultProvider, providerData{
-		token:                     data.token,
-		attributes:                result.AttributesResponse,
-		isAttributeValuesIncluded: true,
-	})
-	return authUser, result.AttributesResponse, nil
+	authUser.attributes = fetchedAttributes
+	authUser.attributeToken = nil
+
+	return authUser, fetchedAttributes, nil
 }

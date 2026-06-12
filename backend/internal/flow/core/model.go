@@ -22,7 +22,6 @@ import (
 	"context"
 
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
-	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 )
@@ -45,10 +44,9 @@ type NodeContext struct {
 	RuntimeData    map[string]string
 	ForwardedData  map[string]interface{}
 
-	Application       appmodel.Application
-	AuthenticatedUser authncm.AuthenticatedUser
-	AuthUser          manager.AuthUser
-	ExecutionHistory  map[string]*common.NodeExecutionRecord
+	Application      appmodel.Application
+	AuthUser         manager.AuthUser
+	ExecutionHistory map[string]*common.NodeExecutionRecord
 }
 
 // NodeCondition represents a condition that must be met for a node to execute.

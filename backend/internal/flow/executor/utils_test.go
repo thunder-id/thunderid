@@ -25,7 +25,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
-	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -390,213 +389,179 @@ func (s *UtilsTestSuite) TestIsCrossOUProvisioningAllowed() {
 
 func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 	tests := []struct {
-		name          string
-		basicResult   *authnprovidermgr.AuthnBasicResult
-		ctx           *core.NodeContext
-		expectedValid bool
-		expectError   bool
+		name                 string
+		federatedIdentifiers map[string]interface{}
+		existingIdentifiers  map[string]interface{}
+		ctx                  *core.NodeContext
+		expectedValid        bool
 	}{
 		{
-			name:          "Nil basicResult returns true",
-			basicResult:   nil,
-			ctx:           &core.NodeContext{},
-			expectedValid: true,
-			expectError:   false,
+			name:                 "Nil federated identifiers returns true",
+			federatedIdentifiers: nil,
+			existingIdentifiers:  nil,
+			ctx:                  &core.NodeContext{},
+			expectedValid:        true,
 		},
 		{
-			name: "No federated identifiers returns true",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub:    "",
-				ExternalClaims: map[string]interface{}{},
-			},
-			ctx:           &core.NodeContext{},
-			expectedValid: true,
-			expectError:   false,
+			name:                 "Empty federated identifiers returns true",
+			federatedIdentifiers: map[string]interface{}{},
+			existingIdentifiers:  map[string]interface{}{},
+			ctx:                  &core.NodeContext{},
+			expectedValid:        true,
 		},
 		{
 			name: "Email matches UserInputs returns true",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user@example.com",
-				},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user@example.com",
+				"sub":   "sub123",
 			},
+			existingIdentifiers: map[string]interface{}{},
 			ctx: &core.NodeContext{
 				UserInputs: map[string]string{
 					"email": "user@example.com",
 				},
 			},
 			expectedValid: true,
-			expectError:   false,
 		},
 		{
 			name: "Email mismatch with UserInputs returns false",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user1@example.com",
-				},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user1@example.com",
+				"sub":   "sub123",
 			},
+			existingIdentifiers: map[string]interface{}{},
 			ctx: &core.NodeContext{
 				UserInputs: map[string]string{
 					"email": "user2@example.com",
 				},
 			},
 			expectedValid: false,
-			expectError:   false,
 		},
 		{
 			name: "Email matches RuntimeData returns true",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user@example.com",
-				},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user@example.com",
+				"sub":   "sub123",
 			},
+			existingIdentifiers: map[string]interface{}{},
 			ctx: &core.NodeContext{
 				RuntimeData: map[string]string{
 					"email": "user@example.com",
 				},
 			},
 			expectedValid: true,
-			expectError:   false,
 		},
 		{
 			name: "Email mismatch with RuntimeData returns false",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user1@example.com",
-				},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user1@example.com",
+				"sub":   "sub123",
 			},
+			existingIdentifiers: map[string]interface{}{},
 			ctx: &core.NodeContext{
 				RuntimeData: map[string]string{
 					"email": "user2@example.com",
 				},
 			},
 			expectedValid: false,
-			expectError:   false,
 		},
 		{
-			name: "Email matches AuthenticatedUser.Attributes returns true",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user@example.com",
-				},
+			name: "Email matches existing identifiers returns true",
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user@example.com",
+				"sub":   "sub123",
 			},
-			ctx: &core.NodeContext{
-				AuthenticatedUser: authncm.AuthenticatedUser{
-					Attributes: map[string]interface{}{
-						"email": "user@example.com",
-					},
-				},
+			existingIdentifiers: map[string]interface{}{
+				"email": "user@example.com",
 			},
+			ctx:           &core.NodeContext{},
 			expectedValid: true,
-			expectError:   false,
 		},
 		{
-			name: "Email mismatch with AuthenticatedUser.Attributes returns false",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user1@example.com",
-				},
+			name: "Email mismatch with existing identifiers returns false",
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user1@example.com",
+				"sub":   "sub123",
 			},
-			ctx: &core.NodeContext{
-				AuthenticatedUser: authncm.AuthenticatedUser{
-					Attributes: map[string]interface{}{
-						"email": "user2@example.com",
-					},
-				},
+			existingIdentifiers: map[string]interface{}{
+				"email": "user2@example.com",
 			},
+			ctx:           &core.NodeContext{},
 			expectedValid: false,
-			expectError:   false,
 		},
 		{
 			name: "Sub matches RuntimeData returns true",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user@example.com",
-				},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user@example.com",
+				"sub":   "sub123",
 			},
+			existingIdentifiers: map[string]interface{}{},
 			ctx: &core.NodeContext{
 				RuntimeData: map[string]string{
 					"sub": "sub123",
 				},
 			},
 			expectedValid: true,
-			expectError:   false,
 		},
 		{
 			name: "Sub mismatch with RuntimeData returns false",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user@example.com",
-				},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user@example.com",
+				"sub":   "sub123",
 			},
+			existingIdentifiers: map[string]interface{}{},
 			ctx: &core.NodeContext{
 				RuntimeData: map[string]string{
 					"sub": "sub456",
 				},
 			},
 			expectedValid: false,
-			expectError:   false,
 		},
 		{
 			name: "Empty UserInputs email is skipped",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user@example.com",
-				},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user@example.com",
+				"sub":   "sub123",
 			},
+			existingIdentifiers: map[string]interface{}{},
 			ctx: &core.NodeContext{
 				UserInputs: map[string]string{
 					"email": "",
 				},
 			},
 			expectedValid: true,
-			expectError:   false,
 		},
 		{
 			name: "Empty RuntimeData email is skipped",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user@example.com",
-				},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user@example.com",
+				"sub":   "sub123",
 			},
+			existingIdentifiers: map[string]interface{}{},
 			ctx: &core.NodeContext{
 				RuntimeData: map[string]string{
 					"email": "",
 				},
 			},
 			expectedValid: true,
-			expectError:   false,
 		},
 		{
 			name: "Missing email from UserInputs and RuntimeData is allowed",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user@example.com",
-				},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user@example.com",
+				"sub":   "sub123",
 			},
-			ctx:           &core.NodeContext{},
-			expectedValid: true,
-			expectError:   false,
+			existingIdentifiers: map[string]interface{}{},
+			ctx:                 &core.NodeContext{},
+			expectedValid:       true,
 		},
 		{
 			name: "Multiple attributes with one mismatch returns false",
-			basicResult: &authnprovidermgr.AuthnBasicResult{
-				ExternalSub: "sub123",
-				ExternalClaims: map[string]interface{}{
-					"email": "user1@example.com",
-				},
+			federatedIdentifiers: map[string]interface{}{
+				"email": "user1@example.com",
+				"sub":   "sub123",
 			},
+			existingIdentifiers: map[string]interface{}{},
 			ctx: &core.NodeContext{
 				UserInputs: map[string]string{
 					"email": "user1@example.com",
@@ -607,111 +572,13 @@ func (s *UtilsTestSuite) TestValidateFederatedIdentifierConsistency() {
 				},
 			},
 			expectedValid: false,
-			expectError:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
-			valid := validateFederatedIdentifierConsistency(tt.ctx, tt.basicResult)
+			valid := validateFederatedIdentifierConsistency(tt.ctx, tt.federatedIdentifiers, tt.existingIdentifiers)
 			s.Equal(tt.expectedValid, valid)
-		})
-	}
-}
-
-func (s *UtilsTestSuite) TestGetAuthenticatedIdentifierValue() {
-	tests := []struct {
-		name          string
-		ctx           *core.NodeContext
-		key           string
-		expectedValue string
-	}{
-		{
-			name: "Nil Attributes map returns empty string",
-			ctx: &core.NodeContext{
-				AuthenticatedUser: authncm.AuthenticatedUser{
-					Attributes: nil,
-				},
-			},
-			key:           "email",
-			expectedValue: "",
-		},
-		{
-			name: "Empty Attributes map returns empty string",
-			ctx: &core.NodeContext{
-				AuthenticatedUser: authncm.AuthenticatedUser{
-					Attributes: map[string]interface{}{},
-				},
-			},
-			key:           "email",
-			expectedValue: "",
-		},
-		{
-			name: "Key not found returns empty string",
-			ctx: &core.NodeContext{
-				AuthenticatedUser: authncm.AuthenticatedUser{
-					Attributes: map[string]interface{}{
-						"other": "value",
-					},
-				},
-			},
-			key:           "email",
-			expectedValue: "",
-		},
-		{
-			name: "String value is returned",
-			ctx: &core.NodeContext{
-				AuthenticatedUser: authncm.AuthenticatedUser{
-					Attributes: map[string]interface{}{
-						"email": "user@example.com",
-					},
-				},
-			},
-			key:           "email",
-			expectedValue: "user@example.com",
-		},
-		{
-			name: "Sub string value is returned",
-			ctx: &core.NodeContext{
-				AuthenticatedUser: authncm.AuthenticatedUser{
-					Attributes: map[string]interface{}{
-						"sub": "sub123",
-					},
-				},
-			},
-			key:           "sub",
-			expectedValue: "sub123",
-		},
-		{
-			name: "Non-string value is converted to string",
-			ctx: &core.NodeContext{
-				AuthenticatedUser: authncm.AuthenticatedUser{
-					Attributes: map[string]interface{}{
-						"id": 123,
-					},
-				},
-			},
-			key:           "id",
-			expectedValue: "123",
-		},
-		{
-			name: "Boolean value is converted to string",
-			ctx: &core.NodeContext{
-				AuthenticatedUser: authncm.AuthenticatedUser{
-					Attributes: map[string]interface{}{
-						"active": true,
-					},
-				},
-			},
-			key:           "active",
-			expectedValue: "true",
-		},
-	}
-
-	for _, tt := range tests {
-		s.Run(tt.name, func() {
-			value := getAuthenticatedIdentifierValue(tt.ctx, tt.key)
-			s.Equal(tt.expectedValue, value)
 		})
 	}
 }

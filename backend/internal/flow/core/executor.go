@@ -19,10 +19,12 @@
 package core
 
 import (
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -37,8 +39,10 @@ type ExecutorInterface interface {
 	GetDefaultInputs() []common.Input
 	GetPrerequisites() []common.Input
 	HasRequiredInputs(ctx *NodeContext, execResp *common.ExecutorResponse) bool
-	ValidatePrerequisites(ctx *NodeContext, execResp *common.ExecutorResponse) bool
-	GetUserIDFromContext(ctx *NodeContext) string
+	ValidatePrerequisites(ctx *NodeContext, execResp *common.ExecutorResponse,
+		authnProvider authnprovidermgr.AuthnProviderManagerInterface) bool
+	GetUserIDFromContext(ctx *NodeContext, execResp *common.ExecutorResponse,
+		authnProvider authnprovidermgr.AuthnProviderManagerInterface) string
 	GetRequiredInputs(ctx *NodeContext) []common.Input
 	GetExecutionPolicy(mode string) *ExecutionPolicy
 }
@@ -114,7 +118,8 @@ func (e *executor) HasRequiredInputs(ctx *NodeContext, execResp *common.Executor
 
 // ValidatePrerequisites validates whether the prerequisites for the executor are met.
 // Returns true if all prerequisites are met, otherwise returns false and updates the executor response.
-func (e *executor) ValidatePrerequisites(ctx *NodeContext, execResp *common.ExecutorResponse) bool {
+func (e *executor) ValidatePrerequisites(ctx *NodeContext, execResp *common.ExecutorResponse,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface) bool {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "Executor"),
 		log.String(log.LoggerKeyExecutorName, e.GetName()),
 		log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -124,61 +129,94 @@ func (e *executor) ValidatePrerequisites(ctx *NodeContext, execResp *common.Exec
 		return true
 	}
 
+	authenticatedUserAttributes := make(map[string]string)
+	if authnProvider != nil && ctx.AuthUser.IsAuthenticated() {
+		authUser := ctx.AuthUser
+		providerAuthUser, entityRef, err := authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
+		if err != nil {
+			logger.Debug(ctx.Context,
+				"Failed to get entity reference for authenticated user, proceeding without user id")
+		} else {
+			authUser = providerAuthUser
+			if entityRef.EntityID != "" {
+				authenticatedUserAttributes[userAttributeUserID] = entityRef.EntityID
+			}
+		}
+		providerAuthUser, authAttributes, err := authnProvider.GetUserAttributes(ctx.Context, nil, nil, authUser)
+		if err != nil {
+			logger.Debug(ctx.Context,
+				"Failed to get attributes for authenticated user, proceeding without user attributes")
+		} else {
+			authUser = providerAuthUser
+			for key, attribute := range authAttributes.Attributes {
+				authenticatedUserAttributes[key] = systemutils.ConvertInterfaceValueToString(attribute.Value)
+			}
+		}
+		execResp.AuthUser = authUser
+	}
+
 	for _, prerequisite := range prerequisites {
 		// Skip optional prerequisites
 		if !prerequisite.Required {
 			continue
 		}
 
-		if prerequisite.Identifier == userAttributeUserID {
-			userID := ctx.AuthenticatedUser.UserID
-			if userID != "" {
+		if _, ok := ctx.UserInputs[prerequisite.Identifier]; ok {
+			continue
+		}
+
+		if _, ok := ctx.RuntimeData[prerequisite.Identifier]; ok {
+			continue
+		}
+
+		if value, ok := ctx.ForwardedData[prerequisite.Identifier]; ok {
+			if _, isString := value.(string); isString {
 				continue
 			}
 		}
 
-		if _, ok := ctx.UserInputs[prerequisite.Identifier]; !ok {
-			if _, ok := ctx.RuntimeData[prerequisite.Identifier]; !ok {
-				if value, ok := ctx.ForwardedData[prerequisite.Identifier]; !ok {
-					logger.Debug(ctx.Context, "Prerequisite not met for the executor",
-						log.String("identifier", prerequisite.Identifier))
-					execResp.Status = common.ExecFailure
-					execResp.Error = serviceerror.CustomServiceError(ErrExecutorPrerequisiteNotMet,
-						i18ncore.I18nMessage{
-							Key:          ErrExecutorPrerequisiteNotMet.ErrorDescription.Key,
-							DefaultValue: "Prerequisite not met: " + prerequisite.Identifier,
-						})
-					return false
-				} else {
-					// ForwardedData found but verify it's a string value
-					if _, isString := value.(string); !isString {
-						logger.Debug(ctx.Context,
-							"Prerequisite not met for the executor (non-string in ForwardedData)",
-							log.String("identifier", prerequisite.Identifier))
-						execResp.Status = common.ExecFailure
-						execResp.Error = serviceerror.CustomServiceError(ErrExecutorPrerequisiteNotMet,
-							i18ncore.I18nMessage{
-								Key:          ErrExecutorPrerequisiteNotMet.ErrorDescription.Key,
-								DefaultValue: "Prerequisite not met: " + prerequisite.Identifier,
-							})
-						return false
-					}
-				}
-			}
+		if value, ok := authenticatedUserAttributes[prerequisite.Identifier]; ok && value != "" {
+			continue
 		}
-	}
 
+		logger.Debug(ctx.Context, "Prerequisite not met for the executor",
+			log.String("identifier", prerequisite.Identifier))
+		execResp.Status = common.ExecFailure
+		execResp.Error = serviceerror.CustomServiceError(ErrExecutorPrerequisiteNotMet,
+			i18ncore.I18nMessage{
+				Key:          ErrExecutorPrerequisiteNotMet.ErrorDescription.Key,
+				DefaultValue: "Prerequisite not met: " + prerequisite.Identifier,
+			})
+		return false
+	}
 	return true
 }
 
 // GetUserIDFromContext retrieves the user ID from the context.
-func (e *executor) GetUserIDFromContext(ctx *NodeContext) string {
-	userID := ctx.AuthenticatedUser.UserID
-	if userID == "" {
-		userID = ctx.RuntimeData[userAttributeUserID]
+func (e *executor) GetUserIDFromContext(ctx *NodeContext, execResp *common.ExecutorResponse,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface) string {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "Executor"),
+		log.String(log.LoggerKeyExecutorName, e.GetName()),
+		log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
+
+	if val, ok := ctx.RuntimeData[userAttributeUserID]; ok && val != "" {
+		return val
 	}
 
-	return userID
+	if authnProvider != nil && ctx.AuthUser.IsAuthenticated() {
+		authUser, entityRef, err := authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
+		if err != nil {
+			logger.Warn(ctx.Context,
+				"Failed to get entity reference for authenticated user, proceeding without user id")
+		} else {
+			if entityRef.EntityID != "" {
+				return entityRef.EntityID
+			}
+		}
+		execResp.AuthUser = authUser
+	}
+
+	return ""
 }
 
 // GetRequiredInputs returns the required inputs for the executor.

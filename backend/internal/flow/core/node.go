@@ -73,7 +73,7 @@ func (n *node) ShouldExecute(ctx *NodeContext) bool {
 		return true
 	}
 
-	resolvedKey := ResolvePlaceholder(ctx, n.condition.Key)
+	resolvedKey := ResolvePlaceholder(ctx, n.condition.Key, nil, nil, nil)
 	return resolvedKey == n.condition.Value
 }
 

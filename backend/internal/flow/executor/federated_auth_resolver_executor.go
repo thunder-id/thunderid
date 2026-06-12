@@ -23,7 +23,7 @@ import (
 	"errors"
 	"fmt"
 
-	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -45,12 +45,14 @@ const (
 // GitHub) has already verified the user's identity.
 type federatedAuthResolverExecutor struct {
 	core.ExecutorInterface
-	logger *log.Logger
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface
+	logger        *log.Logger
 }
 
 // newFederatedAuthResolverExecutor creates a new instance of FederatedAuthResolverExecutor.
 func newFederatedAuthResolverExecutor(
 	flowFactory core.FlowFactoryInterface,
+	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *federatedAuthResolverExecutor {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, federatedAuthResolverLoggerComponentName),
@@ -61,6 +63,7 @@ func newFederatedAuthResolverExecutor(
 
 	return &federatedAuthResolverExecutor{
 		ExecutorInterface: base,
+		authnProvider:     authnProvider,
 		logger:            logger,
 	}
 }
@@ -75,6 +78,7 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *core.NodeContext) (*common.
 	execResp := &common.ExecutorResponse{
 		AdditionalData: make(map[string]string),
 		RuntimeData:    make(map[string]string),
+		AuthUser:       ctx.AuthUser,
 	}
 
 	if !f.HasRequiredInputs(ctx, execResp) {
@@ -157,17 +161,25 @@ func (f *federatedAuthResolverExecutor) Execute(ctx *core.NodeContext) (*common.
 		return execResp, nil
 	}
 
-	execResp.Status = common.ExecComplete
-	execResp.RuntimeData[userAttributeSub] = sub
-	execResp.AuthenticatedUser = authncm.AuthenticatedUser{
-		IsAuthenticated: true,
-		UserID:          resolvedUser.ID,
-		OUID:            resolvedUser.OUID,
-		UserType:        resolvedUser.Type,
+	identifiers := map[string]interface{}{
+		userAttributeUserID: resolvedUser.ID,
+	}
+	credentials := map[string]interface{}{
+		userAttributeSub: sub,
+	}
+	authUser, _, err := f.authnProvider.AuthenticateUser(
+		ctx.Context, identifiers, credentials, nil, nil, execResp.AuthUser)
+	execResp.AuthUser = authUser
+	if err != nil {
+		logger.Debug(ctx.Context, "Failed to authenticate resolved user")
+		execResp.Status = common.ExecFailure
+		execResp.Error = &ErrUserNotAuthenticated
+		return execResp, nil
 	}
 
 	logger.Debug(ctx.Context, "Federated auth resolver completed successfully",
 		log.MaskedString("userID", resolvedUser.ID))
 
+	execResp.Status = common.ExecComplete
 	return execResp, nil
 }
