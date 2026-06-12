@@ -73,3 +73,14 @@ email:
     from_address: "noreply@thunderid.dev"
     enable_start_tls: false
     enable_authentication: true
+
+scim:
+  patch_supported: false
+  bulk_supported: false
+  bulk_max_operations: 0
+  bulk_max_payload_size: 0
+  filter_supported: false
+  filter_max_results: 100
+  change_password_supported: false
+  sort_supported: false
+  etag_supported: false
