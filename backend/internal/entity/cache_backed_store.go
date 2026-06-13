@@ -241,11 +241,6 @@ func (s *cacheBackedEntityStore) GetEntityGroups(ctx context.Context,
 	return s.store.GetEntityGroups(ctx, entityID, limit, offset)
 }
 
-func (s *cacheBackedEntityStore) GetTransitiveEntityGroups(ctx context.Context,
-	entityID string) ([]EntityGroup, error) {
-	return s.store.GetTransitiveEntityGroups(ctx, entityID)
-}
-
 func (s *cacheBackedEntityStore) IsEntityDeclarative(ctx context.Context, id string) (bool, error) {
 	return s.store.IsEntityDeclarative(ctx, id)
 }

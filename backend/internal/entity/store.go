@@ -68,7 +68,6 @@ type entityStoreInterface interface {
 	// Groups
 	GetGroupCountForEntity(ctx context.Context, entityID string) (int, error)
 	GetEntityGroups(ctx context.Context, entityID string, limit, offset int) ([]EntityGroup, error)
-	GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]EntityGroup, error)
 
 	// Declarative
 	IsEntityDeclarative(ctx context.Context, id string) (bool, error)
@@ -799,32 +798,6 @@ func (es *entityDBStore) GetEntityGroups(
 		entityID, limit, offset, es.deploymentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get groups for entity: %w", err)
-	}
-
-	groups := make([]EntityGroup, 0, len(results))
-	for _, row := range results {
-		group, err := buildGroupFromResultRow(row)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build group from result row: %w", err)
-		}
-		groups = append(groups, group)
-	}
-
-	return groups, nil
-}
-
-// GetTransitiveEntityGroups retrieves all groups an entity belongs to, including nested group membership.
-func (es *entityDBStore) GetTransitiveEntityGroups(
-	ctx context.Context, entityID string) ([]EntityGroup, error) {
-	dbClient, err := es.dbProvider.GetUserDBClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get database client: %w", err)
-	}
-
-	results, err := dbClient.QueryContext(ctx, QueryGetTransitiveGroupsForEntity,
-		entityID, es.deploymentID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get transitive groups for entity: %w", err)
 	}
 
 	groups := make([]EntityGroup, 0, len(results))

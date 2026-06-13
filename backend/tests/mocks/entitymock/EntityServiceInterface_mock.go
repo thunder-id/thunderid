@@ -1374,6 +1374,46 @@ func (_c *EntityServiceInterfaceMock_SearchEntities_Call) RunAndReturn(run func(
 	return _c
 }
 
+// SetGroupMembershipProvider provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) SetGroupMembershipProvider(provider entity.GroupMembershipProvider) {
+	_mock.Called(provider)
+	return
+}
+
+// EntityServiceInterfaceMock_SetGroupMembershipProvider_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetGroupMembershipProvider'
+type EntityServiceInterfaceMock_SetGroupMembershipProvider_Call struct {
+	*mock.Call
+}
+
+// SetGroupMembershipProvider is a helper method to define mock.On call
+//   - provider entity.GroupMembershipProvider
+func (_e *EntityServiceInterfaceMock_Expecter) SetGroupMembershipProvider(provider interface{}) *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call {
+	return &EntityServiceInterfaceMock_SetGroupMembershipProvider_Call{Call: _e.mock.On("SetGroupMembershipProvider", provider)}
+}
+
+func (_c *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call) Run(run func(provider entity.GroupMembershipProvider)) *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 entity.GroupMembershipProvider
+		if args[0] != nil {
+			arg0 = args[0].(entity.GroupMembershipProvider)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call) Return() *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call) RunAndReturn(run func(provider entity.GroupMembershipProvider)) *EntityServiceInterfaceMock_SetGroupMembershipProvider_Call {
+	_c.Run(run)
+	return _c
+}
+
 // UpdateAttributes provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error {
 	ret := _mock.Called(ctx, entityID, attributes)

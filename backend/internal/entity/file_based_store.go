@@ -291,11 +291,6 @@ func (f *entityFileBasedStore) GetEntityGroups(ctx context.Context, entityID str
 	return []EntityGroup{}, nil
 }
 
-// GetTransitiveEntityGroups returns empty for file-based store (groups are for mutable entities only).
-func (f *entityFileBasedStore) GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]EntityGroup, error) {
-	return []EntityGroup{}, nil
-}
-
 // ValidateEntityIDs checks if all provided entity IDs exist.
 func (f *entityFileBasedStore) ValidateEntityIDs(ctx context.Context, entityIDs []string) ([]string, error) {
 	invalid := make([]string, 0)

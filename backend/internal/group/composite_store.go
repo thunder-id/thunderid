@@ -21,6 +21,7 @@ package group
 import (
 	"context"
 
+	"github.com/thunder-id/thunderid/internal/entity"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 )
@@ -377,6 +378,36 @@ func (c *compositeGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []str
 // IsGroupDeclarative checks if the group exists in the file-based store.
 func (c *compositeGroupStore) IsGroupDeclarative(ctx context.Context, id string) (bool, error) {
 	return c.fileStore.IsGroupDeclarative(ctx, id)
+}
+
+// GetTransitiveGroupsForEntity returns all groups an entity belongs to across both stores,
+// deduplicating by group ID. DB store covers mutable groups; file store covers declarative ones.
+func (c *compositeGroupStore) GetTransitiveGroupsForEntity(
+	ctx context.Context, entityID string,
+) ([]entity.EntityGroup, error) {
+	dbGroups, err := c.dbStore.GetTransitiveGroupsForEntity(ctx, entityID)
+	if err != nil {
+		return nil, err
+	}
+
+	fileGroups, err := c.fileStore.GetTransitiveGroupsForEntity(ctx, entityID)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool, len(dbGroups))
+	result := make([]entity.EntityGroup, 0, len(dbGroups)+len(fileGroups))
+	for _, g := range dbGroups {
+		result = append(result, g)
+		seen[g.ID] = true
+	}
+	for _, g := range fileGroups {
+		if !seen[g.ID] {
+			result = append(result, g)
+			seen[g.ID] = true
+		}
+	}
+	return result, nil
 }
 
 // mergeMembers deduplicates and merges members from database and file stores.

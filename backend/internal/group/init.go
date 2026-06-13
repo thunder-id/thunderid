@@ -60,6 +60,10 @@ func Initialize(
 		}
 	}
 
+	// Register the group store as the membership provider on the entity service so that
+	// GetTransitiveEntityGroups is owned entirely by the group layer (DB + declarative).
+	entityService.SetGroupMembershipProvider(store)
+
 	// Create resolver for OU package to query group data without cross-DB access.
 	ouGroupResolver := newOUGroupResolver(store)
 
@@ -89,7 +93,7 @@ func Initialize(
 // Configuration fallback:
 //   - If group.store is not set, falls back to global declarative_resources.enabled:
 //   - true  -> DECLARATIVE
-//   - false -> MUTABLE
+//   - false -> COMPOSITE (default)
 //
 // Returns the active group store, transactioner, and the file/db stores used for declarative
 // resource loading. fileStore is non-nil only in declarative or composite modes; dbStore is

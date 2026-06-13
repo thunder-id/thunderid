@@ -88,16 +88,27 @@ type EntityServiceInterface interface {
 
 	// Config
 	LoadIndexedAttributes(attributes []string) error
+
+	// GroupMembershipProvider registration
+	SetGroupMembershipProvider(provider GroupMembershipProvider)
+}
+
+// GroupMembershipProvider resolves group memberships for entities. Implemented by the group
+// package's store and injected after group initialization to avoid a circular import.
+// Covers both DB-backed and declarative (YAML) group memberships.
+type GroupMembershipProvider interface {
+	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]EntityGroup, error)
 }
 
 // entityService is the default implementation of EntityServiceInterface.
 type entityService struct {
-	store             entityStoreInterface
-	hashService       cryptolib.HashServiceInterface
-	entityTypeService entitytype.EntityTypeServiceInterface
-	ouService         ou.OrganizationUnitServiceInterface
-	transactioner     transaction.Transactioner
-	logger            *log.Logger
+	store                   entityStoreInterface
+	hashService             cryptolib.HashServiceInterface
+	entityTypeService       entitytype.EntityTypeServiceInterface
+	ouService               ou.OrganizationUnitServiceInterface
+	transactioner           transaction.Transactioner
+	logger                  *log.Logger
+	groupMembershipProvider GroupMembershipProvider
 }
 
 // usesEntityType reports whether entities of the given category route through the entity type
@@ -413,9 +424,19 @@ func (s *entityService) GetEntityGroups(ctx context.Context, entityID string,
 	return s.store.GetEntityGroups(ctx, entityID, limit, offset)
 }
 
+// SetGroupMembershipProvider registers the group store used to resolve all group memberships.
+// Called by the group package after initialization to avoid a circular import.
+func (s *entityService) SetGroupMembershipProvider(provider GroupMembershipProvider) {
+	s.groupMembershipProvider = provider
+}
+
 // GetTransitiveEntityGroups retrieves all groups an entity belongs to, including nested group membership.
+// Delegates entirely to the group membership provider which covers both DB and declarative groups.
 func (s *entityService) GetTransitiveEntityGroups(ctx context.Context, entityID string) ([]EntityGroup, error) {
-	return s.store.GetTransitiveEntityGroups(ctx, entityID)
+	if s.groupMembershipProvider == nil {
+		return []EntityGroup{}, nil
+	}
+	return s.groupMembershipProvider.GetTransitiveGroupsForEntity(ctx, entityID)
 }
 
 // AuthenticateEntity authenticates an entity by combining identify and verify operations.

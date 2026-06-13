@@ -147,6 +147,9 @@
     ],
     "store": "composite"
   },
+  "group": {
+    "store": "composite"
+  },
   "declarative_resources": {
     "enabled": false
   },

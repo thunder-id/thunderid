@@ -25,6 +25,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/internal/entity"
 )
 
 // CompositeGroupStoreTestSuite contains tests for the composite group store.
@@ -200,6 +202,108 @@ func (suite *CompositeGroupStoreTestSuite) TestGetGroupList_FileListError() {
 	suite.mockFileStore.On("GetGroupList", mock.Anything, 2, 0).Return(nil, testErr)
 
 	_, err := suite.store.GetGroupList(context.Background(), 10, 0)
+
+	suite.Error(err)
+	suite.Equal(testErr, err)
+}
+
+// --- GetTransitiveGroupsForEntity ---
+
+func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_MergesBothStores() {
+	dbGroups := []entity.EntityGroup{
+		{ID: "grp1", Name: "Administrators", OUID: "ou1"},
+	}
+	fileGroups := []entity.EntityGroup{
+		{ID: "grp2", Name: "Declarative Group", OUID: "ou1"},
+	}
+
+	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(dbGroups, nil)
+	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(fileGroups, nil)
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Len(groups, 2)
+	ids := map[string]bool{}
+	for _, g := range groups {
+		ids[g.ID] = true
+	}
+	suite.True(ids["grp1"])
+	suite.True(ids["grp2"])
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_DeduplicatesOverlap() {
+	shared := entity.EntityGroup{ID: "grp1", Name: "Shared Group", OUID: "ou1"}
+	dbGroups := []entity.EntityGroup{shared}
+	fileGroups := []entity.EntityGroup{shared, {ID: "grp2", Name: "File Only", OUID: "ou1"}}
+
+	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(dbGroups, nil)
+	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(fileGroups, nil)
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Len(groups, 2)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_DBOnlyResult() {
+	dbGroups := []entity.EntityGroup{
+		{ID: "grp1", Name: "DB Group", OUID: "ou1"},
+	}
+
+	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(dbGroups, nil)
+	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return([]entity.EntityGroup{}, nil)
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Len(groups, 1)
+	suite.Equal("grp1", groups[0].ID)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_FileOnlyResult() {
+	fileGroups := []entity.EntityGroup{
+		{ID: "grp1", Name: "Declarative Group", OUID: "ou1"},
+	}
+
+	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return([]entity.EntityGroup{}, nil)
+	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(fileGroups, nil)
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Len(groups, 1)
+	suite.Equal("grp1", groups[0].ID)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_BothEmpty() {
+	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return([]entity.EntityGroup{}, nil)
+	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return([]entity.EntityGroup{}, nil)
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Empty(groups)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_DBStoreError() {
+	testErr := errors.New("db error")
+	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(nil, testErr)
+
+	_, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.Error(err)
+	suite.Equal(testErr, err)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_FileStoreError() {
+	testErr := errors.New("file store error")
+	dbGroups := []entity.EntityGroup{{ID: "grp1", Name: "DB Group", OUID: "ou1"}}
+
+	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(dbGroups, nil)
+	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(nil, testErr)
+
+	_, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
 
 	suite.Error(err)
 	suite.Equal(testErr, err)

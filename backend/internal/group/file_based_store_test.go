@@ -22,8 +22,9 @@ import (
 	"context"
 	"testing"
 
+	entitypkg "github.com/thunder-id/thunderid/internal/entity"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
-	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	entitystore "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -39,7 +40,7 @@ func TestGroupFileBasedStoreTestSuite(t *testing.T) {
 }
 
 func (suite *GroupFileBasedStoreTestSuite) SetupTest() {
-	genericStore := declarativeresource.NewGenericFileBasedStoreForTest(entity.KeyTypeGroup)
+	genericStore := declarativeresource.NewGenericFileBasedStoreForTest(entitystore.KeyTypeGroup)
 	suite.store = &fileBasedGroupStore{GenericFileBasedStore: genericStore}
 }
 
@@ -319,3 +320,115 @@ func (suite *GroupFileBasedStoreTestSuite) TestCreate_SetsIDFromParameter() {
 	suite.NoError(err)
 	suite.Equal("param-grp-id", retrieved.ID)
 }
+
+// Declarative resource loading (parseToGroup) translates public types user/app/agent to the
+// internal memberTypeEntity before storing. Tests seed with memberTypeEntity to match that flow.
+
+func (suite *GroupFileBasedStoreTestSuite) TestGetTransitiveGroupsForEntity_SingleGroup() {
+	suite.seedGroup(groupDeclarativeResource{
+		ID:   "grp1",
+		Name: "Administrators",
+		OUID: "ou1",
+		Members: []Member{
+			{ID: "user1", Type: memberTypeEntity},
+		},
+	})
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Len(groups, 1)
+	suite.Equal("grp1", groups[0].ID)
+	suite.Equal("Administrators", groups[0].Name)
+	suite.Equal("ou1", groups[0].OUID)
+}
+
+func (suite *GroupFileBasedStoreTestSuite) TestGetTransitiveGroupsForEntity_MultipleGroups() {
+	suite.seedGroup(groupDeclarativeResource{
+		ID:   "grp1",
+		Name: "Administrators",
+		OUID: "ou1",
+		Members: []Member{
+			{ID: "user1", Type: memberTypeEntity},
+		},
+	})
+	suite.seedGroup(groupDeclarativeResource{
+		ID:   "grp2",
+		Name: "Engineers",
+		OUID: "ou1",
+		Members: []Member{
+			{ID: "user1", Type: memberTypeEntity},
+			{ID: "user2", Type: memberTypeEntity},
+		},
+	})
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Len(groups, 2)
+	ids := map[string]bool{}
+	for _, g := range groups {
+		ids[g.ID] = true
+	}
+	suite.True(ids["grp1"])
+	suite.True(ids["grp2"])
+}
+
+func (suite *GroupFileBasedStoreTestSuite) TestGetTransitiveGroupsForEntity_NotMember() {
+	suite.seedGroup(groupDeclarativeResource{
+		ID:   "grp1",
+		Name: "Administrators",
+		OUID: "ou1",
+		Members: []Member{
+			{ID: "user2", Type: memberTypeEntity},
+		},
+	})
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Empty(groups)
+}
+
+func (suite *GroupFileBasedStoreTestSuite) TestGetTransitiveGroupsForEntity_EmptyStore() {
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Empty(groups)
+}
+
+// Group-type members (nested group references) must not match an entity lookup even when their ID
+// matches, because they represent group membership, not direct entity membership.
+func (suite *GroupFileBasedStoreTestSuite) TestGetTransitiveGroupsForEntity_IgnoresGroupTypeMembers() {
+	suite.seedGroup(groupDeclarativeResource{
+		ID:   "grp1",
+		Name: "Administrators",
+		OUID: "ou1",
+		Members: []Member{
+			{ID: "user1", Type: MemberTypeGroup}, // same ID but group type — must not match
+			{ID: "user2", Type: memberTypeEntity},
+		},
+	})
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Empty(groups)
+}
+
+func (suite *GroupFileBasedStoreTestSuite) TestGetTransitiveGroupsForEntity_GroupWithNoMembers() {
+	suite.seedGroup(groupDeclarativeResource{
+		ID:      "grp1",
+		Name:    "Empty",
+		OUID:    "ou1",
+		Members: []Member{},
+	})
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.Empty(groups)
+}
+
+// Ensure the return type satisfies entity.GroupMembershipProvider.
+var _ entitypkg.GroupMembershipProvider = (*fileBasedGroupStore)(nil)
