@@ -66,6 +66,7 @@ type flowExecService struct {
 	flowStore            flowStoreInterface
 	inboundClientService inboundclient.InboundClientServiceInterface
 	entityProvider       entityprovider.EntityProviderInterface
+	interceptorRunner    InterceptorRunnerInterface
 	observabilitySvc     observability.ObservabilityServiceInterface
 	transactioner        transaction.Transactioner
 	cryptoSvc            kmprovider.RuntimeCryptoProvider
@@ -75,6 +76,7 @@ func newFlowExecService(flowMgtService flowmgt.FlowMgtServiceInterface,
 	flowStore flowStoreInterface, flowEngine flowEngineInterface,
 	inboundClientService inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	interceptorRunner InterceptorRunnerInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	transactioner transaction.Transactioner,
 	cryptoSvc kmprovider.RuntimeCryptoProvider) FlowExecServiceInterface {
@@ -84,6 +86,7 @@ func newFlowExecService(flowMgtService flowmgt.FlowMgtServiceInterface,
 		flowEngine:           flowEngine,
 		inboundClientService: inboundClientService,
 		entityProvider:       entityProvider,
+		interceptorRunner:    interceptorRunner,
 		observabilitySvc:     observabilitySvc,
 		transactioner:        transactioner,
 		cryptoSvc:            cryptoSvc,
@@ -134,8 +137,7 @@ func (s *flowExecService) Execute(ctx context.Context,
 				log.String("error", loadErr.Error.DefaultValue))
 			return nil, loadErr
 		}
-		// Set the incoming challenge token on the context so the engine can validate it
-		engineCtx.ChallengeTokenIn = challengeToken
+		setChallengeToken(engineCtx, challengeToken)
 	}
 
 	// Set trace ID to engine context (request context is already set during context loading)
@@ -232,7 +234,6 @@ func (s *flowExecService) initContext(ctx context.Context, appID string, flowTyp
 	if err := s.setApplicationToContext(&engineCtx, logger); err != nil {
 		return nil, err
 	}
-
 	return &engineCtx, nil
 }
 
@@ -599,10 +600,24 @@ func prepareContext(ctx *EngineContext, action string, inputs map[string]string)
 	if ctx.RuntimeData == nil {
 		ctx.RuntimeData = make(map[string]string)
 	}
+	if ctx.InterceptorSharedData == nil {
+		ctx.InterceptorSharedData = make(map[string]string)
+	}
 
 	// Set the action if provided
 	if action != "" {
 		ctx.CurrentAction = action
+	}
+}
+
+// setChallengeToken copies incoming request data from the engine context into the
+// interceptor shared data so that interceptors can access it during execution.
+func setChallengeToken(ctx *EngineContext, challengeTokenIn string) {
+	if challengeTokenIn != "" {
+		if ctx.InterceptorSharedData == nil {
+			ctx.InterceptorSharedData = make(map[string]string)
+		}
+		ctx.InterceptorSharedData[common.InterceptorDataKeyChallengeTokenIn] = challengeTokenIn
 	}
 }
 

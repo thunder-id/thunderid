@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -54,6 +54,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	"github.com/thunder-id/thunderid/internal/flow/flowmeta"
+	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
@@ -270,14 +271,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		logger.Fatal(ctx, "Failed to initialize OpenID4VP verifier service", log.Error(err))
 	}
 
-	var emailClient email.EmailClientInterface
-	emailClient, err = email.Initialize()
-	if err != nil {
-		// Service registration runs at startup, outside any request.
-		logger.Debug(context.Background(), "Email client not configured. "+
-			"EmailExecutor will be registered but will not send emails.", log.Error(err))
-		emailClient = nil
-	}
+	emailClient := initEmailClient(ctx, logger)
 	flowFactory, graphCache, execRegistry := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
 			OUService:             ouService,
@@ -306,6 +300,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			OpenID4VPVerifierSvc:  openid4vpVerifierSvc,
 		},
 	)
+
+	interceptorRegistry, err := interceptor.Initialize(interceptor.InterceptorDependencies{
+		FlowFactory: flowFactory,
+	}, config.GetServerRuntime().Config.Flow)
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize InterceptorRegistry", log.Error(err))
+	}
 
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, graphCache)
@@ -381,7 +382,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	)
 
 	flowExecService, err := flowexec.Initialize(mux, flowMgtService, inboundClientService, entityProvider,
-		execRegistry, observabilitySvc, runtimeCryptoSvc)
+		execRegistry, interceptorRegistry, observabilitySvc, runtimeCryptoSvc)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
@@ -410,6 +411,17 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 // unregisterServices unregisters all services that require cleanup during shutdown.
 func unregisterServices() {
 	observabilitySvc.Shutdown()
+}
+
+// initEmailClient initializes the email client, returning nil if not configured.
+func initEmailClient(ctx context.Context, logger *log.Logger) email.EmailClientInterface {
+	client, err := email.Initialize()
+	if err != nil {
+		logger.Debug(ctx, "Email client not configured. "+
+			"EmailExecutor will be registered but will not send emails.", log.Error(err))
+		return nil
+	}
+	return client
 }
 
 // initializeFlowCoreAndExecutor initializes the flow core and executor services.

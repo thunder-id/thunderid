@@ -39,6 +39,7 @@ const (
 	colFlowType      = "flow_type"
 	colActiveVersion = "active_version"
 	colNodes         = "nodes"
+	colInterceptors  = "interceptors"
 	colCreatedAt     = "created_at"
 	colUpdatedAt     = "updated_at"
 	colVersion       = "version"
@@ -148,6 +149,11 @@ func (s *flowStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDef
 		return nil, fmt.Errorf("failed to marshal nodes: %w", err)
 	}
 
+	interceptorsJSON, err := json.Marshal(flow.Interceptors)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal interceptors: %w", err)
+	}
+
 	err = s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, queryCreateFlow, flowID, flow.Handle,
 			flow.Name, flow.FlowType, int64(1), s.deploymentID)
@@ -155,7 +161,8 @@ func (s *flowStore) CreateFlow(ctx context.Context, flowID string, flow *FlowDef
 			return fmt.Errorf("failed to create flow: %w", err)
 		}
 
-		_, err = dbClient.ExecuteContext(ctx, queryInsertFlowVersion, flowID, 1, string(nodesJSON), s.deploymentID)
+		_, err = dbClient.ExecuteContext(ctx, queryInsertFlowVersion,
+			flowID, 1, string(nodesJSON), string(interceptorsJSON), s.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to create flow version: %w", err)
 		}
@@ -219,6 +226,11 @@ func (s *flowStore) UpdateFlow(ctx context.Context, flowID string, flow *FlowDef
 		return nil, fmt.Errorf("failed to marshal nodes: %w", err)
 	}
 
+	interceptorsJSON, err := json.Marshal(flow.Interceptors)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal interceptors: %w", err)
+	}
+
 	err = s.withDBClientContext(ctx, func(dbClient provider.DBClientInterface) error {
 		flowResults, err := dbClient.QueryContext(ctx, queryGetFlow, flowID, s.deploymentID)
 		if err != nil {
@@ -236,7 +248,8 @@ func (s *flowStore) UpdateFlow(ctx context.Context, flowID string, flow *FlowDef
 		newVersion := currentFlow.ActiveVersion + 1
 
 		// Insert the new version first to ensure it succeeds before updating the flow
-		if err := s.pushToVersionStack(ctx, dbClient, flowID, newVersion, string(nodesJSON)); err != nil {
+		if err := s.pushToVersionStack(
+			ctx, dbClient, flowID, newVersion, string(nodesJSON), string(interceptorsJSON)); err != nil {
 			return err
 		}
 
@@ -359,10 +372,15 @@ func (s *flowStore) RestoreFlowVersion(ctx context.Context, flowID string, versi
 			return errVersionNotFound
 		}
 
+		interceptorsJSON, err := s.getString(versionResults[0], colInterceptors)
+		if err != nil {
+			return errVersionNotFound
+		}
+
 		newVersion := currentFlow.ActiveVersion + 1
 
 		// Insert the new version first to ensure it succeeds before updating the flow
-		if err := s.pushToVersionStack(ctx, dbClient, flowID, newVersion, nodesJSON); err != nil {
+		if err := s.pushToVersionStack(ctx, dbClient, flowID, newVersion, nodesJSON, interceptorsJSON); err != nil {
 			return err
 		}
 
@@ -383,8 +401,9 @@ func (s *flowStore) RestoreFlowVersion(ctx context.Context, flowID string, versi
 // pushToVersionStack adds a new version to the version history and removes the oldest version
 // if the count exceeds max_version_history.
 func (s *flowStore) pushToVersionStack(ctx context.Context, dbClient provider.DBClientInterface,
-	flowID string, version int, nodesJSON string) error {
-	_, err := dbClient.ExecuteContext(ctx, queryInsertFlowVersion, flowID, version, nodesJSON, s.deploymentID)
+	flowID string, version int, nodesJSON string, interceptorsJSON string) error {
+	_, err := dbClient.ExecuteContext(ctx, queryInsertFlowVersion,
+		flowID, version, nodesJSON, interceptorsJSON, s.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to insert flow version: %w", err)
 	}
@@ -592,6 +611,13 @@ func (s *flowStore) buildCompleteFlowDefinitionFromRow(row map[string]interface{
 		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
 	}
 
+	interceptorsJSON, _ := s.getString(row, colInterceptors)
+	if interceptorsJSON != "" {
+		if err := json.Unmarshal([]byte(interceptorsJSON), &flow.Interceptors); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal interceptors: %w", err)
+		}
+	}
+
 	return flow, nil
 }
 
@@ -673,6 +699,13 @@ func (s *flowStore) buildFlowVersionFromRow(row map[string]interface{}) (*FlowVe
 
 	if err := json.Unmarshal([]byte(nodesJSON), &flowVersion.Nodes); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
+	}
+
+	interceptorsJSON, _ := s.getString(row, colInterceptors)
+	if interceptorsJSON != "" {
+		if err := json.Unmarshal([]byte(interceptorsJSON), &flowVersion.Interceptors); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal interceptors: %w", err)
+		}
 	}
 
 	return flowVersion, nil

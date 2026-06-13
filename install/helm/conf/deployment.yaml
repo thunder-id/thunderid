@@ -206,6 +206,12 @@ flow:
     - {{ . | quote }}
   {{- end }}
 {{- end }}
+{{- if .Values.configuration.flow.interceptors }}
+  interceptors:
+  {{- range .Values.configuration.flow.interceptors }}
+    - {{ . | quote }}
+  {{- end }}
+{{- end }}
 
 cors:
   allowed_origins:

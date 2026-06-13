@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -134,6 +134,7 @@ func (b *graphBuilder) buildGraph(ctx context.Context, flow *CompleteFlowDefinit
 	}
 
 	b.computeSegments(graph, boundaries)
+	b.attachInterceptors(flow, graph)
 
 	return graph, nil
 }
@@ -512,6 +513,20 @@ func (b *graphBuilder) validateExecutorName(executorName string) error {
 	}
 
 	return nil
+}
+
+// attachInterceptors creates interceptor execution units from the flow definition and attaches them to the graph.
+func (b *graphBuilder) attachInterceptors(flow *CompleteFlowDefinition, graph core.GraphInterface) {
+	if len(flow.Interceptors) == 0 {
+		return
+	}
+
+	units := make([]core.InterceptorUnitInterface, 0, len(flow.Interceptors))
+	for _, def := range flow.Interceptors {
+		units = append(units, b.flowFactory.CreateInterceptorUnit(
+			def.Name, def.Mode, def.Scope, def.ApplyTo, def.Properties))
+	}
+	graph.SetInterceptors(units)
 }
 
 // addGraphEdges adds all collected edges to the graph.

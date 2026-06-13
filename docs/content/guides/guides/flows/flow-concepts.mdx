@@ -112,6 +112,12 @@ Always connect both the success and failure ports on every TASK EXECUTION node. 
 
 See [View and Executor Pairings](../advanced-configurations#view-and-executor-pairings) for guidance on pairing PROMPT nodes with the correct executors.
 
+## Interceptors
+
+A flow definition can declare an optional `interceptors` array to attach cross-cutting operations that run at defined lifecycle points (before or after a request, or around individual nodes). Interceptors are declared at the flow level and apply across nodes based on their mode and scope.
+
+For the full field reference and lifecycle details, see [Interceptors](../advanced-configurations#interceptors).
+
 ## Flow Versioning
 
 Every time you save a flow, <ProductName /> creates a new version. The version number appears in the **Version** column on the Flows list page. You can view version history and restore any earlier version via API. See [Flow Versioning API Reference](/docs/next/apis/#tag/flow-versioning).

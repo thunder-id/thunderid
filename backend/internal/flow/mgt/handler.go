@@ -275,11 +275,21 @@ func parsePaginationParams(r *http.Request) (int, int, *serviceerror.ServiceErro
 // TODO: Currently we're storing node representation as it is. In the future, we should sanitize and
 // validate it properly.
 func sanitizeFlowDefinitionRequest(req *FlowDefinitionRequest) *FlowDefinition {
+	var interceptors []InterceptorDefinition
+	if len(req.Interceptors) > 0 {
+		interceptors = make([]InterceptorDefinition, len(req.Interceptors))
+		for i, ic := range req.Interceptors {
+			interceptors[i] = ic
+			interceptors[i].Name = utils.SanitizeString(ic.Name)
+		}
+	}
+
 	sanitized := &FlowDefinition{
-		Handle:   utils.SanitizeString(req.Handle),
-		Name:     utils.SanitizeString(req.Name),
-		FlowType: req.FlowType,
-		Nodes:    req.Nodes,
+		Handle:       utils.SanitizeString(req.Handle),
+		Name:         utils.SanitizeString(req.Name),
+		FlowType:     req.FlowType,
+		Interceptors: interceptors,
+		Nodes:        req.Nodes,
 	}
 
 	return sanitized

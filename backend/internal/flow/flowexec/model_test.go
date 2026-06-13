@@ -782,3 +782,189 @@ func (s *ModelTestSuite) TestCurrentSegmentID_RoundTrip() {
 	s.NoError(err)
 	s.Equal("seg-2", resultCtx.CurrentSegmentID)
 }
+
+// MergeRuntimeData tests
+
+func (s *ModelTestSuite) TestMergeRuntimeData_IntoExistingMap() {
+	ctx := &EngineContext{
+		RuntimeData: map[string]string{"existing": "value"},
+	}
+
+	ctx.MergeRuntimeData(map[string]string{"new": "data", "another": "entry"})
+
+	s.Len(ctx.RuntimeData, 3)
+	s.Equal("value", ctx.RuntimeData["existing"])
+	s.Equal("data", ctx.RuntimeData["new"])
+	s.Equal("entry", ctx.RuntimeData["another"])
+}
+
+func (s *ModelTestSuite) TestMergeRuntimeData_NilRuntimeData() {
+	ctx := &EngineContext{
+		RuntimeData: nil,
+	}
+
+	ctx.MergeRuntimeData(map[string]string{"key": "value"})
+
+	s.NotNil(ctx.RuntimeData)
+	s.Equal("value", ctx.RuntimeData["key"])
+}
+
+func (s *ModelTestSuite) TestMergeRuntimeData_OverwritesExistingKeys() {
+	ctx := &EngineContext{
+		RuntimeData: map[string]string{"key": "old"},
+	}
+
+	ctx.MergeRuntimeData(map[string]string{"key": "new"})
+
+	s.Equal("new", ctx.RuntimeData["key"])
+}
+
+func (s *ModelTestSuite) TestMergeRuntimeData_EmptyInput() {
+	ctx := &EngineContext{
+		RuntimeData: map[string]string{"existing": "value"},
+	}
+
+	ctx.MergeRuntimeData(map[string]string{})
+
+	s.Len(ctx.RuntimeData, 1)
+	s.Equal("value", ctx.RuntimeData["existing"])
+}
+
+func (s *ModelTestSuite) TestMergeRuntimeData_NilInput() {
+	ctx := &EngineContext{
+		RuntimeData: map[string]string{"existing": "value"},
+	}
+
+	ctx.MergeRuntimeData(nil)
+
+	s.Len(ctx.RuntimeData, 1)
+	s.Equal("value", ctx.RuntimeData["existing"])
+}
+
+// InterceptorSharedData serialization tests
+
+func (s *ModelTestSuite) TestFromEngineContext_WithInterceptorSharedData() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("test-graph-id")
+
+	ctx := EngineContext{
+		Context:               context.Background(),
+		ExecutionID:           "test-exec-id",
+		FlowType:              common.FlowTypeAuthentication,
+		UserInputs:            map[string]string{},
+		RuntimeData:           map[string]string{},
+		ExecutionHistory:      map[string]*common.NodeExecutionRecord{},
+		Graph:                 mockGraph,
+		InterceptorSharedData: map[string]string{"challenge": "abc123"},
+	}
+
+	dbModel, err := FromEngineContext(ctx)
+
+	s.NoError(err)
+	s.NotNil(dbModel)
+
+	content := s.getContextContent(dbModel)
+	s.NotNil(content.InterceptorSharedData)
+	s.Contains(*content.InterceptorSharedData, "abc123")
+}
+
+func (s *ModelTestSuite) TestFromEngineContext_NilInterceptorSharedData() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("test-graph-id")
+
+	ctx := EngineContext{
+		Context:               context.Background(),
+		ExecutionID:           "test-exec-id",
+		FlowType:              common.FlowTypeAuthentication,
+		UserInputs:            map[string]string{},
+		RuntimeData:           map[string]string{},
+		ExecutionHistory:      map[string]*common.NodeExecutionRecord{},
+		Graph:                 mockGraph,
+		InterceptorSharedData: nil,
+	}
+
+	dbModel, err := FromEngineContext(ctx)
+
+	s.NoError(err)
+	content := s.getContextContent(dbModel)
+	// nil map is marshaled as "null", same pattern as RuntimeData
+	s.NotNil(content.InterceptorSharedData)
+	s.Equal("null", *content.InterceptorSharedData)
+}
+
+func (s *ModelTestSuite) TestToEngineContext_WithInterceptorSharedData() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+
+	sharedDataJSON := `{"token":"xyz"}`
+
+	content := flowContextContent{
+		GraphID:               "test-graph-id",
+		InterceptorSharedData: &sharedDataJSON,
+		UserInputs:            func() *string { v := `{}`; return &v }(),
+		RuntimeData:           func() *string { v := `{}`; return &v }(),
+		ExecutionHistory:      func() *string { v := `{}`; return &v }(),
+	}
+	ctxJSON, _ := json.Marshal(content)
+	dbModel := &FlowContextDB{
+		ExecutionID: "test-exec-id",
+		Context:     string(ctxJSON),
+	}
+
+	resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph)
+
+	s.NoError(err)
+	s.NotNil(resultCtx.InterceptorSharedData)
+	s.Equal("xyz", resultCtx.InterceptorSharedData["token"])
+}
+
+func (s *ModelTestSuite) TestToEngineContext_NilInterceptorSharedData() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+
+	content := flowContextContent{
+		GraphID:               "test-graph-id",
+		InterceptorSharedData: nil,
+		UserInputs:            func() *string { v := `{}`; return &v }(),
+		RuntimeData:           func() *string { v := `{}`; return &v }(),
+		ExecutionHistory:      func() *string { v := `{}`; return &v }(),
+	}
+	ctxJSON, _ := json.Marshal(content)
+	dbModel := &FlowContextDB{
+		ExecutionID: "test-exec-id",
+		Context:     string(ctxJSON),
+	}
+
+	resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph)
+
+	s.NoError(err)
+	// When InterceptorSharedData is nil in content, it initializes to empty map (same as RuntimeData)
+	s.NotNil(resultCtx.InterceptorSharedData)
+	s.Empty(resultCtx.InterceptorSharedData)
+}
+
+func (s *ModelTestSuite) TestInterceptorSharedData_RoundTrip() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("test-graph-id")
+	mockGraph.On("GetType").Return(common.FlowTypeAuthentication)
+
+	ctx := EngineContext{
+		Context:               context.Background(),
+		ExecutionID:           "test-exec-id",
+		FlowType:              common.FlowTypeAuthentication,
+		UserInputs:            map[string]string{},
+		RuntimeData:           map[string]string{},
+		ExecutionHistory:      map[string]*common.NodeExecutionRecord{},
+		Graph:                 mockGraph,
+		InterceptorSharedData: map[string]string{"reqCount": "3"},
+	}
+
+	dbModel, err := FromEngineContext(ctx)
+	s.NoError(err)
+
+	resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph)
+	s.NoError(err)
+
+	s.NotNil(resultCtx.InterceptorSharedData)
+	s.Equal("3", resultCtx.InterceptorSharedData["reqCount"])
+}

@@ -28,7 +28,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
-	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability"
@@ -43,20 +42,23 @@ type flowEngineInterface interface {
 
 // FlowEngine is the main engine implementation for orchestrating flow executions.
 type flowEngine struct {
-	executorRegistry executor.ExecutorRegistryInterface
-	observabilitySvc observability.ObservabilityServiceInterface
-	logger           *log.Logger
+	executorRegistry  executor.ExecutorRegistryInterface
+	interceptorRunner InterceptorRunnerInterface
+	observabilitySvc  observability.ObservabilityServiceInterface
+	logger            *log.Logger
 }
 
 // newFlowEngine creates a new flow engine with the given dependencies.
 func newFlowEngine(
 	executorRegistry executor.ExecutorRegistryInterface,
+	interceptorRunner InterceptorRunnerInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
 ) flowEngineInterface {
 	return &flowEngine{
-		executorRegistry: executorRegistry,
-		observabilitySvc: observabilitySvc,
-		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowEngine")),
+		executorRegistry:  executorRegistry,
+		interceptorRunner: interceptorRunner,
+		observabilitySvc:  observabilitySvc,
+		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowEngine")),
 	}
 }
 
@@ -82,11 +84,16 @@ func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *serviceerror.Servi
 		return flowStep, err
 	}
 
-	skipChallengeValidation := fe.validateSegmentResumePolicy(ctx, logger)
 	currentNode := ctx.CurrentNode
 
+	// Run PRE_REQUEST interceptors once before any node executes.
+	if _, svcErr := fe.runInterceptors(
+		common.InterceptorModePreRequest, ctx, nil, &flowStep); svcErr != nil {
+		publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+		return flowStep, svcErr
+	}
+
 	// Execute the graph nodes until a terminal condition is met or currentNode is nil
-	challengeTokenValidated := false
 	for currentNode != nil {
 		logger.Debug(ctx.Context, "Executing node", log.String("nodeID", currentNode.GetID()),
 			log.String("nodeType", string(currentNode.GetType())))
@@ -142,17 +149,19 @@ func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *serviceerror.Servi
 			return flowStep, svcErr
 		}
 
-		// Validate the incoming challenge token once per request against the first execution node.
-		// Node executor has to be set before validation as task execution nodes have to check validation
-		// policy against the executor
-		if !challengeTokenValidated {
-			challengeTokenValidated = true
-			if !skipChallengeValidation {
-				if svcErr := fe.validateChallengeToken(ctx, currentNode); svcErr != nil {
-					publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
-					return flowStep, svcErr
-				}
+		// Run PRE_NODE interceptors before the node executes.
+		if continueExec, svcErr := fe.runInterceptors(
+			common.InterceptorModePreNode, ctx, currentNode, &flowStep); svcErr != nil {
+			publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+			return flowStep, svcErr
+		} else if !continueExec {
+			// INCOMPLETE: run POST_REQUEST interceptors for cleanup, then return.
+			if _, postSvcErr := fe.runInterceptors(
+				common.InterceptorModePostRequest, ctx, nil, &flowStep); postSvcErr != nil {
+				publishFlowFailedEvent(ctx, postSvcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+				return flowStep, postSvcErr
 			}
+			return flowStep, nil
 		}
 
 		executionStartTime := time.Now().UnixMilli()
@@ -190,22 +199,44 @@ func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *serviceerror.Servi
 			return flowStep, svcErr
 		}
 		if !continueExecution {
+			// Run POST_REQUEST interceptors for incomplete flows.
+			if _, svcErr := fe.runInterceptors(
+				common.InterceptorModePostRequest, ctx, nil, &flowStep); svcErr != nil {
+				publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+				return flowStep, svcErr
+			}
+
 			// Check if flow failed or just incomplete
 			if flowStep.Status == common.FlowStatusError {
 				publishFlowFailedEvent(ctx, nil, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
 				return flowStep, nil
 			}
-
-			// Flow is incomplete — rotate challenge token so the next step is bound to a fresh token
-			if svcErr := fe.rotateChallengeToken(ctx, &flowStep); svcErr != nil {
-				publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
-				return flowStep, svcErr
-			}
-
 			// Don't publish completed event here - flow is incomplete (waiting for user input)
 			return flowStep, nil
 		}
+
+		// Run POST_NODE interceptors after the node executes.
+		if continueExec, svcErr := fe.runInterceptors(
+			common.InterceptorModePostNode, ctx, currentNode, &flowStep); svcErr != nil {
+			publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+			return flowStep, svcErr
+		} else if !continueExec {
+			// INCOMPLETE: run POST_REQUEST interceptors for cleanup, then return.
+			if _, postSvcErr := fe.runInterceptors(
+				common.InterceptorModePostRequest, ctx, nil, &flowStep); postSvcErr != nil {
+				publishFlowFailedEvent(ctx, postSvcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+				return flowStep, postSvcErr
+			}
+			return flowStep, nil
+		}
 		currentNode = nextNode
+	}
+
+	// Run POST_REQUEST interceptors after all nodes have been processed.
+	if _, svcErr := fe.runInterceptors(
+		common.InterceptorModePostRequest, ctx, nil, &flowStep); svcErr != nil {
+		publishFlowFailedEvent(ctx, svcErr, flowStartTime, time.Now().UnixMilli(), fe.observabilitySvc)
+		return flowStep, svcErr
 	}
 
 	// If we reach here, it means the flow has been executed successfully.
@@ -224,6 +255,57 @@ func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *serviceerror.Servi
 	publishFlowCompletedEvent(ctx, flowStartTime, flowEndTime, fe.observabilitySvc)
 
 	return flowStep, nil
+}
+
+// runInterceptors builds an InterceptorRunnerContext from the engine context, delegates to the
+// interceptor runner, updates the engine context with the response, and processes the response
+// to populate the FlowStep if needed.
+// Returns (true, nil) if execution should continue, (false, nil) if the flow should stop
+// (INCOMPLETE), or (false, svcErr) on failure.
+func (fe *flowEngine) runInterceptors(
+	mode common.InterceptorMode, ctx *EngineContext, node core.NodeInterface,
+	flowStep *FlowStep) (bool, *serviceerror.ServiceError) {
+	// Get interceptors from the graph
+	if ctx.Graph == nil {
+		return true, nil
+	}
+
+	interceptors := ctx.Graph.GetInterceptors()
+
+	// Determine current node info for scoping and interceptor execution context.
+	currentNode := ctx.CurrentNode
+	if node != nil {
+		currentNode = node
+	}
+
+	isSegRestartAllowed := fe.isSegmentRestartAllowed(ctx, fe.logger)
+
+	execCtx := &InterceptorRunnerContext{
+		Ctx:                 ctx.Context,
+		ExecutionID:         ctx.ExecutionID,
+		AppID:               ctx.AppID,
+		FlowType:            ctx.FlowType,
+		CurrentNode:         currentNode,
+		AllowSegmentRestart: isSegRestartAllowed,
+		UserInputs:          maps.Clone(ctx.UserInputs),
+		ForwardedData:       maps.Clone(ctx.ForwardedData),
+		AdditionalData:      maps.Clone(ctx.AdditionalData),
+		Interceptors:        interceptors,
+		SharedData:          ctx.InterceptorSharedData,
+	}
+	if execCtx.SharedData == nil {
+		execCtx.SharedData = make(map[string]string)
+	}
+
+	resp, svcErr := fe.interceptorRunner.runInterceptors(mode, execCtx)
+	if svcErr != nil {
+		return false, svcErr
+	}
+
+	fe.updateContextWithInterceptorResponse(ctx, resp)
+
+	continueExecution := fe.processInterceptorResponse(resp, flowStep)
+	return continueExecution, nil
 }
 
 // trackPresentedOptionalInputs records the optional inputs presented in an incomplete view response
@@ -453,6 +535,59 @@ func (fe *flowEngine) updateContextWithNodeResponse(engineCtx *EngineContext, no
 	// Write back AuthUser from the node response
 	if nodeResp.AuthUser.IsAuthenticated() {
 		engineCtx.AuthUser = nodeResp.AuthUser
+	}
+}
+
+// updateContextWithInterceptorResponse merges interceptor response data into the engine context.
+func (fe *flowEngine) updateContextWithInterceptorResponse(
+	engineCtx *EngineContext, resp *common.InterceptorResponse,
+) {
+	if resp == nil {
+		return
+	}
+
+	if len(resp.EngineOutputs) > 0 {
+		engineCtx.MergeRuntimeData(resp.EngineOutputs)
+	}
+}
+
+// processInterceptorResponse processes the interceptor response and determines whether to continue
+// execution. Returns true if execution should continue, false if it should stop.
+func (fe *flowEngine) processInterceptorResponse(resp *common.InterceptorResponse,
+	flowStep *FlowStep) bool {
+	if resp == nil {
+		return true
+	}
+
+	switch resp.Status {
+	case common.InterceptorStatusComplete:
+		fe.updateFlowStepWithInterceptorResponse(flowStep, resp)
+		return true
+	case common.InterceptorStatusIncomplete:
+		fe.updateFlowStepWithInterceptorResponse(flowStep, resp)
+		flowStep.Status = common.FlowStatusIncomplete
+		return false
+	case common.InterceptorStatusFail:
+		flowStep.Status = common.FlowStatusError
+		flowStep.Error = resp.Error
+		return false
+	default:
+		return true
+	}
+}
+
+func (fe *flowEngine) updateFlowStepWithInterceptorResponse(flowStep *FlowStep, resp *common.InterceptorResponse) {
+	if resp == nil {
+		return
+	}
+	if resp.Error != nil {
+		flowStep.Error = resp.Error
+	}
+	if len(resp.FieldErrors) > 0 {
+		flowStep.Data.FieldErrors = resp.FieldErrors
+	}
+	if resp.ChallengeToken != "" {
+		flowStep.ChallengeToken = resp.ChallengeToken
 	}
 }
 
@@ -820,10 +955,10 @@ func (fe *flowEngine) resolveStepDetailsForPrompt(ctx *EngineContext, nodeResp *
 	return nil
 }
 
-// validateSegmentResumePolicy checks whether the current flow is resuming inside a segment whose
-// start node allows segment restart. Returns true if challenge token validation should be skipped.
-func (fe *flowEngine) validateSegmentResumePolicy(ctx *EngineContext, logger *log.Logger) bool {
-	if !ctx.Graph.HasSegments() || ctx.CurrentSegmentID == "" {
+// isSegmentRestartAllowed checks whether the current flow is resuming inside a segment whose
+// start node allows segment restart.
+func (fe *flowEngine) isSegmentRestartAllowed(ctx *EngineContext, logger *log.Logger) bool {
+	if ctx.Graph == nil || !ctx.Graph.HasSegments() || ctx.CurrentSegmentID == "" {
 		return false
 	}
 
@@ -842,68 +977,7 @@ func (fe *flowEngine) validateSegmentResumePolicy(ctx *EngineContext, logger *lo
 	}
 
 	policy := segStartNode.GetExecutionPolicy()
-	if policy == nil || !policy.AllowSegmentRestart {
-		return false
-	}
-
-	logger.Debug(ctx.Context,
-		"Segment restart allowed; skipping challenge token validation for segment resume",
-		log.String("segmentID", seg.ID), log.String("segmentStartNodeID", seg.StartNodeID))
-
-	return true
-}
-
-// validateChallengeToken validates the incoming challenge token against the stored hash.
-// If the hash is not present in the context, i.e. this is the first execution or the previous step
-// did not set a token, validation is skipped. Also if the current node's execution policy allows
-// skipping, validation is skipped.
-func (fe *flowEngine) validateChallengeToken(
-	ctx *EngineContext, currentNode core.NodeInterface) *serviceerror.ServiceError {
-	logger := fe.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-
-	if ctx.ChallengeTokenHash == "" {
-		logger.Debug(ctx.Context, "Challenge token hash is empty in the context; skipping validation")
-		return nil
-	}
-	if currentNode != nil {
-		policy := currentNode.GetExecutionPolicy()
-		if policy != nil && policy.SkipChallengeValidation {
-			logger.Debug(ctx.Context,
-				"Current node's execution policy set to skip challenge token validation; skipping")
-			return nil
-		}
-	} else {
-		logger.Debug(ctx.Context,
-			"Current node is nil while validating challenge token; enforcing validation")
-	}
-
-	if ctx.ChallengeTokenIn == "" {
-		logger.Debug(ctx.Context, "Challenge token is empty in the request")
-		return &ErrorInvalidChallengeToken
-	}
-	if !cryptolib.ValidateTokenHash(ctx.ChallengeTokenIn, ctx.ChallengeTokenHash) {
-		logger.Debug(ctx.Context, "Invalid challenge token provided in the request")
-		return &ErrorInvalidChallengeToken
-	}
-
-	return nil
-}
-
-// rotateChallengeToken generates a fresh challenge token, stores its hash in the engine context and
-// returns the new token in the flow step. This ensures that the next step is bound to a fresh token
-// and prevents replay attacks with old tokens.
-func (fe *flowEngine) rotateChallengeToken(ctx *EngineContext, flowStep *FlowStep) *serviceerror.ServiceError {
-	logger := fe.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
-
-	newToken, err := cryptolib.GenerateSecureToken()
-	if err != nil {
-		logger.Error(ctx.Context, "Failed to generate new challenge token", log.Error(err))
-		return &serviceerror.InternalServerError
-	}
-
-	ctx.ChallengeTokenHash = cryptolib.HashToken(newToken)
-	flowStep.ChallengeToken = newToken
-	return nil
+	return policy != nil && policy.AllowSegmentRestart
 }
 
 // recordNodeExecution adds or updates execution record for the node.

@@ -33,6 +33,10 @@ type FlowFactoryInterface interface {
 	CreateGraph(id string, _type common.FlowType) GraphInterface
 	CreateExecutor(name string, executorType common.ExecutorType,
 		defaultInputs, prerequisites []common.Input) ExecutorInterface
+	CreateInterceptor(name string, isDefault bool, priority int) InterceptorInterface
+	CreateInterceptorUnit(name string, mode common.InterceptorMode,
+		scope common.InterceptorScope, applyTo []string,
+		properties map[string]interface{}) InterceptorUnitInterface
 	CloneNode(source NodeInterface) (NodeInterface, error)
 	CloneNodes(nodes map[string]NodeInterface) (map[string]NodeInterface, error)
 }
@@ -90,6 +94,18 @@ func (f *flowFactory) CreateGraph(id string, _type common.FlowType) GraphInterfa
 func (f *flowFactory) CreateExecutor(name string, executorType common.ExecutorType,
 	defaultInputs, prerequisites []common.Input) ExecutorInterface {
 	return newExecutor(name, executorType, defaultInputs, prerequisites)
+}
+
+// CreateInterceptor creates a new interceptor with the given properties
+func (f *flowFactory) CreateInterceptor(name string, isDefault bool, priority int) InterceptorInterface {
+	return newInterceptor(name, isDefault, priority)
+}
+
+// CreateInterceptorUnit creates a new interceptor execution unit from flow-level configuration.
+func (f *flowFactory) CreateInterceptorUnit(name string, mode common.InterceptorMode,
+	scope common.InterceptorScope, applyTo []string,
+	properties map[string]interface{}) InterceptorUnitInterface {
+	return newInterceptorUnit(name, mode, scope, applyTo, properties)
 }
 
 // CloneNode creates a deep copy of a given node

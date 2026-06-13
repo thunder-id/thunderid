@@ -50,6 +50,8 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 )
 
+const existingExecutionID = "existing-execution-id"
+
 // txMarkerKey is an unexported type used as a context key for the transaction marker in tests.
 type txMarkerKey struct{}
 
@@ -515,7 +517,7 @@ func TestDecryptCalledForEncryptedStoredContext(t *testing.T) {
 	testGraph := flowFactory.CreateGraph("test-graph-id", common.FlowTypeAuthentication)
 
 	engineCtx := EngineContext{
-		ExecutionID:       "existing-execution-id",
+		ExecutionID:       existingExecutionID,
 		AppID:             "test-app-id",
 		FlowType:          common.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{Attributes: map[string]interface{}{}},
@@ -529,7 +531,7 @@ func TestDecryptCalledForEncryptedStoredContext(t *testing.T) {
 
 	// Simulate what the store returns: an encrypted blob
 	encryptedStoredCtx := &FlowContextDB{
-		ExecutionID: "existing-execution-id",
+		ExecutionID: existingExecutionID,
 		Context:     `{"alg":"AES-GCM","ct":"c2VjcmV0","kid":"k1"}`,
 	}
 
@@ -548,7 +550,7 @@ func TestDecryptCalledForEncryptedStoredContext(t *testing.T) {
 	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]byte("re-encrypted"), nil, nil)
 
-	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(encryptedStoredCtx, nil)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(encryptedStoredCtx, nil)
 	mockFlowMgtSvc.EXPECT().GetGraph(mock.Anything, "test-graph-id").Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
@@ -558,7 +560,7 @@ func TestDecryptCalledForEncryptedStoredContext(t *testing.T) {
 
 	// Engine receives a properly restored context — not the raw encrypted bytes
 	mockEngine.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
-		return ctx != nil && ctx.AppID == "test-app-id" && ctx.ExecutionID == "existing-execution-id"
+		return ctx != nil && ctx.AppID == "test-app-id" && ctx.ExecutionID == existingExecutionID
 	})).Return(FlowStep{Status: common.FlowStatusIncomplete}, nil)
 
 	mockStore.EXPECT().UpdateFlowContext(
@@ -575,7 +577,7 @@ func TestDecryptCalledForEncryptedStoredContext(t *testing.T) {
 		cryptoSvc:            mockCrypto,
 	}
 
-	flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
+	flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
 		string(common.FlowTypeAuthentication), false, "submit", map[string]string{}, "")
 
 	assert.Nil(t, svcErr)
@@ -792,17 +794,17 @@ func TestExecute_ContextDecryptionFailure(t *testing.T) {
 
 	// Context looks encrypted (has "alg" field) but the ciphertext is invalid
 	invalidCtx := &FlowContextDB{
-		ExecutionID: "existing-execution-id",
+		ExecutionID: existingExecutionID,
 		Context:     `{"alg":"AES-GCM","ct":"not-valid-ciphertext!!!","kid":"key-1"}`,
 	}
-	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(invalidCtx, nil)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(invalidCtx, nil)
 
 	service := &flowExecService{
 		flowStore: mockStore,
 		cryptoSvc: mockCrypto,
 	}
 
-	_, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
+	_, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
 		string(common.FlowTypeAuthentication), false, "submit", map[string]string{}, "")
 
 	assert.NotNil(t, svcErr)
@@ -816,7 +818,7 @@ func TestExecute_ContextDecryptionSuccess(t *testing.T) {
 	testGraph := flowFactory.CreateGraph("test-graph-id", common.FlowTypeAuthentication)
 
 	engineCtx := EngineContext{
-		ExecutionID: "existing-execution-id",
+		ExecutionID: existingExecutionID,
 		AppID:       "test-app-id",
 		FlowType:    common.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
@@ -839,7 +841,7 @@ func TestExecute_ContextDecryptionSuccess(t *testing.T) {
 	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]byte("encrypted-ctx"), nil, nil)
 
-	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(storedCtx, nil)
 	mockFlowMgtSvc.EXPECT().GetGraph(mock.Anything, "test-graph-id").Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
@@ -848,7 +850,7 @@ func TestExecute_ContextDecryptionSuccess(t *testing.T) {
 		(*entityprovider.EntityProviderError)(nil))
 	challengeToken := "test-challenge-token"
 	mockEngine.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
-		return ctx != nil && ctx.ChallengeTokenIn == challengeToken
+		return ctx != nil && ctx.ExecutionID == existingExecutionID
 	})).Return(FlowStep{Status: common.FlowStatusIncomplete}, nil)
 	mockStore.EXPECT().UpdateFlowContext(
 		mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txMarkerKey{}) == "tx" }),
@@ -864,7 +866,7 @@ func TestExecute_ContextDecryptionSuccess(t *testing.T) {
 		cryptoSvc:            mockCrypto,
 	}
 
-	flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
+	flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
 		string(common.FlowTypeAuthentication), false, "submit", map[string]string{}, challengeToken)
 
 	assert.Nil(t, svcErr)
@@ -877,7 +879,7 @@ func TestExecute_ExistingFlowWithoutChallengeToken(t *testing.T) {
 	testGraph := flowFactory.CreateGraph("test-graph-id", common.FlowTypeAuthentication)
 
 	engineCtx := EngineContext{
-		ExecutionID: "existing-execution-id",
+		ExecutionID: existingExecutionID,
 		AppID:       "test-app-id",
 		FlowType:    common.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
@@ -897,7 +899,7 @@ func TestExecute_ExistingFlowWithoutChallengeToken(t *testing.T) {
 	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
 	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
 
-	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(storedCtx, nil)
 	mockFlowMgtSvc.EXPECT().GetGraph(mock.Anything, "test-graph-id").Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
@@ -910,7 +912,7 @@ func TestExecute_ExistingFlowWithoutChallengeToken(t *testing.T) {
 		Return([]byte("encrypted-ctx"), nil, nil)
 
 	mockEngine.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
-		return ctx != nil && ctx.ChallengeTokenIn == ""
+		return ctx != nil && ctx.ExecutionID == existingExecutionID
 	})).Return(FlowStep{Status: common.FlowStatusIncomplete}, nil)
 	mockStore.EXPECT().UpdateFlowContext(
 		mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txMarkerKey{}) == "tx" }),
@@ -927,7 +929,7 @@ func TestExecute_ExistingFlowWithoutChallengeToken(t *testing.T) {
 	}
 
 	// Execute with empty challenge token
-	flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
+	flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
 		string(common.FlowTypeAuthentication), false, "submit", map[string]string{}, "")
 
 	assert.Nil(t, svcErr)
@@ -966,7 +968,7 @@ func TestExecute_ExistingFlowWithDifferentChallengeTokens(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engineCtx := EngineContext{
-				ExecutionID: "existing-execution-id",
+				ExecutionID: existingExecutionID,
 				AppID:       "test-app-id",
 				FlowType:    common.FlowTypeAuthentication,
 				AuthenticatedUser: authncm.AuthenticatedUser{
@@ -986,7 +988,7 @@ func TestExecute_ExistingFlowWithDifferentChallengeTokens(t *testing.T) {
 			mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
 			mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
 
-			mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
+			mockStore.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(storedCtx, nil)
 			mockFlowMgtSvc.EXPECT().GetGraph(mock.Anything, "test-graph-id").Return(testGraph, nil)
 			mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 				&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
@@ -994,13 +996,12 @@ func TestExecute_ExistingFlowWithDifferentChallengeTokens(t *testing.T) {
 				&entityprovider.Entity{ID: "test-app-id", Category: entityprovider.EntityCategoryApp},
 				(*entityprovider.EntityProviderError)(nil))
 
-			expectedToken := tt.expectInContext
 			mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(t)
 			mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 				Return([]byte("encrypted-ctx"), nil, nil)
 
 			mockEngine.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
-				return ctx != nil && ctx.ChallengeTokenIn == expectedToken
+				return ctx != nil && ctx.ExecutionID == existingExecutionID
 			})).Return(FlowStep{Status: common.FlowStatusIncomplete}, nil)
 			mockStore.EXPECT().UpdateFlowContext(
 				mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txMarkerKey{}) == "tx" }),
@@ -1016,7 +1017,7 @@ func TestExecute_ExistingFlowWithDifferentChallengeTokens(t *testing.T) {
 				cryptoSvc:            mockCrypto,
 			}
 
-			flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
+			flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
 				string(common.FlowTypeAuthentication), false, "submit", map[string]string{}, tt.challengeToken)
 
 			assert.Nil(t, svcErr)
@@ -1031,7 +1032,7 @@ func TestExecute_EngineError_InvalidChallengeToken_PreservesContext(t *testing.T
 	testGraph := flowFactory.CreateGraph("test-graph-id", common.FlowTypeAuthentication)
 
 	engineCtx := EngineContext{
-		ExecutionID: "existing-execution-id",
+		ExecutionID: existingExecutionID,
 		AppID:       "test-app-id",
 		FlowType:    common.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
@@ -1051,7 +1052,7 @@ func TestExecute_EngineError_InvalidChallengeToken_PreservesContext(t *testing.T
 	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
 	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
 
-	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(storedCtx, nil)
 	mockFlowMgtSvc.EXPECT().GetGraph(mock.Anything, "test-graph-id").Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
@@ -1072,7 +1073,7 @@ func TestExecute_EngineError_InvalidChallengeToken_PreservesContext(t *testing.T
 		transactioner:        &stubTransactioner{},
 	}
 
-	flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
+	flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
 		string(common.FlowTypeAuthentication), false, "submit", map[string]string{}, "wrong-token")
 
 	assert.NotNil(t, svcErr)
@@ -1085,7 +1086,7 @@ func TestExecute_EngineError_NonChallengeToken_RemovesContext(t *testing.T) {
 	testGraph := flowFactory.CreateGraph("test-graph-id", common.FlowTypeAuthentication)
 
 	engineCtx := EngineContext{
-		ExecutionID: "existing-execution-id",
+		ExecutionID: existingExecutionID,
 		AppID:       "test-app-id",
 		FlowType:    common.FlowTypeAuthentication,
 		AuthenticatedUser: authncm.AuthenticatedUser{
@@ -1105,7 +1106,7 @@ func TestExecute_EngineError_NonChallengeToken_RemovesContext(t *testing.T) {
 	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
 	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
 
-	mockStore.EXPECT().GetFlowContext(mock.Anything, "existing-execution-id").Return(storedCtx, nil)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, existingExecutionID).Return(storedCtx, nil)
 	mockFlowMgtSvc.EXPECT().GetGraph(mock.Anything, "test-graph-id").Return(testGraph, nil)
 	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, "test-app-id").Return(
 		&inboundmodel.InboundClient{ID: "test-app-id", AuthFlowID: "test-graph-id"}, nil)
@@ -1129,7 +1130,7 @@ func TestExecute_EngineError_NonChallengeToken_RemovesContext(t *testing.T) {
 	// DeleteFlowContext MUST be called — non-challenge-token errors remove the context
 	mockStore.EXPECT().DeleteFlowContext(
 		mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txMarkerKey{}) == "tx" }),
-		"existing-execution-id").Return(nil)
+		existingExecutionID).Return(nil)
 
 	service := &flowExecService{
 		flowStore:            mockStore,
@@ -1140,7 +1141,7 @@ func TestExecute_EngineError_NonChallengeToken_RemovesContext(t *testing.T) {
 		transactioner:        &stubTransactioner{},
 	}
 
-	flowStep, svcErr := service.Execute(context.Background(), "test-app", "existing-execution-id",
+	flowStep, svcErr := service.Execute(context.Background(), "test-app", existingExecutionID,
 		string(common.FlowTypeAuthentication), false, "submit", map[string]string{}, "valid-token")
 
 	assert.NotNil(t, svcErr)
