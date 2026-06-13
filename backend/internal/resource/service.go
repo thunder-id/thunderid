@@ -1551,7 +1551,7 @@ func derivePermission(
 	if parentResource != nil {
 		return parentResource.Permission + resourceServer.Delimiter + handle
 	}
-	if resourceServer.Handle != "" {
+	if resourceServer.Handle != "" && resourceServer.Handle != handle {
 		return resourceServer.Handle + resourceServer.Delimiter + handle
 	}
 	return handle

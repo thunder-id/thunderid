@@ -77,10 +77,10 @@ type UserGroupListResponse struct {
 
 // CreateUserRequest represents the request body for creating a user.
 type CreateUserRequest struct {
-	OUID       string          `json:"ouId"`
-	Type       string          `json:"type"`
+	OUID       string          `json:"ouId" native:"required"`
+	Type       string          `json:"type" native:"required"`
 	Groups     []string        `json:"groups,omitempty"`
-	Attributes json.RawMessage `json:"attributes,omitempty"`
+	Attributes json.RawMessage `json:"attributes,omitempty" native:"omitempty"`
 }
 
 // UpdateUserRequest represents the request body for updating a user.
@@ -98,7 +98,7 @@ type UpdateSelfUserRequest struct {
 
 // CreateUserByPathRequest represents the request body for creating a user under a handle path.
 type CreateUserByPathRequest struct {
-	Type       string          `json:"type"`
+	Type       string          `json:"type" native:"required"`
 	Groups     []string        `json:"groups,omitempty"`
 	Attributes json.RawMessage `json:"attributes,omitempty"`
 }

@@ -111,6 +111,7 @@ func (suite *HandlerTestSuite) TestHandleResourceServerPostRequest_Success() {
 		Name:        "test-rs",
 		Description: "Test",
 		Type:        ResourceServerTypeMCP,
+		Handle:      "test-handle",
 		OUID:        "ou-123",
 	}
 
@@ -122,6 +123,7 @@ func (suite *HandlerTestSuite) TestHandleResourceServerPostRequest_Success() {
 		Name:        "test-rs",
 		Description: "Test",
 		Type:        ResourceServerTypeMCP,
+		Handle:      "test-handle",
 		OUID:        "ou-123",
 	}, nil)
 
@@ -204,8 +206,9 @@ func (suite *HandlerTestSuite) TestHandleResourceServerGetRequest_NotFound() {
 
 func (suite *HandlerTestSuite) TestHandleResourceServerPutRequest_Success() {
 	reqBody := UpdateResourceServerRequest{
-		Name: "updated-rs",
-		OUID: "ou-123",
+		Name:   "updated-rs",
+		Handle: "updated-handle-string",
+		OUID:   "ou-123",
 	}
 
 	suite.mockService.On("UpdateResourceServer", mock.Anything,
@@ -350,6 +353,7 @@ func (suite *HandlerTestSuite) TestHandleResourceGetRequest_Success() {
 
 func (suite *HandlerTestSuite) TestHandleResourcePutRequest_Success() {
 	reqBody := UpdateResourceRequest{
+		Name:        "updated-resource-name",
 		Description: "updated description",
 	}
 
@@ -466,6 +470,7 @@ func (suite *HandlerTestSuite) TestHandleActionGetAtResourceServerRequest_Succes
 
 func (suite *HandlerTestSuite) TestHandleActionPutAtResourceServerRequest_Success() {
 	reqBody := UpdateActionRequest{
+		Name:        "updated-action-name",
 		Description: "updated description",
 	}
 
@@ -687,8 +692,9 @@ func (suite *HandlerTestSuite) TestHandleError_NotFoundStatus() {
 
 func (suite *HandlerTestSuite) TestHandleError_ConflictStatus() {
 	reqBody := CreateResourceServerRequest{
-		Name: "test-rs",
-		OUID: "ou-123",
+		Name:   "test-rs",
+		Handle: "test-handle",
+		OUID:   "ou-123",
 	}
 
 	suite.mockService.On("CreateResourceServer", mock.Anything,
@@ -709,9 +715,6 @@ func (suite *HandlerTestSuite) TestHandleError_BadRequestStatus() {
 		OUID: "ou-123",
 	}
 
-	suite.mockService.On("CreateResourceServer", mock.Anything,
-		mock.Anything).Return(nil, &ErrorInvalidRequestFormat)
-
 	body, _ := json.Marshal(reqBody)
 	req := httptest.NewRequest("POST", "/resource-servers", bytes.NewReader(body))
 	w := httptest.NewRecorder()
@@ -725,6 +728,7 @@ func (suite *HandlerTestSuite) TestHandleError_BadRequestStatus() {
 
 func (suite *HandlerTestSuite) TestHandleActionPutAtResourceRequest_Success() {
 	reqBody := UpdateActionRequest{
+		Name:        "updated-action-name",
 		Description: "Updated description",
 	}
 
@@ -772,6 +776,7 @@ func (suite *HandlerTestSuite) TestHandleActionPutAtResourceRequest_InvalidJSON(
 
 func (suite *HandlerTestSuite) TestHandleActionPutAtResourceRequest_NotFound() {
 	reqBody := UpdateActionRequest{
+		Name:        "updated-action-name",
 		Description: "Updated description",
 	}
 
@@ -796,6 +801,7 @@ func (suite *HandlerTestSuite) TestHandleActionPutAtResourceRequest_NotFound() {
 
 func (suite *HandlerTestSuite) TestHandleActionPutAtResourceRequest_ServiceError() {
 	reqBody := UpdateActionRequest{
+		Name:        "updated-action-name",
 		Description: "Updated description",
 	}
 
@@ -883,8 +889,9 @@ func (suite *HandlerTestSuite) TestHandleResourceServerPutRequest_InvalidJSON() 
 
 func (suite *HandlerTestSuite) TestHandleResourceServerPutRequest_ServiceError() {
 	reqBody := UpdateResourceServerRequest{
-		Name: "updated-rs",
-		OUID: "ou-123",
+		Name:   "updated-rs",
+		Handle: "updated-handle-string",
+		OUID:   "ou-123",
 	}
 
 	suite.mockService.On("UpdateResourceServer", mock.Anything,
@@ -1009,6 +1016,7 @@ func (suite *HandlerTestSuite) TestHandleResourcePutRequest_InvalidJSON() {
 
 func (suite *HandlerTestSuite) TestHandleResourcePutRequest_ServiceError() {
 	reqBody := UpdateResourceRequest{
+		Name:        "updated-resource-name",
 		Description: "updated",
 	}
 
@@ -1142,6 +1150,7 @@ func (suite *HandlerTestSuite) TestHandleActionPutAtResourceServerRequest_Invali
 
 func (suite *HandlerTestSuite) TestHandleActionPutAtResourceServerRequest_ServiceError() {
 	reqBody := UpdateActionRequest{
+		Name:        "updated-action-name",
 		Description: "updated",
 	}
 
@@ -1270,4 +1279,57 @@ func (suite *HandlerTestSuite) TestHandleActionGetAtResourceRequest_ServiceError
 	suite.handler.HandleActionGetAtResourceRequest(w, req)
 
 	suite.Equal(http.StatusInternalServerError, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleResourceServerPutRequest_FieldsUnchanged() {
+	reqBody := UpdateResourceServerRequest{
+		Name:   "updated-rs",
+		Handle: "updated-handle-string",
+		OUID:   "ou-123",
+	}
+
+	suite.mockService.On("UpdateResourceServer", mock.Anything,
+		"rs-123", mock.Anything).Return(&ResourceServer{
+		ID:   "rs-123",
+		Name: "updated-rs",
+	}, nil)
+
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("PUT", "/resource-servers/rs-123", bytes.NewReader(body))
+	req.SetPathValue("id", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerPutRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleResourceServerPutRequest_EmptyJSONPayload() {
+	emptyJSON := `{}`
+
+	req := httptest.NewRequest("PUT", "/resource-servers/rs-123", bytes.NewReader([]byte(emptyJSON)))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerPutRequest(w, req)
+	suite.Equal(http.StatusBadRequest, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleResourceServerPutRequest_MissingRequiredFields() {
+	incompleteJSON := `{"handle": "updated-handle-string"}`
+
+	suite.mockService.On("UpdateResourceServer", mock.Anything,
+		"rs-123", mock.Anything).Return(&ResourceServer{
+		ID: "rs-123",
+	}, nil)
+
+	req := httptest.NewRequest("PUT", "/resource-servers/rs-123", bytes.NewReader([]byte(incompleteJSON)))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleResourceServerPutRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
 }

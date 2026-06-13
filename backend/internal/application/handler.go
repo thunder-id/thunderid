@@ -20,6 +20,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -50,6 +51,11 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 
 	appRequest, err := sysutils.DecodeJSONBody[model.ApplicationRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		errResp := apierror.ErrorResponse{
 			Code:        ErrorInvalidRequestFormat.Code,
 			Message:     ErrorInvalidRequestFormat.Error,
@@ -297,6 +303,11 @@ func (ah *applicationHandler) HandleApplicationPutRequest(w http.ResponseWriter,
 
 	appRequest, err := sysutils.DecodeJSONBody[model.ApplicationRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		errResp := apierror.ErrorResponse{
 			Code:        ErrorInvalidRequestFormat.Code,
 			Message:     ErrorInvalidRequestFormat.Error,

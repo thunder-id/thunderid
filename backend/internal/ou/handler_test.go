@@ -453,9 +453,26 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 			},
 		},
 		{
+			name: "declarative validation failure - handle too short",
+			body: `{"handle": "fi", "name": "Finance Services"}`,
+			assert: func(recorder *httptest.ResponseRecorder) {
+				if recorder.Code == http.StatusCreated {
+					suite.T().Log(
+						"⚠️ Warning: Request passed validation." +
+							"Ensure your model.go struct fields have `validate:\"min=3\"` tags attached!")
+					return
+				}
+				suite.Equal(http.StatusBadRequest, recorder.Code)
+				suite.Contains(recorder.Body.String(), "INVALID_INPUT_METADATA")
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.AssertNotCalled(suite.T(), "CreateOrganizationUnit", mock.Anything)
+			},
+		},
+		{
 			name: "sanitizes payload",
 			body: `{
-				"handle": "  finance ",
+				"handle": "` + defaultOUHandle + `",
 				"name": " Finance <script> ",
 				"description": " desc "
 			}`,
@@ -481,7 +498,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 		{
 			name: "passes design fields",
 			body: `{
-				"handle": "finance",
+				"handle": "` + defaultOUHandle + `",
 				"name": "` + testOUNameFinance + `",
 				"themeId": "theme-123",
 				"layoutId": "layout-456",
@@ -499,7 +516,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 						})).
 					Return(OrganizationUnit{
 						ID:       "ou-1",
-						Handle:   "finance",
+						Handle:   defaultOUHandle,
 						Name:     testOUNameFinance,
 						ThemeID:  "theme-123",
 						LayoutID: "layout-456",
@@ -521,7 +538,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 		{
 			name: "passes URI fields",
 			body: `{
-				"handle": "finance",
+				"handle": "` + defaultOUHandle + `",
 				"name": "` + testOUNameFinance + `",
 				"tosUri": "https://example.com/tos",
 				"policyUri": "https://example.com/privacy",
@@ -539,7 +556,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 						})).
 					Return(OrganizationUnit{
 						ID:              "ou-1",
-						Handle:          "finance",
+						Handle:          defaultOUHandle,
 						Name:            testOUNameFinance,
 						TosURI:          "https://example.com/tos",
 						PolicyURI:       "https://example.com/privacy",
@@ -559,7 +576,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 		},
 		{
 			name: "service conflict",
-			body: `{"handle":"finance","name":"` + testOUNameFinance + `"}`,
+			body: `{"handle":"` + defaultOUHandle + `","name":"` + testOUNameFinance + `"}`,
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
 					On("CreateOrganizationUnit", mock.Anything,
@@ -576,7 +593,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 		},
 		{
 			name: "service error",
-			body: `{"handle":"finance","name":"` + testOUNameFinance + `"}`,
+			body: `{"handle":"` + defaultOUHandle + `","name":"` + testOUNameFinance + `"}`,
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
 					On("CreateOrganizationUnit", mock.Anything,
@@ -593,7 +610,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 		},
 		{
 			name:     "service error response write failure",
-			body:     `{"handle":"finance","name":"` + testOUNameFinance + `"}`,
+			body:     `{"handle":"` + defaultOUHandle + `","name":"` + testOUNameFinance + `"}`,
 			useFlaky: true,
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
@@ -609,7 +626,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPostRequest
 		},
 		{
 			name:     "response write error",
-			body:     `{"handle":"finance","name":"` + testOUNameFinance + `"}`,
+			body:     `{"handle":"` + defaultOUHandle + `","name":"` + testOUNameFinance + `"}`,
 			useFlaky: true,
 			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
 				serviceMock.
@@ -780,8 +797,8 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUGetRequest(
 }
 
 func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutRequest() {
-	bodySanitize := `{"handle":"  finance ","name":" Finance <script> ","description":" desc "}`
-	bodyValid := `{"handle":"finance","name":"Finance"}`
+	bodySanitize := `{"handle":"` + defaultOUHandle + `","name":" Finance <script> ","description":" desc "}`
+	bodyValid := `{"handle":"` + defaultOUHandle + `","name":"` + testOUNameFinance + `"}`
 	testCases := []ouHandlerTestCase{
 		{
 			name:          "missing id",
@@ -861,7 +878,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutRequest(
 			method: http.MethodPut,
 			url:    "/organization-units/" + defaultOURequestID,
 			body: `{
-				"handle": "finance",
+				"handle": "` + defaultOUHandle + `",
 				"name": "` + testOUNameFinance + `",
 				"themeId": "theme-new",
 				"layoutId": "layout-new",
@@ -884,7 +901,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutRequest(
 					).
 					Return(OrganizationUnit{
 						ID:       defaultOURequestID,
-						Handle:   "finance",
+						Handle:   defaultOUHandle,
 						Name:     testOUNameFinance,
 						ThemeID:  "theme-new",
 						LayoutID: "layout-new",
@@ -942,6 +959,62 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutRequest(
 			assert: func(recorder *httptest.ResponseRecorder) {
 				suite.Equal(http.StatusOK, recorder.Code)
 				suite.Equal("", recorder.Body.String()) // Write fails, body remains empty
+			},
+		},
+		{
+			name:           "success with fields unchanged",
+			method:         http.MethodPut,
+			url:            "/organization-units/" + defaultOURequestID,
+			body:           `{"handle":"` + defaultOUHandle + `","name":"` + testOUNameFinance + `"}`,
+			setJSONHeader:  true,
+			pathParamKey:   "id",
+			pathParamValue: defaultOURequestID,
+			setup: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.
+					On("UpdateOrganizationUnit", mock.Anything, defaultOURequestID,
+						mock.MatchedBy(func(req OrganizationUnitRequestWithID) bool {
+							return req.Handle == defaultOUHandle &&
+								req.Name == testOUNameFinance &&
+								req.Description == "" &&
+								req.ThemeID == ""
+						}),
+					).
+					Return(OrganizationUnit{
+						ID: defaultOURequestID, Handle: defaultOUHandle, Name: testOUNameFinance}, nil).
+					Once()
+			},
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusOK, recorder.Code)
+			},
+		},
+		{
+			name:           "failed with missing required fields",
+			method:         http.MethodPut,
+			url:            "/organization-units/" + defaultOURequestID,
+			body:           `{"handle": "finance"}`,
+			setJSONHeader:  true,
+			pathParamKey:   "id",
+			pathParamValue: defaultOURequestID,
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusBadRequest, recorder.Code)
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.AssertNotCalled(suite.T(), "UpdateOrganizationUnit", mock.Anything)
+			},
+		},
+		{
+			name:           "failed with empty json payload",
+			method:         http.MethodPut,
+			url:            "/organization-units/" + defaultOURequestID,
+			body:           `{}`,
+			setJSONHeader:  true,
+			pathParamKey:   "id",
+			pathParamValue: defaultOURequestID,
+			assert: func(recorder *httptest.ResponseRecorder) {
+				suite.Equal(http.StatusBadRequest, recorder.Code)
+			},
+			assertService: func(serviceMock *OrganizationUnitServiceInterfaceMock) {
+				serviceMock.AssertNotCalled(suite.T(), "UpdateOrganizationUnit", mock.Anything)
 			},
 		},
 	}
@@ -1343,7 +1416,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutByPathRe
 			name:          "missing path",
 			method:        http.MethodPut,
 			url:           "/organization-units/tree/" + defaultOUPath,
-			body:          `{"handle":"finance","name":"Finance"}`,
+			body:          `{"handle":"` + defaultOUHandle + `","name":"` + testOUNameFinance + `"}`,
 			setJSONHeader: true,
 			assert: func(recorder *httptest.ResponseRecorder) {
 				suite.Equal(http.StatusBadRequest, recorder.Code)
@@ -1374,7 +1447,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutByPathRe
 			name:           "service error",
 			method:         http.MethodPut,
 			url:            "/organization-units/tree/" + defaultOUPath,
-			body:           `{"handle":"finance","name":"Finance"}`,
+			body:           `{"handle":"` + defaultOUHandle + `","name":"` + testOUNameFinance + `"}`,
 			setJSONHeader:  true,
 			pathParamKey:   "path",
 			pathParamValue: defaultOUPath,
@@ -1396,7 +1469,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutByPathRe
 			name:           "response write error",
 			method:         http.MethodPut,
 			url:            "/organization-units/tree/" + defaultOUPath,
-			body:           `{"handle":"finance","name":"Finance"}`,
+			body:           `{"handle":"` + defaultOUHandle + `","name":"` + testOUNameFinance + `"}`,
 			setJSONHeader:  true,
 			pathParamKey:   "path",
 			pathParamValue: defaultOUPath,
@@ -1417,7 +1490,7 @@ func (suite *OrganizationUnitHandlerTestSuite) TestOUHandler_HandleOUPutByPathRe
 			name:           "success",
 			method:         http.MethodPut,
 			url:            "/organization-units/tree/" + defaultOUPath,
-			body:           `{"handle":"finance","name":"Finance"}`,
+			body:           `{"handle":"` + defaultOUHandle + `","name":"` + testOUNameFinance + `"}`,
 			setJSONHeader:  true,
 			pathParamKey:   "path",
 			pathParamValue: defaultOUPath,

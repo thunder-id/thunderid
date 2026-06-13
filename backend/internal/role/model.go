@@ -59,8 +59,8 @@ type AssignmentResponse struct {
 
 // AssignmentRequest represents an assignment of a role to a user or group.
 type AssignmentRequest struct {
-	ID   string       `json:"id"`
-	Type AssigneeType `json:"type"`
+	ID   string       `json:"id" native:"required"`
+	Type AssigneeType `json:"type" native:"required,oneof=user app agent group"`
 }
 
 // RoleSummaryResponse represents the basic information of a role.
@@ -85,9 +85,9 @@ type RoleResponse struct {
 
 // CreateRoleRequest represents the request body for creating a role.
 type CreateRoleRequest struct {
-	Name        string                `json:"name"`
+	Name        string                `json:"name" native:"required,min=3,max=64"`
 	Description string                `json:"description,omitempty"`
-	OUID        string                `json:"ouId"`
+	OUID        string                `json:"ouId" native:"required"`
 	Permissions []ResourcePermissions `json:"permissions"`
 	Assignments []AssignmentRequest   `json:"assignments,omitempty"`
 }
@@ -105,15 +105,15 @@ type CreateRoleResponse struct {
 
 // UpdateRoleRequest represents the request body for updating a role.
 type UpdateRoleRequest struct {
-	Name        string                `json:"name"`
+	Name        string                `json:"name" native:"required,min=3,max=64"`
 	Description string                `json:"description,omitempty"`
-	OUID        string                `json:"ouId"`
+	OUID        string                `json:"ouId" native:"required"`
 	Permissions []ResourcePermissions `json:"permissions"`
 }
 
 // AssignmentsRequest represents the request body for adding or removing assignments.
 type AssignmentsRequest struct {
-	Assignments []AssignmentRequest `json:"assignments"`
+	Assignments []AssignmentRequest `json:"assignments" native:"required,min=1,dive"`
 }
 
 // RoleListResponse represents the response for listing roles with pagination.

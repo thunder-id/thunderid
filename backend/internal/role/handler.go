@@ -20,6 +20,7 @@ package role
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -93,6 +94,11 @@ func (rh *roleHandler) HandleRolePostRequest(w http.ResponseWriter, r *http.Requ
 
 	createRequest, err := sysutils.DecodeJSONBody[CreateRoleRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -144,6 +150,11 @@ func (rh *roleHandler) HandleRolePutRequest(w http.ResponseWriter, r *http.Reque
 	id := r.PathValue("id")
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateRoleRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}

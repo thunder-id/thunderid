@@ -106,15 +106,15 @@ type ApplicationCertificate = inboundmodel.Certificate
 
 // ApplicationRequest represents the request structure for creating or updating an application.
 type ApplicationRequest struct {
-	OUID        string   `json:"ouId,omitempty" yaml:"ou_id,omitempty"`
-	Name        string   `json:"name" yaml:"name"`
+	OUID        string   `json:"ouId,omitempty" yaml:"ou_id,omitempty" native:"required"`
+	Name        string   `json:"name" yaml:"name" native:"required,min=3,max=100"`
 	Description string   `json:"description" yaml:"description"`
 	Template    string   `json:"template,omitempty" yaml:"template,omitempty"`
-	URL         string   `json:"url,omitempty" yaml:"url,omitempty"`
-	LogoURL     string   `json:"logoUrl,omitempty" yaml:"logo_url,omitempty"`
-	TosURI      string   `json:"tosUri,omitempty" yaml:"tos_uri,omitempty"`
-	PolicyURI   string   `json:"policyUri,omitempty" yaml:"policy_uri,omitempty"`
-	Contacts    []string `json:"contacts,omitempty" yaml:"contacts,omitempty"`
+	URL         string   `json:"url,omitempty" yaml:"url,omitempty" native:"omitempty,url,max=2048"`
+	LogoURL     string   `json:"logoUrl,omitempty" yaml:"logo_url,omitempty" native:"omitempty,url,max=2048"`
+	TosURI      string   `json:"tosUri,omitempty" yaml:"tos_uri,omitempty" native:"omitempty,url,max=2048"`
+	PolicyURI   string   `json:"policyUri,omitempty" yaml:"policy_uri,omitempty" native:"omitempty,url,max=2048"`
+	Contacts    []string `json:"contacts,omitempty" yaml:"contacts,omitempty" `
 
 	inboundmodel.InboundAuthProfile `yaml:",inline"`
 	InboundAuthConfig               []inboundmodel.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inbound_auth_config,omitempty"`

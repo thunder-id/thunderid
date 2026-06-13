@@ -344,9 +344,11 @@ fi
 
 RESPONSE=$(api_call POST "/resource-servers" "{
   \"name\": \"System\",
+  \"handle\": \"system\",
   \"description\": \"System resource server\",
   \"identifier\": \"${SYSTEM_RS_IDENTIFIER}\",
-  \"ouId\": \"${DEFAULT_OU_ID}\"
+  \"ouId\": \"${DEFAULT_OU_ID}\",
+  \"delimiter\": \":\"
 }")
 
 HTTP_CODE="${RESPONSE: -3}"
@@ -845,7 +847,7 @@ RESPONSE=$(api_call POST "/roles" "{
   \"permissions\": [
     {
       \"resourceServerId\": \"${SYSTEM_RS_ID}\",
-      \"permissions\": [\"system\"]
+      \"permissions\": [\"system\", \"system:ou\", \"system:ou:view\", \"system:user\", \"system:user:view\", \"system:group\", \"system:group:view\", \"system:usertype\", \"system:usertype:view\"]
     }
   ],
   \"assignments\": [

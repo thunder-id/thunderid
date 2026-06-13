@@ -358,7 +358,11 @@ func TestHandleUserListRequest_WithInvalidIncludeParam(t *testing.T) {
 
 func TestHandleUserPostRequest_Success(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
-	userReq := &User{Type: "employee", Attributes: json.RawMessage(`{"username":"bob"}`)}
+	userReq := &CreateUserRequest{
+		OUID:       "ou-corporate-root",
+		Type:       "employee",
+		Attributes: json.RawMessage(`{"username":"bob"}`),
+	}
 	createdUser := &User{ID: "user-bob", Type: "employee", Attributes: json.RawMessage(`{"username":"bob"}`)}
 	mockSvc.On("CreateUser", mock.Anything, mock.Anything).Return(createdUser, nil)
 
@@ -595,7 +599,7 @@ func TestHandleUserPostRequest_ErrorCases(t *testing.T) {
 
 	t.Run("ServiceError", func(t *testing.T) {
 		mockSvc.On("CreateUser", mock.Anything, mock.Anything).Return(nil, &serviceerror.InternalServerError).Once()
-		req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(`{"type":"customer"}`))
+		req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(`{"ouId":"ou-123","type":"customer"}`))
 		rr := httptest.NewRecorder()
 		handler.HandleUserPostRequest(rr, req)
 		require.Equal(t, http.StatusInternalServerError, rr.Code)
@@ -947,4 +951,219 @@ func TestHandleError_ErrorUnauthorized_Returns403(t *testing.T) {
 			require.Equal(t, tc.wantCode, rr.Code)
 		})
 	}
+}
+
+func TestHandleUserPostRequest_ValidationError_MissingFields(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+
+	body := `{"groups":["engineering"]}`
+	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserPostRequest(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	var resp map[string]interface{}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, "INVALID_INPUT_METADATA", resp["code"])
+	mockSvc.AssertNotCalled(t, "CreateUser", mock.Anything, mock.Anything)
+}
+
+func TestHandleUserListRequest_PaginationEdgeCases(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+
+	t.Run("Malformed Limit String Parameter", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/users?limit=xyz", nil)
+		rr := httptest.NewRecorder()
+		handler.HandleUserListRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("Negative Limit Value Guard", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/users?limit=-100", nil)
+		rr := httptest.NewRecorder()
+		handler.HandleUserListRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("Malformed Offset Value Parameter", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/users?offset=abc", nil)
+		rr := httptest.NewRecorder()
+		handler.HandleUserListRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("Negative Offset Value Guard", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/users?offset=-5", nil)
+		rr := httptest.NewRecorder()
+		handler.HandleUserListRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+}
+
+func TestHandleUserListRequest_FilterExpressionEdgeCases(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+
+	t.Run("Empty Filter Value Field Space", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/users?filter=%20%20", nil)
+		rr := httptest.NewRecorder()
+		handler.HandleUserListRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("Unsupported Expression Operator", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/users?filter=age%20gt%2018", nil)
+		rr := httptest.NewRecorder()
+		handler.HandleUserListRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("Malformed Value Token Payload", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/users?filter=username%20eq", nil)
+		rr := httptest.NewRecorder()
+		handler.HandleUserListRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+}
+
+func TestHandleUserMissingIDs_DirectTrimming(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+
+	t.Run("Empty String Strip on PUT Route", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/users/", bytes.NewBufferString(`{}`))
+		rr := httptest.NewRecorder()
+		handler.HandleUserPutRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("Empty String Strip on DELETE Route", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, "/users/", nil)
+		rr := httptest.NewRecorder()
+		handler.HandleUserDeleteRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("Missing Segment on Path Fetch Route", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/users/path/", nil)
+		req.SetPathValue("path", "") // Force early validation block error
+		rr := httptest.NewRecorder()
+		handler.HandleUserListByPathRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+
+	t.Run("Missing Segment on Path Create Route", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/users/path/", nil)
+		req.SetPathValue("path", "")
+		rr := httptest.NewRecorder()
+		handler.HandleUserPostByPathRequest(rr, req)
+		require.Equal(t, http.StatusBadRequest, rr.Code)
+	})
+}
+
+func TestHandleSelfUserExits_MissingContextTokens(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+	emptyAuthCtx := security.NewSecurityContextForTest("   ", "", "", nil, nil) // Spaces force token rejection
+
+	t.Run("Blank Context Verification on Self GET", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/users/me", nil)
+		req = req.WithContext(security.WithSecurityContextTest(req.Context(), emptyAuthCtx))
+		rr := httptest.NewRecorder()
+		handler.HandleSelfUserGetRequest(rr, req)
+		require.Equal(t, http.StatusUnauthorized, rr.Code)
+	})
+
+	t.Run("Blank Context Verification on Self PUT", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/users/me", bytes.NewBufferString(`{}`))
+		req = req.WithContext(security.WithSecurityContextTest(req.Context(), emptyAuthCtx))
+		rr := httptest.NewRecorder()
+		handler.HandleSelfUserPutRequest(rr, req)
+		require.Equal(t, http.StatusUnauthorized, rr.Code)
+	})
+
+	t.Run("Blank Context Verification on Credential POST", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials", bytes.NewBufferString(`{}`))
+		req = req.WithContext(security.WithSecurityContextTest(req.Context(), emptyAuthCtx))
+		rr := httptest.NewRecorder()
+		handler.HandleSelfUserCredentialUpdateRequest(rr, req)
+		require.Equal(t, http.StatusUnauthorized, rr.Code)
+	})
+}
+
+func TestHandleUserPutRequest_FieldsUnchanged(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	userID := testUserID123
+
+	userReq := &User{Attributes: json.RawMessage(`{"username":"alice","email":"alice@example.com"}`)}
+	updatedUser := &User{ID: userID, Attributes: json.RawMessage(`{"username":"alice","email":"alice@example.com"}`)}
+
+	mockSvc.On("UpdateUser", mock.Anything, userID, mock.Anything).Return(updatedUser, nil)
+
+	handler := newUserHandler(mockSvc)
+	body, _ := json.Marshal(userReq)
+	req := httptest.NewRequest(http.MethodPut, "/users/"+userID, bytes.NewBuffer(body))
+	req.SetPathValue("id", userID)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserPutRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+}
+
+func TestHandleUserPutRequest_EmptyJSONPayload(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+	userID := testUserID123
+
+	emptyJSON := `{}`
+	mockSvc.On("UpdateUser", mock.Anything, userID, mock.Anything).
+		Return(&User{ID: userID}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodPut, "/users/"+userID, bytes.NewBufferString(emptyJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", userID)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserPutRequest(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	mockSvc.AssertExpectations(t)
+}
+func TestHandleUserListRequest_FallbackPagination(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	expectedResp := &UserListResponse{
+		TotalResults: 0,
+		Users:        []User{},
+	}
+
+	mockSvc.On("GetUserList", mock.Anything, 30, 0, mock.Anything, false).Return(expectedResp, nil)
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users", nil)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserListRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	mockSvc.AssertExpectations(t)
+}
+
+func TestHandleUserPostRequest_ValidationError_MissingRequiredField(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+
+	missingOUIDPayload := `{"type":"customer","attributes":{"username":"charles"}}`
+
+	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(missingOUIDPayload))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserPostRequest(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+
+	mockSvc.AssertNotCalled(t, "CreateUser", mock.Anything, mock.Anything)
 }

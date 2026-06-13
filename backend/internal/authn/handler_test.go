@@ -1099,3 +1099,50 @@ func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyFinishRequestServi
 	suite.NoError(err)
 	suite.Equal("INVALID_SIGNATURE", errResp.Code)
 }
+
+func (suite *AuthenticationHandlerTestSuite) TestHandleCredentialsAuthRequest_EmptyJSON() {
+	req := httptest.NewRequest(http.MethodPost, "/authenticate/credentials", bytes.NewReader([]byte("{}")))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleCredentialsAuthRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+}
+
+func (suite *AuthenticationHandlerTestSuite) TestHandlePasskeyStartRequest_MissingUserID() {
+	invalidRequest := PasskeyStartRequestDTO{
+		UserID:         "", // Mandatory parameter left blank
+		RelyingPartyID: "example.com",
+	}
+
+	body, _ := json.Marshal(invalidRequest)
+	req := httptest.NewRequest(http.MethodPost, "/authenticate/passkey/start", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	suite.handler.HandlePasskeyStartRequest(w, req)
+	suite.Equal(http.StatusBadRequest, w.Code)
+}
+
+func (suite *AuthenticationHandlerTestSuite) TestHandleVerifySMSOTPRequest_OmittedSkipAssertionFallback() {
+	incompleteJSON := `{"sessionToken": "test-session-token", "otp": "123456"}`
+
+	authResponse := &common.AuthenticationResponse{
+		ID:        "user123",
+		Type:      "person",
+		OUID:      "test-ou",
+		Assertion: "fallback-generated-jwt-token",
+	}
+
+	suite.mockService.On("VerifyOTP", mock.Anything, "test-session-token",
+		false, "", "123456").
+		Return(authResponse, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/authenticate/otp/verify", bytes.NewReader([]byte(incompleteJSON)))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleVerifySMSOTPRequest(w, req)
+	suite.Equal(http.StatusOK, w.Code)
+	suite.mockService.AssertExpectations(suite.T())
+}

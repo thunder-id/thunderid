@@ -60,6 +60,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_Success() {
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "TestApp",
 		Description: "Test Description",
 		Metadata:    map[string]interface{}{"key1": "val1"},
@@ -67,6 +68,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_Success() {
 
 	expectedApp := &model.ApplicationDTO{
 		ID:          "test-app-id",
+		OUID:        "ou-123",
 		Name:        "TestApp",
 		Description: "Test Description",
 		Metadata:    map[string]interface{}{"key1": "val1"},
@@ -100,6 +102,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_SuccessWithOAuth
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "TestApp",
 		Description: "Test Description",
 		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
@@ -119,6 +122,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_SuccessWithOAuth
 
 	expectedApp := &model.ApplicationDTO{
 		ID:          "test-app-id",
+		OUID:        "ou-123",
 		Name:        "TestApp",
 		Description: "Test Description",
 		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
@@ -183,6 +187,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_TemplateScenario
 			handler := newApplicationHandler(mockService)
 
 			appRequest := model.ApplicationRequest{
+				OUID:        "ou-123",
 				Name:        "TestApp",
 				Description: "Test Description",
 				Template:    tc.template,
@@ -190,6 +195,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_TemplateScenario
 
 			expectedApp := &model.ApplicationDTO{
 				ID:          "test-app-id",
+				OUID:        "ou-123",
 				Name:        "TestApp",
 				Description: "Test Description",
 				Template:    tc.expectedTemplate,
@@ -264,6 +270,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_ServiceError() {
 			handler := newApplicationHandler(mockService)
 
 			appRequest := model.ApplicationRequest{
+				OUID: "ou-123",
 				Name: "TestApp",
 			}
 
@@ -295,6 +302,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_ProcessInboundAu
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID: "ou-123",
 		Name: "TestApp",
 		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
 			{
@@ -307,6 +315,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_ProcessInboundAu
 	// Create app with inbound auth config that has unsupported type
 	expectedApp := &model.ApplicationDTO{
 		ID:   "test-app-id",
+		OUID: "ou-123",
 		Name: "TestApp",
 		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
 			{
@@ -711,12 +720,14 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_Success() {
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "UpdatedApp",
 		Description: "Updated Description",
 		Metadata:    map[string]interface{}{"key2": "val2"},
 	}
 
 	expectedApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "UpdatedApp",
 		Description: "Updated Description",
@@ -753,12 +764,14 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_WithTemplate() {
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "UpdatedApp",
 		Description: "Updated Description",
 		Template:    "mobile",
 	}
 
 	expectedApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "UpdatedApp",
 		Description: "Updated Description",
@@ -812,12 +825,14 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_TemplateScenarios
 			handler := newApplicationHandler(mockService)
 
 			appRequest := model.ApplicationRequest{
+				OUID:        "ou-123",
 				Name:        "UpdatedApp",
 				Description: "Updated Description",
 				Template:    tc.template,
 			}
 
 			expectedApp := &model.ApplicationDTO{
+				OUID:        "ou-123",
 				ID:          "test-app-id",
 				Name:        "UpdatedApp",
 				Description: "Updated Description",
@@ -853,6 +868,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_InvalidID() {
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID: "ou-123",
 		Name: "UpdatedApp",
 	}
 
@@ -898,6 +914,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_ServiceError() {
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID: "ou-123",
 		Name: "UpdatedApp",
 	}
 
@@ -931,6 +948,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_NotFound() {
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID: "ou-123",
 		Name: "UpdatedApp",
 	}
 
@@ -1456,6 +1474,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_WithCertificate(
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "TestApp",
 		Description: "Test Description",
 		InboundAuthProfile: inboundmodel.InboundAuthProfile{
@@ -1467,6 +1486,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_WithCertificate(
 	}
 
 	expectedApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "TestApp",
 		Description: "Test Description",
@@ -1498,6 +1518,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationGetRequest_WithEmptyArrays()
 	handler := newApplicationHandler(mockService)
 
 	expectedApp := &model.Application{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "TestApp",
 		Description: "Test Description",
@@ -1541,6 +1562,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_WithOAuth() {
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "UpdatedApp",
 		Description: "Updated Description",
 		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
@@ -1560,6 +1582,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_WithOAuth() {
 
 	expectedApp := &model.ApplicationDTO{
 		ID:          "test-app-id",
+		OUID:        "ou-123",
 		Name:        "UpdatedApp",
 		Description: "Updated Description",
 		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
@@ -1714,6 +1737,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_EncodeResponseEr
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "Test App",
 		Description: "Test Description",
 	}
@@ -1722,6 +1746,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_EncodeResponseEr
 		ID:          "test-app-id",
 		Name:        "Test App",
 		Description: "Test Description",
+		OUID:        "ou-123",
 	}
 
 	mockService.On("CreateApplication", mock.Anything, mock.AnythingOfType("*model.ApplicationDTO")).
@@ -1744,12 +1769,14 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_EncodeResponseErr
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "Updated App",
 		Description: "Updated Description",
 	}
 
 	updatedApp := &model.ApplicationDTO{
 		ID:          "test-app-id",
+		OUID:        "ou-123",
 		Name:        "Updated App",
 		Description: "Updated Description",
 	}
@@ -1800,6 +1827,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_MultipleInboundA
 
 	// Test with multiple OAuth configs (edge case - should only process first one properly)
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "Multi Config App",
 		Description: "App with multiple inbound auth configs",
 		InboundAuthConfig: []inboundmodel.InboundAuthConfigWithSecret{
@@ -1916,12 +1944,14 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_UnsupportedInbou
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "TestApp",
 		Description: "Test Description",
 	}
 
 	// Service returns app with unsupported auth type
 	createdApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "TestApp",
 		Description: "Test Description",
@@ -1962,12 +1992,14 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_NilOAuthConfig()
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "TestApp",
 		Description: "Test Description",
 	}
 
 	// Service returns app with OAuth auth type but nil config
 	createdApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "TestApp",
 		Description: "Test Description",
@@ -2006,12 +2038,14 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_ProcessInboundAu
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "TestApp",
 		Description: "Test Description",
 	}
 
 	// Service returns app with unsupported auth type
 	createdApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "TestApp",
 		Description: "Test Description",
@@ -2043,11 +2077,13 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_SuccessResponseE
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "TestApp",
 		Description: "Test Description",
 	}
 
 	expectedApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "TestApp",
 		Description: "Test Description",
@@ -2073,12 +2109,14 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_UnsupportedInboun
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "Updated App",
 		Description: "Updated Description",
 	}
 
 	// Service returns app with unsupported auth type
 	updatedApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "Updated App",
 		Description: "Updated Description",
@@ -2121,12 +2159,14 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_NilOAuthConfig() 
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "Updated App",
 		Description: "Updated Description",
 	}
 
 	// Service returns app with OAuth auth type but nil config
 	updatedApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "Updated App",
 		Description: "Updated Description",
@@ -2167,11 +2207,13 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_ProcessInboundAut
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "Updated App",
 		Description: "Updated Description",
 	}
 
 	updatedApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "Updated App",
 		Description: "Updated Description",
@@ -2205,11 +2247,13 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_SuccessResponseEn
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID:        "ou-123",
 		Name:        "Updated App",
 		Description: "Updated Description",
 	}
 
 	updatedApp := &model.ApplicationDTO{
+		OUID:        "ou-123",
 		ID:          "test-app-id",
 		Name:        "Updated App",
 		Description: "Updated Description",
@@ -2252,6 +2296,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_EmptyIDErrorEncod
 	handler := newApplicationHandler(mockService)
 
 	appRequest := model.ApplicationRequest{
+		OUID: "ou-123",
 		Name: "Test",
 	}
 
@@ -2374,4 +2419,113 @@ func (suite *HandlerTestSuite) TestHandleApplicationGetRequest_EmptyResponseType
 	assert.NotNil(suite.T(), response)
 
 	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_FieldsUnchanged() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	unchangedJSON := `{"ouId": "ou-123", "name": "Existing Pristine App Name"}`
+
+	expectedApp := &model.ApplicationDTO{
+		ID:          "test-app-id",
+		OUID:        "ou-123",
+		Name:        "Existing Pristine App Name",
+		Description: "Existing Description",
+	}
+
+	mockService.On("UpdateApplication", mock.Anything, "test-app-id",
+		mock.AnythingOfType("*model.ApplicationDTO")).
+		Return(expectedApp, nil)
+
+	req := httptest.NewRequest(http.MethodPut, "/applications/test-app-id", bytes.NewBufferString(unchangedJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "test-app-id")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationPutRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	assert.Equal(suite.T(), "application/json", w.Header().Get("Content-Type"))
+
+	var response model.ApplicationCompleteResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "test-app-id", response.ID)
+	assert.Equal(suite.T(), "Existing Pristine App Name", response.Name)
+
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_OmitOptionalFields() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	partialJSON := `{"ouId": "ou-123", "name": "Updated Name Only"}`
+
+	expectedApp := &model.ApplicationDTO{
+		ID:          "test-app-id",
+		OUID:        "ou-123",
+		Name:        "Updated Name Only",
+		Description: "Preserved Original Description",
+		Template:    "spa",
+	}
+
+	mockService.On("UpdateApplication", mock.Anything, "test-app-id",
+		mock.AnythingOfType("*model.ApplicationDTO")).
+		Return(expectedApp, nil)
+
+	req := httptest.NewRequest(http.MethodPut, "/applications/test-app-id", bytes.NewBufferString(partialJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "test-app-id")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationPutRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+
+	var response model.ApplicationCompleteResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "Preserved Original Description", response.Description)
+	assert.Equal(suite.T(), "spa", response.Template)
+	mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_OmitRequiredFields() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	invalidPartialJSON := `{"name": ""}`
+
+	req := httptest.NewRequest(http.MethodPut, "/applications/test-app-id", bytes.NewBufferString(invalidPartialJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "test-app-id")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationPutRequest(w, req)
+
+	// Since Name was cleared out entirely, validation will catch it
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_EmptyJSONPayload() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	// An empty payload triggers a struct validation failure because required
+	// fields like name and ouId default to "" (empty strings).
+	unchangedJSON := `{}`
+
+	req := httptest.NewRequest(http.MethodPut, "/applications/test-app-id", bytes.NewBufferString(unchangedJSON))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "test-app-id")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationPutRequest(w, req)
+
+	// ✅ CORRECTED: Assert that a completely empty JSON body triggers a 400 Bad Request.
+	// Since the handler cuts execution early on validation failures, the mock service
+	// is never invoked, meaning we do not register any .On() expectations here.
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
 }

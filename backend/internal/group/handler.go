@@ -20,6 +20,7 @@ package group
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -115,6 +116,11 @@ func (gh *groupHandler) HandleGroupPostRequest(w http.ResponseWriter, r *http.Re
 
 	createRequest, err := sysutils.DecodeJSONBody[CreateGroupRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		errResp := apierror.ErrorResponse{
 			Code:    ErrorInvalidRequestFormat.Code,
 			Message: ErrorInvalidRequestFormat.Error,
@@ -151,6 +157,11 @@ func (gh *groupHandler) HandleGroupPostByPathRequest(w http.ResponseWriter, r *h
 
 	createRequest, err := sysutils.DecodeJSONBody[CreateGroupByPathRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		errResp := apierror.ErrorResponse{
 			Code:    ErrorInvalidRequestFormat.Code,
 			Message: ErrorInvalidRequestFormat.Error,
@@ -223,6 +234,11 @@ func (gh *groupHandler) HandleGroupPutRequest(w http.ResponseWriter, r *http.Req
 
 	updateRequest, err := sysutils.DecodeJSONBody[UpdateGroupRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		errResp := apierror.ErrorResponse{
 			Code:    ErrorInvalidRequestFormat.Code,
 			Message: ErrorInvalidRequestFormat.Error,
@@ -328,6 +344,11 @@ func (gh *groupHandler) HandleGroupMembersAddRequest(w http.ResponseWriter, r *h
 
 	membersRequest, err := sysutils.DecodeJSONBody[MembersRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		gh.handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
@@ -359,6 +380,11 @@ func (gh *groupHandler) HandleGroupMembersRemoveRequest(w http.ResponseWriter, r
 
 	membersRequest, err := sysutils.DecodeJSONBody[MembersRequest](r)
 	if err != nil {
+		var valErr *sysutils.ValidationError
+		if errors.As(err, &valErr) {
+			sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed", valErr.Errors)
+			return
+		}
 		gh.handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}

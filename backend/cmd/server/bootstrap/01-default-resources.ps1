@@ -340,9 +340,11 @@ if (-not $DEFAULT_OU_ID) {
 
 $resourceServerData = @{
     name = "System"
+    handle = "system"
     description = "System resource server"
     identifier = $SystemRsIdentifier
     ouId = $DEFAULT_OU_ID
+    delimiter = ":"
 } | ConvertTo-Json -Depth 10
 
 $response = Invoke-Api -Method POST -Endpoint "/resource-servers" -Data $resourceServerData
@@ -902,7 +904,17 @@ $roleData = @{
     permissions = @(
         @{
             resourceServerId = $SYSTEM_RS_ID
-            permissions = @("system")
+            permissions = @(
+                "system",
+                "system:ou",
+                "system:ou:view",
+                "system:user",
+                "system:user:view",
+                "system:group",
+                "system:group:view",
+                "system:usertype",
+                "system:usertype:view"
+            )
         }
     )
     assignments = @(
