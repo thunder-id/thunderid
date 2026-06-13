@@ -2,7 +2,7 @@
 // github.com/vektra/mockery
 // template: testify
 
-package executor
+package coremock
 
 import (
 	mock "github.com/stretchr/testify/mock"

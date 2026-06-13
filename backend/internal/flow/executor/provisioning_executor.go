@@ -51,7 +51,7 @@ var _ identifyingExecutorInterface = (*provisioningExecutor)(nil)
 
 // newProvisioningExecutor creates a new instance of ProvisioningExecutor.
 func newProvisioningExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	groupService group.GroupServiceInterface,
 	roleService role.RoleServiceInterface,
 	roleAssignmentService role.RoleAssignmentServiceInterface,
@@ -61,11 +61,11 @@ func newProvisioningExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameProvisioning),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameProvisioning))
 
-	base := flowFactory.CreateExecutor(ExecutorNameProvisioning, common.ExecutorTypeRegistration,
+	base := core.CreateExecutor(ExecutorNameProvisioning, common.ExecutorTypeRegistration,
 		[]common.Input{}, []common.Input{})
 
 	identifyingExec := newIdentifyingExecutor(ExecutorNameProvisioning,
-		[]common.Input{}, []common.Input{}, flowFactory, entityProvider)
+		[]common.Input{}, []common.Input{}, entityProvider)
 
 	return &provisioningExecutor{
 		ExecutorInterface:            base,

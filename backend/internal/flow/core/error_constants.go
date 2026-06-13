@@ -40,6 +40,34 @@ var ErrExecutorPrerequisiteNotMet = serviceerror.ServiceError{
 	},
 }
 
+// ErrorInvalidFlowData is returned when a flow definition is nil or invalid for graph generation.
+var ErrorInvalidFlowData = serviceerror.ServiceError{
+	Type: serviceerror.ClientErrorType,
+	Code: "FLB-1001",
+	Error: core.I18nMessage{
+		Key:          "error.flowbuilder.invalid_flow_data",
+		DefaultValue: "Invalid flow data",
+	},
+	ErrorDescription: core.I18nMessage{
+		Key:          "error.flowbuilder.invalid_flow_data_description",
+		DefaultValue: "Flow definition is nil or has no nodes",
+	},
+}
+
+// ErrorGraphBuildFailure is returned when graph building fails.
+var ErrorGraphBuildFailure = serviceerror.ServiceError{
+	Type: serviceerror.ClientErrorType,
+	Code: "FLB-1002",
+	Error: core.I18nMessage{
+		Key:          "error.flowbuilder.graph_build_failure",
+		DefaultValue: "Graph build failure",
+	},
+	ErrorDescription: core.I18nMessage{
+		Key:          "error.flowbuilder.graph_build_failure_description",
+		DefaultValue: "Failed to build executable graph from flow definition",
+	},
+}
+
 // ErrInvalidActionProvided is returned when an invalid action is provided in a prompt node.
 var ErrInvalidActionProvided = serviceerror.ServiceError{
 	Type: serviceerror.ClientErrorType,

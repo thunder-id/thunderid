@@ -30,18 +30,17 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/utils"
-	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
 const testFlowIDService = "test-flow-id"
 
 type FlowMgtServiceTestSuite struct {
 	suite.Suite
-	service              FlowMgtServiceInterface
-	mockStore            *flowStoreInterfaceMock
-	mockInference        *flowInferenceServiceInterfaceMock
-	mockGraphBuilder     *graphBuilderInterfaceMock
-	mockExecutorRegistry *executormock.ExecutorRegistryInterfaceMock
+	service          FlowMgtServiceInterface
+	mockStore        *flowStoreInterfaceMock
+	mockInference    *flowInferenceServiceInterfaceMock
+	mockGraphBuilder *coremock.GraphBuilderInterfaceMock
 }
 
 func TestFlowMgtServiceTestSuite(t *testing.T) {
@@ -58,10 +57,10 @@ func (s *stubTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 func (s *FlowMgtServiceTestSuite) SetupTest() {
 	s.mockStore = newFlowStoreInterfaceMock(s.T())
 	s.mockInference = newFlowInferenceServiceInterfaceMock(s.T())
-	s.mockGraphBuilder = newGraphBuilderInterfaceMock(s.T())
-	s.mockExecutorRegistry = executormock.NewExecutorRegistryInterfaceMock(s.T())
+	s.mockGraphBuilder = coremock.NewGraphBuilderInterfaceMock(s.T())
+	s.mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	s.service = newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		s.mockExecutorRegistry, nil, &stubTransactioner{})
+		nil, &stubTransactioner{})
 
 	testConfig := &config.Config{
 		Flow: config.FlowConfig{
@@ -985,44 +984,6 @@ func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_StoreError() {
 	s.Equal(&serviceerror.InternalServerError, err)
 }
 
-// GetGraph tests
-
-func (s *FlowMgtServiceTestSuite) TestGetGraph_Success() {
-	flow := &CompleteFlowDefinition{ID: testFlowIDService}
-	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(flow, nil)
-	s.mockGraphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(nil, nil)
-
-	result, err := s.service.GetGraph(context.Background(), testFlowIDService)
-
-	s.Nil(err)
-	s.Nil(result)
-}
-
-func (s *FlowMgtServiceTestSuite) TestGetGraph_EmptyID() {
-	result, err := s.service.GetGraph(context.Background(), "")
-
-	s.Nil(result)
-	s.Equal(&ErrorMissingFlowID, err)
-}
-
-func (s *FlowMgtServiceTestSuite) TestGetGraph_FlowNotFound() {
-	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(nil, errFlowNotFound)
-
-	result, err := s.service.GetGraph(context.Background(), testFlowIDService)
-
-	s.Nil(result)
-	s.Equal(&ErrorFlowNotFound, err)
-}
-
-func (s *FlowMgtServiceTestSuite) TestGetGraph_StoreError() {
-	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(nil, errors.New("db error"))
-
-	result, err := s.service.GetGraph(context.Background(), testFlowIDService)
-
-	s.Nil(result)
-	s.Equal(&serviceerror.InternalServerError, err)
-}
-
 // IsValidFlow tests
 
 func (s *FlowMgtServiceTestSuite) TestIsValidFlow_Success() {
@@ -1089,9 +1050,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_Success() {
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", testConfig)
 
-	mockExecutorRegistry := executormock.NewExecutorRegistryInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, nil, &stubTransactioner{})
+		nil, &stubTransactioner{})
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1136,7 +1096,6 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_Success() {
 
 	s.mockInference.AssertExpectations(s.T())
 	s.mockStore.AssertExpectations(s.T())
-	mockExecutorRegistry.AssertNotCalled(s.T(), "GetExecutor")
 }
 
 func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsNonAuthFlow() {
@@ -1149,9 +1108,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsNonAuthFlow(
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", testConfig)
 
-	mockExecutorRegistry := executormock.NewExecutorRegistryInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, nil, &stubTransactioner{})
+		nil, &stubTransactioner{})
 
 	regFlowDef := &FlowDefinition{
 		Handle:   "reg-flow",
@@ -1164,7 +1122,6 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsNonAuthFlow(
 
 	s.mockInference.AssertNotCalled(s.T(), "InferRegistrationFlow")
 	s.mockStore.AssertNotCalled(s.T(), "CreateFlow")
-	mockExecutorRegistry.AssertNotCalled(s.T(), "GetExecutor")
 }
 
 func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesInferenceError() {
@@ -1177,9 +1134,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesInferenceE
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", testConfig)
 
-	mockExecutorRegistry := executormock.NewExecutorRegistryInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, nil, &stubTransactioner{})
+		nil, &stubTransactioner{})
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1194,7 +1150,6 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesInferenceE
 
 	s.mockInference.AssertExpectations(s.T())
 	s.mockStore.AssertNotCalled(s.T(), "CreateFlow")
-	mockExecutorRegistry.AssertNotCalled(s.T(), "GetExecutor")
 }
 
 func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesStoreError() {
@@ -1207,9 +1162,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesStoreError
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", testConfig)
 
-	mockExecutorRegistry := executormock.NewExecutorRegistryInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, nil, &stubTransactioner{})
+		nil, &stubTransactioner{})
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1242,14 +1196,12 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesStoreError
 
 	s.mockInference.AssertExpectations(s.T())
 	s.mockStore.AssertExpectations(s.T())
-	mockExecutorRegistry.AssertNotCalled(s.T(), "GetExecutor")
 }
 
 func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_DisabledAutoInference() {
 	// Auto-inference is disabled in SetupTest, so just verify early return
-	mockExecutorRegistry := executormock.NewExecutorRegistryInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, nil, &stubTransactioner{})
+		nil, &stubTransactioner{})
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1262,7 +1214,6 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_DisabledAutoInfer
 
 	s.mockInference.AssertNotCalled(s.T(), "InferRegistrationFlow")
 	s.mockStore.AssertNotCalled(s.T(), "CreateFlow")
-	mockExecutorRegistry.AssertNotCalled(s.T(), "GetExecutor")
 }
 
 func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsPasskeyRegistrationModes() {
@@ -1275,9 +1226,8 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsPasskeyRegis
 	config.ResetServerRuntime()
 	_ = config.InitializeServerRuntime("test", testConfig)
 
-	mockExecutorRegistry := executormock.NewExecutorRegistryInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		mockExecutorRegistry, nil, &stubTransactioner{})
+		nil, &stubTransactioner{})
 
 	// Auth flow with PasskeyAuthExecutor in register_start and register_finish modes
 	authFlowDef := &FlowDefinition{
@@ -1320,7 +1270,6 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsPasskeyRegis
 	// the auth flow already contains passkey registration modes
 	s.mockInference.AssertNotCalled(s.T(), "InferRegistrationFlow")
 	s.mockStore.AssertNotCalled(s.T(), "CreateFlow")
-	mockExecutorRegistry.AssertNotCalled(s.T(), "GetExecutor")
 }
 
 // Immutability enforcement tests with composite mode disabled

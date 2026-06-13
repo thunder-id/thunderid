@@ -57,7 +57,7 @@ var _ identifyingExecutorInterface = (*identifyingExecutor)(nil)
 func newIdentifyingExecutor(
 	name string,
 	defaultInputs, prerequisites []common.Input,
-	flowFactory core.FlowFactoryInterface,
+
 	entityProvider entityprovider.EntityProviderInterface,
 ) *identifyingExecutor {
 	if name == "" {
@@ -66,7 +66,7 @@ func newIdentifyingExecutor(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, idfExecLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, name))
 
-	base := flowFactory.CreateExecutor(ExecutorNameIdentifying, common.ExecutorTypeUtility,
+	base := core.CreateExecutor(ExecutorNameIdentifying, common.ExecutorTypeUtility,
 		defaultInputs, prerequisites)
 	return &identifyingExecutor{
 		ExecutorInterface: base,

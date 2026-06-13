@@ -40,8 +40,30 @@ type FlowFactoryInterface interface {
 // flowFactory is the concrete implementation of FlowFactoryInterface
 type flowFactory struct{}
 
+var activeFlowFactory FlowFactoryInterface = newFlowFactory()
+
 func newFlowFactory() FlowFactoryInterface {
 	return &flowFactory{}
+}
+
+// NewFlowFactory creates a new flow factory instance.
+func NewFlowFactory() FlowFactoryInterface {
+	return newFlowFactory()
+}
+
+// CreateExecutor creates a new executor using the package flow factory.
+func CreateExecutor(name string, executorType common.ExecutorType,
+	defaultInputs, prerequisites []common.Input) ExecutorInterface {
+	return activeFlowFactory.CreateExecutor(name, executorType, defaultInputs, prerequisites)
+}
+
+// SetFlowFactoryForTest replaces the flow factory used by CreateExecutor. Returns a restore function.
+func SetFlowFactoryForTest(factory FlowFactoryInterface) func() {
+	prev := activeFlowFactory
+	activeFlowFactory = factory
+	return func() {
+		activeFlowFactory = prev
+	}
 }
 
 // CreateNode creates a new node based on the provided type and properties

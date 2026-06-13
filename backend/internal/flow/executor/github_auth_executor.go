@@ -38,7 +38,7 @@ var _ core.ExecutorInterface = (*githubOAuthExecutor)(nil)
 
 // newGithubOAuthExecutor creates a new instance of GithubOAuthExecutor with the provided details.
 func newGithubOAuthExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	idpService idp.IDPServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authService authngithub.GithubOAuthAuthnServiceInterface,
@@ -50,7 +50,7 @@ func newGithubOAuthExecutor(
 	}
 
 	base := newOAuthExecutor(ExecutorNameGitHubAuth, []common.Input{}, []common.Input{},
-		flowFactory, idpService, entityTypeService, oauthSvcCast, authnProvider, idp.IDPTypeGitHub)
+		idpService, entityTypeService, oauthSvcCast, authnProvider, idp.IDPTypeGitHub)
 
 	return &githubOAuthExecutor{
 		oAuthExecutorInterface: base,

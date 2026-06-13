@@ -66,7 +66,9 @@ func (suite *InviteExecutorTestSuite) SetupTest() {
 		},
 		[]common.Input{}).Return(mockBaseExecutor)
 
-	suite.executor = newInviteExecutor(suite.mockFlowFactory)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newInviteExecutor()
 }
 
 func (suite *InviteExecutorTestSuite) TearDownTest() {

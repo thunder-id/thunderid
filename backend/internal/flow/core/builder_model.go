@@ -16,17 +16,12 @@
  * under the License.
  */
 
-// Package core provides the core structs for flow management and execution.
 package core
 
-import "github.com/thunder-id/thunderid/internal/system/cache"
-
-// InitializeGraphBuilder creates the flow graph builder and its internal graph cache.
-func InitializeGraphBuilder(
-	cacheManager cache.CacheManagerInterface,
-	executorRegistry ExecutorRegistryInterface,
-) GraphBuilderInterface {
-	graphCacheInst := cache.GetInMemoryCache[*graph](cacheManager, "FlowGraphCache")
-	graphCache := newGraphCache(graphCacheInst)
-	return newGraphBuilder(activeFlowFactory, executorRegistry, graphCache)
+// segmentBoundary holds the parameters of a segment boundary, which is identified by a display-only prompt node.
+// It contains the ID of the display-only prompt node that serves as the boundary, and the ID of the next node
+// which is the start node of the next segment.
+type segmentBoundary struct {
+	boundaryNodeID string
+	nextNodeID     string
 }

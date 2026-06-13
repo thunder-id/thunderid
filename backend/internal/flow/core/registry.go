@@ -16,17 +16,11 @@
  * under the License.
  */
 
-// Package core provides the core structs for flow management and execution.
 package core
 
-import "github.com/thunder-id/thunderid/internal/system/cache"
-
-// InitializeGraphBuilder creates the flow graph builder and its internal graph cache.
-func InitializeGraphBuilder(
-	cacheManager cache.CacheManagerInterface,
-	executorRegistry ExecutorRegistryInterface,
-) GraphBuilderInterface {
-	graphCacheInst := cache.GetInMemoryCache[*graph](cacheManager, "FlowGraphCache")
-	graphCache := newGraphCache(graphCacheInst)
-	return newGraphBuilder(activeFlowFactory, executorRegistry, graphCache)
+// ExecutorRegistryInterface defines registry operations for executors.
+type ExecutorRegistryInterface interface {
+	GetExecutor(name string) (ExecutorInterface, error)
+	RegisterExecutor(name string, ex ExecutorInterface)
+	IsRegistered(name string) bool
 }

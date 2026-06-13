@@ -67,7 +67,9 @@ func (suite *OUResolverExecutorTestSuite) SetupTest() {
 		[]common.Input{}).Return(
 		newMockExecutor("OUResolverExecutor", common.ExecutorTypeUtility, defaultInputs, []common.Input{}))
 
-	suite.executor = newOUResolverExecutor(suite.mockFlowFactory, suite.mockOUService)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newOUResolverExecutor(suite.mockOUService)
 }
 
 // --- Caller strategy tests ---

@@ -56,6 +56,7 @@ func TestOIDCAuthExecutorSuite(t *testing.T) {
 	suite.Run(t, new(OIDCAuthExecutorTestSuite))
 }
 
+//nolint:dupl // OAuth and OIDC executor setup tests share the same factory wiring pattern.
 func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
 	suite.mockOIDCService = oidcmock.NewOIDCAuthnCoreServiceInterfaceMock(suite.T())
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
@@ -68,8 +69,10 @@ func (suite *OIDCAuthExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameOIDCAuth, common.ExecutorTypeAuthentication,
 		defaultInputs, []common.Input{}).Return(mockExec)
 
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
 	suite.executor = newOIDCAuthExecutor(ExecutorNameOIDCAuth, defaultInputs, []common.Input{},
-		suite.mockFlowFactory, suite.mockIDPService, suite.mockEntityTypeService, suite.mockOIDCService,
+		suite.mockIDPService, suite.mockEntityTypeService, suite.mockOIDCService,
 		suite.mockAuthnProvider, idp.IDPTypeOIDC)
 }
 

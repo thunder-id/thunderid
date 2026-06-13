@@ -49,14 +49,12 @@ type federatedAuthResolverExecutor struct {
 }
 
 // newFederatedAuthResolverExecutor creates a new instance of FederatedAuthResolverExecutor.
-func newFederatedAuthResolverExecutor(
-	flowFactory core.FlowFactoryInterface,
-) *federatedAuthResolverExecutor {
+func newFederatedAuthResolverExecutor() *federatedAuthResolverExecutor {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, federatedAuthResolverLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameFederatedAuthResolver))
 
-	base := flowFactory.CreateExecutor(ExecutorNameFederatedAuthResolver,
+	base := core.CreateExecutor(ExecutorNameFederatedAuthResolver,
 		common.ExecutorTypeAuthentication, nil, nil)
 
 	return &federatedAuthResolverExecutor{

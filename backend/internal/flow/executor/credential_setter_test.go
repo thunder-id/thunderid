@@ -57,7 +57,9 @@ func (suite *CredentialSetterTestSuite) SetupTest() {
 			},
 		}).Return(suite.mockBaseExecutor)
 
-	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newCredentialSetter(suite.mockEntityProvider)
 }
 
 func (suite *CredentialSetterTestSuite) TestExecute_Success() {

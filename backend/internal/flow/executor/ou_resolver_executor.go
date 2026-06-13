@@ -49,7 +49,7 @@ type ouResolverExecutor struct {
 
 // newOUResolverExecutor creates a new OU resolver executor.
 func newOUResolverExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	ouService ou.OrganizationUnitServiceInterface,
 ) *ouResolverExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OUResolverExecutor"))
@@ -63,7 +63,7 @@ func newOUResolverExecutor(
 		},
 	}
 
-	base := flowFactory.CreateExecutor(
+	base := core.CreateExecutor(
 		ExecutorNameOUResolver,
 		common.ExecutorTypeUtility,
 		defaultInputs,

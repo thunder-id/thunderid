@@ -65,7 +65,6 @@ type FlowMgtServiceInterface interface {
 	GetFlowVersion(ctx context.Context, flowID string, version int) (*FlowVersion, *serviceerror.ServiceError)
 	RestoreFlowVersion(ctx context.Context, flowID string, version int) (
 		*CompleteFlowDefinition, *serviceerror.ServiceError)
-	GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *serviceerror.ServiceError)
 	IsValidFlow(ctx context.Context, flowID string, flowType common.FlowType) (bool, *serviceerror.ServiceError)
 }
 
@@ -73,8 +72,7 @@ type FlowMgtServiceInterface interface {
 type flowMgtService struct {
 	store            flowStoreInterface
 	inferenceService flowInferenceServiceInterface
-	graphBuilder     graphBuilderInterface
-	executorRegistry executor.ExecutorRegistryInterface
+	graphBuilder     core.GraphBuilderInterface
 	compositeStore   *compositeFlowStore
 	transactioner    transaction.Transactioner
 	logger           *log.Logger
@@ -84,8 +82,7 @@ type flowMgtService struct {
 func newFlowMgtService(
 	store flowStoreInterface,
 	inferenceService flowInferenceServiceInterface,
-	graphBuilder graphBuilderInterface,
-	executorRegistry executor.ExecutorRegistryInterface,
+	graphBuilder core.GraphBuilderInterface,
 	compositeStore *compositeFlowStore,
 	transactioner transaction.Transactioner,
 ) FlowMgtServiceInterface {
@@ -93,7 +90,6 @@ func newFlowMgtService(
 		store:            store,
 		inferenceService: inferenceService,
 		graphBuilder:     graphBuilder,
-		executorRegistry: executorRegistry,
 		compositeStore:   compositeStore,
 		transactioner:    transactioner,
 		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
@@ -151,6 +147,10 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 			return nil, &serviceerror.InternalServerError
 		}
 		flowID = generated
+	}
+
+	if err := s.validateExecutableGraph(ctx, completeFlowFromDefinition(flowID, flowDef)); err != nil {
+		return nil, err
 	}
 
 	var createdFlow *CompleteFlowDefinition
@@ -245,6 +245,10 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 		return nil, &ErrorMissingFlowID
 	}
 	if err := validateFlowDefinition(flowDef); err != nil {
+		return nil, err
+	}
+
+	if err := s.validateExecutableGraph(ctx, completeFlowFromDefinition(flowID, flowDef)); err != nil {
 		return nil, err
 	}
 
@@ -407,15 +411,27 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 
 	logger := s.logger.With(log.String(logKeyFlowID, flowID), log.Int(logKeyVersion, version))
 
+	flowVersion, err := s.store.GetFlowVersion(ctx, flowID, version)
+	if err != nil {
+		if errors.Is(err, errFlowNotFound) {
+			return nil, &ErrorFlowNotFound
+		}
+		if errors.Is(err, errVersionNotFound) {
+			return nil, &ErrorVersionNotFound
+		}
+		logger.Error(ctx, "Failed to get flow version for restore", log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+
+	if err := s.validateExecutableGraph(ctx, completeFlowFromVersion(flowID, flowVersion)); err != nil {
+		return nil, err
+	}
+
 	var restoredFlow *CompleteFlowDefinition
 	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		_, err := s.store.GetFlowVersion(txCtx, flowID, version)
-		if err != nil {
-			return err
-		}
-
-		restoredFlow, err = s.store.RestoreFlowVersion(txCtx, flowID, version)
-		return err
+		var restoreErr error
+		restoredFlow, restoreErr = s.store.RestoreFlowVersion(txCtx, flowID, version)
+		return restoreErr
 	})
 	if txErr != nil {
 		if errors.Is(txErr, errFlowNotFound) {
@@ -434,29 +450,6 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 	s.graphBuilder.InvalidateCache(ctx, flowID)
 
 	return restoredFlow, nil
-}
-
-// Graph building methods
-
-// GetGraph retrieves or builds a graph for the given flow ID.
-func (s *flowMgtService) GetGraph(ctx context.Context, flowID string) (
-	core.GraphInterface, *serviceerror.ServiceError) {
-	if flowID == "" {
-		return nil, &ErrorMissingFlowID
-	}
-
-	// Fetch flow definition from store
-	flow, err := s.store.GetFlowByID(ctx, flowID)
-	if err != nil {
-		if errors.Is(err, errFlowNotFound) {
-			return nil, &ErrorFlowNotFound
-		}
-		s.logger.Error(ctx, "Failed to get flow for graph building", log.String(logKeyFlowID, flowID),
-			log.Error(err))
-		return nil, &serviceerror.InternalServerError
-	}
-
-	return s.graphBuilder.GetGraph(ctx, flow)
 }
 
 // IsValidFlow checks if a flow exists for the given flow ID and matches the expected type.
@@ -564,6 +557,38 @@ func validateFlowDefinition(flowDef *FlowDefinition) *serviceerror.ServiceError 
 		})
 	}
 
+	return nil
+}
+
+// completeFlowFromDefinition builds a complete flow definition used for graph validation.
+func completeFlowFromDefinition(flowID string, flowDef *FlowDefinition) *common.CompleteFlowDefinition {
+	return &common.CompleteFlowDefinition{
+		ID:       flowID,
+		Handle:   flowDef.Handle,
+		Name:     flowDef.Name,
+		FlowType: flowDef.FlowType,
+		Nodes:    flowDef.Nodes,
+	}
+}
+
+// completeFlowFromVersion builds a complete flow definition from a stored version for graph validation.
+func completeFlowFromVersion(flowID string, version *FlowVersion) *common.CompleteFlowDefinition {
+	return &common.CompleteFlowDefinition{
+		ID:       flowID,
+		Handle:   version.Handle,
+		Name:     version.Name,
+		FlowType: common.FlowType(version.FlowType),
+		Nodes:    version.Nodes,
+	}
+}
+
+// validateExecutableGraph verifies that the flow definition can be compiled into an executable graph.
+func (s *flowMgtService) validateExecutableGraph(
+	ctx context.Context, flow *common.CompleteFlowDefinition,
+) *serviceerror.ServiceError {
+	if _, err := s.graphBuilder.GetGraph(ctx, flow); err != nil {
+		return err
+	}
 	return nil
 }
 

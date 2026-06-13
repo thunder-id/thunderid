@@ -47,12 +47,12 @@ type smsExecutor struct {
 }
 
 // newSMSExecutor creates a new instance of smsExecutor.
-func newSMSExecutor(flowFactory core.FlowFactoryInterface,
+func newSMSExecutor(
 	notifSenderSvc notification.NotificationSenderServiceInterface,
 	templateService template.TemplateServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface) *smsExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SMSExecutor"))
-	base := flowFactory.CreateExecutor(
+	base := core.CreateExecutor(
 		ExecutorNameSMSExecutor,
 		common.ExecutorTypeUtility,
 		[]common.Input{

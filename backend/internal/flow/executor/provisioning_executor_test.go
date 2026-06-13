@@ -81,13 +81,15 @@ func (suite *ProvisioningExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, common.ExecutorTypeUtility,
 		mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
 
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
 	mockExec := suite.createMockProvisioningExecutor()
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameProvisioning, common.ExecutorTypeRegistration,
 		[]common.Input{}, []common.Input{}).Return(mockExec)
 
-	suite.executor = newProvisioningExecutor(suite.mockFlowFactory,
-		suite.mockGroupService, suite.mockRoleService, suite.mockRoleAssignmentService, suite.mockEntityProvider,
-		suite.mockEntityTypeService)
+	suite.executor = newProvisioningExecutor(
+		suite.mockGroupService, suite.mockRoleService, suite.mockRoleAssignmentService,
+		suite.mockEntityProvider, suite.mockEntityTypeService)
 }
 
 // expectSchemaForProvisioning sets up the schema service mocks for Execute tests.
@@ -531,10 +533,11 @@ func (suite *ProvisioningExecutorTestSuite) newExecutorWithNodeInputs(inputs []c
 	identifyingMock := suite.createMockIdentifyingExecutor()
 	mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, common.ExecutorTypeUtility,
 		mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFlowFactory))
 
-	return newProvisioningExecutor(mockFlowFactory,
-		suite.mockGroupService, suite.mockRoleService, suite.mockRoleAssignmentService, suite.mockEntityProvider,
-		suite.mockEntityTypeService)
+	return newProvisioningExecutor(
+		suite.mockGroupService, suite.mockRoleService, suite.mockRoleAssignmentService,
+		suite.mockEntityProvider, suite.mockEntityTypeService)
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_FilteredPath_RequiredAttrFromUserInputs() {

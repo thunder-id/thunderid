@@ -94,7 +94,9 @@ func (suite *AuthAssertExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameAuthAssert, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{}).Return(mockExec)
 
-	suite.executor = newAuthAssertExecutor(suite.mockFlowFactory, suite.mockJWTService,
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newAuthAssertExecutor(suite.mockJWTService,
 		suite.mockOUService, suite.mockAssertGenerator, suite.mockAuthnProvider, suite.mockEntityProvider,
 		suite.mockAttributeCacheSvc, suite.mockRoleService)
 }

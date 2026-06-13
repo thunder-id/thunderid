@@ -49,14 +49,14 @@ var _ core.ExecutorInterface = (*authorizationExecutor)(nil)
 
 // newAuthorizationExecutor creates a new instance of AuthorizationExecutor.
 func newAuthorizationExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	authZService authzsvc.AuthorizationServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 ) *authorizationExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authzLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthorization))
 
-	base := flowFactory.CreateExecutor(ExecutorNameAuthorization, common.ExecutorTypeUtility,
+	base := core.CreateExecutor(ExecutorNameAuthorization, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{})
 
 	return &authorizationExecutor{

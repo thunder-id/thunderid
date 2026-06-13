@@ -57,11 +57,11 @@ type openid4vpVerifier struct {
 // may be nil when the verifier is disabled; the executor then fails cleanly
 // when reached.
 func newOpenID4VPVerifier(
-	flowFactory core.FlowFactoryInterface, service openid4vpVerifierService,
+	service openid4vpVerifierService,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 ) core.ExecutorInterface {
-	base := flowFactory.CreateExecutor(
+	base := core.CreateExecutor(
 		ExecutorNameOpenID4VPVerify, common.ExecutorTypeAuthentication, []common.Input{}, []common.Input{})
 	return &openid4vpVerifier{
 		ExecutorInterface: base,

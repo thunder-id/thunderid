@@ -37,7 +37,7 @@ type inviteExecutor struct {
 }
 
 // newInviteExecutor creates a new instance of the invite executor.
-func newInviteExecutor(flowFactory core.FlowFactoryInterface) *inviteExecutor {
+func newInviteExecutor() *inviteExecutor {
 	defaultInputs := []common.Input{
 		{
 			Identifier: userInputInviteToken,
@@ -46,7 +46,7 @@ func newInviteExecutor(flowFactory core.FlowFactoryInterface) *inviteExecutor {
 		},
 	}
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "InviteExecutor"))
-	base := flowFactory.CreateExecutor(
+	base := core.CreateExecutor(
 		ExecutorNameInviteExecutor,
 		common.ExecutorTypeUtility,
 		defaultInputs,

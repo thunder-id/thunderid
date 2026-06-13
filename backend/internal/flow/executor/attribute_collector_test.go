@@ -58,7 +58,9 @@ func (suite *AttributeCollectorTestSuite) SetupTest() {
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameAttributeCollect, common.ExecutorTypeUtility,
 		[]common.Input{}, prerequisites).Return(mockExec)
 
-	suite.executor = newAttributeCollector(suite.mockFlowFactory, suite.mockEntityProvider)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newAttributeCollector(suite.mockEntityProvider)
 }
 
 func createMockExecutorForAttrCollector(t *testing.T, name string,

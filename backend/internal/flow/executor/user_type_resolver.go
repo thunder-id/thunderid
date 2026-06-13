@@ -52,7 +52,7 @@ var _ core.ExecutorInterface = (*userTypeResolver)(nil)
 
 // newUserTypeResolver creates a new instance of the UserTypeResolver executor.
 func newUserTypeResolver(
-	flowFactory core.FlowFactoryInterface,
+
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
 ) *userTypeResolver {
@@ -69,7 +69,7 @@ func newUserTypeResolver(
 		},
 	}
 
-	base := flowFactory.CreateExecutor(ExecutorNameUserTypeResolver, common.ExecutorTypeRegistration,
+	base := core.CreateExecutor(ExecutorNameUserTypeResolver, common.ExecutorTypeRegistration,
 		defaultInputs, []common.Input{})
 
 	return &userTypeResolver{

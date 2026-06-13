@@ -40,11 +40,11 @@ type emailExecutor struct {
 }
 
 // newEmailExecutor creates a new instance of the email executor.
-func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.EmailClientInterface,
+func newEmailExecutor(emailClient email.EmailClientInterface,
 	templateService template.TemplateServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface) *emailExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EmailExecutor"))
-	base := flowFactory.CreateExecutor(
+	base := core.CreateExecutor(
 		ExecutorNameEmailExecutor,
 		common.ExecutorTypeUtility,
 		[]common.Input{

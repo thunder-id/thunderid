@@ -124,13 +124,13 @@ func (suite *MagicLinkExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameIdentifying, common.ExecutorTypeUtility,
 		mock.Anything, mock.Anything).Return(identifyingMock).Maybe()
 
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
 	mockExec := createMockMagicLinkExecutor(suite.T())
 	suite.mockFlowFactory.On("CreateExecutor", ExecutorNameMagicLink, common.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites).Return(mockExec)
 
-	suite.executor = newMagicLinkExecutor(
-		suite.mockFlowFactory,
-		suite.mockMagicLinkService,
+	suite.executor = newMagicLinkExecutor(suite.mockMagicLinkService,
 		suite.mockAuthnProvider,
 		suite.mockEntityProvider)
 	suite.executor.ExecutorInterface = mockExec

@@ -51,7 +51,8 @@ func newTestOpenID4VPExecutor(t *testing.T, service openid4vpVerifierService) co
 	base := coremock.NewExecutorInterfaceMock(t)
 	factory.On("CreateExecutor", ExecutorNameOpenID4VPVerify, common.ExecutorTypeAuthentication,
 		[]common.Input{}, []common.Input{}).Return(base).Maybe()
-	return newOpenID4VPVerifier(factory, service, nil, nil)
+	t.Cleanup(core.SetFlowFactoryForTest(factory))
+	return newOpenID4VPVerifier(service, nil, nil)
 }
 
 func openid4vpNodeContext(runtime map[string]string, properties map[string]interface{}) *core.NodeContext {

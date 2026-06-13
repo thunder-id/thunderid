@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	yaml "gopkg.in/yaml.v3"
@@ -37,12 +36,11 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/oidcmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
-	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 )
 
 type BuiltInExecutorRegistrationTestSuite struct {
 	suite.Suite
-	registry ExecutorRegistryInterface
+	registry core.ExecutorRegistryInterface
 }
 
 func TestBuiltInExecutorRegistrationSuite(t *testing.T) {
@@ -53,19 +51,8 @@ func (suite *BuiltInExecutorRegistrationTestSuite) SetupTest() {
 	suite.registry = newExecutorRegistry()
 }
 
-func (suite *BuiltInExecutorRegistrationTestSuite) mockFlowFactory() *coremock.FlowFactoryInterfaceMock {
-	mockFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
-	mockBase := coremock.NewExecutorInterfaceMock(suite.T())
-	mockBase.On("GetName").Return("").Maybe()
-	mockBase.On("GetType").Return(common.ExecutorTypeUtility).Maybe()
-	mockFactory.On("CreateExecutor", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(mockBase).Maybe()
-	return mockFactory
-}
-
 func (suite *BuiltInExecutorRegistrationTestSuite) depsForBuiltInRegistration() ExecutorDependencies {
 	return ExecutorDependencies{
-		FlowFactory:    suite.mockFlowFactory(),
 		EntityProvider: entityprovidermock.NewEntityProviderInterfaceMock(suite.T()),
 		OAuthSvc:       oauthmock.NewOAuthAuthnServiceInterfaceMock(suite.T()),
 		OIDCSvc:        oidcmock.NewOIDCAuthnServiceInterfaceMock(suite.T()),
@@ -92,15 +79,6 @@ func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_E
 		require.NoError(suite.T(), err, "registering %q", name)
 		assert.True(suite.T(), reg.IsRegistered(name), "executor %q should be registered", name)
 	}
-}
-
-func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutor_RequiresFlowFactory() {
-	reg := newExecutorRegistry()
-	suite.Require().Panics(func() {
-		_ = registerBuiltInExecutor(
-			reg, newBuiltInExecutorRegistrars(), ExecutorDependencies{}, ExecutorNameInviteExecutor)
-	})
-	assert.False(suite.T(), reg.IsRegistered(ExecutorNameInviteExecutor))
 }
 
 func (suite *BuiltInExecutorRegistrationTestSuite) TestRegisterBuiltInExecutors_UnknownName() {
@@ -232,7 +210,7 @@ func (suite *BuiltInExecutorRegistrationTestSuite) TestInitialize_UnknownExecuto
 // nilSkippingRegistry delegates to a real registry but forces nil executors, matching
 // RegisterExecutor's silent skip behavior when construction would otherwise succeed.
 type nilSkippingRegistry struct {
-	inner ExecutorRegistryInterface
+	inner core.ExecutorRegistryInterface
 }
 
 func (n *nilSkippingRegistry) GetExecutor(name string) (core.ExecutorInterface, error) {

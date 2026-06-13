@@ -59,7 +59,7 @@ func newMagicLinkExecutorResponse() *common.ExecutorResponse {
 
 // newMagicLinkExecutor creates a new instance of MagicLinkExecutor.
 func newMagicLinkExecutor(
-	flowFactory core.FlowFactoryInterface,
+
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 	entityProvider entityprovider.EntityProviderInterface,
@@ -76,8 +76,8 @@ func newMagicLinkExecutor(
 		log.String(log.LoggerKeyExecutorName, ExecutorNameMagicLink))
 
 	identifyExec := newIdentifyingExecutor(ExecutorNameMagicLink, defaultInputs, prerequisites,
-		flowFactory, entityProvider)
-	base := flowFactory.CreateExecutor(ExecutorNameMagicLink, common.ExecutorTypeAuthentication,
+		entityProvider)
+	base := core.CreateExecutor(ExecutorNameMagicLink, common.ExecutorTypeAuthentication,
 		defaultInputs, prerequisites)
 
 	return &magicLinkExecutor{

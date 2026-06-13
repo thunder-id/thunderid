@@ -54,7 +54,6 @@ var (
 					Name: "BasicAuthExecutor",
 				},
 				OnSuccess: "END",
-				OnFailure: "END",
 			},
 			{
 				ID:   "END",
@@ -79,7 +78,6 @@ var (
 					Name: "BasicAuthExecutor",
 				},
 				OnSuccess: "ou_node",
-				OnFailure: "END",
 			},
 			{
 				ID:   "ou_node",
@@ -93,7 +91,6 @@ var (
 					OnSkip: "END",
 				},
 				OnSuccess: "END",
-				OnFailure: "END",
 			},
 			{
 				ID:   "END",
@@ -118,7 +115,6 @@ var (
 					Name: "UserTypeResolver",
 				},
 				OnSuccess: "provisioning",
-				OnFailure: "END",
 			},
 			{
 				ID:   "provisioning",
@@ -127,7 +123,6 @@ var (
 					Name: "ProvisioningExecutor",
 				},
 				OnSuccess: "END",
-				OnFailure: "END",
 			},
 			{
 				ID:   "END",
@@ -271,7 +266,6 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_WithLayout() {
 					Name: "BasicAuthExecutor",
 				},
 				OnSuccess: "END",
-				OnFailure: "END",
 			},
 			{
 				ID:   "END",
@@ -515,8 +509,8 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_ValidationErrors() {
 					},
 				},
 			},
-			expectedStatus: http.StatusCreated,
-			expectedCode:   "",
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   "FLB-1002",
 		},
 	}
 
@@ -629,7 +623,6 @@ func (suite *FlowMgtAPITestSuite) TestUpdateFlow_Success() {
 					Name: "BasicAuthExecutor",
 				},
 				OnSuccess: "END",
-				OnFailure: "END",
 			},
 			{
 				ID:   "END",

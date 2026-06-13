@@ -62,7 +62,9 @@ func (suite *SMSExecutorTestSuite) SetupTest() {
 		[]common.Input{},
 	).Return(suite.mockBaseExecutor)
 
-	suite.executor = newSMSExecutor(suite.mockFlowFactory, suite.mockSMSSenderSvc, suite.mockTemplateService, nil)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(suite.mockFlowFactory))
+
+	suite.executor = newSMSExecutor(suite.mockSMSSenderSvc, suite.mockTemplateService, nil)
 }
 
 func (suite *SMSExecutorTestSuite) TestExecute_SendMode_Success() {
@@ -328,8 +330,9 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_NilSMSSenderService_Retu
 		},
 		[]common.Input{},
 	).Return(mockBaseExecutor)
+	suite.T().Cleanup(core.SetFlowFactoryForTest(mockFactory))
 
-	noServiceExecutor := newSMSExecutor(mockFactory, nil, suite.mockTemplateService, nil)
+	noServiceExecutor := newSMSExecutor(nil, suite.mockTemplateService, nil)
 
 	ctx := &core.NodeContext{
 		ExecutionID:  "test-flow-id",
