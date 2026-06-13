@@ -24,7 +24,9 @@ import {
   EmbeddedSignUpFlowTypeV2,
   withVendorCSSClassPrefix,
   EmbeddedFlowComponentTypeV2 as EmbeddedFlowComponentType,
+  FieldErrorV2 as FieldError,
   createPackageComponentLogger,
+  buildValidatorFromRules,
   Preferences,
 } from '@thunderid/browser';
 import {FC, ReactElement, ReactNode, useCallback, useContext, useEffect, useRef, useState} from 'react';
@@ -404,11 +406,13 @@ const BaseSignUpContent: FC<BaseSignUpProps> = ({
             component.type === EmbeddedFlowComponentType.TextInput ||
             component.type === EmbeddedFlowComponentType.PasswordInput ||
             component.type === EmbeddedFlowComponentType.EmailInput ||
-            component.type === EmbeddedFlowComponentType.Select
+            component.type === EmbeddedFlowComponentType.Select ||
+            component.type === EmbeddedFlowComponentType.DateInput
           ) {
             // Use component.ref (mapped identifier) as the field name instead of component.id
             // This ensures form field names match what the input components use
             const fieldName: any = component.ref || component.id;
+            const ruleValidator = buildValidatorFromRules(component.validation);
 
             fields.push({
               initialValue: '',
@@ -425,6 +429,13 @@ const BaseSignUpContent: FC<BaseSignUpProps> = ({
                   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
                 ) {
                   return t('field.email.invalid');
+                }
+                // Evaluate declarative validation rules from meta.components[].validation.
+                if (ruleValidator && value) {
+                  const ruleMessage = ruleValidator(value);
+                  if (ruleMessage) {
+                    return t(ruleMessage);
+                  }
                 }
 
                 return null;
@@ -463,10 +474,33 @@ const BaseSignUpContent: FC<BaseSignUpProps> = ({
     isValid: isFormValid,
     setValue: setFormValue,
     setTouched: setFormTouched,
+    setErrors: setFormErrors,
+    clearErrors: clearFormErrors,
     validateForm,
     touchAllFields,
     reset: resetForm,
   } = form;
+
+  /**
+   * Project server-side validation errors from the most recent flow response into the
+   * form's `errors` state. See BaseSignIn for the same pattern: first error per field
+   * wins, and the affected fields are marked touched so the error renders immediately.
+   */
+  useEffect(() => {
+    clearFormErrors();
+    const responseFieldErrors: FieldError[] | undefined = (currentFlow?.data as any)?.fieldErrors;
+    if (!responseFieldErrors || responseFieldErrors.length === 0) {
+      return;
+    }
+    const errors: Record<string, string> = {};
+    for (const fe of responseFieldErrors) {
+      if (!(fe.identifier in errors)) {
+        errors[fe.identifier] = fe.message;
+      }
+    }
+    setFormErrors(errors);
+    Object.keys(errors).forEach((field: string) => setFormTouched(field, true));
+  }, [currentFlow, setFormErrors, setFormTouched, clearFormErrors]);
 
   /**
    * Setup form fields based on the current flow.

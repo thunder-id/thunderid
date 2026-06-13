@@ -92,6 +92,9 @@ export type {
   ConsentPurposeData as ConsentPurposeDataV2,
   ConsentPromptData as ConsentPromptDataV2,
   I18nMessage,
+  ValidationRule as ValidationRuleV2,
+  ValidationRuleType as ValidationRuleTypeV2,
+  FieldError as FieldErrorV2,
 } from './models/v2/embedded-flow-v2';
 export {
   EmbeddedSignInFlowStatus as EmbeddedSignInFlowStatusV2,
@@ -256,6 +259,8 @@ export {default as resolveFlowTemplateLiterals} from './utils/v2/resolveFlowTemp
 export {default as countryCodeToFlagEmoji} from './utils/v2/countryCodeToFlagEmoji';
 export {default as resolveLocaleDisplayName} from './utils/v2/resolveLocaleDisplayName';
 export {default as resolveLocaleEmoji} from './utils/v2/resolveLocaleEmoji';
+export {default as buildValidatorFromRules} from './utils/v2/buildValidatorFromRules';
+export {default as evaluateValidationRule, DEFAULT_VALIDATION_MESSAGE_KEYS} from './utils/v2/evaluateValidationRule';
 export {default as processOpenIDScopes} from './utils/processOpenIDScopes';
 export {default as withVendorCSSClassPrefix} from './utils/withVendorCSSClassPrefix';
 export {default as transformBrandingPreferenceToTheme} from './utils/transformBrandingPreferenceToTheme';

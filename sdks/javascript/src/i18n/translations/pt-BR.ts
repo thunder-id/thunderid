@@ -63,6 +63,9 @@ const translations: I18nTranslations = {
 
   /* Validation */
   'validations.required.field.error': 'Este campo é obrigatório',
+  'validation.pattern.invalid': 'Este valor não corresponde ao formato necessário.',
+  'validation.minLength.invalid': 'Este valor é muito curto.',
+  'validation.maxLength.invalid': 'Este valor é muito longo.',
 
   /* |---------------------------------------------------------------| */
   /* |                        Widgets                                | */

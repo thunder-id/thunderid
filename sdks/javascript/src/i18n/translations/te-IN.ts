@@ -63,6 +63,9 @@ const translations: I18nTranslations = {
 
   /* Validation */
   'validations.required.field.error': 'ఈ ఫీల్డ్ అవసరం',
+  'validation.pattern.invalid': 'ఈ విలువ అవసరమైన ఆకృతికి సరిపోలడం లేదు.',
+  'validation.minLength.invalid': 'ఈ విలువ చాలా చిన్నది.',
+  'validation.maxLength.invalid': 'ఈ విలువ చాలా పెద్దది.',
 
   /* |---------------------------------------------------------------| */
   /* |                        Widgets                                | */

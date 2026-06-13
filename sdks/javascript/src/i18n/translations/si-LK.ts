@@ -63,6 +63,9 @@ const translations: I18nTranslations = {
 
   /* Validation */
   'validations.required.field.error': 'මෙම ක්ෂේත්‍රය අවශ්‍යයි',
+  'validation.pattern.invalid': 'මෙම අගය අවශ්‍ය ආකෘතියට නොගැලපේ.',
+  'validation.minLength.invalid': 'මෙම අගය ඉතා කෙටියි.',
+  'validation.maxLength.invalid': 'මෙම අගය ඉතා දිගයි.',
 
   /* |---------------------------------------------------------------| */
   /* |                        Widgets                                | */

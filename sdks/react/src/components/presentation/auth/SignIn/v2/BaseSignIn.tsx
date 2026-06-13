@@ -21,10 +21,12 @@ import {
   withVendorCSSClassPrefix,
   EmbeddedSignInFlowRequestV2 as EmbeddedSignInFlowRequest,
   EmbeddedFlowComponentV2 as EmbeddedFlowComponent,
+  FieldErrorV2 as FieldError,
   FlowMetadataResponse,
   Preferences,
+  buildValidatorFromRules,
 } from '@thunderid/browser';
-import {FC, useState, useCallback, useContext, ReactElement, ReactNode} from 'react';
+import {FC, useEffect, useState, useCallback, useContext, ReactElement, ReactNode} from 'react';
 import ComponentRendererContext, {
   ComponentRendererMap,
 } from '../../../../../contexts/ComponentRenderer/ComponentRendererContext';
@@ -59,7 +61,12 @@ export interface BaseSignInRenderProps {
   error?: Error | null;
 
   /**
-   * Field validation errors
+   * Field validation errors keyed by component ref. Populated from BOTH:
+   *  - Client-side rule evaluation (component.validation rules in meta.components)
+   *  - Server-side validation failures (data.fieldErrors in the flow response)
+   * When the server returns multiple failing rules for one field, only the first
+   * message is exposed here. The full FieldError[] array is available on the raw
+   * response object (and is reflected into the BaseSignIn `serverFieldErrors` prop).
    */
   fieldErrors: Record<string, string>;
 
@@ -210,6 +217,15 @@ export interface BaseSignInProps {
   preferences?: Preferences;
 
   /**
+   * Field-level validation errors returned by the server in `data.fieldErrors` on the
+   * most recent flow response. The component collapses these into the form's
+   * `fieldErrors` state (first error per field wins), surfacing them through the same
+   * render-prop / UI path as client-side validation errors. The full array is preserved
+   * here for advanced consumers that want every failing rule per field.
+   */
+  serverFieldErrors?: FieldError[] | null;
+
+  /**
    * Size variant for the component.
    */
   size?: 'small' | 'medium' | 'large';
@@ -238,6 +254,7 @@ const BaseSignInContent: FC<BaseSignInProps> = ({
   children,
   additionalData = {},
   isTimeoutDisabled = false,
+  serverFieldErrors = null,
 }: BaseSignInProps): ReactElement => {
   const {meta} = useThunderID();
   const {theme} = useTheme();
@@ -286,9 +303,12 @@ const BaseSignInContent: FC<BaseSignInProps> = ({
             component.type === 'PASSWORD_INPUT' ||
             component.type === 'EMAIL_INPUT' ||
             component.type === 'PHONE_INPUT' ||
-            component.type === 'OTP_INPUT'
+            component.type === 'OTP_INPUT' ||
+            component.type === 'SELECT' ||
+            component.type === 'DATE_INPUT'
           ) {
             const identifier: string = component.ref;
+            const ruleValidator = buildValidatorFromRules(component.validation);
             fields.push({
               initialValue: '',
               name: identifier,
@@ -304,6 +324,15 @@ const BaseSignInContent: FC<BaseSignInProps> = ({
                   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
                 ) {
                   return t('field.email.invalid');
+                }
+                // Evaluate declarative validation rules from meta.components[].validation.
+                // The composed validator returns the first failing rule's message (i18n key or
+                // literal string) so it can be passed straight to the i18n layer for display.
+                if (ruleValidator && value) {
+                  const ruleMessage = ruleValidator(value);
+                  if (ruleMessage) {
+                    return t(ruleMessage);
+                  }
                 }
 
                 return null;
@@ -339,9 +368,36 @@ const BaseSignInContent: FC<BaseSignInProps> = ({
     isValid: isFormValid,
     setValue: setFormValue,
     setTouched: setFormTouched,
+    setErrors: setFormErrors,
+    clearErrors: clearFormErrors,
     validateForm,
     touchAllFields,
   } = form;
+
+  /**
+   * Project server-side validation errors (from `data.fieldErrors`) into the form's
+   * `errors` state so they surface through the same render-prop / UI as client-side
+   * errors. When the server returns multiple failing rules for one field, only the
+   * first message is shown — matching the SDK's single-string-per-field contract.
+   * The full FieldError[] remains available via the `serverFieldErrors` prop.
+   *
+   * Also marks each affected field as `touched` so the error renders immediately —
+   * `useForm` only shows errors for touched fields by default.
+   */
+  useEffect(() => {
+    clearFormErrors();
+    if (!serverFieldErrors || serverFieldErrors.length === 0) {
+      return;
+    }
+    const errors: Record<string, string> = {};
+    for (const fe of serverFieldErrors) {
+      if (!(fe.identifier in errors)) {
+        errors[fe.identifier] = fe.message;
+      }
+    }
+    setFormErrors(errors);
+    Object.keys(errors).forEach((field: string) => setFormTouched(field, true));
+  }, [serverFieldErrors, setFormErrors, setFormTouched, clearFormErrors]);
 
   /**
    * Handle input value changes.

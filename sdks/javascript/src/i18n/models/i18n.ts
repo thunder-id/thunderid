@@ -63,6 +63,9 @@ export interface I18nTranslations {
 
   /* Validation */
   'validations.required.field.error': string;
+  'validation.pattern.invalid': string;
+  'validation.minLength.invalid': string;
+  'validation.maxLength.invalid': string;
 
   /* |---------------------------------------------------------------| */
   /* |                        Widgets                                | */

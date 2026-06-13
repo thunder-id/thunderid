@@ -63,6 +63,9 @@ const translations: I18nTranslations = {
 
   /* Validation */
   'validations.required.field.error': 'यह फील्ड आवश्यक है',
+  'validation.pattern.invalid': 'यह मान आवश्यक प्रारूप से मेल नहीं खाता।',
+  'validation.minLength.invalid': 'यह मान बहुत छोटा है।',
+  'validation.maxLength.invalid': 'यह मान बहुत लंबा है।',
 
   /* |---------------------------------------------------------------| */
   /* |                        Widgets                                | */

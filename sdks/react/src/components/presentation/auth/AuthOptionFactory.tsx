@@ -57,6 +57,7 @@ import SmsOtpButton from '../../adapters/SmsOtpButton';
 import {createField} from '../../factories/FieldFactory';
 import Button from '../../primitives/Button/Button';
 import CopyableText from '../../primitives/CopyableText/CopyableText';
+import DatePicker from '../../primitives/DatePicker/DatePicker';
 import Divider from '../../primitives/Divider/Divider';
 import flowIconRegistry from '../../primitives/Icons/flowIconRegistry';
 import Select from '../../primitives/Select/Select';
@@ -455,6 +456,29 @@ const createAuthComponentFromFlow = (
           placeholder={resolve(component.placeholder)}
           required={component.required}
           options={selectOptions}
+          value={value}
+          error={error}
+          onChange={(e: any): void => onInputChange(identifier, e.target.value)}
+          onBlur={(): any => options.onInputBlur?.(identifier)}
+          className={options.inputClassName}
+        />
+      );
+    }
+
+    case EmbeddedFlowComponentType.DateInput: {
+      const identifier: string = component.ref!;
+      const value: string = formValues[identifier] || '';
+      const isTouched: boolean = touchedFields[identifier] || false;
+      const error: string = isTouched ? formErrors[identifier] : undefined!;
+
+      return (
+        <DatePicker
+          key={key}
+          name={identifier}
+          label={resolve(component.label) || ''}
+          placeholder={resolve(component.placeholder)}
+          required={component.required}
+          dateFormat={component.dateFormat}
           value={value}
           error={error}
           onChange={(e: any): void => onInputChange(identifier, e.target.value)}

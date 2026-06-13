@@ -17,7 +17,13 @@
  */
 
 import {cx} from '@emotion/css';
-import {FlowExecutionError, FlowMetadataResponse, Preferences} from '@thunderid/browser';
+import {
+  FieldErrorV2 as FieldError,
+  FlowExecutionError,
+  FlowMetadataResponse,
+  Preferences,
+  buildValidatorFromRules,
+} from '@thunderid/browser';
 import {FC, ReactElement, ReactNode, useCallback, useContext, useEffect, useRef, useState} from 'react';
 import useStyles from './BaseAcceptInvite.styles';
 import ComponentRendererContext, {
@@ -45,6 +51,7 @@ export interface AcceptInviteFlowResponse {
   data?: {
     additionalData?: Record<string, string>;
     components?: any[];
+    fieldErrors?: FieldError[];
     meta?: {
       components?: any[];
     };
@@ -289,6 +296,28 @@ const BaseAcceptInvite: FC<BaseAcceptInviteProps> = ({
   const [isStorageReady, setIsStorageReady] = useState(false);
   const challengeTokenRef: any = useRef<string | null>(null);
 
+  /**
+   * Project server-side validation errors from the most recent flow response into
+   * the local formErrors state. First error per field wins; affected fields are
+   * marked touched so errors render immediately.
+   */
+  useEffect(() => {
+    const responseFieldErrors: FieldError[] | undefined = (currentFlow?.data as any)?.fieldErrors;
+    if (!responseFieldErrors || responseFieldErrors.length === 0) {
+      return;
+    }
+    const errors: Record<string, string> = {};
+    const touched: Record<string, boolean> = {};
+    for (const fe of responseFieldErrors) {
+      if (!(fe.identifier in errors)) {
+        errors[fe.identifier] = fe.message;
+        touched[fe.identifier] = true;
+      }
+    }
+    setFormErrors(errors);
+    setTouchedFields((prev: Record<string, boolean>) => ({...prev, ...touched}));
+  }, [currentFlow]);
+
   const tokenValidationAttemptedRef: any = useRef(false);
 
   /**
@@ -464,13 +493,22 @@ const BaseAcceptInvite: FC<BaseAcceptInviteProps> = ({
               comp.type === 'TEXT_INPUT' ||
               comp.type === 'EMAIL_INPUT' ||
               comp.type === 'PHONE_INPUT' ||
-              comp.type === 'OTP_INPUT') &&
-            comp.required &&
+              comp.type === 'OTP_INPUT' ||
+              comp.type === 'DATE_INPUT') &&
             comp.ref
           ) {
             const value: any = formValues[comp.ref];
-            if (!value || value.trim() === '') {
+            if (comp.required && (!value || value.trim() === '')) {
               errors[comp.ref] = t('validations.required.field.error');
+            } else if (value) {
+              // Evaluate declarative validation rules from meta.components[].validation.
+              const ruleValidator = buildValidatorFromRules(comp.validation);
+              if (ruleValidator) {
+                const message = ruleValidator(value);
+                if (message) {
+                  errors[comp.ref] = t(message);
+                }
+              }
             }
           }
           if (comp.components && Array.isArray(comp.components)) {

@@ -69,6 +69,9 @@ export enum EmbeddedFlowComponentType {
   /** Copyable text display component that shows text with a copy-to-clipboard action */
   CopyableText = 'COPYABLE_TEXT',
 
+  /** Date input field for selecting a calendar date */
+  DateInput = 'DATE_INPUT',
+
   /** Divider component for visual separation of content */
   Divider = 'DIVIDER',
 
@@ -265,6 +268,13 @@ export interface EmbeddedFlowComponent {
   components?: EmbeddedFlowComponent[];
 
   /**
+   * Display format hint for DateInput components (e.g., 'yyyy-MM-dd'). Used as the
+   * placeholder rendered by the date picker primitive. Pattern-level validation is
+   * declared separately via a `regex` rule in the `validation` array.
+   */
+  dateFormat?: string;
+
+  /**
    * Layout direction for Stack components ('row' | 'column').
    */
   direction?: string;
@@ -367,6 +377,13 @@ export interface EmbeddedFlowComponent {
   type: EmbeddedFlowComponentType | string;
 
   /**
+   * Declarative validation rules for input components. Evaluated client-side by the SDK
+   * (best-effort UX) before submission, and authoritatively re-evaluated server-side.
+   * Each rule represents exactly one constraint.
+   */
+  validation?: ValidationRule[];
+
+  /**
    * Component variant that affects visual styling and behavior.
    * The value depends on the component type (e.g., button variants, text variants).
    */
@@ -377,6 +394,55 @@ export interface EmbeddedFlowComponent {
    * The value depends on the component type (e.g., for Image components).
    */
   width?: string | number;
+}
+
+/**
+ * Supported validation rule types for `ValidationRule.type`.
+ *
+ * - `regex`: value must be a string regex pattern; the input must match.
+ * - `minLength`: value must be a number; input length must be >= value.
+ * - `maxLength`: value must be a number; input length must be <= value.
+ *
+ * @experimental Additional rule types (`oneOf`, `format`, ...) may be added later.
+ */
+export type ValidationRuleType = 'regex' | 'minLength' | 'maxLength';
+
+/**
+ * A single-constraint validation rule attached to an input component.
+ * Mirrors the server-side `ValidationRule` returned by ThunderID.
+ *
+ * @experimental This interface may change in future versions
+ */
+export interface ValidationRule {
+  /**
+   * The constraint kind. Drives interpretation of `value` and the default fallback message.
+   */
+  type: ValidationRuleType;
+
+  /**
+   * The constraint parameter. String for `regex`, number for `minLength` / `maxLength`.
+   */
+  value: string | number;
+
+  /**
+   * Optional message returned when this rule fails. May be an i18n key (e.g.
+   * `"{{i18n(validation:email.invalid)}}"`) or a literal string. The server passes
+   * this through unchanged; the SDK substitutes a default i18n key when omitted.
+   */
+  message?: string;
+}
+
+/**
+ * A single validation failure for a specific input field returned by the server in
+ * `data.fieldErrors` when one or more rules fail.
+ *
+ * @experimental This interface may change in future versions
+ */
+export interface FieldError {
+  /** The `identifier` of the input that failed validation. */
+  identifier: string;
+  /** The failing rule's message (i18n key or literal string). */
+  message: string;
 }
 
 /**
@@ -457,6 +523,16 @@ export interface EmbeddedFlowResponseData {
   additionalData?: Record<string, any>;
 
   /**
+   * Per-field validation errors returned by the server when a submission fails one or
+   * more `validation` rules. Multiple failing rules on the same field appear as
+   * multiple entries, in the order the rules were declared.
+   *
+   * Present only on `INCOMPLETE` responses caused by validation failures; absent on
+   * successful submissions and on `INCOMPLETE` responses caused by missing required fields.
+   */
+  fieldErrors?: FieldError[];
+
+  /**
    * Legacy input definitions for backward compatibility.
    * @deprecated Use meta.components for new implementations
    */
@@ -469,6 +545,8 @@ export interface EmbeddedFlowResponseData {
     required: boolean;
     /** Input type (TEXT_INPUT, PASSWORD_INPUT, etc.) */
     type: string;
+    /** Server-side validation rules for the input (also returned for API-only customers). */
+    validation?: ValidationRule[];
   }[];
 
   /**

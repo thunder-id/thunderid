@@ -22,7 +22,9 @@ import {
   EmbeddedRecoveryFlowResponseV2,
   EmbeddedRecoveryFlowStatusV2,
   EmbeddedFlowComponentTypeV2 as EmbeddedFlowComponentType,
+  FieldErrorV2 as FieldError,
   withVendorCSSClassPrefix,
+  buildValidatorFromRules,
   Preferences,
   FlowMetadataResponse,
 } from '@thunderid/browser';
@@ -180,9 +182,11 @@ const BaseRecoveryContent: FC<BaseRecoveryProps> = ({
             component.type === EmbeddedFlowComponentType.TextInput ||
             component.type === EmbeddedFlowComponentType.PasswordInput ||
             component.type === EmbeddedFlowComponentType.EmailInput ||
-            component.type === EmbeddedFlowComponentType.Select
+            component.type === EmbeddedFlowComponentType.Select ||
+            component.type === EmbeddedFlowComponentType.DateInput
           ) {
             const fieldName: any = component.ref || component.id;
+            const ruleValidator = buildValidatorFromRules(component.validation);
             fields.push({
               initialValue: '',
               name: fieldName,
@@ -197,6 +201,13 @@ const BaseRecoveryContent: FC<BaseRecoveryProps> = ({
                   !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
                 ) {
                   return t('field.email.invalid');
+                }
+                // Evaluate declarative validation rules from meta.components[].validation.
+                if (ruleValidator && value) {
+                  const ruleMessage = ruleValidator(value);
+                  if (ruleMessage) {
+                    return t(ruleMessage);
+                  }
                 }
                 return null;
               },
@@ -232,10 +243,32 @@ const BaseRecoveryContent: FC<BaseRecoveryProps> = ({
     isValid: isFormValid,
     setValue: setFormValue,
     setTouched: setFormTouched,
+    setErrors: setFormErrors,
+    clearErrors: clearFormErrors,
     validateForm,
     touchAllFields,
     reset: resetForm,
   } = form;
+
+  /**
+   * Project server-side validation errors from the most recent flow response into the
+   * form's `errors` state. See BaseSignIn for the same pattern.
+   */
+  useEffect(() => {
+    clearFormErrors();
+    const responseFieldErrors: FieldError[] | undefined = (currentFlow?.data as any)?.fieldErrors;
+    if (!responseFieldErrors || responseFieldErrors.length === 0) {
+      return;
+    }
+    const errors: Record<string, string> = {};
+    for (const fe of responseFieldErrors) {
+      if (!(fe.identifier in errors)) {
+        errors[fe.identifier] = fe.message;
+      }
+    }
+    setFormErrors(errors);
+    Object.keys(errors).forEach((field: string) => setFormTouched(field, true));
+  }, [currentFlow, setFormErrors, setFormTouched, clearFormErrors]);
 
   const setupFormFields: any = useCallback(
     (flowResponse: EmbeddedRecoveryFlowResponseV2) => {
