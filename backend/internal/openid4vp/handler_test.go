@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -384,7 +385,8 @@ func TestHandleResponseParseFormError(t *testing.T) {
 }
 
 func TestAPIInitiateServiceError(t *testing.T) {
-	svc := &stubService{initiateErr: errors.New("boom")}
+	svc := NewOpenID4VPServiceInterfaceMock(t)
+	svc.On("InitiateForRP", mock.Anything, testDefinitionID, "rp").Return(nil, errors.New("boom"))
 	h := newOpenID4VPHandler(svc, &resultTokenIssuerFake{}, apiBaseURL, 0, 0)
 
 	body, _ := json.Marshal(initiateRequest{DefinitionID: testDefinitionID, RPID: "rp"})
@@ -393,7 +395,8 @@ func TestAPIInitiateServiceError(t *testing.T) {
 }
 
 func TestAPIStatusLookupServiceError(t *testing.T) {
-	svc := &stubService{lookupErr: errors.New("boom")}
+	svc := NewOpenID4VPServiceInterfaceMock(t)
+	svc.On("LookupState", mock.Anything, "txn").Return(nil, errors.New("boom"))
 	h := newOpenID4VPHandler(svc, &resultTokenIssuerFake{}, apiBaseURL, 0, 0)
 
 	rec := getStatus(h.HandleStatus, "txn")
@@ -480,45 +483,6 @@ func (w *failingResponseWriter) Write([]byte) (int, error) {
 }
 
 func (w *failingResponseWriter) WriteHeader(code int) { w.status = code }
-
-// stubService implements OpenID4VPServiceInterface to drive handler error
-// branches that a real *service does not reach in unit tests.
-type stubService struct {
-	initiateErr error
-	lookupErr   error
-}
-
-func (s *stubService) Initiate(context.Context, string) (*Initiation, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubService) Result(context.Context, string) (*RequestState, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubService) RequestObject(context.Context, string) (string, error) {
-	return "", errors.New("not implemented")
-}
-
-func (s *stubService) SubmitResponse(context.Context, string, []byte) (*VerifiedPresentation, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubService) ResultRedirectURI(string) string { return "" }
-
-func (s *stubService) InitiateForRP(context.Context, string, string) (*Initiation, error) {
-	if s.initiateErr != nil {
-		return nil, s.initiateErr
-	}
-	return &Initiation{State: "stub-state"}, nil
-}
-
-func (s *stubService) LookupState(context.Context, string) (*RequestState, error) {
-	if s.lookupErr != nil {
-		return nil, s.lookupErr
-	}
-	return &RequestState{State: "stub-state", Status: StatusPending}, nil
-}
 
 func postForm(h *openID4VPHandler, form url.Values) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/openid4vp/response", strings.NewReader(form.Encode()))

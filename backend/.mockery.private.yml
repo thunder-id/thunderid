@@ -189,6 +189,15 @@ packages:
       pkgname: notification
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/openid4vp:
+    interfaces:
+      OpenID4VPServiceInterface:
+        config:
+          dir: internal/openid4vp
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: openid4vp
+          filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/ou:
     config:
       all: true
