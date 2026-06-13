@@ -22,6 +22,18 @@ import {useThunderID} from '@thunderid/react';
 import ResourceServerQueryKeys from '../constants/resource-server-query-keys';
 import type {ActionListResponse} from '../models/resource-server';
 
+export async function fetchServerActions(
+  http: {request: (config: unknown) => Promise<{data: ActionListResponse}>},
+  serverUrl: string,
+  resourceServerId: string,
+): Promise<ActionListResponse> {
+  const response = await http.request({
+    url: `${serverUrl}/resource-servers/${resourceServerId}/actions?limit=100&offset=0`,
+    method: 'GET',
+  });
+  return response.data;
+}
+
 export default function useGetServerActions(resourceServerId: string): UseQueryResult<ActionListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
@@ -30,13 +42,11 @@ export default function useGetServerActions(resourceServerId: string): UseQueryR
     queryKey: [ResourceServerQueryKeys.SERVER_ACTIONS, resourceServerId],
     queryFn: async (): Promise<ActionListResponse> => {
       const serverUrl = getServerUrl();
-
-      const response: {data: ActionListResponse} = await http.request({
-        url: `${serverUrl}/resource-servers/${resourceServerId}/actions?limit=100&offset=0`,
-        method: 'GET',
-      } as unknown as Parameters<typeof http.request>[0]);
-
-      return response.data;
+      return fetchServerActions(
+        http as {request: (config: unknown) => Promise<{data: ActionListResponse}>},
+        serverUrl,
+        resourceServerId,
+      );
     },
     enabled: Boolean(resourceServerId),
   });

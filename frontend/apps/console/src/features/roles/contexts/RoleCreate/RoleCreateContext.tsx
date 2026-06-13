@@ -18,6 +18,7 @@
 
 import type {Context} from 'react';
 import {createContext} from 'react';
+import type {ResourcePermissions} from '../../models/role';
 import type {RoleCreateFlowStep} from '../../models/role-create-flow';
 
 /**
@@ -37,6 +38,9 @@ export interface RoleCreateContextType {
 
   error: string | null;
   setError: (error: string | null) => void;
+
+  permissions: ResourcePermissions[];
+  setPermissions: (permissions: ResourcePermissions[]) => void;
 
   reset: () => void;
 }

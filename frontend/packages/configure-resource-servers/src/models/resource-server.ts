@@ -111,3 +111,8 @@ export interface UpdateActionRequest {
   name?: string;
   description?: string | null;
 }
+
+export interface ResourcePermissions {
+  resourceServerId: string;
+  permissions: string[];
+}

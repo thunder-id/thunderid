@@ -1375,10 +1375,15 @@ const translations = {
     // Create wizard
     'createWizard.steps.basicInfo': 'Create a Role',
     'createWizard.steps.organizationUnit': 'Organization Unit',
+    'createWizard.steps.permissions': 'Permissions',
     'createWizard.basicInfo.title': "Let's give a name to your role",
     'createWizard.basicInfo.suggestions.label': 'In a hurry? Pick a random name:',
     'createWizard.organizationUnit.title': 'Select an organization unit',
     'createWizard.organizationUnit.subtitle': 'Choose the organization unit this role will belong to.',
+    'createWizard.permissions.title': 'Assign permissions (optional)',
+    'createWizard.permissions.subtitle':
+      'Choose what this role grants. You can skip this step and add permissions later.',
+    'createWizard.permissions.scopes.label': 'Selected scopes',
 
     // Edit page
     'edit.page.back': 'Back to Roles',
@@ -1409,15 +1414,11 @@ const translations = {
     'edit.general.sections.dangerZone.deleteRoleDescription': 'Deleting this role is permanent and cannot be undone.',
 
     // Permissions settings
-    'edit.permissions.description':
-      'Select the permissions this role grants. Changes are saved when you click Save Changes.',
-    'edit.permissions.resourcesLabel': 'Resources',
-    'edit.permissions.actionsLabel': 'Actions',
-    'edit.permissions.noPermissions': 'No permissions defined for this resource server.',
-    'edit.permissions.noResourceServers': 'No resource servers found. Create a resource server first.',
-    'edit.permissions.loadError': 'Failed to load permissions for this resource server.',
-    'edit.permissions.loadResourceServersError': 'Failed to load resource servers.',
-    'edit.permissions.selectedCount': '{{count}} selected',
+    'edit.permissions.title': 'Permissions',
+    'edit.permissions.description': 'Select the permissions this role grants, grouped by resource server',
+    'edit.permissions.scopes.title': 'Selected scopes',
+    'edit.permissions.scopes.description':
+      'The OAuth scopes granted by these permissions. Copy them for use in your application.',
 
     // Assignments settings
     'edit.assignments.sections.manage.title': 'Assigned Users, Groups, Apps & Agents',
@@ -3529,6 +3530,16 @@ const translations = {
     'tree.deleteAction.success': 'Action deleted.',
     'tree.deleteAction.error': 'Failed to delete action.',
     'tree.copyPermission': 'Copy permission string',
+    // Permission catalog
+    'permissionCatalog.scopes.placeholder': 'No permissions selected',
+    'permissionCatalog.scopes.copy': 'Copy scopes',
+    'permissionCatalog.scopes.copied': 'Copied',
+    'permissionCatalog.thisResource': 'This resource',
+    'permissionCatalog.noResourceServers': 'No resource servers found. Create a resource server first.',
+    'permissionCatalog.noPermissions': 'No permissions defined for this resource server.',
+    'permissionCatalog.loadError': 'Failed to load permissions for this resource server.',
+    'permissionCatalog.loadServersError': 'Failed to load resource servers.',
+    'permissionCatalog.serverNotFound': 'Resource server not found',
   },
 } as const;
 

@@ -21,7 +21,7 @@ import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import RoleQueryKeys from '../../constants/role-query-keys';
 import type {UpdateRoleRequest} from '../../models/requests';
 import type {Role} from '../../models/role';
-import useUpdateRole from '../useUpdateRole';
+import useUpdateRole, {ROLE_MUTATION_KEY} from '../useUpdateRole';
 
 // Mock the dependencies
 vi.mock('@thunderid/react', () => ({
@@ -305,5 +305,47 @@ describe('useUpdateRole', () => {
     });
 
     expect(result.current.error).toBeNull();
+  });
+
+  it('should merge PUT response into cache while preserving display-only fields like ouHandle', async () => {
+    const responseRole: Role = {
+      id: 'role-1',
+      name: 'Updated Role',
+      description: 'Updated description',
+      ouId: 'ou-1',
+      permissions: [{resourceServerId: 'rs-1', permissions: ['read']}],
+    };
+    mockHttpRequest.mockResolvedValueOnce({data: responseRole});
+
+    const {result, queryClient} = renderHook(() => useUpdateRole());
+
+    const cachedRoleWithDisplay: Role = {
+      id: 'role-1',
+      name: 'Original Role',
+      description: 'Original description',
+      ouId: 'ou-1',
+      ouHandle: 'my-org',
+      permissions: [{resourceServerId: 'rs-1', permissions: ['read', 'write']}],
+    };
+    queryClient.setQueryData([RoleQueryKeys.ROLE, 'role-1'], cachedRoleWithDisplay);
+
+    result.current.mutate({roleId: 'role-1', data: mockUpdateRequest});
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    const cached = queryClient.getQueryData<Role>([RoleQueryKeys.ROLE, 'role-1']);
+    expect(cached?.name).toBe('Updated Role');
+    expect(cached?.description).toBe('Updated description');
+    expect(cached?.permissions).toEqual([{resourceServerId: 'rs-1', permissions: ['read']}]);
+    expect(cached?.ouHandle).toBe('my-org');
+  });
+
+  it('should register the mutation under ROLE_MUTATION_KEY', () => {
+    const {result} = renderHook(() => useUpdateRole());
+
+    expect(result.current).toBeDefined();
+    expect(ROLE_MUTATION_KEY).toEqual(['update-role']);
   });
 });

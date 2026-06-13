@@ -25,6 +25,7 @@
 export const RoleCreateFlowStep = {
   BASIC_INFO: 'BASIC_INFO',
   ORGANIZATION_UNIT: 'ORGANIZATION_UNIT',
+  PERMISSIONS: 'PERMISSIONS',
 } as const;
 
 /**

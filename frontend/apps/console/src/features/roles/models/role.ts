@@ -16,15 +16,9 @@
  * under the License.
  */
 
-/**
- * Permissions grouped by resource server.
- */
-export interface ResourcePermissions {
-  /** ID of the resource server */
-  resourceServerId: string;
-  /** Array of permission strings */
-  permissions: string[];
-}
+import type {ResourcePermissions} from '@thunderid/configure-resource-servers';
+
+export type {ResourcePermissions};
 
 /**
  * An assignment of a user, group, or app to a role.
