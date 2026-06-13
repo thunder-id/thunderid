@@ -128,3 +128,23 @@ inbound_auth_config:
           - given_name
           - family_name
           - picture
+
+---
+# resource_type: application
+# Native app used by E2E test infrastructure for direct flow execution (admin API auth).
+# Does not use the authorization_code grant type so it is not subject to the
+# redirect-based flow initiation guard.
+id: 019e3a5c-0501-7f3e-a66e-66fc7918c3a7
+ou_handle: default
+name: E2E Admin Native App
+description: Native application for E2E test infrastructure admin authentication
+auth_flow_handle: default-basic-flow
+allowed_user_types:
+  - Customer
+inbound_auth_config:
+  - type: oauth2
+    config:
+      client_id: thunder_e2e_admin_client
+      grant_types:
+        - client_credentials
+      token_endpoint_auth_method: client_secret_basic

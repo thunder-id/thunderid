@@ -526,6 +526,8 @@ var defaultMessages = map[string]string{
 	"error.flow.core.prompt_invalid_action_description": "The action provided is not valid for the current flow step",
 	"error.flowexecservice.application_retrieval_error": "Application retrieval error",
 	"error.flowexecservice.application_retrieval_error_description": "Error while retrieving application details",
+	"error.flowexecservice.direct_flow_initiation_not_permitted": "Direct flow initiation not permitted",
+	"error.flowexecservice.direct_flow_initiation_not_permitted_description": "Direct flow initiation is not permitted for this application type",
 	"error.flowexecservice.invalid_app_id": "Invalid request",
 	"error.flowexecservice.invalid_app_id_description": "Invalid app ID provided in the request",
 	"error.flowexecservice.invalid_challenge_token": "Invalid challenge token",

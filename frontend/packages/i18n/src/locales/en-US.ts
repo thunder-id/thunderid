@@ -2344,6 +2344,7 @@ const translations = {
     'errors.signin.failed.message': 'Error',
     'errors.signin.failed.description': 'We are sorry, something has gone wrong here. Please try again.',
     'errors.signin.timeout': 'Time allowed to complete the step has expired.',
+    'errors.signin.session.expired': 'Your session has expired. Please return to the application and sign in again.',
     'errors.passkey.failed': 'Passkey authentication failed. Please try again.',
     'redirect.to.signup': "Don't have an account? <1>Sign up</1>",
     heading: 'Sign In',

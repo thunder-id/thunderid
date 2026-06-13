@@ -16,15 +16,21 @@
  * under the License.
  */
 
+// Application ID of the native app used for E2E admin authentication.
+// Declared in the vanilla sample thunderid-config with a fixed UUID. Uses only the
+// client_credentials grant type and is therefore not subject to the redirect-based
+// flow initiation guard.
+const E2E_ADMIN_NATIVE_APP_ID = "019e3a5c-0501-7f3e-a66e-66fc7918c3a7";
+
 /**
  * Obtain a short-lived admin bearer token via the flow execution API.
- * Reads SERVER_URL, ADMIN_USERNAME, ADMIN_PASSWORD, and SAMPLE_APP_ID from environment variables.
+ * Reads SERVER_URL, ADMIN_USERNAME, and ADMIN_PASSWORD from environment variables.
  */
 export async function getAdminToken(request: import("@playwright/test").APIRequestContext): Promise<string> {
   const serverUrl = process.env.SERVER_URL || "https://localhost:8090";
   const adminUsername = process.env.ADMIN_USERNAME || "admin";
   const adminPassword = process.env.ADMIN_PASSWORD || "admin";
-  const applicationId = process.env.SAMPLE_APP_ID || "";
+  const applicationId = E2E_ADMIN_NATIVE_APP_ID;
 
   const flowResponse = await request.post(`${serverUrl}/flow/execute`, {
     data: { applicationId, flowType: "AUTHENTICATION" },
