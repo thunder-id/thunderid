@@ -95,8 +95,8 @@ catalog:
 overrides:
   # JUSTIFICATION: Fixes GHSA-w7jw-789q-3m8p by overriding to fix docusaurus version in docs workspace only.
   "@thunderid/docs>shell-quote": 1.8.4
-  # JUSTIFICATION: The `ws` package is a transitive dependency of `docusaurus/core -> webpack-bundle-analyzer` and it requires a major version bump.
-  ws: '>=8.20.1'
+  # JUSTIFICATION: The `ws` package is a transitive dependency of `docusaurus/core -> webpack-bundle-analyzer` and it requires a major version bump. Fixes GHSA-96hv-2xvq-fx4p — memory exhaustion DoS from tiny fragments.
+  ws: '>=8.21.0'
   # JUSTIFICATION: Packed through next@15.5.18. Could be resolved once next is updated to 16 versions.
   postcss: 8.5.10
   openapi-to-postmanv2>ajv: 8.18.0
@@ -126,8 +126,8 @@ overrides:
   js-yaml@>=4.0.0 <4.1.1: 4.1.1
   # TODO: Remove once `nuxt` bumps `devalue` to 5.8.1 or later.
   devalue: 5.8.1
-  # JUSTIFICATION: Fixes CVE-2026-44705 (GHSA-ph9p-34f9-6g65) — Path Traversal via unsanitized prefix/postfix in tmp.
-  tmp: 0.2.6
+  # JUSTIFICATION: Fixes CVE-2026-49982 (GHSA-7c78-jf6q-g5cm) — type-confusion bypass in _assertPath allows path traversal via non-string prefix/postfix/template.
+  tmp: 0.2.7
   # JUSTIFICATION: Transitive dep via js-beautify. Fixes CVE-2026-46625 (GHSA-qjx8-664m-686j) — prototype hijack in assign() allows cookie-attribute injection.
   js-cookie: 3.0.7
   # JUSTIFICATION: @langchain/langgraph requires uuid@^10.0.0 (not yet bumped upstream to v11). Fixes predictable RNG vulnerability in uuid < 11.1.1.
@@ -136,6 +136,10 @@ overrides:
   joi: '>=18.2.1'
   # JUSTIFICATION: Fixes GHSA-gv7w-rqvm-qjhr — esbuild Deno module downloads native binaries without integrity verification, enabling RCE via NPM_CONFIG_REGISTRY.
   esbuild: '>=0.28.1'
+  # JUSTIFICATION: Fixes GHSA-g8mr-85jm-7xhm (CVE-2026-53633) — Vitest Browser Mode exposes CDP API allowing RCE when browser API server is network-accessible.
+  '@vitest/browser': '>=4.1.8'
+  # JUSTIFICATION: Fixes GHSA-fvgf-6h6h-3322 — CRLF injection in form-data via unescaped multipart field names and filenames. Transitive dep via nx>axios.
+  form-data: '>=4.0.6'
 
 packageExtensions:
   '@hookform/resolvers':
@@ -146,4 +150,4 @@ auditConfig:
   ignoreCves: []
 
 minimumReleaseAgeExclude:
-  - tmp@0.2.6
+  - tmp@0.2.7
