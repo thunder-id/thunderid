@@ -41,6 +41,7 @@ Clone the SDK repository only if you are developing or debugging the SDK itself,
 
 - [Console Navigator](.agent/skills/console/SKILL.md) — Browse and interact with the Console UI using `playwright-cli`. Use when asked to navigate the console, test UI changes, or create/edit resources through the browser.
 - [Database](.agent/skills/db/SKILL.md) — Database schema design principles and query conventions. Use for any database-related work.
+- [Fix npm Vulnerability](.agent/skills/fix-npm-vulnerability/SKILL.md) — Resolve a pnpm/npm security advisory. Use when `pnpm audit` or Dependabot surfaces a security advisory. Tries to update the head dependency first; falls back to a scoped override with a tracking GitHub issue.
 
 ## Contributing Guidelines
 
