@@ -18,7 +18,7 @@
     "@mui/system": "7.1.0",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-router-dom": "7.15.0"
+    "react-router-dom": "7.15.1"
   },
   "devDependencies": {
     "@eslint/js": "9.27.0",
