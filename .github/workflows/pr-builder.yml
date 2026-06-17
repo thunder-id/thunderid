@@ -102,6 +102,7 @@ jobs:
           echo "✅ All mock files are up to date"
 
   lint:
+    needs: [build]
     name: 🧹 Lint Code
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
@@ -136,9 +137,13 @@ jobs:
       - name: 🔍 Run Backend Linter
         run: make lint_backend
 
-      - name: 🧩 Install Dependencies & Build Frontend
+      - name: 🧩 Install Frontend Dependencies
         run: |
-          make build_frontend
+          pnpm install --frozen-lockfile
+
+      - name: 🏗️ Build Frontend Packages
+        run: |
+          pnpm nx build @thunderid/prettier-config
 
       - name: 🔍 Run Frontend Linter
         run: |
@@ -276,8 +281,8 @@ jobs:
 
   test-frontend-packages:
     name: 🧪 Frontend Packages Tests
-    needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    needs: [build, lint, detect-code-changes]
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.lint.result == 'success' && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -302,11 +307,6 @@ jobs:
           working-directory: frontend
           scope: packages
 
-      - name: 🔨 Build Frontend Packages
-        working-directory: frontend
-        run: |
-          pnpm build:packages
-
       - name: 🧪 Run Tests for Frontend Packages
         working-directory: frontend
         run: |
@@ -314,8 +314,8 @@ jobs:
 
   test-frontend-gate-app:
     name: 🧪 Gate App Tests with Coverage
-    needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    needs: [build, lint, detect-code-changes]
+    if: ${{ always() && needs.build.result == 'success' && needs.lint.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -333,10 +333,6 @@ jobs:
 
       - name: 🗂️ Set up Nx Cache
         uses: ./.github/actions/setup-nx-cache
-
-      - name: 🔨 Build Frontend
-        run: |
-          pnpm build:frontend
 
       - name: 🧪 Run Gate Tests with Coverage
         run: |
@@ -363,8 +359,8 @@ jobs:
 
   test-frontend-console-app:
     name: 🧪 Console App Tests with Coverage
-    needs: [detect-code-changes]
-    if: ${{ always() && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
+    needs: [build, lint, detect-code-changes]
+    if: ${{ always() && needs.build.result == 'success' && needs.lint.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.event_name == 'merge_group') && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -382,10 +378,6 @@ jobs:
 
       - name: 🗂️ Set up Nx Cache
         uses: ./.github/actions/setup-nx-cache
-
-      - name: 🔨 Build Frontend
-        run: |
-          pnpm build:frontend
 
       - name: 🧪 Run Console Tests with Coverage
         run: |
@@ -489,8 +481,8 @@ jobs:
 
   test-integration:
     name: 🧪 Integration Tests (${{ matrix.database }})
-    needs: [build, build_samples, detect-code-changes]
-    if: ${{ always() && needs.build.result == 'success' }}
+    needs: [build, build_samples, detect-code-changes, lint, test-frontend-console-app, test-frontend-gate-app, test-frontend-packages]
+    if: ${{ always() && needs.build.result == 'success' && needs.lint.result == 'success' && needs.build_samples.result == 'success' && (needs.test-frontend-console-app.result == 'success' || needs.test-frontend-console-app.result == 'skipped') && (needs.test-frontend-gate-app.result == 'success' || needs.test-frontend-gate-app.result == 'skipped') && (needs.test-frontend-packages.result == 'success' || needs.test-frontend-packages.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -609,8 +601,8 @@ jobs:
 
   test-e2e:
     name: 🎭 Playwright E2E Tests
-    needs: [build, build_samples, detect-code-changes]
-    if: ${{ always() && (needs.build.result == 'success' && needs.build_samples.result == 'success' && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true')) }}
+    needs: [build, build_samples, detect-code-changes, lint, test-frontend-console-app, test-frontend-gate-app, test-frontend-packages]
+    if: ${{ always() && needs.build.result == 'success' && needs.lint.result == 'success' && needs.build_samples.result == 'success' && (needs.detect-code-changes.result == 'skipped' || needs.detect-code-changes.outputs.should-run == 'true') && (needs.test-frontend-console-app.result == 'success' || needs.test-frontend-console-app.result == 'skipped') && (needs.test-frontend-gate-app.result == 'success' || needs.test-frontend-gate-app.result == 'skipped') && (needs.test-frontend-packages.result == 'success' || needs.test-frontend-packages.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -1046,4 +1038,3 @@ jobs:
           gh api "repos/${{ github.repository }}/actions/caches?per_page=100&key=nx-Linux-" \
             --jq '.actions_caches | sort_by(.created_at) | reverse | .[1:] | .[].id' \
           | xargs -r -I{} gh api --method DELETE "repos/${{ github.repository }}/actions/caches/{}"
-
