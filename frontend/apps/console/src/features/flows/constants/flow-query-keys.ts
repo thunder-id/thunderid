@@ -48,6 +48,10 @@ const FlowQueryKeys = {
    * Key for a single flow query
    */
   FLOW: 'flow',
+  /**
+   * Key for a flow usages query
+   */
+  FLOW_USAGES: 'flow-usages',
 } as const;
 
 export default FlowQueryKeys;

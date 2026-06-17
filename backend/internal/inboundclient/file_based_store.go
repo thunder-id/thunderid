@@ -181,8 +181,8 @@ func (f *fileBasedStore) IsDeclarative(_ context.Context, entityID string) bool 
 	return err == nil
 }
 
-func (f *fileBasedStore) GetEntityIDsByThemeID(
-	_ context.Context, themeID string, limit, offset int) ([]string, int, error) {
+func (f *fileBasedStore) GetEntityIDsByReference(
+	_ context.Context, refType, refID string, limit, offset int) ([]string, int, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return nil, 0, err
@@ -190,7 +190,7 @@ func (f *fileBasedStore) GetEntityIDsByThemeID(
 
 	matched := make([]string, 0)
 	for _, item := range list {
-		if c, ok := item.Data.(*inboundmodel.InboundClient); ok && c.ThemeID == themeID {
+		if c, ok := item.Data.(*inboundmodel.InboundClient); ok && clientReferences(c, refType, refID) {
 			matched = append(matched, c.ID)
 		}
 	}

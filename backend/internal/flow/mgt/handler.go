@@ -125,6 +125,25 @@ func (h *flowMgtHandler) getFlow(w http.ResponseWriter, r *http.Request) {
 	h.logger.Debug(ctx, "Flow retrieved successfully", log.String(logKeyFlowID, flowID))
 }
 
+// getFlowUsages handles GET requests to retrieve the resources that reference a flow.
+func (h *flowMgtHandler) getFlowUsages(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	flowID := r.PathValue(pathParamFlowID)
+	if flowID == "" {
+		handleError(ctx, w, &ErrorMissingFlowID)
+		return
+	}
+
+	result, svcErr := h.service.GetFlowUsages(ctx, flowID)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	utils.WriteSuccessResponse(ctx, w, http.StatusOK, result)
+	h.logger.Debug(ctx, "Flow usages retrieved successfully", log.String(logKeyFlowID, flowID))
+}
+
 // updateFlow handles PUT requests to update an existing flow definition.
 func (h *flowMgtHandler) updateFlow(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

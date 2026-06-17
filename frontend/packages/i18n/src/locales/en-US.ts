@@ -2455,6 +2455,10 @@ const translations = {
     'delete.message': 'Are you sure you want to delete this flow? This action cannot be undone.',
     'delete.disclaimer': 'Warning: All associated configurations will be permanently removed.',
     'delete.error': 'Failed to delete flow. Please try again.',
+    'delete.usages.loading': 'Checking affected resources…',
+    'delete.usages.none': 'No applications or agents are currently using this flow.',
+    'delete.usages.title': 'The following resources will revert to the default flow:',
+    'delete.usages.more': '+{{count}} more',
 
     // Create flow wizard
     'create.steps.type': 'Flow Type',

@@ -25,9 +25,11 @@ import (
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -50,7 +52,7 @@ type inboundClientStoreInterface interface {
 	GetInboundClientByEntityID(ctx context.Context, entityID string) (*inboundmodel.InboundClient, error)
 	GetOAuthProfileByEntityID(ctx context.Context, entityID string) (*inboundmodel.OAuthProfile, error)
 	GetInboundClientList(ctx context.Context, limit int) ([]inboundmodel.InboundClient, error)
-	GetEntityIDsByThemeID(ctx context.Context, themeID string, limit, offset int) ([]string, int, error)
+	GetEntityIDsByReference(ctx context.Context, refType, refID string, limit, offset int) ([]string, int, error)
 	GetTotalInboundClientCount(ctx context.Context) (int, error)
 	UpdateInboundClient(ctx context.Context, client inboundmodel.InboundClient) error
 	UpdateOAuthProfile(ctx context.Context, entityID string, oauthProfile *inboundmodel.OAuthProfile) error
@@ -237,14 +239,22 @@ func (st *store) GetInboundClientList(ctx context.Context, limit int) ([]inbound
 	return clients, nil
 }
 
-// GetEntityIDsByThemeID retrieves paginated entity IDs for inbound clients using a specific theme.
-func (st *store) GetEntityIDsByThemeID(ctx context.Context, themeID string, limit, offset int) ([]string, int, error) {
+// GetEntityIDsByReference retrieves paginated entity IDs for inbound clients referencing the resource
+// identified by (refType, refID). Unknown reference types resolve to no usages, since an inbound client
+// cannot reference a resource type it has no column for.
+func (st *store) GetEntityIDsByReference(
+	ctx context.Context, refType, refID string, limit, offset int) ([]string, int, error) {
+	countQuery, listQuery, filterArgs, ok := referenceQueries(refType, refID, st.deploymentID)
+	if !ok {
+		return []string{}, 0, nil
+	}
+
 	dbClient, err := st.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countResults, err := dbClient.QueryContext(ctx, queryGetEntityIDsByThemeIDCount, themeID, st.deploymentID)
+	countResults, err := dbClient.QueryContext(ctx, countQuery, filterArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to execute count query: %w", err)
 	}
@@ -255,7 +265,7 @@ func (st *store) GetEntityIDsByThemeID(ctx context.Context, themeID string, limi
 		}
 	}
 
-	results, err := dbClient.QueryContext(ctx, queryGetEntityIDsByThemeID, themeID, st.deploymentID, limit, offset)
+	results, err := dbClient.QueryContext(ctx, listQuery, append(filterArgs, limit, offset)...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -269,6 +279,36 @@ func (st *store) GetEntityIDsByThemeID(ctx context.Context, themeID string, limi
 		ids = append(ids, id)
 	}
 	return ids, total, nil
+}
+
+// referenceQueries maps a reference resource type to its count/list queries and the leading filter
+// arguments (the reference ID repeated per column slot, followed by the deployment ID). The boolean
+// is false when the reference type is not tracked by the inbound-client store.
+func referenceQueries(refType, refID, deploymentID string) (
+	dbmodel.DBQuery, dbmodel.DBQuery, []interface{}, bool) {
+	switch refType {
+	case usage.ResourceTypeTheme:
+		return queryGetEntityIDsByThemeIDCount, queryGetEntityIDsByThemeID,
+			[]interface{}{refID, deploymentID}, true
+	case usage.ResourceTypeFlow:
+		return queryGetEntityIDsByFlowIDCount, queryGetEntityIDsByFlowID,
+			[]interface{}{refID, refID, refID, deploymentID}, true
+	default:
+		return dbmodel.DBQuery{}, dbmodel.DBQuery{}, nil, false
+	}
+}
+
+// clientReferences reports whether the inbound client references the resource identified by
+// (refType, refID). It mirrors referenceQueries for the in-memory (file-based) store.
+func clientReferences(c *inboundmodel.InboundClient, refType, refID string) bool {
+	switch refType {
+	case usage.ResourceTypeTheme:
+		return c.ThemeID == refID
+	case usage.ResourceTypeFlow:
+		return c.AuthFlowID == refID || c.RegistrationFlowID == refID || c.RecoveryFlowID == refID
+	default:
+		return false
+	}
 }
 
 // GetTotalInboundClientCount retrieves the total count of inbound clients.

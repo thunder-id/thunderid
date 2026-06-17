@@ -303,7 +303,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ThemeUsagesResponse'
+                $ref: '#/components/schemas/ResourceUsagesResponse'
               example:
                 totalResults: 3
                 count: 3
@@ -900,9 +900,9 @@ components:
           items:
             $ref: '#/components/schemas/ThemeListItem'
 
-    ThemeUsage:
+    ResourceUsage:
       type: object
-      description: A single resource that references the theme.
+      description: A single resource that references the target resource.
       required:
         - resourceType
         - id
@@ -926,13 +926,13 @@ components:
         behaviorOnDelete:
           type: string
           description: |
-            What happens to this resource when the theme is deleted.
-            - `fallback`: the reference is kept and resolved to the system default theme at read time.
+            What happens to this resource when the target resource is deleted.
+            - `fallback`: the reference is kept and resolved to the system default at read time.
             - `cascade`: the resource is permanently deleted.
           enum: [fallback, cascade]
           example: fallback
 
-    ThemeUsagesSummary:
+    ResourceUsagesSummary:
       type: object
       nullable: true
       description: |
@@ -944,14 +944,17 @@ components:
         application: 2
         agent: 1
 
-    ThemeUsagesResponse:
+    ResourceUsagesResponse:
       type: object
+      description: |
+        Resources that reference a target resource, aggregated across all resource types.
+        Drives pre-delete confirmation dialogs; informational only.
       properties:
         totalResults:
           type: integer
           nullable: true
           description: |
-            Total number of resources that reference this theme.
+            Total number of resources that reference the target resource.
             Null when usage data is unavailable; 0 means confirmed empty.
           example: 3
         count:
@@ -959,11 +962,11 @@ components:
           description: Number of results returned.
           example: 3
         summary:
-          $ref: '#/components/schemas/ThemeUsagesSummary'
+          $ref: '#/components/schemas/ResourceUsagesSummary'
         usages:
           type: array
           items:
-            $ref: '#/components/schemas/ThemeUsage'
+            $ref: '#/components/schemas/ResourceUsage'
 
     LayoutRequest:
       type: object

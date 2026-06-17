@@ -30,6 +30,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 )
 
 const testFlowIDHandler = "test-flow-id"
@@ -247,6 +248,56 @@ func (s *FlowMgtHandlerTestSuite) TestGetFlow_NotFound() {
 	w := httptest.NewRecorder()
 
 	s.handler.getFlow(w, req)
+
+	s.Equal(http.StatusNotFound, w.Code)
+}
+
+// Test getFlowUsages
+
+func (s *FlowMgtHandlerTestSuite) TestGetFlowUsages_Success() {
+	total := 1
+	s.mockService.EXPECT().GetFlowUsages(mock.Anything, testFlowIDHandler).Return(&usage.UsagesResponse{
+		TotalResults: &total,
+		Count:        1,
+		Summary:      map[string]int{usage.ResourceTypeApplication: 1},
+		Usages: []usage.ResourceUsage{
+			{ResourceType: usage.ResourceTypeApplication, ID: "app-1",
+				DisplayName: "App One", BehaviorOnDelete: usage.BehaviorFallback},
+		},
+	}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/flows/"+testFlowIDHandler+"/usages", nil)
+	req.SetPathValue(pathParamFlowID, testFlowIDHandler)
+	w := httptest.NewRecorder()
+
+	s.handler.getFlowUsages(w, req)
+
+	s.Equal(http.StatusOK, w.Code)
+	var response usage.UsagesResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	s.NoError(err)
+	s.Equal(1, *response.TotalResults)
+	s.Len(response.Usages, 1)
+	s.Equal(usage.ResourceTypeApplication, response.Usages[0].ResourceType)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetFlowUsages_MissingFlowID() {
+	req := httptest.NewRequest(http.MethodGet, "/flows//usages", nil)
+	w := httptest.NewRecorder()
+
+	s.handler.getFlowUsages(w, req)
+
+	s.Equal(http.StatusBadRequest, w.Code)
+}
+
+func (s *FlowMgtHandlerTestSuite) TestGetFlowUsages_NotFound() {
+	s.mockService.EXPECT().GetFlowUsages(mock.Anything, testFlowIDHandler).Return(nil, &ErrorFlowNotFound)
+
+	req := httptest.NewRequest(http.MethodGet, "/flows/"+testFlowIDHandler+"/usages", nil)
+	req.SetPathValue(pathParamFlowID, testFlowIDHandler)
+	w := httptest.NewRecorder()
+
+	s.handler.getFlowUsages(w, req)
 
 	s.Equal(http.StatusNotFound, w.Code)
 }

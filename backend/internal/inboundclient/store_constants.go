@@ -102,4 +102,20 @@ var (
 		ID:    "ASQ-INBC_MGT-14",
 		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE THEME_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
+
+	// queryGetEntityIDsByFlowID retrieves paginated entity IDs for inbound clients referencing a specific
+	// flow through any of the authentication, registration, or recovery flow slots.
+	queryGetEntityIDsByFlowID = dbmodel.DBQuery{
+		ID: "ASQ-INBC_MGT-15",
+		Query: `SELECT ENTITY_ID FROM "INBOUND_CLIENT" WHERE ` +
+			`(AUTH_FLOW_ID = $1 OR REGISTRATION_FLOW_ID = $2 OR RECOVERY_FLOW_ID = $3) AND DEPLOYMENT_ID = $4 ` +
+			`ORDER BY ENTITY_ID ASC LIMIT $5 OFFSET $6`,
+	}
+
+	// queryGetEntityIDsByFlowIDCount retrieves the total count of inbound clients referencing a specific flow.
+	queryGetEntityIDsByFlowIDCount = dbmodel.DBQuery{
+		ID: "ASQ-INBC_MGT-16",
+		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE ` +
+			`(AUTH_FLOW_ID = $1 OR REGISTRATION_FLOW_ID = $2 OR RECOVERY_FLOW_ID = $3) AND DEPLOYMENT_ID = $4`,
+	}
 )

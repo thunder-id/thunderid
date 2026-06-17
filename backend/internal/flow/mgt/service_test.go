@@ -29,6 +29,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
 )
@@ -579,6 +580,95 @@ func (s *FlowMgtServiceTestSuite) TestGetFlow_StoreError() {
 	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(nil, errors.New("db error"))
 
 	result, err := s.service.GetFlow(context.Background(), testFlowIDService)
+
+	s.Nil(result)
+	s.Equal(&serviceerror.InternalServerError, err)
+}
+
+// GetFlowUsages tests
+
+// stubUsageRegistry is a minimal usage.Registry for tests.
+type stubUsageRegistry struct {
+	resp *usage.UsagesResponse
+	err  error
+}
+
+func (r *stubUsageRegistry) RegisterProvider(usage.Provider) {}
+
+func (r *stubUsageRegistry) GetUsages(_ context.Context, _, _ string) (*usage.UsagesResponse, error) {
+	return r.resp, r.err
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetFlowUsages_EmptyID() {
+	result, err := s.service.GetFlowUsages(context.Background(), "")
+
+	s.Nil(result)
+	s.Equal(&ErrorMissingFlowID, err)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetFlowUsages_NotFound() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(nil, errFlowNotFound)
+
+	result, err := s.service.GetFlowUsages(context.Background(), testFlowIDService)
+
+	s.Nil(result)
+	s.Equal(&ErrorFlowNotFound, err)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetFlowUsages_RegistryNotSet() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&CompleteFlowDefinition{ID: testFlowIDService}, nil)
+
+	result, err := s.service.GetFlowUsages(context.Background(), testFlowIDService)
+
+	s.Nil(err)
+	s.NotNil(result)
+	s.Nil(result.TotalResults)
+	s.Nil(result.Summary)
+	s.Empty(result.Usages)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetFlowUsages_WithUsages() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&CompleteFlowDefinition{ID: testFlowIDService}, nil)
+	total := 2
+	s.service.SetUsageRegistry(&stubUsageRegistry{
+		resp: &usage.UsagesResponse{
+			TotalResults: &total,
+			Count:        2,
+			Summary:      map[string]int{usage.ResourceTypeApplication: 1, usage.ResourceTypeAgent: 1},
+			Usages: []usage.ResourceUsage{
+				{ResourceType: usage.ResourceTypeApplication, ID: "app-1",
+					DisplayName: "App One", BehaviorOnDelete: usage.BehaviorFallback},
+				{ResourceType: usage.ResourceTypeAgent, ID: "agent-1",
+					DisplayName: "Agent One", BehaviorOnDelete: usage.BehaviorFallback},
+			},
+		},
+	})
+
+	result, err := s.service.GetFlowUsages(context.Background(), testFlowIDService)
+
+	s.Nil(err)
+	s.NotNil(result)
+	s.Equal(2, *result.TotalResults)
+	s.Len(result.Usages, 2)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetFlowUsages_RegistryError() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&CompleteFlowDefinition{ID: testFlowIDService}, nil)
+	s.service.SetUsageRegistry(&stubUsageRegistry{err: errors.New("registry error")})
+
+	result, err := s.service.GetFlowUsages(context.Background(), testFlowIDService)
+
+	s.Nil(result)
+	s.Equal(&serviceerror.InternalServerError, err)
+}
+
+func (s *FlowMgtServiceTestSuite) TestGetFlowUsages_StoreError() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(nil, errors.New("db error"))
+
+	result, err := s.service.GetFlowUsages(context.Background(), testFlowIDService)
 
 	s.Nil(result)
 	s.Equal(&serviceerror.InternalServerError, err)

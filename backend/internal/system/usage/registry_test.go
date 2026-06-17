@@ -72,6 +72,21 @@ func TestGetUsagesProviderErrorReturnsUnknown(t *testing.T) {
 	assert.Empty(t, resp.Usages)
 }
 
+func TestRegisterProviderIgnoresNil(t *testing.T) {
+	reg := NewRegistry()
+	reg.RegisterProvider(nil)
+	reg.RegisterProvider(&stubProvider{usages: []ResourceUsage{
+		{ResourceType: "application", ID: "a1", DisplayName: "App 1", BehaviorOnDelete: BehaviorFallback},
+	}})
+
+	resp, err := reg.GetUsages(context.Background(), "theme", "t1")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp.TotalResults)
+	assert.Equal(t, 1, *resp.TotalResults)
+	assert.Len(t, resp.Usages, 1)
+}
+
 func TestGetUsagesNoProvidersReturnsEmpty(t *testing.T) {
 	reg := NewRegistry()
 

@@ -548,26 +548,16 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 	return as.deleteLocalizedVariants(ctx, appID)
 }
 
-// GetResourceUsages returns the applications that reference the resource identified
-// by (resourceType, id). It implements the usage.Provider interface.
+// GetResourceUsages returns the applications that reference the resource identified by
+// (resourceType, id). It implements the usage.Provider interface. The inbound-client store
+// resolves which reference types are tracked, so no per-type handling is needed here. The
+// number of referencing entities is bounded by MaxCompositeStoreRecords (the store limit).
 func (as *applicationService) GetResourceUsages(
 	ctx context.Context, resourceType, id string) ([]usage.ResourceUsage, error) {
-	switch resourceType {
-	case usage.ResourceTypeTheme:
-		return as.getApplicationsByThemeID(ctx, id)
-	default:
-		return []usage.ResourceUsage{}, nil
-	}
-}
-
-// getApplicationsByThemeID returns applications referencing the given theme. The number of
-// referencing entities is bounded by MaxCompositeStoreRecords (the inbound-client store limit).
-func (as *applicationService) getApplicationsByThemeID(
-	ctx context.Context, themeID string) ([]usage.ResourceUsage, error) {
-	ids, _, err := as.inboundClientService.GetEntityIDsByThemeID(
-		ctx, themeID, serverconst.MaxCompositeStoreRecords, 0)
+	ids, _, err := as.inboundClientService.GetEntityIDsByReference(
+		ctx, resourceType, id, serverconst.MaxCompositeStoreRecords, 0)
 	if err != nil {
-		as.logger.Error(ctx, "Failed to get entity IDs by theme ID", log.Error(err))
+		as.logger.Error(ctx, "Failed to get entity IDs by reference", log.Error(err))
 		return nil, err
 	}
 	if len(ids) == 0 {

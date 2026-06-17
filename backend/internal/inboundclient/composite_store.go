@@ -70,16 +70,17 @@ func (c *compositeStore) GetInboundClientList(ctx context.Context, limit int) ([
 	return clients, nil
 }
 
-func (c *compositeStore) GetEntityIDsByThemeID(
-	ctx context.Context, themeID string, limit, offset int) ([]string, int, error) {
-	dbIDs, _, err := c.dbStore.GetEntityIDsByThemeID(ctx, themeID, serverconst.MaxCompositeStoreRecords, 0)
+func (c *compositeStore) GetEntityIDsByReference(
+	ctx context.Context, refType, refID string, limit, offset int) ([]string, int, error) {
+	dbIDs, _, err := c.dbStore.GetEntityIDsByReference(ctx, refType, refID, serverconst.MaxCompositeStoreRecords, 0)
 	if err != nil {
 		return nil, 0, err
 	}
 	if len(dbIDs) == serverconst.MaxCompositeStoreRecords {
 		return nil, 0, ErrCompositeResultLimitExceeded
 	}
-	fileIDs, _, err := c.fileStore.GetEntityIDsByThemeID(ctx, themeID, serverconst.MaxCompositeStoreRecords, 0)
+	fileIDs, _, err := c.fileStore.GetEntityIDsByReference(
+		ctx, refType, refID, serverconst.MaxCompositeStoreRecords, 0)
 	if err != nil {
 		return nil, 0, err
 	}

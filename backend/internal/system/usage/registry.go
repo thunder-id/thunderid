@@ -36,6 +36,7 @@ const BehaviorFallback = "fallback"
 // Resource type identifiers shared across usage providers and consumers.
 const (
 	ResourceTypeTheme       = "theme"
+	ResourceTypeFlow        = "flow"
 	ResourceTypeApplication = "application"
 	ResourceTypeAgent       = "agent"
 )
@@ -85,8 +86,14 @@ func NewRegistry() Registry {
 	}
 }
 
-// RegisterProvider adds a provider to the registry.
+// RegisterProvider adds a provider to the registry. A nil provider — e.g. a service that
+// failed to initialize and was wired in regardless — is ignored so it cannot panic a later
+// usage lookup.
 func (r *registry) RegisterProvider(p Provider) {
+	if p == nil {
+		r.logger.Warn(context.Background(), "Ignoring nil usage provider registration")
+		return
+	}
 	r.providers = append(r.providers, p)
 }
 

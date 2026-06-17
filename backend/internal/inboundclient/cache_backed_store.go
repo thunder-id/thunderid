@@ -146,9 +146,9 @@ func (c *cachedBackStore) IsDeclarative(ctx context.Context, entityID string) bo
 	return c.inner.IsDeclarative(ctx, entityID)
 }
 
-func (c *cachedBackStore) GetEntityIDsByThemeID(
-	ctx context.Context, themeID string, limit, offset int) ([]string, int, error) {
-	return c.inner.GetEntityIDsByThemeID(ctx, themeID, limit, offset)
+func (c *cachedBackStore) GetEntityIDsByReference(
+	ctx context.Context, refType, refID string, limit, offset int) ([]string, int, error) {
+	return c.inner.GetEntityIDsByReference(ctx, refType, refID, limit, offset)
 }
 
 // --- Cache helpers ---

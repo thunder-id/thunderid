@@ -391,25 +391,15 @@ func (s *agentService) DeleteAgent(ctx context.Context, agentID string) *service
 }
 
 // GetResourceUsages returns the agents that reference the resource identified by
-// (resourceType, id). It implements the usage.Provider interface.
+// (resourceType, id). It implements the usage.Provider interface. The inbound-client store
+// resolves which reference types are tracked, so no per-type handling is needed here. The
+// number of referencing entities is bounded by MaxCompositeStoreRecords (the store limit).
 func (s *agentService) GetResourceUsages(
 	ctx context.Context, resourceType, id string) ([]usage.ResourceUsage, error) {
-	switch resourceType {
-	case usage.ResourceTypeTheme:
-		return s.getAgentsByThemeID(ctx, id)
-	default:
-		return []usage.ResourceUsage{}, nil
-	}
-}
-
-// getAgentsByThemeID returns agents referencing the given theme. The number of referencing
-// entities is bounded by MaxCompositeStoreRecords (the inbound-client store limit).
-func (s *agentService) getAgentsByThemeID(
-	ctx context.Context, themeID string) ([]usage.ResourceUsage, error) {
-	ids, _, err := s.inboundClientService.GetEntityIDsByThemeID(
-		ctx, themeID, serverconst.MaxCompositeStoreRecords, 0)
+	ids, _, err := s.inboundClientService.GetEntityIDsByReference(
+		ctx, resourceType, id, serverconst.MaxCompositeStoreRecords, 0)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to get entity IDs by theme ID", log.Error(err))
+		s.logger.Error(ctx, "Failed to get entity IDs by reference", log.Error(err))
 		return nil, err
 	}
 	if len(ids) == 0 {
