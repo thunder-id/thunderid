@@ -61,9 +61,6 @@ deployment:
     requests:
       cpu: 100m
       memory: 50Mi
-  # Controls the SKIP_SECURITY environment variable. Set this to true only
-  # in non-production environments for testing purposes to bypass REST API security checks.
-  skipSecurity: false
   # Additional environment variables with plain values.
   # Example:
   # env:
@@ -554,59 +551,55 @@ setup:
     #     secretName: thunderid-secrets
 
 # Bootstrap configuration
-# Custom bootstrap scripts extend ThunderID's setup process by adding initialization logic.
+# Custom bootstrap resource definitions extend ThunderID's setup process. Files are
+# mounted into the bootstrap directory and applied by the in-process
+# bootstrap (`thunderid bootstrap`) through the import service. Each document is a
+# YAML/JSON resource definition (e.g. organization_unit, user_type, user, role,
+# application) — the same format as the shipped defaults; not shell scripts.
 #
 # ⚠️ IMPORTANT: Bootstrap patterns are MUTUALLY EXCLUSIVE
 #   Choose ONE pattern only. Using both 'scripts' and 'configMap' will fail validation.
 #
-#   - Pattern 1: Use 'scripts' for inline scripts
+#   - Pattern 1: Use 'scripts' for inline resource definitions
 #   - Pattern 2 OR 3: Use 'configMap' (with or without 'files')
 #
 bootstrap:
-  # Pattern 1: Inline bootstrap scripts (key: filename, value: script content)
-  # Each script will be mounted individually using subPath to preserve default scripts
+  # Pattern 1: Inline resource definitions (key: filename, value: file content).
+  # Each file is mounted individually with subPath, alongside the shipped defaults.
   scripts: {}
-    # Example - Creating custom users:
-    # 20-custom-users.sh: |
-    #   #!/bin/bash
-    #   set -e
-    #   # Source common functions (provides log_* and thunderid_api_call)
-    #   SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]:-$0}")"
-    #   source "${SCRIPT_DIR}/common.sh"
+    # Example - Creating a custom user (filename must end in .yaml/.yml/.json):
+    # 70-custom-users.yaml: |
+    #   # resource_type: user
+    #   type: Person
+    #   ouHandle: default
+    #   attributes:
+    #     username: alice
+    #     sub: alice
+    #     email: alice@example.com
+    #     name: Alice Johnson
+    #   credentials:
+    #     password: alice123
     #
-    #   log_info "Creating custom users..."
-    #   thunderid_api_call POST "/users" '{
-    #     "type": "person",
-    #     "attributes": {
-    #       "username": "alice",
-    #       "password": "alice123",
-    #       "sub": "alice",
-    #       "email": "alice@example.com",
-    #       "name": "Alice Johnson"
-    #     }
-    #   }'
-    #   log_success "Custom users created"
-    #
-  # Pattern 2 & 3: Reference an external ConfigMap with bootstrap scripts
+  # Pattern 2 & 3: Reference an external ConfigMap with resource definition files.
   #
   # Behavior depends on whether 'files' is specified:
   # - WITH files list: Mounts only specified files (preserves defaults) - Pattern 2
   # - WITHOUT files (empty/omitted): Mounts entire ConfigMap (replaces all defaults) - Pattern 3
   #
-  # Example 1 - Pattern 2: Add specific scripts (preserves defaults)
+  # Example 1 - Pattern 2: Add specific resource files (preserves defaults)
   #   configMap:
   #     name: "my-bootstrap"
   #     files:
-  #       - 30-custom-users.sh
-  #       - 40-custom-apps.sh
+  #       - 70-custom-users.yaml
+  #       - 80-custom-apps.yaml
   #
-  # Example 2 - Pattern 3: Replace all scripts
+  # Example 2 - Pattern 3: Replace the entire default resource bundle
   #   configMap:
   #     name: "complete-bootstrap"
-  #     # No files = replaces all defaults (must provide your own common.sh)
+  #     # No files = replaces all defaults (must provide a complete resource set)
   #
   configMap:
-    # Name of the ConfigMap containing bootstrap scripts
+    # Name of the ConfigMap containing resource definition files
     name: ""
     # List of script filenames to mount from the ConfigMap
     # If empty/omitted: mounts entire ConfigMap (replaces all defaults - Pattern 3)

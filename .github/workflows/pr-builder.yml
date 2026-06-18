@@ -661,7 +661,7 @@ jobs:
         run: |
           cd tests/e2e/server
           ./setup.sh
-          SKIP_SECURITY=true ./start.sh &
+          ./start.sh &
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
           # Wait for server to be ready
@@ -683,6 +683,67 @@ jobs:
           
           echo "Server started successfully!"
       
+      - name: 🔑 Obtain Admin Access Token
+        run: |
+          # The server now runs with security enabled (SKIP_SECURITY is gone), so the
+          # management /import and /applications calls below need an admin token.
+          # Obtain one via OAuth2 authorization code + PKCE through the CONSOLE app,
+          # authenticating the bootstrapped admin user.
+          SERVER_URL="https://localhost:8090"
+          CONSOLE_REDIRECT_URI="https://localhost:8090/console"
+          CODE_VERIFIER=$(openssl rand -hex 32 | cut -c1-43)
+          CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+
+          curl -sk -o /dev/null -D /tmp/authz_headers.txt -G "$SERVER_URL/oauth2/authorize" \
+            --data-urlencode "client_id=CONSOLE" \
+            --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
+            --data-urlencode "scope=system" \
+            --data-urlencode "response_type=code" \
+            --data-urlencode "code_challenge=$CODE_CHALLENGE" \
+            --data-urlencode "code_challenge_method=S256"
+
+          LOCATION=$(grep -i "^location:" /tmp/authz_headers.txt | tr -d '\r' | sed 's/^[Ll]ocation: //')
+          AUTH_ID=$(echo "$LOCATION" | sed 's/.*[?&]authId=\([^&]*\).*/\1/')
+          EXEC_ID=$(echo "$LOCATION" | sed 's/.*[?&]executionId=\([^&]*\).*/\1/')
+          if [ -z "$AUTH_ID" ] || [ -z "$EXEC_ID" ]; then
+            echo "❌ Failed to parse authId/executionId from authorize redirect: $LOCATION"
+            exit 1
+          fi
+
+          FLOW_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
+            -H "Content-Type: application/json" \
+            -d "{\"executionId\": \"$EXEC_ID\", \"inputs\": {\"username\": \"admin\", \"password\": \"admin\"}, \"action\": \"action_001\"}")
+          ASSERTION=$(echo "$FLOW_RESP" | jq -r '.assertion // empty')
+          if [ -z "$ASSERTION" ]; then
+            echo "❌ Flow execution did not return an assertion: $FLOW_RESP"
+            exit 1
+          fi
+
+          CALLBACK_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/auth/callback" \
+            -H "Content-Type: application/json" \
+            -d "{\"authId\": \"$AUTH_ID\", \"assertion\": \"$ASSERTION\"}")
+          AUTH_CODE=$(echo "$CALLBACK_RESP" | jq -r '.redirect_uri // empty' | sed 's/.*[?&]code=\([^&]*\).*/\1/')
+          if [ -z "$AUTH_CODE" ]; then
+            echo "❌ Callback did not return an authorization code: $CALLBACK_RESP"
+            exit 1
+          fi
+
+          TOKEN_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "grant_type=authorization_code" \
+            --data-urlencode "code=$AUTH_CODE" \
+            --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
+            --data-urlencode "client_id=CONSOLE" \
+            --data-urlencode "code_verifier=$CODE_VERIFIER")
+          ADMIN_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.access_token // empty')
+          if [ -z "$ADMIN_TOKEN" ]; then
+            echo "❌ Failed to obtain admin access token: $TOKEN_RESP"
+            exit 1
+          fi
+          echo "::add-mask::$ADMIN_TOKEN"
+          echo "ADMIN_TOKEN=$ADMIN_TOKEN" >> "$GITHUB_ENV"
+          echo "✅ Obtained admin access token."
+
       - name: 📦 Import Sample App Resources
         run: |
           echo "Importing React Vanilla Sample declarative resources..."
@@ -690,6 +751,7 @@ jobs:
           HTTP_STATUS=$(curl -k -s -o /tmp/import_response.json -w "%{http_code}" \
             -X POST https://localhost:8090/import \
             -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $ADMIN_TOKEN" \
             -d "{
               \"content\": $(echo "$YAML_CONTENT" | jq -Rs .),
               \"variables\": {
@@ -719,6 +781,7 @@ jobs:
           HTTP_STATUS=$(curl -k -s -o /tmp/import_response.json -w "%{http_code}" \
             -X POST https://localhost:8090/import \
             -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $ADMIN_TOKEN" \
             -d "{
               \"content\": $(echo "$YAML_CONTENT" | jq -Rs .),
               \"variables\": {
@@ -740,6 +803,7 @@ jobs:
           HTTP_STATUS=$(curl -k -s -o /tmp/import_response.json -w "%{http_code}" \
             -X POST https://localhost:8090/import \
             -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $ADMIN_TOKEN" \
             -d "{
               \"content\": $(echo "$YAML_CONTENT" | jq -Rs .),
               \"options\": {\"upsert\": true}
@@ -758,7 +822,7 @@ jobs:
           echo "Fetching applications from the server..."
 
           # Get applications list
-          APPS_RESPONSE=$(curl -s -k https://localhost:8090/applications)
+          APPS_RESPONSE=$(curl -s -k -H "Authorization: Bearer $ADMIN_TOKEN" https://localhost:8090/applications)
 
           # Extract Sample App ID using jq (uses "Sample App" from vanilla sample,
           # which is unaffected by MFA test setup/teardown)

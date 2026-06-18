@@ -88,7 +88,18 @@ func main() {
 	}
 
 	// Register the services.
-	jwtService, runtimeCryptoSvc := registerServices(mux, cacheManager)
+	jwtService, runtimeCryptoSvc, importService := registerServices(mux, cacheManager)
+
+	// When invoked as the bootstrap one-shot (`thunderid bootstrap`), create the
+	// default resources in-process and exit without starting the HTTP server.
+	if isBootstrapInvocation() {
+		if err := runBootstrap(ctx, logger, serverHome, importService, cacheManager); err != nil {
+			logger.Error(ctx, "In-process bootstrap failed; exiting", log.Error(err))
+			os.Exit(1)
+		}
+		logger.Info(ctx, "In-process bootstrap finished successfully")
+		return
+	}
 
 	// Register static file handlers for frontend applications.
 	registerStaticFileHandlers(ctx, logger, mux, serverHome)

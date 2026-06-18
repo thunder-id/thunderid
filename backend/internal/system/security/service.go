@@ -22,7 +22,6 @@ package security
 import (
 	"context"
 	"net/http"
-	"os"
 	"regexp"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -41,7 +40,6 @@ type securityService struct {
 	logger                 *log.Logger
 	compiledPaths          []*regexp.Regexp
 	compiledAPIPermissions []compiledAPIPermission
-	skipSecurity           bool
 }
 
 // newSecurityService creates a new instance of the security service.
@@ -56,9 +54,6 @@ type securityService struct {
 //   - error: An error if any of the provided path patterns are invalid and cannot be compiled.
 func newSecurityService(authenticators []AuthenticatorInterface, publicPaths []string,
 	apiPermissions []apiPermissionEntry) (*securityService, error) {
-	// Security service is constructed at startup, outside any request,
-	// so context.Background() is used (no request trace ID to propagate).
-	ctx := context.Background()
 	compiledPaths, err := compilePathPatterns(publicPaths)
 	if err != nil {
 		return nil, err
@@ -69,28 +64,13 @@ func newSecurityService(authenticators []AuthenticatorInterface, publicPaths []s
 		return nil, err
 	}
 
-	// Check if security enforcement should be skipped via environment variable
-	skipSecurity := os.Getenv("SKIP_SECURITY") == "true"
-
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
-
-	if skipSecurity {
-		logger.Warn(ctx, "============================================================")
-		logger.Warn(ctx, "|       WARNING: SECURITY ENFORCEMENT DISABLED             |")
-		logger.Warn(ctx, "|                                                          |")
-		logger.Warn(ctx, "|        SKIP_SECURITY is set to 'true'            |")
-		logger.Warn(ctx, "|  This is NOT RECOMMENDED for production environments!    |")
-		logger.Warn(ctx, "| Endpoints accessible without auth, but tokens processed  |")
-		logger.Warn(ctx, "|                                                          |")
-		logger.Warn(ctx, "============================================================")
-	}
 
 	return &securityService{
 		authenticators:         authenticators,
 		logger:                 logger,
 		compiledPaths:          compiledPaths,
 		compiledAPIPermissions: compiledPerms,
-		skipSecurity:           skipSecurity,
 	}, nil
 }
 
@@ -115,13 +95,13 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 
 	// If no authenticator found
 	if authenticator == nil {
-		return s.handleAuthError(r.Context(), r.URL.Path, errNoHandlerFound, isPublic, s.skipSecurity)
+		return s.handleAuthError(r.Context(), isPublic, errNoHandlerFound)
 	}
 
 	// Authenticate the request
 	securityCtx, err := authenticator.Authenticate(r)
 	if err != nil {
-		return s.handleAuthError(r.Context(), r.URL.Path, err, isPublic, s.skipSecurity)
+		return s.handleAuthError(r.Context(), isPublic, err)
 	}
 
 	// Add authentication context to request context if available
@@ -132,7 +112,7 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 
 	// Authorize the authenticated principal based on the permissions carried in the security context.
 	if err := s.authorize(r.WithContext(ctx)); err != nil {
-		return s.handleAuthError(ctx, r.URL.Path, err, isPublic, s.skipSecurity)
+		return s.handleAuthError(ctx, isPublic, err)
 	}
 
 	return ctx, nil
@@ -190,26 +170,16 @@ func (s *securityService) isPublicPath(ctx context.Context, requestPath string) 
 	return false
 }
 
-// handleAuthError handles authentication/authorization errors based on whether
-// the path is public or security is skipped.
+// handleAuthError grants access to public paths (as an internal runtime caller)
+// and otherwise propagates the authentication/authorization error.
 func (s *securityService) handleAuthError(
 	ctx context.Context,
-	path string,
-	err error,
 	isPublic bool,
-	skipSecurity bool,
+	err error,
 ) (context.Context, error) {
 	if isPublic {
 		// Mark the context as a runtime caller so that the authorization layer can grant access.
 		return WithRuntimeContext(ctx), nil
-	}
-
-	if skipSecurity {
-		s.logger.Debug(ctx,
-			"Proceeding without authentication/authorization enforcement as skipSecurity is enabled",
-			log.Error(err),
-			log.String("path", path))
-		return withSecuritySkipped(ctx), nil
 	}
 
 	return nil, err

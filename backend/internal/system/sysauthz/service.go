@@ -93,21 +93,14 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 	actionCtx *ActionContext) (bool, *serviceerror.ServiceError) {
 	logger := s.logger.WithContext(ctx)
 
-	// Step 1: Check if SKIP_SECURITY flag is set.
-	if security.IsSecuritySkipped(ctx) {
-		logger.Debug(ctx, "Authorization skipped: SKIP_SECURITY is enabled",
-			log.String("action", string(action)))
-		return true, nil
-	}
-
-	// Step 2: Check if this is an internal runtime caller.
+	// Step 1: Check if this is an internal runtime caller.
 	if security.IsRuntimeContext(ctx) {
 		logger.Debug(ctx, "Authorization granted: runtime context for the action",
 			log.String("action", string(action)))
 		return true, nil
 	}
 
-	// Step 3: Verify the caller is authenticated.
+	// Step 2: Verify the caller is authenticated.
 	subject := security.GetSubject(ctx)
 	if subject == "" {
 		logger.Debug(ctx, "Authorization denied: unauthenticated caller",
@@ -117,12 +110,12 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 
 	permissions := security.GetPermissions(ctx)
 
-	// Step 4: Short-circuit: the "system" permission grants access to all system operations.
+	// Step 3: Short-circuit: the "system" permission grants access to all system operations.
 	if security.HasSystemPermission(permissions) {
 		return true, nil
 	}
 
-	// Step 5: Allow resource owners to access their own resources (self-service).
+	// Step 4: Allow resource owners to access their own resources (self-service).
 	if isResourceOwner(ctx, actionCtx) {
 		if logger.IsDebugEnabled() {
 			logger.Debug(ctx, "Authorization granted: resource owner",
@@ -132,7 +125,7 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 		return true, nil
 	}
 
-	// Step 6: Resolve required permission for the action and evaluate using hierarchical matching.
+	// Step 5: Resolve required permission for the action and evaluate using hierarchical matching.
 	requiredPermission := security.ResolveActionPermission(action)
 	if !security.HasSufficientPermission(permissions, requiredPermission) {
 		if logger.IsDebugEnabled() {
@@ -143,7 +136,7 @@ func (s *systemAuthorizationService) IsActionAllowed(ctx context.Context, action
 		return false, nil
 	}
 
-	// Step 7: Evaluate global policies (e.g., OU scope check).
+	// Step 6: Evaluate global policies (e.g., OU scope check).
 	allowed, svcErr := isActionAllowedByPolicies(ctx, s.policies, action, actionCtx)
 	if svcErr != nil {
 		return false, svcErr
@@ -193,15 +186,7 @@ func (s *systemAuthorizationService) GetAccessibleResources(ctx context.Context,
 	resourceType security.ResourceType) (*AccessibleResources, *serviceerror.ServiceError) {
 	logger := s.logger.WithContext(ctx)
 
-	// Step 1: Check if SKIP_SECURITY flag is set.
-	if security.IsSecuritySkipped(ctx) {
-		logger.Debug(ctx, "GetAccessibleResources skipped: SKIP_SECURITY is enabled",
-			log.String("action", string(action)),
-			log.String("resourceType", string(resourceType)))
-		return &AccessibleResources{AllAllowed: true}, nil
-	}
-
-	// Step 2: Check if this is an internal runtime caller — return all resources.
+	// Step 1: Check if this is an internal runtime caller — return all resources.
 	if security.IsRuntimeContext(ctx) {
 		logger.Debug(ctx, "GetAccessibleResources: runtime context, returning all resources",
 			log.String("action", string(action)),
@@ -209,7 +194,7 @@ func (s *systemAuthorizationService) GetAccessibleResources(ctx context.Context,
 		return &AccessibleResources{AllAllowed: true}, nil
 	}
 
-	// Step 3: Verify the caller is authenticated.
+	// Step 2: Verify the caller is authenticated.
 	subject := security.GetSubject(ctx)
 	if subject == "" {
 		logger.Debug(ctx, "GetAccessibleResources denied: unauthenticated caller",
@@ -220,12 +205,12 @@ func (s *systemAuthorizationService) GetAccessibleResources(ctx context.Context,
 
 	permissions := security.GetPermissions(ctx)
 
-	// Step 4: Short-circuit: the "system" permission grants access to all resources.
+	// Step 3: Short-circuit: the "system" permission grants access to all resources.
 	if security.HasSystemPermission(permissions) {
 		return &AccessibleResources{AllAllowed: true}, nil
 	}
 
-	// Step 5: Verify the caller holds an adequate permission for the action using hierarchical matching.
+	// Step 4: Verify the caller holds an adequate permission for the action using hierarchical matching.
 	requiredPermission := security.ResolveActionPermission(action)
 	if !security.HasSufficientPermission(permissions, requiredPermission) {
 		if logger.IsDebugEnabled() {
@@ -237,7 +222,7 @@ func (s *systemAuthorizationService) GetAccessibleResources(ctx context.Context,
 		return &AccessibleResources{AllAllowed: false, IDs: []string{}}, nil
 	}
 
-	// Step 6: Delegate to the policy chain to determine the accessible resource set.
+	// Step 5: Delegate to the policy chain to determine the accessible resource set.
 	result, svcErr := getAccessibleResourcesByPolicies(ctx, s.policies, action, resourceType)
 	if svcErr != nil {
 		return nil, svcErr

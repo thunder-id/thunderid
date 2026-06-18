@@ -59,7 +59,8 @@ var (
 )
 
 // EmailLinkPasswordRecoveryTestSuite tests the email-link password recovery flow.
-// Refer to @backend/cmd/server/bootstrap/flows/recovery/recovery_flow_email.json for the flow configuration.
+// Refer to the email-link recovery flow (handle: email-link-based-password-recovery)
+// in @backend/cmd/server/bootstrap/01-default-resources.yaml for the flow configuration.
 type EmailLinkPasswordRecoveryTestSuite struct {
 	suite.Suite
 	config         *common.TestSuiteConfig

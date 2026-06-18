@@ -1,0 +1,5526 @@
+# resource_type: organization_unit
+id: 01900000-0000-7000-8000-000000000001
+handle: default
+name: Default
+description: Default organization unit
+logoUrl: "emoji:🏛️"
+---
+# resource_type: user_type
+id: 01900000-0000-7000-8000-000000000010
+category: user
+name: Person
+ouHandle: default
+systemAttributes:
+  display: username
+schema:
+  username:
+    type: string
+    displayName: Username
+    required: true
+    unique: true
+  email:
+    type: string
+    displayName: Email
+    required: true
+    unique: true
+    regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+  given_name:
+    type: string
+    displayName: First Name
+    required: false
+  family_name:
+    type: string
+    displayName: Last Name
+    required: false
+  mobileNumber:
+    type: string
+    displayName: Mobile Number
+    required: false
+  phone_number:
+    type: string
+    displayName: Phone Number
+    required: false
+  sub:
+    type: string
+    displayName: Subject
+    required: false
+  name:
+    type: string
+    displayName: Full Name
+    required: false
+  picture:
+    type: string
+    displayName: Picture
+    required: false
+  password:
+    type: string
+    displayName: Password
+    required: false
+    credential: true
+---
+# resource_type: user_type
+id: 01900000-0000-7000-8000-000000000011
+category: agent
+name: default
+ouHandle: default
+schema:
+  model:
+    type: string
+    displayName: Model
+    required: false
+    enum:
+      - claude-opus-4.7
+      - claude-opus-4.6
+      - claude-sonnet-4.6
+      - claude-sonnet-4.5
+      - claude-haiku-4.5
+      - openai-gpt-5.4
+      - openai-gpt-5.3
+      - gemini-3.5
+      - gemini-3.1
+      - gemini-3
+      - other
+  department:
+    type: string
+    displayName: Department
+    required: false
+  purpose:
+    type: string
+    displayName: Purpose
+    required: false
+---
+# resource_type: resource_server
+id: 01900000-0000-7000-8000-000000000020
+name: System
+description: System resource server
+identifier: https://localhost:8090/mcp
+ouHandle: default
+resources:
+  - name: System
+    handle: system
+    description: System resource
+  - name: Organization Unit
+    handle: ou
+    description: Organization unit resource
+    parent: system
+    actions:
+      - name: View
+        handle: view
+        description: Read-only access to organization units
+  - name: User
+    handle: user
+    description: User resource
+    parent: system
+    actions:
+      - name: View
+        handle: view
+        description: Read-only access to users
+  - name: Group
+    handle: group
+    description: Group resource
+    parent: system
+    actions:
+      - name: View
+        handle: view
+        description: Read-only access to groups
+  - name: User Type
+    handle: usertype
+    description: User type resource
+    parent: system
+    actions:
+      - name: View
+        handle: view
+        description: Read-only access to user types
+---
+# resource_type: flow
+id: 01900000-0000-7000-8000-000000000061
+name: Default Basic Authentication Flow
+handle: default-basic-flow
+flowType: AUTHENTICATION
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_credentials
+- id: prompt_credentials
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: text_001
+      label: '{{ t(signin:forms.credentials.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_001
+      components:
+      - id: input_001
+        ref: username
+        type: TEXT_INPUT
+        label: '{{ t(signin:forms.credentials.fields.username.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.username.placeholder) }}'
+      - id: input_002
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(signin:forms.credentials.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
+      - category: DISPLAY
+        id: rich_text_forgot_password
+        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href="{{meta(application.forgot_password_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>
+        resourceType: ELEMENT
+        type: RICH_TEXT
+      - type: ACTION
+        id: action_001
+        label: '{{ t(signin:forms.credentials.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - category: DISPLAY
+        id: rich_text_signup
+        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.prefix) }} </span><a href="{{meta(application.sign_up_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.label) }}</span></a></p>
+        resourceType: ELEMENT
+        type: RICH_TEXT
+  prompts:
+  - inputs:
+    - ref: input_001
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_002
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_001
+      nextNode: credentials_auth
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: authorization_check
+  onIncomplete: prompt_credentials
+- id: authorization_check
+  type: TASK_EXECUTION
+  executor:
+    name: AuthorizationExecutor
+  onSuccess: auth_assert
+- id: auth_assert
+  type: TASK_EXECUTION
+  executor:
+    name: AuthAssertExecutor
+  onSuccess: end
+- id: end
+  type: END
+---
+# resource_type: flow
+id: 01900000-0000-7000-8000-000000000062
+name: Default CIBA Email Notification Flow
+handle: default-ciba-email-flow
+flowType: AUTHENTICATION
+nodes:
+- id: start
+  type: START
+  onSuccess: identify_user
+- id: identify_user
+  type: TASK_EXECUTION
+  properties:
+    loginHintAttribute: username
+  executor:
+    name: IdentifyingExecutor
+    inputs:
+    - identifier: login_hint
+      type: TEXT_INPUT
+      required: true
+  onSuccess: generate_invite
+- id: generate_invite
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: generate
+  onSuccess: send_notification_email
+- id: send_notification_email
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: CIBA_NOTIFICATION
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: notification_sent_status
+  onFailure: notification_error_status
+- id: notification_sent_status
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: notification_icon
+      label: ✉️
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: notification_heading
+      label: '{{ t(signin:forms.ciba.notification_sent.heading) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: notification_message
+      label: '{{ t(signin:forms.ciba.notification_sent.message) }}'
+      variant: HEADING_6
+  message: Authentication notification sent
+  next: verify_invite
+- id: notification_error_status
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: error_icon
+      label: ❌
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: error_heading
+      label: '{{ t(signin:forms.ciba.notification_error.heading) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: error_message
+      label: '{{ t(signin:forms.ciba.notification_error.message) }}'
+      variant: HEADING_6
+  message: Authentication notification failed
+  next: end
+- id: verify_invite
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: verify
+    inputs:
+    - identifier: inviteToken
+      type: HIDDEN
+      required: true
+  onSuccess: prompt_credentials
+- id: prompt_credentials
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: credentials_heading
+      label: '{{ t(signin:forms.ciba.credentials.heading) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: credentials_message
+      label: '{{ t(signin:forms.ciba.credentials.message) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_credentials
+      components:
+      - id: input_password
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(signin:forms.credentials.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
+      - type: ACTION
+        id: action_approve
+        label: '{{ t(signin:forms.ciba.credentials.actions.approve.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_password
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_approve
+      nextNode: credentials_auth
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: authorization_check
+  onIncomplete: prompt_credentials
+- id: authorization_check
+  type: TASK_EXECUTION
+  executor:
+    name: AuthorizationExecutor
+  onSuccess: auth_assert
+- id: auth_assert
+  type: TASK_EXECUTION
+  properties:
+    callbackType: urn:openid:params:grant-type:ciba
+  executor:
+    name: AuthAssertExecutor
+  onSuccess: auth_success
+- id: auth_success
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: success_icon
+      label: ✅
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: success_heading
+      label: '{{ t(signin:forms.ciba.success.heading) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: success_message
+      label: '{{ t(signin:forms.ciba.success.message) }}'
+      variant: HEADING_6
+  message: Authentication successful
+  next: end
+- id: end
+  type: END
+---
+# resource_type: flow
+id: 01900000-0000-7000-8000-000000000068
+name: Console App Authentication Flow
+handle: console-app-flow
+flowType: AUTHENTICATION
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_credentials
+- id: prompt_credentials
+  type: PROMPT
+  meta:
+    components:
+    - type: TEXT
+      id: text_001
+      label: '{{ t(signin:forms.credentials.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_001
+      components:
+      - id: input_001
+        ref: username
+        type: TEXT_INPUT
+        label: '{{ t(signin:forms.credentials.fields.username.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.username.placeholder) }}'
+      - id: input_002
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(signin:forms.credentials.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
+      - category: DISPLAY
+        id: rich_text_forgot_password
+        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.prefix) }} </span><a href="{{meta(application.forgot_password_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.forgot_password.label) }}</span></a></p>
+        resourceType: ELEMENT
+        type: RICH_TEXT
+      - type: ACTION
+        id: action_001
+        label: '{{ t(signin:forms.credentials.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - category: DISPLAY
+        id: rich_text_signup
+        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.prefix) }} </span><a href="{{meta(application.sign_up_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(signin:forms.credentials.links.sign_up.label) }}</span></a></p>
+        resourceType: ELEMENT
+        type: RICH_TEXT
+  prompts:
+  - inputs:
+    - ref: input_001
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_002
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_001
+      nextNode: credentials_auth
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: authorization_check
+  onIncomplete: prompt_credentials
+- id: authorization_check
+  type: TASK_EXECUTION
+  executor:
+    name: AuthorizationExecutor
+  onSuccess: auth_assert
+- id: auth_assert
+  type: TASK_EXECUTION
+  executor:
+    name: AuthAssertExecutor
+  onSuccess: end
+- id: end
+  type: END
+---
+# resource_type: flow
+id: 01900000-0000-7000-8000-000000000063
+name: Disambiguation Login Flow
+handle: default-disambiguation-login-flow
+flowType: AUTHENTICATION
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_identifier
+- id: prompt_identifier
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: text_title
+      label: '{{ t(signin:forms.credentials.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: text_subtitle
+      label: Enter your username to get started
+      variant: BODY_2
+    - type: BLOCK
+      id: block_identifier
+      components:
+      - id: input_username
+        ref: username
+        type: TEXT_INPUT
+        label: '{{ t(signin:forms.credentials.fields.username.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.username.placeholder) }}'
+      - type: ACTION
+        id: action_search
+        label: Continue
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_username
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    action:
+      ref: action_search
+      nextNode: resolve_user
+- id: resolve_user
+  type: TASK_EXECUTION
+  executor:
+    name: IdentifyingExecutor
+    mode: resolve
+    inputs:
+    - identifier: username
+      type: TEXT_INPUT
+      required: true
+  onSuccess: prompt_password
+  onFailure: prompt_identifier
+  onIncomplete: prompt_disambiguate
+- id: prompt_disambiguate
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image_disambig
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: text_disambig_title
+      label: Select your department
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: text_disambig_subtitle
+      label: Please select your department to continue.
+      variant: BODY_2
+    - type: BLOCK
+      id: block_disambig
+      components:
+      - id: select_ou
+        ref: ouHandle
+        type: SELECT
+        label: Department
+        required: true
+        placeholder: Select your department
+        options: []
+      - type: ACTION
+        id: action_select
+        label: Continue
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: select_ou
+      identifier: ouHandle
+      type: SELECT
+      required: true
+    action:
+      ref: action_select
+      nextNode: resolve_with_ou
+- id: resolve_with_ou
+  type: TASK_EXECUTION
+  executor:
+    name: IdentifyingExecutor
+    mode: resolve
+    inputs:
+    - identifier: username
+      type: TEXT_INPUT
+      required: true
+    - identifier: ouHandle
+      type: TEXT_INPUT
+      required: true
+  onSuccess: prompt_password
+  onFailure: prompt_identifier
+  onIncomplete: prompt_disambiguate
+- id: prompt_password
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image_pw
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: text_pw_title
+      label: '{{ t(signin:forms.credentials.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: text_pw_subtitle
+      label: Please enter your password to sign in.
+      variant: BODY_2
+    - type: BLOCK
+      id: block_password
+      components:
+      - id: input_password
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(signin:forms.credentials.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
+      - type: ACTION
+        id: action_login
+        label: '{{ t(signin:forms.credentials.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_password
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_login
+      nextNode: credentials_auth
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: authorization_check
+  onIncomplete: prompt_password
+- id: authorization_check
+  type: TASK_EXECUTION
+  executor:
+    name: AuthorizationExecutor
+  onSuccess: auth_assert
+- id: auth_assert
+  type: TASK_EXECUTION
+  executor:
+    name: AuthAssertExecutor
+  onSuccess: end
+- id: end
+  type: END
+---
+# resource_type: flow
+id: 01900000-0000-7000-8000-000000000067
+name: Email Link Password Recovery Flow
+handle: email-link-based-password-recovery
+flowType: RECOVERY
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_username
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 0
+      y: 400
+- id: prompt_username
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: text_header_username
+      label: '{{ t(recovery:forms.username.title) }}'
+      variant: HEADING_1
+    - type: TEXT
+      id: text_subtitle_username
+      label: '{{ t(recovery:forms.username.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_username
+      components:
+      - id: input_username
+        ref: username
+        type: TEXT_INPUT
+        label: '{{ t(recovery:forms.username.fields.username.label) }}'
+        required: true
+        placeholder: '{{ t(recovery:forms.username.fields.username.placeholder) }}'
+      - type: ACTION
+        id: action_submit_username
+        label: '{{ t(recovery:forms.username.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - category: DISPLAY
+        id: rich_text_signup
+        label: <p class="rich-text-paragraph"><span class="rich-text-pre-wrap">{{ t(recovery:forms.username.links.sign_in.prefix) }} </span><a href="{{meta(application.sign_in_url)}}" target="_blank" rel="noopener noreferrer" class="rich-text-link"><span class="rich-text-pre-wrap">{{ t(recovery:forms.username.links.sign_in.label) }}</span></a></p>
+        resourceType: ELEMENT
+        type: RICH_TEXT
+  prompts:
+  - inputs:
+    - ref: input_username
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    action:
+      ref: action_submit_username
+      nextNode: identify_user
+  layout:
+    size:
+      width: 350
+      height: 431
+    position:
+      x: 200
+      y: 250
+- id: identify_user
+  type: TASK_EXECUTION
+  executor:
+    name: IdentifyingExecutor
+    mode: identify
+    inputs:
+    - ref: input_username
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+  onSuccess: generate_recovery_token
+  onFailure: email_sent_status
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 650
+      y: 340
+- id: generate_recovery_token
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: generate
+  onSuccess: send_recovery_email
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 960
+      y: 340
+- id: send_recovery_email
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: PASSWORD_RECOVERY
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: email_sent_status
+  onFailure: email_sent_status
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1270
+      y: 340
+- id: email_sent_status
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: email_sent_icon
+      label: ✉️
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: email_sent_heading
+      label: '{{ t(recovery:forms.email_sent.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: email_sent_message
+      label: '{{ t(recovery:forms.email_sent.message) }}'
+      variant: HEADING_6
+  message: Check Your Email
+  next: verify_recovery_token
+  layout:
+    size:
+      width: 350
+      height: 340
+    position:
+      x: 1580
+      y: 250
+- id: verify_recovery_token
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: verify
+    inputs:
+    - ref: input_recovery_token
+      identifier: inviteToken
+      type: HIDDEN
+      required: true
+  onSuccess: prompt_new_password
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2040
+      y: 340
+- id: prompt_new_password
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: text_header_password
+      label: '{{ t(recovery:forms.new_password.title) }}'
+      variant: HEADING_1
+    - type: TEXT
+      id: text_subtitle_password
+      label: '{{ t(recovery:forms.new_password.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_password
+      components:
+      - id: input_new_password
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(recovery:forms.new_password.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(recovery:forms.new_password.fields.password.placeholder) }}'
+      - type: ACTION
+        id: action_submit_password
+        label: '{{ t(recovery:forms.new_password.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_new_password
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_submit_password
+      nextNode: set_credential
+  layout:
+    size:
+      width: 350
+      height: 431
+    position:
+      x: 2360
+      y: 250
+- id: set_credential
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialSetter
+  onSuccess: recovery_complete
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2820
+      y: 340
+- id: recovery_complete
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: recovery_complete_icon
+      label: ✅
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: recovery_complete_heading
+      label: '{{ t(recovery:forms.complete.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: recovery_complete_message
+      label: '{{ t(recovery:forms.complete.message) }}'
+      variant: HEADING_6
+  message: Password Reset Successful
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 340
+    position:
+      x: 3140
+      y: 250
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 3600
+      y: 375
+---
+# resource_type: flow
+id: 01900000-0000-7000-8000-000000000064
+name: Default Basic Registration Flow
+handle: default-basic-flow
+flowType: REGISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: user_type_resolver
+- id: user_type_resolver
+  type: TASK_EXECUTION
+  executor:
+    name: UserTypeResolver
+  onSuccess: prompt_credentials
+  onIncomplete: prompt_usertype
+- id: prompt_usertype
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signup:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_usertype
+      label: '{{ t(signup:forms.user_type.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_usertype
+      components:
+      - type: SELECT
+        id: usertype_input
+        ref: userType
+        label: '{{ t(signup:forms.user_type.fields.user_type.label) }}'
+        placeholder: '{{ t(signup:forms.user_type.fields.user_type.placeholder) }}'
+        required: true
+        options: []
+      - type: ACTION
+        id: action_usertype
+        label: '{{ t(signup:forms.user_type.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: usertype_input
+      identifier: userType
+      type: SELECT
+      required: true
+    action:
+      ref: action_usertype
+      nextNode: user_type_resolver
+- id: prompt_credentials
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signup:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_credentials
+      label: '{{ t(signup:forms.credentials.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_credentials
+      components:
+      - type: TEXT_INPUT
+        id: input_username
+        ref: username
+        label: '{{ t(signup:forms.credentials.fields.username.label) }}'
+        placeholder: '{{ t(signup:forms.credentials.fields.username.placeholder) }}'
+        required: true
+      - type: PASSWORD_INPUT
+        id: input_password
+        ref: password
+        label: '{{ t(signup:forms.credentials.fields.password.label) }}'
+        placeholder: '{{ t(signup:forms.credentials.fields.password.placeholder) }}'
+        required: true
+      - type: ACTION
+        id: action_credentials
+        label: '{{ t(signup:forms.credentials.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_username
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_password
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_credentials
+      nextNode: credentials_auth
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: provisioning
+- id: provisioning
+  type: TASK_EXECUTION
+  executor:
+    name: ProvisioningExecutor
+    inputs:
+    - ref: input_001
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_002
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+  onSuccess: auth_assert
+  onIncomplete: prompt_schema_attrs
+- id: prompt_schema_attrs
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signup:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_schema_attrs
+      label: '{{ t(signup:forms.user_info.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_dynamic_user_inputs
+      components:
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_inputs
+      - type: ACTION
+        id: action_schema_attrs
+        label: '{{ t(signup:forms.user_info.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs: []
+    action:
+      ref: action_schema_attrs
+      nextNode: provisioning
+- id: auth_assert
+  type: TASK_EXECUTION
+  executor:
+    name: AuthAssertExecutor
+  onSuccess: end
+- id: end
+  type: END
+---
+# resource_type: flow
+id: 01900000-0000-7000-8000-000000000065
+name: Default SMS Self-Invite Registration Flow
+handle: default-self-invite-sms-flow
+flowType: REGISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: user_type_resolver
+- id: user_type_resolver
+  type: TASK_EXECUTION
+  executor:
+    name: UserTypeResolver
+  onSuccess: prompt_phone
+  onIncomplete: prompt_usertype
+- id: prompt_usertype
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signup:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: heading_usertype
+      label: '{{ t(signup:forms.user_type.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_usertype
+      components:
+      - type: SELECT
+        id: usertype_input
+        ref: userType
+        label: '{{ t(signup:forms.user_type.fields.user_type.label) }}'
+        placeholder: '{{ t(signup:forms.user_type.fields.user_type.placeholder) }}'
+        required: true
+        options: []
+      - type: ACTION
+        id: action_usertype
+        label: '{{ t(signup:forms.user_type.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: usertype_input
+      identifier: userType
+      type: SELECT
+      required: true
+    action:
+      ref: action_usertype
+      nextNode: user_type_resolver
+- id: prompt_phone
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signup:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: text_header_phone
+      label: '{{ t(signup:forms.phone.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_phone
+      components:
+      - id: input_prompt_phone
+        ref: mobileNumber
+        type: PHONE_INPUT
+        label: '{{ t(signup:forms.phone.fields.phone.label) }}'
+        required: true
+        placeholder: '{{ t(signup:forms.phone.fields.phone.placeholder) }}'
+      - type: ACTION
+        id: action_submit_phone
+        label: '{{ t(signup:forms.phone.actions.next.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_prompt_phone
+      identifier: mobileNumber
+      type: PHONE_INPUT
+      required: true
+    action:
+      ref: action_submit_phone
+      nextNode: check_phone_uniqueness
+- id: check_phone_uniqueness
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeUniquenessValidator
+  onSuccess: invite_generate
+  onIncomplete: prompt_phone
+- id: invite_generate
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: generate
+  onSuccess: send_registration_sms
+- id: send_registration_sms
+  type: TASK_EXECUTION
+  properties:
+    senderId: <your-sender-id>
+    smsTemplate: SELF_REGISTRATION
+  executor:
+    name: SMSExecutor
+    mode: send
+  onSuccess: registration_sms_sent
+- id: registration_sms_sent
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signup:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: sms_sent_heading
+      label: '{{ t(signup:forms.sms_sent.title) }}'
+      variant: HEADING_1
+    - type: TEXT
+      id: sms_sent_message
+      label: '{{ t(signup:forms.sms_sent.message) }}'
+      variant: BODY
+  message: Check your phone for a verification link
+  next: invite_verify
+- id: invite_verify
+  type: TASK_EXECUTION
+  inputs:
+  - ref: input_003
+    identifier: inviteToken
+    type: HIDDEN
+    required: true
+  executor:
+    name: InviteExecutor
+    mode: verify
+  onSuccess: prompt_user_details
+- id: prompt_user_details
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signup:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: text_header_details
+      label: '{{ t(signup:forms.user_details.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_user_details
+      components:
+      - id: input_prompt_username
+        ref: username
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.user_details.fields.username.label) }}'
+        required: true
+        placeholder: '{{ t(signup:forms.user_details.fields.username.placeholder) }}'
+      - id: input_prompt_given_name
+        ref: given_name
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.user_details.fields.first_name.label) }}'
+        required: false
+        placeholder: '{{ t(signup:forms.user_details.fields.first_name.placeholder) }}'
+      - id: input_prompt_family_name
+        ref: family_name
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.user_details.fields.last_name.label) }}'
+        required: false
+        placeholder: '{{ t(signup:forms.user_details.fields.last_name.placeholder) }}'
+      - id: input_prompt_password
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(signup:forms.credential.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(signup:forms.credential.fields.password.placeholder) }}'
+      - type: ACTION
+        id: action_submit_details
+        label: '{{ t(signup:forms.credential.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_prompt_username
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_prompt_given_name
+      identifier: given_name
+      type: TEXT_INPUT
+      required: false
+    - ref: input_prompt_family_name
+      identifier: family_name
+      type: TEXT_INPUT
+      required: false
+    - ref: input_prompt_password
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_submit_details
+      nextNode: check_user_details_uniqueness
+- id: check_user_details_uniqueness
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeUniquenessValidator
+  onSuccess: provisioning
+  onIncomplete: prompt_user_details
+- id: provisioning
+  type: TASK_EXECUTION
+  inputs:
+  - ref: input_mobile_number
+    identifier: mobileNumber
+    type: PHONE_INPUT
+    required: true
+  - ref: input_username
+    identifier: username
+    type: TEXT_INPUT
+    required: true
+  - ref: input_password
+    identifier: password
+    type: PASSWORD_INPUT
+    required: true
+  - ref: input_given_name
+    identifier: given_name
+    type: TEXT_INPUT
+    required: false
+  - ref: input_family_name
+    identifier: family_name
+    type: TEXT_INPUT
+    required: false
+  executor:
+    name: ProvisioningExecutor
+  onSuccess: registration_complete
+- id: registration_complete
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: registration_complete_icon
+      label: ✅
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: registration_complete_heading
+      label: '{{ t(invite:complete.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: registration_complete_message
+      label: '{{ t(invite:complete.description) }}'
+  message: Registration complete
+  next: end
+- id: end
+  type: END
+---
+# resource_type: flow
+id: 01900000-0000-7000-8000-000000000069
+name: Console App Registration Flow
+handle: console-app-flow
+flowType: REGISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: user_type_resolver
+- id: user_type_resolver
+  type: TASK_EXECUTION
+  executor:
+    name: UserTypeResolver
+  onSuccess: prompt_registration
+  onIncomplete: prompt_usertype
+- id: prompt_usertype
+  type: PROMPT
+  meta:
+    components:
+    - type: TEXT
+      id: heading_usertype
+      label: '{{ t(signup:forms.user_type.title) }}'
+      variant: HEADING_2
+    - type: BLOCK
+      id: block_usertype
+      components:
+      - type: SELECT
+        id: usertype_input
+        ref: userType
+        label: '{{ t(signup:forms.user_type.fields.user_type.label) }}'
+        placeholder: '{{ t(signup:forms.user_type.fields.user_type.placeholder) }}'
+        required: true
+        options: []
+      - type: ACTION
+        id: action_usertype
+        label: '{{ t(signup:forms.user_type.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: usertype_input
+      identifier: userType
+      type: SELECT
+      required: true
+    action:
+      ref: action_usertype
+      nextNode: user_type_resolver
+- id: prompt_registration
+  type: PROMPT
+  meta:
+    components:
+    - type: TEXT
+      id: text_001
+      label: '{{ t(signup:forms.registration.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_001
+      components:
+      - id: input_001
+        ref: username
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.registration.fields.username.label) }}'
+        required: true
+        placeholder: '{{ t(signup:forms.registration.fields.username.placeholder) }}'
+      - id: input_002
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(signup:forms.registration.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(signup:forms.registration.fields.password.placeholder) }}'
+      - id: input_003
+        ref: given_name
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.registration.fields.first_name.label) }}'
+        required: true
+        placeholder: '{{ t(signup:forms.registration.fields.first_name.placeholder) }}'
+      - id: input_004
+        ref: family_name
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.registration.fields.last_name.label) }}'
+        required: true
+        placeholder: '{{ t(signup:forms.registration.fields.last_name.placeholder) }}'
+      - id: input_005
+        ref: email
+        type: EMAIL_INPUT
+        label: '{{ t(signup:forms.registration.fields.email_address.label) }}'
+        required: true
+        placeholder: '{{ t(signup:forms.registration.fields.email_address.placeholder) }}'
+      - type: ACTION
+        id: action_001
+        label: '{{ t(signup:forms.registration.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_001
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_002
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    - ref: input_003
+      identifier: given_name
+      type: TEXT_INPUT
+      required: true
+    - ref: input_004
+      identifier: family_name
+      type: TEXT_INPUT
+      required: true
+    - ref: input_005
+      identifier: email
+      type: EMAIL_INPUT
+      required: true
+    action:
+      ref: action_001
+      nextNode: credentials_auth
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: provisioning
+- id: provisioning
+  type: TASK_EXECUTION
+  executor:
+    name: ProvisioningExecutor
+    inputs:
+    - ref: input_001
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_002
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    - ref: input_003
+      identifier: given_name
+      type: TEXT_INPUT
+      required: true
+    - ref: input_004
+      identifier: family_name
+      type: TEXT_INPUT
+      required: true
+    - ref: input_005
+      identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: auth_assert
+  onIncomplete: prompt_registration
+- id: auth_assert
+  type: TASK_EXECUTION
+  executor:
+    name: AuthAssertExecutor
+  onSuccess: end
+- id: end
+  type: END
+---
+# resource_type: flow
+id: 01900000-0000-7000-8000-000000000066
+name: User Onboarding Flow
+handle: default-user-onboarding
+flowType: USER_ONBOARDING
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 65
+      y: 556
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system
+  executor:
+    name: PermissionValidator
+  onSuccess: user_type_resolver
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 305
+      y: 515
+- id: user_type_resolver
+  type: TASK_EXECUTION
+  executor:
+    name: UserTypeResolver
+  onSuccess: ou_selection
+  onIncomplete: prompt_usertype
+  layout:
+    size:
+      width: 205
+      height: 113
+    position:
+      x: 702
+      y: 515
+- id: prompt_usertype
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: heading_usertype
+      label: '{{ t(onboarding:forms.user_type.title) }}'
+      variant: HEADING_1
+    - type: TEXT
+      id: subtitle_usertype
+      label: '{{ t(onboarding:forms.user_type.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_usertype
+      components:
+      - type: SELECT
+        id: usertype_input
+        ref: userType
+        label: '{{ t(onboarding:forms.user_type.fields.user_type.label) }}'
+        placeholder: '{{ t(onboarding:forms.user_type.fields.user_type.placeholder) }}'
+        required: true
+        options: []
+      - type: ACTION
+        id: action_usertype
+        label: '{{ t(onboarding:forms.user_type.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: usertype_input
+      identifier: userType
+      type: SELECT
+      required: true
+    action:
+      ref: action_usertype
+      nextNode: user_type_resolver
+  layout:
+    size:
+      width: 350
+      height: 529
+    position:
+      x: 829
+      y: -141
+- id: ou_selection
+  type: TASK_EXECUTION
+  properties:
+    resolveFrom: prompt
+  executor:
+    name: OUResolverExecutor
+  onSuccess: prompt_onboarding_mode
+  onIncomplete: prompt_ou_selection
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1338
+      y: 514
+- id: prompt_ou_selection
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: heading_ou_selection
+      label: '{{ t(onboarding:forms.ou_selection.title) }}'
+      variant: HEADING_1
+    - type: TEXT
+      id: subtitle_ou_selection
+      label: '{{ t(onboarding:forms.ou_selection.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_ou_selection
+      components:
+      - type: OU_SELECT
+        id: ou_selection_input
+        ref: ouId
+        label: '{{ t(onboarding:forms.ou_selection.fields.ou.label) }}'
+        required: true
+      - type: ACTION
+        id: action_ou_selection
+        label: '{{ t(onboarding:forms.ou_selection.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: ou_selection_input
+      identifier: ouId
+      type: OU_SELECT
+      required: true
+    action:
+      ref: action_ou_selection
+      nextNode: ou_selection
+  layout:
+    size:
+      width: 350
+      height: 525
+    position:
+      x: 1464
+      y: -140
+- id: prompt_onboarding_mode
+  type: PROMPT
+  meta:
+    components:
+    - type: TEXT
+      id: text_header_onboarding_mode
+      label: '{{ t(onboarding:forms.onboarding_mode.title) }}'
+      variant: HEADING_1
+      align: center
+    - type: TEXT
+      id: text_subtitle_onboarding_mode
+      label: '{{ t(onboarding:forms.onboarding_mode.subtitle) }}'
+      variant: HEADING_6
+      align: center
+    - type: BLOCK
+      id: block_onboarding_mode_actions
+      components:
+      - type: STACK
+        id: stack_onboarding_mode_actions
+        direction: row
+        justify: center
+        components:
+        - type: ACTION
+          id: action_create_user_now
+          label: '{{ t(onboarding:forms.onboarding_mode.actions.create.label) }}'
+          variant: PRIMARY
+          eventType: SUBMIT
+        - type: ACTION
+          id: action_invite_user
+          label: '{{ t(onboarding:forms.onboarding_mode.actions.invite.label) }}'
+          variant: OUTLINED
+          eventType: SUBMIT
+  prompts:
+  - action:
+      ref: action_create_user_now
+      nextNode: direct_create_provisioning
+  - action:
+      ref: action_invite_user
+      nextNode: prompt_email
+  layout:
+    size:
+      width: 350
+      height: 566
+    position:
+      x: 1931
+      y: 290
+- id: direct_create_provisioning
+  type: TASK_EXECUTION
+  properties:
+    includeOptional: true
+    includeOptionalCredentials: true
+  executor:
+    name: ProvisioningExecutor
+  onSuccess: admin_registration_complete
+  onIncomplete: prompt_create_user_details
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 2706
+      y: 45
+- id: prompt_create_user_details
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: text_header_create_user_details
+      label: '{{ t(onboarding:forms.add_user.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: text_subtitle_create_user_details
+      label: '{{ t(onboarding:forms.add_user.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_create_user_details
+      components:
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_inputs_create_user_details
+      - type: ACTION
+        id: action_create_user_details
+        label: '{{ t(onboarding:forms.add_user.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs: []
+    action:
+      ref: action_create_user_details
+      nextNode: direct_create_provisioning
+  layout:
+    size:
+      width: 350
+      height: 724
+    position:
+      x: 2831
+      y: -531
+- id: admin_registration_complete
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: admin_registration_complete_icon
+      label: ✅
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: admin_registration_complete_heading
+      label: '{{ t(onboarding:forms.add_user_complete.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: admin_registration_complete_message
+      label: '{{ t(onboarding:forms.add_user_complete.description) }}'
+      variant: HEADING_6
+  message: User added successfully
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 358
+    position:
+      x: 4042
+      y: -64
+- id: prompt_email
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: text_header_email
+      label: '{{ t(onboarding:forms.email.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_email
+      components:
+      - id: input_prompt_email
+        ref: email
+        type: EMAIL_INPUT
+        label: '{{ t(onboarding:forms.email.fields.email.label) }}'
+        required: true
+        placeholder: '{{ t(onboarding:forms.email.fields.email.placeholder) }}'
+      - type: ACTION
+        id: action_submit_email
+        label: '{{ t(onboarding:forms.email.actions.next.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_prompt_email
+      identifier: email
+      type: EMAIL_INPUT
+      required: true
+    action:
+      ref: action_submit_email
+      nextNode: check_email_uniqueness
+  layout:
+    size:
+      width: 350
+      height: 431
+    position:
+      x: 2481
+      y: 896
+- id: check_email_uniqueness
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeUniquenessValidator
+  onSuccess: prompt_invite_method
+  onIncomplete: prompt_email
+  layout:
+    size:
+      width: 272
+      height: 113
+    position:
+      x: 2931
+      y: 1116
+- id: prompt_invite_method
+  type: PROMPT
+  meta:
+    components:
+    - type: TEXT
+      id: text_header_invite_method
+      label: '{{ t(onboarding:forms.invite_mode.title) }}'
+      variant: HEADING_1
+      align: center
+    - type: TEXT
+      id: text_subtitle_invite_method
+      label: '{{ t(onboarding:forms.invite_mode.subtitle) }}'
+      variant: HEADING_6
+      align: center
+    - type: BLOCK
+      id: block_invite_method_actions
+      components:
+      - type: STACK
+        id: stack_invite_actions
+        direction: row
+        justify: center
+        components:
+        - type: ACTION
+          id: action_send_email_invite
+          label: '{{ t(onboarding:forms.invite_mode.actions.email.label) }}'
+          variant: PRIMARY
+          eventType: SUBMIT
+        - type: ACTION
+          id: action_share_manually
+          label: '{{ t(onboarding:forms.invite_mode.actions.link.label) }}'
+          variant: OUTLINED
+          eventType: SUBMIT
+  prompts:
+  - action:
+      ref: action_send_email_invite
+      nextNode: invite_generate_email
+  - action:
+      ref: action_share_manually
+      nextNode: invite_generate_manual
+  layout:
+    size:
+      width: 350
+      height: 566
+    position:
+      x: 3353
+      y: 893
+- id: invite_generate_email
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: generate
+  onSuccess: send_invite_email
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 3886
+      y: 1398
+- id: send_invite_email
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: USER_INVITE
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: email_invite_status
+  onFailure: invite_email_service_unavailable
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 4213
+      y: 1398
+- id: email_invite_status
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: email_status_icon
+      label: ✅
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: email_status_heading
+      label: '{{ t(onboarding:forms.invite_email_sent.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: email_status_message
+      label: '{{ t(onboarding:forms.invite_email_sent.message) }}'
+      variant: HEADING_6
+  message: Invitation sent
+  next: invite_verify
+  layout:
+    size:
+      width: 350
+      height: 381
+    position:
+      x: 4876
+      y: 1288
+- id: invite_email_service_unavailable
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: email_unavailable_icon
+      label: ⚠️
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: email_unavailable_heading
+      label: '{{ t(onboarding:forms.invite_email_unavailable.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: email_unavailable_message
+      label: '{{ t(onboarding:forms.invite_email_unavailable.message) }}'
+      variant: HEADING_6
+    - type: COPYABLE_TEXT
+      id: email_unavailable_link_copyable
+      label: '{{ t(onboarding:forms.invite_link_status.link_label) }}'
+      source: inviteLink
+  message: Email delivery failed
+  next: invite_link_status
+  layout:
+    size:
+      width: 350
+      height: 433
+    position:
+      x: 4338
+      y: 1618
+- id: invite_generate_manual
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: generate
+  onSuccess: invite_link_status
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 3893
+      y: 865
+- id: invite_link_status
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: link_status_icon
+      label: ✅
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: link_status_heading
+      label: '{{ t(onboarding:forms.invite_link_status.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: link_status_message
+      label: '{{ t(onboarding:forms.invite_link_status.message) }}'
+      variant: HEADING_6
+    - type: COPYABLE_TEXT
+      id: invite_link_copyable
+      label: '{{ t(onboarding:forms.invite_link_status.link_label) }}'
+      source: inviteLink
+  message: The invite link is ready to share
+  next: invite_verify
+  layout:
+    size:
+      width: 350
+      height: 410
+    position:
+      x: 4798
+      y: 726
+- id: invite_verify
+  type: TASK_EXECUTION
+  inputs:
+  - ref: input_003
+    identifier: inviteToken
+    type: HIDDEN
+    required: true
+  executor:
+    name: InviteExecutor
+    mode: verify
+  onSuccess: provisioning
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 5512
+      y: 1114
+- id: provisioning
+  type: TASK_EXECUTION
+  properties:
+    includeOptional: true
+    includeOptionalCredentials: true
+  executor:
+    name: ProvisioningExecutor
+  onSuccess: registration_complete
+  onIncomplete: prompt_user_details
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 5921
+      y: 1116
+- id: prompt_user_details
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: text_header_user_details
+      label: '{{ t(onboarding:forms.complete_registration.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: text_subtitle_user_details
+      label: '{{ t(onboarding:forms.complete_registration.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_user_details
+      components:
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_inputs_user_details
+      - type: ACTION
+        id: action_user_details
+        label: '{{ t(onboarding:forms.complete_registration.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs: []
+    action:
+      ref: action_user_details
+      nextNode: provisioning
+  layout:
+    size:
+      width: 350
+      height: 590
+    position:
+      x: 6046
+      y: 528
+- id: registration_complete
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: registration_complete_icon
+      label: ✅
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: registration_complete_heading
+      label: '{{ t(invite:complete.title) }}'
+      variant: HEADING_1
+    - align: center
+      type: TEXT
+      id: registration_complete_message
+      label: '{{ t(invite:complete.description) }}'
+      variant: HEADING_6
+  message: Registration complete
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 358
+    position:
+      x: 6574
+      y: 1006
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 7103
+      y: 637
+---
+# resource_type: theme
+id: 01900000-0000-7000-8000-000000000071
+handle: acrylic-orange
+displayName: Acrylic Orange
+description: A vibrant theme with warm orange accents and translucent acrylic surfaces.
+theme:
+  defaultColorScheme: dark
+  direction: ltr
+  shape:
+    borderRadius: 12
+  typography:
+    fontFamily: '''Inter Variable'', sans-serif'
+    fontWeightRegular: 400
+    fontSize: 14
+    h1:
+      fontSize: 1.75rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h2:
+      fontSize: 1.5rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.2
+    h3:
+      fontSize: 1.375rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h4:
+      fontSize: 1.25rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.235
+    h5:
+      fontSize: 1rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.334
+    h6:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.6
+    subtitle1:
+      fontSize: 1.125rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.75
+    subtitle2:
+      fontSize: 0.875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.57
+    body1:
+      fontSize: 0.875rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.5
+    body2:
+      fontSize: 0.8125rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.43
+    button:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.75
+      textTransform: uppercase
+    caption:
+      fontSize: 0.6875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.66
+    htmlFontSize: 16
+    fontWeightLight: 300
+    fontWeightMedium: 500
+    fontWeightBold: 700
+    overline:
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      fontSize: 0.75rem
+      lineHeight: 2.66
+      textTransform: uppercase
+    inherit:
+      fontFamily: inherit
+      fontWeight: inherit
+      fontSize: inherit
+      lineHeight: inherit
+      letterSpacing: inherit
+  border:
+    width: 1px
+    style: solid
+  colorSchemes:
+    light:
+      palette:
+        mode: light
+        primary:
+          main: '#fa7b3f'
+          contrastText: '#ffffff'
+          light: rgb(255, 143, 51)
+          dark: rgb(178, 80, 0)
+          mainChannel: 255 115 0
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#e8e8e8'
+          contrastText: '#ffffff'
+          light: rgb(144, 144, 144)
+          dark: rgb(81, 81, 81)
+          mainChannel: 117 117 117
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        background:
+          default: '#f5f5f5'
+          paper: '#ffffffe1'
+          defaultChannel: 250 250 250
+          paperChannel: 255 255 255
+          acrylic: '#ffffff4a'
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#fff'
+          onBackground: '#000'
+          backgroundChannel: 255 255 255
+          onBackgroundChannel: 0 0 0
+        error:
+          main: '#d32f2f'
+          light: '#ef5350'
+          dark: '#c62828'
+          contrastText: '#fff'
+          mainChannel: 211 47 47
+          lightChannel: 239 83 80
+          darkChannel: 198 40 40
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#ed6c02'
+          light: '#ff9800'
+          dark: '#e65100'
+          contrastText: '#fff'
+          mainChannel: 237 108 2
+          lightChannel: 255 152 0
+          darkChannel: 230 81 0
+          contrastTextChannel: 255 255 255
+        info:
+          main: '#0288d1'
+          light: '#03a9f4'
+          dark: '#01579b'
+          contrastText: '#fff'
+          mainChannel: 2 136 209
+          lightChannel: 3 169 244
+          darkChannel: 1 87 155
+          contrastTextChannel: 255 255 255
+        success:
+          main: '#2e7d32'
+          light: '#4caf50'
+          dark: '#1b5e20'
+          contrastText: '#fff'
+          mainChannel: 46 125 50
+          lightChannel: 76 175 80
+          darkChannel: 27 94 32
+          contrastTextChannel: 255 255 255
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#40404B'
+          secondary: '#40404B'
+          disabled: rgba(0, 0, 0, 0.38)
+          primaryChannel: 0 0 0
+          secondaryChannel: 0 0 0
+        divider: '#00000012'
+        action:
+          active: rgba(0, 0, 0, 0.54)
+          hover: rgba(0, 0, 0, 0.04)
+          hoverOpacity: 0.04
+          selected: rgba(0, 0, 0, 0.08)
+          selectedOpacity: 0.08
+          disabled: rgba(0, 0, 0, 0.26)
+          disabledBackground: rgba(0, 0, 0, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(0, 0, 0, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.12
+          activeChannel: 0 0 0
+          selectedChannel: 0 0 0
+        Alert:
+          errorColor: rgb(95, 33, 32)
+          infoColor: rgb(1, 67, 97)
+          successColor: rgb(30, 70, 32)
+          warningColor: rgb(102, 60, 0)
+          errorFilledBg: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-main, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningFilledBg: 'var(--oxygen-palette-warning-main, #ed6c02)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: '#fff'
+          errorStandardBg: rgb(253, 237, 237)
+          infoStandardBg: rgb(229, 246, 253)
+          successStandardBg: rgb(237, 247, 237)
+          warningStandardBg: rgb(255, 244, 229)
+          errorIconColor: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #0288d1)'
+          successIconColor: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ed6c02)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-A100, #f5f5f5)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultIconColor: 'var(--oxygen-palette-grey-700, #616161)'
+        FilledInput:
+          bg: rgba(0, 0, 0, 0.06)
+          hoverBg: rgba(0, 0, 0, 0.09)
+          disabledBg: rgba(0, 0, 0, 0.12)
+        LinearProgress:
+          primaryBg: rgb(255, 201, 158)
+          secondaryBg: rgb(202, 202, 202)
+          errorBg: rgb(238, 175, 175)
+          infoBg: rgb(158, 209, 237)
+          successBg: rgb(175, 205, 177)
+          warningBg: rgb(248, 199, 158)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)
+        Slider:
+          primaryTrack: rgb(255, 201, 158)
+          secondaryTrack: rgb(202, 202, 202)
+          errorTrack: rgb(238, 175, 175)
+          infoTrack: rgb(158, 209, 237)
+          successTrack: rgb(175, 205, 177)
+          warningTrack: rgb(248, 199, 158)
+        SnackbarContent:
+          bg: rgb(49, 49, 49)
+          color: '#fff'
+        SpeedDialAction:
+          fabHoverBg: rgb(216, 216, 216)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-common-white, #fff)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+          primaryDisabledColor: rgb(255, 201, 158)
+          secondaryDisabledColor: rgb(202, 202, 202)
+          errorDisabledColor: rgb(238, 175, 175)
+          infoDisabledColor: rgb(158, 209, 237)
+          successDisabledColor: rgb(175, 205, 177)
+          warningDisabledColor: rgb(248, 199, 158)
+        TableCell:
+          border: rgba(224, 224, 224, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 0 0 0
+      opacity:
+        inputPlaceholder: 0.42
+        inputUnderline: 0.42
+        switchTrackDisabled: 0.12
+        switchTrack: 0.38
+      overlays: []
+    dark:
+      palette:
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#000'
+          onBackground: '#fff'
+          backgroundChannel: 0 0 0
+          onBackgroundChannel: 255 255 255
+        mode: dark
+        primary:
+          main: '#F87643'
+          contrastText: '#ffffff'
+          light: rgb(255, 143, 51)
+          dark: rgb(178, 80, 0)
+          mainChannel: 255 115 0
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#3c3c3c'
+          contrastText: '#ffffff'
+          light: rgb(144, 144, 144)
+          dark: rgb(81, 81, 81)
+          mainChannel: 117 117 117
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        error:
+          main: '#f44336'
+          light: '#e57373'
+          dark: '#d32f2f'
+          contrastText: '#fff'
+          mainChannel: 244 67 54
+          lightChannel: 229 115 115
+          darkChannel: 211 47 47
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#ffa726'
+          light: '#ffb74d'
+          dark: '#f57c00'
+          contrastText: rgba(0, 0, 0, 0.87)
+          mainChannel: 255 167 38
+          lightChannel: 255 183 77
+          darkChannel: 245 124 0
+          contrastTextChannel: 0 0 0
+        info:
+          main: '#29b6f6'
+          light: '#4fc3f7'
+          dark: '#0288d1'
+          contrastText: rgba(0, 0, 0, 0.87)
+          mainChannel: 41 182 246
+          lightChannel: 79 195 247
+          darkChannel: 2 136 209
+          contrastTextChannel: 0 0 0
+        success:
+          main: '#66bb6a'
+          light: '#81c784'
+          dark: '#388e3c'
+          contrastText: rgba(0, 0, 0, 0.87)
+          mainChannel: 102 187 106
+          lightChannel: 129 199 132
+          darkChannel: 56 142 60
+          contrastTextChannel: 0 0 0
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#efefef'
+          secondary: '#D0D3E2'
+          disabled: rgba(255, 255, 255, 0.5)
+          icon: rgba(255, 255, 255, 0.5)
+          primaryChannel: 255 255 255
+          secondaryChannel: 255 255 255
+        divider: '#ffffff16'
+        background:
+          paper: '#000000b8'
+          default: '#000000'
+          defaultChannel: 18 18 18
+          paperChannel: 18 18 18
+          acrylic: '#00000045'
+        action:
+          active: '#fff'
+          hover: rgba(255, 255, 255, 0.08)
+          hoverOpacity: 0.08
+          selected: rgba(255, 255, 255, 0.16)
+          selectedOpacity: 0.16
+          disabled: rgba(255, 255, 255, 0.3)
+          disabledBackground: rgba(255, 255, 255, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(255, 255, 255, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.24
+          activeChannel: 255 255 255
+          selectedChannel: 255 255 255
+        Alert:
+          errorColor: rgb(244, 199, 199)
+          infoColor: rgb(184, 231, 251)
+          successColor: rgb(204, 232, 205)
+          warningColor: rgb(255, 226, 183)
+          errorFilledBg: 'var(--oxygen-palette-error-dark, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-dark, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-dark, #388e3c)'
+          warningFilledBg: 'var(--oxygen-palette-warning-dark, #f57c00)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: rgba(0, 0, 0, 0.87)
+          errorStandardBg: rgb(22, 11, 11)
+          infoStandardBg: rgb(7, 19, 24)
+          successStandardBg: rgb(12, 19, 13)
+          warningStandardBg: rgb(25, 18, 7)
+          errorIconColor: 'var(--oxygen-palette-error-main, #f44336)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #29b6f6)'
+          successIconColor: 'var(--oxygen-palette-success-main, #66bb6a)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ffa726)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-900, #212121)'
+          darkBg: 'var(--oxygen-palette-background-paper, #121212)'
+          darkColor: 'var(--oxygen-palette-text-primary, #fff)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-600, #757575)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-800, #424242)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-700, #616161)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultIconColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+        FilledInput:
+          bg: rgba(255, 255, 255, 0.09)
+          hoverBg: rgba(255, 255, 255, 0.13)
+          disabledBg: rgba(255, 255, 255, 0.12)
+        LinearProgress:
+          primaryBg: rgb(127, 57, 0)
+          secondaryBg: rgb(58, 58, 58)
+          errorBg: rgb(122, 33, 27)
+          infoBg: rgb(20, 91, 123)
+          successBg: rgb(51, 93, 53)
+          warningBg: rgb(127, 83, 19)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)
+        Slider:
+          primaryTrack: rgb(127, 57, 0)
+          secondaryTrack: rgb(58, 58, 58)
+          errorTrack: rgb(122, 33, 27)
+          infoTrack: rgb(20, 91, 123)
+          successTrack: rgb(51, 93, 53)
+          warningTrack: rgb(127, 83, 19)
+        SnackbarContent:
+          bg: rgb(250, 250, 250)
+          color: rgba(0, 0, 0, 0.87)
+        SpeedDialAction:
+          fabHoverBg: rgb(53, 53, 53)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-600, #757575)'
+          primaryDisabledColor: rgb(114, 51, 0)
+          secondaryDisabledColor: rgb(52, 52, 52)
+          errorDisabledColor: rgb(109, 30, 24)
+          infoDisabledColor: rgb(18, 81, 110)
+          successDisabledColor: rgb(45, 84, 47)
+          warningDisabledColor: rgb(114, 75, 17)
+        TableCell:
+          border: rgba(81, 81, 81, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 255 255 255
+      opacity:
+        inputPlaceholder: 0.5
+        inputUnderline: 0.7
+        switchTrackDisabled: 0.2
+        switchTrack: 0.3
+      overlays:
+      - none
+      - linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))
+      - linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))
+      - linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))
+      - linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))
+      - linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))
+      - linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))
+      - linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))
+      - linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))
+      - linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))
+      - linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))
+      - linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))
+      - linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))
+      - linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))
+      - linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))
+      - linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))
+      - linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))
+      - linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))
+      - linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))
+      - linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))
+      - linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))
+      - linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))
+      - linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))
+      - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
+      - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
+---
+# resource_type: theme
+id: 01900000-0000-7000-8000-000000000072
+handle: acrylic-purple
+displayName: Acrylic Purple
+description: A modern theme with bold purple accents and translucent acrylic surfaces.
+theme:
+  defaultColorScheme: dark
+  direction: ltr
+  shape:
+    borderRadius: 12
+  typography:
+    fontFamily: '''Inter Variable'', sans-serif'
+    fontWeightRegular: 400
+    fontSize: 14
+    h1:
+      fontSize: 1.75rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h2:
+      fontSize: 1.5rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.2
+    h3:
+      fontSize: 1.375rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h4:
+      fontSize: 1.25rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.235
+    h5:
+      fontSize: 1rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.334
+    h6:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.6
+    subtitle1:
+      fontSize: 1.125rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.75
+    subtitle2:
+      fontSize: 0.875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.57
+    body1:
+      fontSize: 0.875rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.5
+    body2:
+      fontSize: 0.8125rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.43
+    button:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.75
+      textTransform: uppercase
+    caption:
+      fontSize: 0.6875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.66
+    htmlFontSize: 16
+    fontWeightLight: 300
+    fontWeightMedium: 500
+    fontWeightBold: 700
+    overline:
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      fontSize: 0.75rem
+      lineHeight: 2.66
+      textTransform: uppercase
+    inherit:
+      fontFamily: inherit
+      fontWeight: inherit
+      fontSize: inherit
+      lineHeight: inherit
+      letterSpacing: inherit
+  border:
+    width: 1px
+    style: solid
+  colorSchemes:
+    light:
+      palette:
+        mode: light
+        primary:
+          main: '#646cff'
+          contrastText: '#ffffff'
+          light: '#8187ff'
+          dark: '#4651cc'
+          mainChannel: 100 108 255
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#e8e8e8'
+          contrastText: '#ffffff'
+          light: rgb(144, 144, 144)
+          dark: rgb(81, 81, 81)
+          mainChannel: 117 117 117
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        background:
+          default: '#f5f5f5'
+          paper: '#ffffffe1'
+          defaultChannel: 250 250 250
+          paperChannel: 255 255 255
+          acrylic: '#ffffff4a'
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#fff'
+          onBackground: '#000'
+          backgroundChannel: 255 255 255
+          onBackgroundChannel: 0 0 0
+        error:
+          main: '#d32f2f'
+          light: '#ef5350'
+          dark: '#c62828'
+          contrastText: '#fff'
+          mainChannel: 211 47 47
+          lightChannel: 239 83 80
+          darkChannel: 198 40 40
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#ed6c02'
+          light: '#ff9800'
+          dark: '#e65100'
+          contrastText: '#fff'
+          mainChannel: 237 108 2
+          lightChannel: 255 152 0
+          darkChannel: 230 81 0
+          contrastTextChannel: 255 255 255
+        info:
+          main: '#0288d1'
+          light: '#03a9f4'
+          dark: '#01579b'
+          contrastText: '#fff'
+          mainChannel: 2 136 209
+          lightChannel: 3 169 244
+          darkChannel: 1 87 155
+          contrastTextChannel: 255 255 255
+        success:
+          main: '#2e7d32'
+          light: '#4caf50'
+          dark: '#1b5e20'
+          contrastText: '#fff'
+          mainChannel: 46 125 50
+          lightChannel: 76 175 80
+          darkChannel: 27 94 32
+          contrastTextChannel: 255 255 255
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#40404B'
+          secondary: '#40404B'
+          disabled: rgba(0, 0, 0, 0.38)
+          primaryChannel: 0 0 0
+          secondaryChannel: 0 0 0
+        divider: '#00000012'
+        action:
+          active: rgba(0, 0, 0, 0.54)
+          hover: rgba(0, 0, 0, 0.04)
+          hoverOpacity: 0.04
+          selected: rgba(100, 108, 255, 0.16)
+          selectedOpacity: 0.16
+          disabled: rgba(0, 0, 0, 0.26)
+          disabledBackground: rgba(0, 0, 0, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(0, 0, 0, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.12
+          activeChannel: 0 0 0
+          selectedChannel: 0 0 0
+        Alert:
+          errorColor: rgb(95, 33, 32)
+          infoColor: rgb(1, 67, 97)
+          successColor: rgb(30, 70, 32)
+          warningColor: rgb(102, 60, 0)
+          errorFilledBg: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-main, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningFilledBg: 'var(--oxygen-palette-warning-main, #ed6c02)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: '#fff'
+          errorStandardBg: rgb(253, 237, 237)
+          infoStandardBg: rgb(229, 246, 253)
+          successStandardBg: rgb(237, 247, 237)
+          warningStandardBg: rgb(255, 244, 229)
+          errorIconColor: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #0288d1)'
+          successIconColor: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ed6c02)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-A100, #f5f5f5)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultIconColor: 'var(--oxygen-palette-grey-700, #616161)'
+        FilledInput:
+          bg: rgba(0, 0, 0, 0.06)
+          hoverBg: rgba(0, 0, 0, 0.09)
+          disabledBg: rgba(0, 0, 0, 0.12)
+        LinearProgress:
+          primaryBg: rgb(255, 201, 158)
+          secondaryBg: rgb(202, 202, 202)
+          errorBg: rgb(238, 175, 175)
+          infoBg: rgb(158, 209, 237)
+          successBg: rgb(175, 205, 177)
+          warningBg: rgb(248, 199, 158)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)
+        Slider:
+          primaryTrack: rgb(255, 201, 158)
+          secondaryTrack: rgb(202, 202, 202)
+          errorTrack: rgb(238, 175, 175)
+          infoTrack: rgb(158, 209, 237)
+          successTrack: rgb(175, 205, 177)
+          warningTrack: rgb(248, 199, 158)
+        SnackbarContent:
+          bg: rgb(49, 49, 49)
+          color: '#fff'
+        SpeedDialAction:
+          fabHoverBg: rgb(216, 216, 216)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-common-white, #fff)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+          primaryDisabledColor: rgb(255, 201, 158)
+          secondaryDisabledColor: rgb(202, 202, 202)
+          errorDisabledColor: rgb(238, 175, 175)
+          infoDisabledColor: rgb(158, 209, 237)
+          successDisabledColor: rgb(175, 205, 177)
+          warningDisabledColor: rgb(248, 199, 158)
+        TableCell:
+          border: rgba(224, 224, 224, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 0 0 0
+      opacity:
+        inputPlaceholder: 0.42
+        inputUnderline: 0.42
+        switchTrackDisabled: 0.12
+        switchTrack: 0.38
+      overlays: []
+    dark:
+      palette:
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#000'
+          onBackground: '#fff'
+          backgroundChannel: 0 0 0
+          onBackgroundChannel: 255 255 255
+        mode: dark
+        primary:
+          main: '#646cff'
+          contrastText: '#ffffff'
+          light: '#8187ff'
+          dark: '#4651cc'
+          mainChannel: 100 108 255
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#3c3c3c'
+          contrastText: '#ffffff'
+          light: rgb(144, 144, 144)
+          dark: rgb(81, 81, 81)
+          mainChannel: 117 117 117
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        error:
+          main: '#f44336'
+          light: '#e57373'
+          dark: '#d32f2f'
+          contrastText: '#fff'
+          mainChannel: 244 67 54
+          lightChannel: 229 115 115
+          darkChannel: 211 47 47
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#ffa726'
+          light: '#ffb74d'
+          dark: '#f57c00'
+          contrastText: rgba(0, 0, 0, 0.87)
+          mainChannel: 255 167 38
+          lightChannel: 255 183 77
+          darkChannel: 245 124 0
+          contrastTextChannel: 0 0 0
+        info:
+          main: '#29b6f6'
+          light: '#4fc3f7'
+          dark: '#0288d1'
+          contrastText: rgba(0, 0, 0, 0.87)
+          mainChannel: 41 182 246
+          lightChannel: 79 195 247
+          darkChannel: 2 136 209
+          contrastTextChannel: 0 0 0
+        success:
+          main: '#66bb6a'
+          light: '#81c784'
+          dark: '#388e3c'
+          contrastText: rgba(0, 0, 0, 0.87)
+          mainChannel: 102 187 106
+          lightChannel: 129 199 132
+          darkChannel: 56 142 60
+          contrastTextChannel: 0 0 0
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#efefef'
+          secondary: '#D0D3E2'
+          disabled: rgba(255, 255, 255, 0.5)
+          icon: rgba(255, 255, 255, 0.5)
+          primaryChannel: 255 255 255
+          secondaryChannel: 255 255 255
+        divider: '#ffffff16'
+        background:
+          paper: '#000000b8'
+          default: '#000000'
+          defaultChannel: 18 18 18
+          paperChannel: 18 18 18
+          acrylic: '#00000045'
+        action:
+          active: '#fff'
+          hover: rgba(255, 255, 255, 0.08)
+          hoverOpacity: 0.08
+          selected: rgba(100, 108, 255, 0.24)
+          selectedOpacity: 0.24
+          disabled: rgba(255, 255, 255, 0.3)
+          disabledBackground: rgba(255, 255, 255, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(255, 255, 255, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.24
+          activeChannel: 255 255 255
+          selectedChannel: 255 255 255
+        Alert:
+          errorColor: rgb(244, 199, 199)
+          infoColor: rgb(184, 231, 251)
+          successColor: rgb(204, 232, 205)
+          warningColor: rgb(255, 226, 183)
+          errorFilledBg: 'var(--oxygen-palette-error-dark, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-dark, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-dark, #388e3c)'
+          warningFilledBg: 'var(--oxygen-palette-warning-dark, #f57c00)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: rgba(0, 0, 0, 0.87)
+          errorStandardBg: rgb(22, 11, 11)
+          infoStandardBg: rgb(7, 19, 24)
+          successStandardBg: rgb(12, 19, 13)
+          warningStandardBg: rgb(25, 18, 7)
+          errorIconColor: 'var(--oxygen-palette-error-main, #f44336)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #29b6f6)'
+          successIconColor: 'var(--oxygen-palette-success-main, #66bb6a)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ffa726)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-900, #212121)'
+          darkBg: 'var(--oxygen-palette-background-paper, #121212)'
+          darkColor: 'var(--oxygen-palette-text-primary, #fff)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-600, #757575)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-800, #424242)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-700, #616161)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultIconColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+        FilledInput:
+          bg: rgba(255, 255, 255, 0.09)
+          hoverBg: rgba(255, 255, 255, 0.13)
+          disabledBg: rgba(255, 255, 255, 0.12)
+        LinearProgress:
+          primaryBg: rgb(127, 57, 0)
+          secondaryBg: rgb(58, 58, 58)
+          errorBg: rgb(122, 33, 27)
+          infoBg: rgb(20, 91, 123)
+          successBg: rgb(51, 93, 53)
+          warningBg: rgb(127, 83, 19)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)
+        Slider:
+          primaryTrack: rgb(127, 57, 0)
+          secondaryTrack: rgb(58, 58, 58)
+          errorTrack: rgb(122, 33, 27)
+          infoTrack: rgb(20, 91, 123)
+          successTrack: rgb(51, 93, 53)
+          warningTrack: rgb(127, 83, 19)
+        SnackbarContent:
+          bg: rgb(250, 250, 250)
+          color: rgba(0, 0, 0, 0.87)
+        SpeedDialAction:
+          fabHoverBg: rgb(53, 53, 53)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-600, #757575)'
+          primaryDisabledColor: rgb(114, 51, 0)
+          secondaryDisabledColor: rgb(52, 52, 52)
+          errorDisabledColor: rgb(109, 30, 24)
+          infoDisabledColor: rgb(18, 81, 110)
+          successDisabledColor: rgb(45, 84, 47)
+          warningDisabledColor: rgb(114, 75, 17)
+        TableCell:
+          border: rgba(81, 81, 81, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 255 255 255
+      opacity:
+        inputPlaceholder: 0.5
+        inputUnderline: 0.7
+        switchTrackDisabled: 0.2
+        switchTrack: 0.3
+      overlays:
+      - none
+      - linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))
+      - linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))
+      - linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))
+      - linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))
+      - linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))
+      - linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))
+      - linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))
+      - linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))
+      - linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))
+      - linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))
+      - linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))
+      - linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))
+      - linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))
+      - linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))
+      - linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))
+      - linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))
+      - linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))
+      - linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))
+      - linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))
+      - linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))
+      - linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))
+      - linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))
+      - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
+      - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
+---
+# resource_type: theme
+id: 01900000-0000-7000-8000-000000000073
+handle: classic
+displayName: Classic
+description: A timeless theme with warm accents and readable contrast for programming.
+theme:
+  defaultColorScheme: light
+  direction: ltr
+  shape:
+    borderRadius: 4
+  typography:
+    fontFamily: '''Inter Variable'', sans-serif'
+    fontWeightRegular: 400
+    fontSize: 14
+    h1:
+      fontSize: 1.75rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h2:
+      fontSize: 1.5rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.2
+    h3:
+      fontSize: 1.375rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h4:
+      fontSize: 1.25rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.235
+    h5:
+      fontSize: 1rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.334
+    h6:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.6
+    subtitle1:
+      fontSize: 1.125rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.75
+    subtitle2:
+      fontSize: 0.875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.57
+    body1:
+      fontSize: 0.875rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.5
+    body2:
+      fontSize: 0.8125rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.43
+    button:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.75
+      textTransform: uppercase
+    caption:
+      fontSize: 0.6875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.66
+    htmlFontSize: 16
+    fontWeightLight: 300
+    fontWeightMedium: 500
+    fontWeightBold: 700
+    overline:
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      fontSize: 0.75rem
+      lineHeight: 2.66
+      textTransform: uppercase
+    inherit:
+      fontFamily: inherit
+      fontWeight: inherit
+      fontSize: inherit
+      lineHeight: inherit
+      letterSpacing: inherit
+  border:
+    width: 1px
+    style: solid
+  colorSchemes:
+    light:
+      palette:
+        mode: light
+        primary:
+          main: '#ff7300'
+          contrastText: '#ffffff'
+          light: rgb(255, 143, 51)
+          dark: rgb(178, 80, 0)
+          mainChannel: 255 115 0
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#757575'
+          contrastText: '#ffffff'
+          light: rgb(144, 144, 144)
+          dark: rgb(81, 81, 81)
+          mainChannel: 117 117 117
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        background:
+          default: '#fafafa'
+          paper: '#ffffff'
+          defaultChannel: 250 250 250
+          paperChannel: 255 255 255
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#fff'
+          onBackground: '#000'
+          backgroundChannel: 255 255 255
+          onBackgroundChannel: 0 0 0
+        error:
+          main: '#d32f2f'
+          light: '#ef5350'
+          dark: '#c62828'
+          contrastText: '#fff'
+          mainChannel: 211 47 47
+          lightChannel: 239 83 80
+          darkChannel: 198 40 40
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#ed6c02'
+          light: '#ff9800'
+          dark: '#e65100'
+          contrastText: '#fff'
+          mainChannel: 237 108 2
+          lightChannel: 255 152 0
+          darkChannel: 230 81 0
+          contrastTextChannel: 255 255 255
+        info:
+          main: '#0288d1'
+          light: '#03a9f4'
+          dark: '#01579b'
+          contrastText: '#fff'
+          mainChannel: 2 136 209
+          lightChannel: 3 169 244
+          darkChannel: 1 87 155
+          contrastTextChannel: 255 255 255
+        success:
+          main: '#2e7d32'
+          light: '#4caf50'
+          dark: '#1b5e20'
+          contrastText: '#fff'
+          mainChannel: 46 125 50
+          lightChannel: 76 175 80
+          darkChannel: 27 94 32
+          contrastTextChannel: 255 255 255
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: rgba(0, 0, 0, 0.87)
+          secondary: rgba(0, 0, 0, 0.6)
+          disabled: rgba(0, 0, 0, 0.38)
+          primaryChannel: 0 0 0
+          secondaryChannel: 0 0 0
+        divider: rgba(0, 0, 0, 0.12)
+        action:
+          active: rgba(0, 0, 0, 0.54)
+          hover: rgba(0, 0, 0, 0.04)
+          hoverOpacity: 0.04
+          selected: rgba(0, 0, 0, 0.08)
+          selectedOpacity: 0.08
+          disabled: rgba(0, 0, 0, 0.26)
+          disabledBackground: rgba(0, 0, 0, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(0, 0, 0, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.12
+          activeChannel: 0 0 0
+          selectedChannel: 0 0 0
+        Alert:
+          errorColor: rgb(95, 33, 32)
+          infoColor: rgb(1, 67, 97)
+          successColor: rgb(30, 70, 32)
+          warningColor: rgb(102, 60, 0)
+          errorFilledBg: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-main, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningFilledBg: 'var(--oxygen-palette-warning-main, #ed6c02)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: '#fff'
+          errorStandardBg: rgb(253, 237, 237)
+          infoStandardBg: rgb(229, 246, 253)
+          successStandardBg: rgb(237, 247, 237)
+          warningStandardBg: rgb(255, 244, 229)
+          errorIconColor: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #0288d1)'
+          successIconColor: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ed6c02)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-A100, #f5f5f5)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultIconColor: 'var(--oxygen-palette-grey-700, #616161)'
+        FilledInput:
+          bg: rgba(0, 0, 0, 0.06)
+          hoverBg: rgba(0, 0, 0, 0.09)
+          disabledBg: rgba(0, 0, 0, 0.12)
+        LinearProgress:
+          primaryBg: rgb(255, 201, 158)
+          secondaryBg: rgb(202, 202, 202)
+          errorBg: rgb(238, 175, 175)
+          infoBg: rgb(158, 209, 237)
+          successBg: rgb(175, 205, 177)
+          warningBg: rgb(248, 199, 158)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)
+        Slider:
+          primaryTrack: rgb(255, 201, 158)
+          secondaryTrack: rgb(202, 202, 202)
+          errorTrack: rgb(238, 175, 175)
+          infoTrack: rgb(158, 209, 237)
+          successTrack: rgb(175, 205, 177)
+          warningTrack: rgb(248, 199, 158)
+        SnackbarContent:
+          bg: rgb(49, 49, 49)
+          color: '#fff'
+        SpeedDialAction:
+          fabHoverBg: rgb(216, 216, 216)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-common-white, #fff)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+          primaryDisabledColor: rgb(255, 201, 158)
+          secondaryDisabledColor: rgb(202, 202, 202)
+          errorDisabledColor: rgb(238, 175, 175)
+          infoDisabledColor: rgb(158, 209, 237)
+          successDisabledColor: rgb(175, 205, 177)
+          warningDisabledColor: rgb(248, 199, 158)
+        TableCell:
+          border: rgba(224, 224, 224, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 0 0 0
+      opacity:
+        inputPlaceholder: 0.42
+        inputUnderline: 0.42
+        switchTrackDisabled: 0.12
+        switchTrack: 0.38
+      overlays: []
+    dark:
+      palette:
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#000'
+          onBackground: '#fff'
+          backgroundChannel: 0 0 0
+          onBackgroundChannel: 255 255 255
+        mode: dark
+        primary:
+          main: '#ff7300'
+          contrastText: '#ffffff'
+          light: rgb(255, 143, 51)
+          dark: rgb(178, 80, 0)
+          mainChannel: 255 115 0
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#757575'
+          contrastText: '#ffffff'
+          light: rgb(144, 144, 144)
+          dark: rgb(81, 81, 81)
+          mainChannel: 117 117 117
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        error:
+          main: '#f44336'
+          light: '#e57373'
+          dark: '#d32f2f'
+          contrastText: '#fff'
+          mainChannel: 244 67 54
+          lightChannel: 229 115 115
+          darkChannel: 211 47 47
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#ffa726'
+          light: '#ffb74d'
+          dark: '#f57c00'
+          contrastText: rgba(0, 0, 0, 0.87)
+          mainChannel: 255 167 38
+          lightChannel: 255 183 77
+          darkChannel: 245 124 0
+          contrastTextChannel: 0 0 0
+        info:
+          main: '#29b6f6'
+          light: '#4fc3f7'
+          dark: '#0288d1'
+          contrastText: rgba(0, 0, 0, 0.87)
+          mainChannel: 41 182 246
+          lightChannel: 79 195 247
+          darkChannel: 2 136 209
+          contrastTextChannel: 0 0 0
+        success:
+          main: '#66bb6a'
+          light: '#81c784'
+          dark: '#388e3c'
+          contrastText: rgba(0, 0, 0, 0.87)
+          mainChannel: 102 187 106
+          lightChannel: 129 199 132
+          darkChannel: 56 142 60
+          contrastTextChannel: 0 0 0
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#fff'
+          secondary: rgba(255, 255, 255, 0.7)
+          disabled: rgba(255, 255, 255, 0.5)
+          icon: rgba(255, 255, 255, 0.5)
+          primaryChannel: 255 255 255
+          secondaryChannel: 255 255 255
+        divider: rgba(255, 255, 255, 0.12)
+        background:
+          paper: '#121212'
+          default: '#121212'
+          defaultChannel: 18 18 18
+          paperChannel: 18 18 18
+        action:
+          active: '#fff'
+          hover: rgba(255, 255, 255, 0.08)
+          hoverOpacity: 0.08
+          selected: rgba(255, 255, 255, 0.16)
+          selectedOpacity: 0.16
+          disabled: rgba(255, 255, 255, 0.3)
+          disabledBackground: rgba(255, 255, 255, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(255, 255, 255, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.24
+          activeChannel: 255 255 255
+          selectedChannel: 255 255 255
+        Alert:
+          errorColor: rgb(244, 199, 199)
+          infoColor: rgb(184, 231, 251)
+          successColor: rgb(204, 232, 205)
+          warningColor: rgb(255, 226, 183)
+          errorFilledBg: 'var(--oxygen-palette-error-dark, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-dark, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-dark, #388e3c)'
+          warningFilledBg: 'var(--oxygen-palette-warning-dark, #f57c00)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: rgba(0, 0, 0, 0.87)
+          errorStandardBg: rgb(22, 11, 11)
+          infoStandardBg: rgb(7, 19, 24)
+          successStandardBg: rgb(12, 19, 13)
+          warningStandardBg: rgb(25, 18, 7)
+          errorIconColor: 'var(--oxygen-palette-error-main, #f44336)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #29b6f6)'
+          successIconColor: 'var(--oxygen-palette-success-main, #66bb6a)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ffa726)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-900, #212121)'
+          darkBg: 'var(--oxygen-palette-background-paper, #121212)'
+          darkColor: 'var(--oxygen-palette-text-primary, #fff)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-600, #757575)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-800, #424242)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-700, #616161)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultIconColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+        FilledInput:
+          bg: rgba(255, 255, 255, 0.09)
+          hoverBg: rgba(255, 255, 255, 0.13)
+          disabledBg: rgba(255, 255, 255, 0.12)
+        LinearProgress:
+          primaryBg: rgb(127, 57, 0)
+          secondaryBg: rgb(58, 58, 58)
+          errorBg: rgb(122, 33, 27)
+          infoBg: rgb(20, 91, 123)
+          successBg: rgb(51, 93, 53)
+          warningBg: rgb(127, 83, 19)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)
+        Slider:
+          primaryTrack: rgb(127, 57, 0)
+          secondaryTrack: rgb(58, 58, 58)
+          errorTrack: rgb(122, 33, 27)
+          infoTrack: rgb(20, 91, 123)
+          successTrack: rgb(51, 93, 53)
+          warningTrack: rgb(127, 83, 19)
+        SnackbarContent:
+          bg: rgb(250, 250, 250)
+          color: rgba(0, 0, 0, 0.87)
+        SpeedDialAction:
+          fabHoverBg: rgb(53, 53, 53)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-600, #757575)'
+          primaryDisabledColor: rgb(114, 51, 0)
+          secondaryDisabledColor: rgb(52, 52, 52)
+          errorDisabledColor: rgb(109, 30, 24)
+          infoDisabledColor: rgb(18, 81, 110)
+          successDisabledColor: rgb(45, 84, 47)
+          warningDisabledColor: rgb(114, 75, 17)
+        TableCell:
+          border: rgba(81, 81, 81, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 255 255 255
+      opacity:
+        inputPlaceholder: 0.5
+        inputUnderline: 0.7
+        switchTrackDisabled: 0.2
+        switchTrack: 0.3
+      overlays:
+      - none
+      - linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))
+      - linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))
+      - linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))
+      - linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))
+      - linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))
+      - linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))
+      - linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))
+      - linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))
+      - linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))
+      - linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))
+      - linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))
+      - linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))
+      - linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))
+      - linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))
+      - linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))
+      - linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))
+      - linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))
+      - linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))
+      - linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))
+      - linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))
+      - linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))
+      - linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))
+      - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
+      - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
+---
+# resource_type: theme
+id: 01900000-0000-7000-8000-000000000074
+handle: high-contrast
+displayName: High Contrast
+description: A high contrast theme optimized for accessibility with bold colors and maximum readability.
+theme:
+  defaultColorScheme: dark
+  direction: ltr
+  shape:
+    borderRadius: 4
+  typography:
+    fontFamily: '''Inter Variable'', sans-serif'
+    fontWeightRegular: 400
+    fontSize: 14
+    h1:
+      fontSize: 1.75rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h2:
+      fontSize: 1.5rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.2
+    h3:
+      fontSize: 1.375rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h4:
+      fontSize: 1.25rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.235
+    h5:
+      fontSize: 1rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.334
+    h6:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.6
+    subtitle1:
+      fontSize: 1.125rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.75
+    subtitle2:
+      fontSize: 0.875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.57
+    body1:
+      fontSize: 0.875rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.5
+    body2:
+      fontSize: 0.8125rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.43
+    button:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.75
+      textTransform: uppercase
+    caption:
+      fontSize: 0.6875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.66
+    htmlFontSize: 16
+    fontWeightLight: 300
+    fontWeightMedium: 500
+    fontWeightBold: 700
+    overline:
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      fontSize: 0.75rem
+      lineHeight: 2.66
+      textTransform: uppercase
+    inherit:
+      fontFamily: inherit
+      fontWeight: inherit
+      fontSize: inherit
+      lineHeight: inherit
+      letterSpacing: inherit
+  border:
+    width: 1px
+    style: solid
+  colorSchemes:
+    light:
+      palette:
+        mode: light
+        primary:
+          main: '#0000FF'
+          contrastText: '#FFFFFF'
+          light: '#4040FF'
+          dark: '#0000CC'
+          mainChannel: 255 115 0
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#FFD700'
+          contrastText: '#000000'
+          light: '#FFED4E'
+          dark: '#CCB000'
+          mainChannel: 117 117 117
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        background:
+          default: '#FFFFFF'
+          paper: '#FFFFFF'
+          defaultChannel: 250 250 250
+          paperChannel: 255 255 255
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#fff'
+          onBackground: '#000'
+          backgroundChannel: 255 255 255
+          onBackgroundChannel: 0 0 0
+        error:
+          main: '#CC0000'
+          light: '#ef5350'
+          dark: '#c62828'
+          contrastText: '#FFFFFF'
+          mainChannel: 211 47 47
+          lightChannel: 239 83 80
+          darkChannel: 198 40 40
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#FF6600'
+          light: '#ff9800'
+          dark: '#e65100'
+          contrastText: '#000000'
+          mainChannel: 237 108 2
+          lightChannel: 255 152 0
+          darkChannel: 230 81 0
+          contrastTextChannel: 255 255 255
+        info:
+          main: '#0066CC'
+          light: '#03a9f4'
+          dark: '#01579b'
+          contrastText: '#FFFFFF'
+          mainChannel: 2 136 209
+          lightChannel: 3 169 244
+          darkChannel: 1 87 155
+          contrastTextChannel: 255 255 255
+        success:
+          main: '#008000'
+          light: '#4caf50'
+          dark: '#1b5e20'
+          contrastText: '#FFFFFF'
+          mainChannel: 46 125 50
+          lightChannel: 76 175 80
+          darkChannel: 27 94 32
+          contrastTextChannel: 255 255 255
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#000000'
+          secondary: '#000000'
+          disabled: rgba(0, 0, 0, 0.38)
+          primaryChannel: 0 0 0
+          secondaryChannel: 0 0 0
+        divider: '#000000'
+        action:
+          active: rgba(0, 0, 0, 0.54)
+          hover: rgba(0, 0, 0, 0.04)
+          hoverOpacity: 0.04
+          selected: rgba(0, 0, 0, 0.08)
+          selectedOpacity: 0.08
+          disabled: rgba(0, 0, 0, 0.26)
+          disabledBackground: rgba(0, 0, 0, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(0, 0, 0, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.12
+          activeChannel: 0 0 0
+          selectedChannel: 0 0 0
+        Alert:
+          errorColor: rgb(95, 33, 32)
+          infoColor: rgb(1, 67, 97)
+          successColor: rgb(30, 70, 32)
+          warningColor: rgb(102, 60, 0)
+          errorFilledBg: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-main, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningFilledBg: 'var(--oxygen-palette-warning-main, #ed6c02)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: '#fff'
+          errorStandardBg: rgb(253, 237, 237)
+          infoStandardBg: rgb(229, 246, 253)
+          successStandardBg: rgb(237, 247, 237)
+          warningStandardBg: rgb(255, 244, 229)
+          errorIconColor: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #0288d1)'
+          successIconColor: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ed6c02)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-A100, #f5f5f5)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultIconColor: 'var(--oxygen-palette-grey-700, #616161)'
+        FilledInput:
+          bg: rgba(0, 0, 0, 0.06)
+          hoverBg: rgba(0, 0, 0, 0.09)
+          disabledBg: rgba(0, 0, 0, 0.12)
+        LinearProgress:
+          primaryBg: rgb(255, 201, 158)
+          secondaryBg: rgb(202, 202, 202)
+          errorBg: rgb(238, 175, 175)
+          infoBg: rgb(158, 209, 237)
+          successBg: rgb(175, 205, 177)
+          warningBg: rgb(248, 199, 158)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)
+        Slider:
+          primaryTrack: rgb(255, 201, 158)
+          secondaryTrack: rgb(202, 202, 202)
+          errorTrack: rgb(238, 175, 175)
+          infoTrack: rgb(158, 209, 237)
+          successTrack: rgb(175, 205, 177)
+          warningTrack: rgb(248, 199, 158)
+        SnackbarContent:
+          bg: rgb(49, 49, 49)
+          color: '#fff'
+        SpeedDialAction:
+          fabHoverBg: rgb(216, 216, 216)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-common-white, #fff)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+          primaryDisabledColor: rgb(255, 201, 158)
+          secondaryDisabledColor: rgb(202, 202, 202)
+          errorDisabledColor: rgb(238, 175, 175)
+          infoDisabledColor: rgb(158, 209, 237)
+          successDisabledColor: rgb(175, 205, 177)
+          warningDisabledColor: rgb(248, 199, 158)
+        TableCell:
+          border: rgba(224, 224, 224, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 0 0 0
+      opacity:
+        inputPlaceholder: 0.42
+        inputUnderline: 0.42
+        switchTrackDisabled: 0.12
+        switchTrack: 0.38
+      overlays: []
+    dark:
+      palette:
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#000'
+          onBackground: '#fff'
+          backgroundChannel: 0 0 0
+          onBackgroundChannel: 255 255 255
+        mode: dark
+        primary:
+          main: '#00FFFF'
+          contrastText: '#000000'
+          light: '#66FFFF'
+          dark: '#00CCCC'
+          mainChannel: 255 115 0
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#FFFF00'
+          contrastText: '#000000'
+          light: '#FFFF66'
+          dark: '#CCCC00'
+          mainChannel: 117 117 117
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        error:
+          main: '#FF0000'
+          light: '#e57373'
+          dark: '#d32f2f'
+          contrastText: '#FFFFFF'
+          mainChannel: 244 67 54
+          lightChannel: 229 115 115
+          darkChannel: 211 47 47
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#FF9900'
+          light: '#ffb74d'
+          dark: '#f57c00'
+          contrastText: '#000000'
+          mainChannel: 255 167 38
+          lightChannel: 255 183 77
+          darkChannel: 245 124 0
+          contrastTextChannel: 0 0 0
+        info:
+          main: '#00BFFF'
+          light: '#4fc3f7'
+          dark: '#0288d1'
+          contrastText: '#000000'
+          mainChannel: 41 182 246
+          lightChannel: 79 195 247
+          darkChannel: 2 136 209
+          contrastTextChannel: 0 0 0
+        success:
+          main: '#00FF00'
+          light: '#81c784'
+          dark: '#388e3c'
+          contrastText: '#000000'
+          mainChannel: 102 187 106
+          lightChannel: 129 199 132
+          darkChannel: 56 142 60
+          contrastTextChannel: 0 0 0
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#FFFFFF'
+          secondary: '#FFFFFF'
+          disabled: rgba(255, 255, 255, 0.5)
+          icon: rgba(255, 255, 255, 0.5)
+          primaryChannel: 255 255 255
+          secondaryChannel: 255 255 255
+        divider: '#FFFFFF'
+        background:
+          paper: '#000000'
+          default: '#000000'
+          defaultChannel: 18 18 18
+          paperChannel: 18 18 18
+        action:
+          active: '#fff'
+          hover: rgba(255, 255, 255, 0.08)
+          hoverOpacity: 0.08
+          selected: rgba(255, 255, 255, 0.16)
+          selectedOpacity: 0.16
+          disabled: rgba(255, 255, 255, 0.3)
+          disabledBackground: rgba(255, 255, 255, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(255, 255, 255, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.24
+          activeChannel: 255 255 255
+          selectedChannel: 255 255 255
+        Alert:
+          errorColor: rgb(244, 199, 199)
+          infoColor: rgb(184, 231, 251)
+          successColor: rgb(204, 232, 205)
+          warningColor: rgb(255, 226, 183)
+          errorFilledBg: 'var(--oxygen-palette-error-dark, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-dark, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-dark, #388e3c)'
+          warningFilledBg: 'var(--oxygen-palette-warning-dark, #f57c00)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: rgba(0, 0, 0, 0.87)
+          errorStandardBg: rgb(22, 11, 11)
+          infoStandardBg: rgb(7, 19, 24)
+          successStandardBg: rgb(12, 19, 13)
+          warningStandardBg: rgb(25, 18, 7)
+          errorIconColor: 'var(--oxygen-palette-error-main, #f44336)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #29b6f6)'
+          successIconColor: 'var(--oxygen-palette-success-main, #66bb6a)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ffa726)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-900, #212121)'
+          darkBg: 'var(--oxygen-palette-background-paper, #121212)'
+          darkColor: 'var(--oxygen-palette-text-primary, #fff)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-600, #757575)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-800, #424242)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-700, #616161)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultIconColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+        FilledInput:
+          bg: rgba(255, 255, 255, 0.09)
+          hoverBg: rgba(255, 255, 255, 0.13)
+          disabledBg: rgba(255, 255, 255, 0.12)
+        LinearProgress:
+          primaryBg: rgb(127, 57, 0)
+          secondaryBg: rgb(58, 58, 58)
+          errorBg: rgb(122, 33, 27)
+          infoBg: rgb(20, 91, 123)
+          successBg: rgb(51, 93, 53)
+          warningBg: rgb(127, 83, 19)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)
+        Slider:
+          primaryTrack: rgb(127, 57, 0)
+          secondaryTrack: rgb(58, 58, 58)
+          errorTrack: rgb(122, 33, 27)
+          infoTrack: rgb(20, 91, 123)
+          successTrack: rgb(51, 93, 53)
+          warningTrack: rgb(127, 83, 19)
+        SnackbarContent:
+          bg: rgb(250, 250, 250)
+          color: rgba(0, 0, 0, 0.87)
+        SpeedDialAction:
+          fabHoverBg: rgb(53, 53, 53)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-600, #757575)'
+          primaryDisabledColor: rgb(114, 51, 0)
+          secondaryDisabledColor: rgb(52, 52, 52)
+          errorDisabledColor: rgb(109, 30, 24)
+          infoDisabledColor: rgb(18, 81, 110)
+          successDisabledColor: rgb(45, 84, 47)
+          warningDisabledColor: rgb(114, 75, 17)
+        TableCell:
+          border: rgba(81, 81, 81, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 255 255 255
+      opacity:
+        inputPlaceholder: 0.5
+        inputUnderline: 0.7
+        switchTrackDisabled: 0.2
+        switchTrack: 0.3
+      overlays:
+      - none
+      - linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))
+      - linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))
+      - linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))
+      - linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))
+      - linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))
+      - linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))
+      - linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))
+      - linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))
+      - linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))
+      - linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))
+      - linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))
+      - linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))
+      - linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))
+      - linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))
+      - linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))
+      - linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))
+      - linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))
+      - linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))
+      - linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))
+      - linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))
+      - linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))
+      - linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))
+      - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
+      - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
+---
+# resource_type: theme
+id: 01900000-0000-7000-8000-000000000075
+handle: pale-gray
+displayName: Pale Gray
+description: A minimalist theme with neutral charcoal and gray tones for a distraction-free interface.
+theme:
+  defaultColorScheme: light
+  direction: ltr
+  shape:
+    borderRadius: 8
+  typography:
+    fontFamily: '''Inter Variable'', sans-serif'
+    fontWeightRegular: 400
+    fontSize: 14
+    h1:
+      fontSize: 1.75rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h2:
+      fontSize: 1.5rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.2
+    h3:
+      fontSize: 1.375rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h4:
+      fontSize: 1.25rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.235
+    h5:
+      fontSize: 1rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.334
+    h6:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.6
+    subtitle1:
+      fontSize: 1.125rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.75
+    subtitle2:
+      fontSize: 0.875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.57
+    body1:
+      fontSize: 0.875rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.5
+    body2:
+      fontSize: 0.8125rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.43
+    button:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.75
+      textTransform: uppercase
+    caption:
+      fontSize: 0.6875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.66
+    htmlFontSize: 16
+    fontWeightLight: 300
+    fontWeightMedium: 500
+    fontWeightBold: 700
+    overline:
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      fontSize: 0.75rem
+      lineHeight: 2.66
+      textTransform: uppercase
+    inherit:
+      fontFamily: inherit
+      fontWeight: inherit
+      fontSize: inherit
+      lineHeight: inherit
+      letterSpacing: inherit
+  border:
+    width: 1px
+    style: solid
+  colorSchemes:
+    light:
+      palette:
+        mode: light
+        primary:
+          main: '#212121'
+          contrastText: '#ffffff'
+          light: '#424242'
+          dark: '#000000'
+          mainChannel: 33 33 33
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#757575'
+          contrastText: '#ffffff'
+          light: '#9E9E9E'
+          dark: '#616161'
+          mainChannel: 117 117 117
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        background:
+          default: '#F5F5F5'
+          paper: '#FFFFFF'
+          defaultChannel: 250 250 250
+          paperChannel: 255 255 255
+          acrylic: '#FFFFFF'
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#fff'
+          onBackground: '#000'
+          backgroundChannel: 255 255 255
+          onBackgroundChannel: 0 0 0
+        error:
+          main: '#D32F2F'
+          light: '#EF5350'
+          dark: '#C62828'
+          contrastText: '#ffffff'
+          mainChannel: 211 47 47
+          lightChannel: 239 83 80
+          darkChannel: 198 40 40
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#ED6C02'
+          light: '#FF9800'
+          dark: '#E65100'
+          contrastText: '#ffffff'
+          mainChannel: 237 108 2
+          lightChannel: 255 152 0
+          darkChannel: 230 81 0
+          contrastTextChannel: 255 255 255
+        info:
+          main: '#616161'
+          light: '#757575'
+          dark: '#424242'
+          contrastText: '#ffffff'
+          mainChannel: 2 136 209
+          lightChannel: 3 169 244
+          darkChannel: 1 87 155
+          contrastTextChannel: 255 255 255
+        success:
+          main: '#2E7D32'
+          light: '#4CAF50'
+          dark: '#1B5E20'
+          contrastText: '#ffffff'
+          mainChannel: 46 125 50
+          lightChannel: 76 175 80
+          darkChannel: 27 94 32
+          contrastTextChannel: 255 255 255
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#212121'
+          secondary: '#757575'
+          disabled: rgba(0, 0, 0, 0.38)
+          primaryChannel: 0 0 0
+          secondaryChannel: 0 0 0
+        divider: '#E0E0E0'
+        action:
+          active: rgba(0, 0, 0, 0.54)
+          hover: rgba(33, 33, 33, 0.08)
+          hoverOpacity: 0.08
+          selected: rgba(33, 33, 33, 0.12)
+          selectedOpacity: 0.12
+          disabled: rgba(0, 0, 0, 0.26)
+          disabledBackground: rgba(0, 0, 0, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(0, 0, 0, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.12
+          activeChannel: 0 0 0
+          selectedChannel: 0 0 0
+        Alert:
+          errorColor: rgb(95, 33, 32)
+          infoColor: rgb(1, 67, 97)
+          successColor: rgb(30, 70, 32)
+          warningColor: rgb(102, 60, 0)
+          errorFilledBg: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-main, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningFilledBg: 'var(--oxygen-palette-warning-main, #ed6c02)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: '#fff'
+          errorStandardBg: rgb(253, 237, 237)
+          infoStandardBg: rgb(229, 246, 253)
+          successStandardBg: rgb(237, 247, 237)
+          warningStandardBg: rgb(255, 244, 229)
+          errorIconColor: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #0288d1)'
+          successIconColor: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ed6c02)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-A100, #f5f5f5)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultIconColor: 'var(--oxygen-palette-grey-700, #616161)'
+        FilledInput:
+          bg: rgba(0, 0, 0, 0.06)
+          hoverBg: rgba(0, 0, 0, 0.09)
+          disabledBg: rgba(0, 0, 0, 0.12)
+        LinearProgress:
+          primaryBg: rgb(255, 201, 158)
+          secondaryBg: rgb(202, 202, 202)
+          errorBg: rgb(238, 175, 175)
+          infoBg: rgb(158, 209, 237)
+          successBg: rgb(175, 205, 177)
+          warningBg: rgb(248, 199, 158)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)
+        Slider:
+          primaryTrack: rgb(255, 201, 158)
+          secondaryTrack: rgb(202, 202, 202)
+          errorTrack: rgb(238, 175, 175)
+          infoTrack: rgb(158, 209, 237)
+          successTrack: rgb(175, 205, 177)
+          warningTrack: rgb(248, 199, 158)
+        SnackbarContent:
+          bg: rgb(49, 49, 49)
+          color: '#fff'
+        SpeedDialAction:
+          fabHoverBg: rgb(216, 216, 216)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-common-white, #fff)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+          primaryDisabledColor: rgb(255, 201, 158)
+          secondaryDisabledColor: rgb(202, 202, 202)
+          errorDisabledColor: rgb(238, 175, 175)
+          infoDisabledColor: rgb(158, 209, 237)
+          successDisabledColor: rgb(175, 205, 177)
+          warningDisabledColor: rgb(248, 199, 158)
+        TableCell:
+          border: rgba(224, 224, 224, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 0 0 0
+      opacity:
+        inputPlaceholder: 0.42
+        inputUnderline: 0.42
+        switchTrackDisabled: 0.12
+        switchTrack: 0.38
+      overlays: []
+    dark:
+      palette:
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#000'
+          onBackground: '#fff'
+          backgroundChannel: 0 0 0
+          onBackgroundChannel: 255 255 255
+        mode: dark
+        primary:
+          main: '#E0E0E0'
+          contrastText: '#000000'
+          light: '#F5F5F5'
+          dark: '#BDBDBD'
+          mainChannel: 224 224 224
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#9E9E9E'
+          contrastText: '#000000'
+          light: '#BDBDBD'
+          dark: '#757575'
+          mainChannel: 158 158 158
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        error:
+          main: '#EF5350'
+          light: '#E57373'
+          dark: '#E53935'
+          contrastText: '#ffffff'
+          mainChannel: 244 67 54
+          lightChannel: 229 115 115
+          darkChannel: 211 47 47
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#FFA726'
+          light: '#FFB74D'
+          dark: '#FB8C00'
+          contrastText: '#000000'
+          mainChannel: 255 167 38
+          lightChannel: 255 183 77
+          darkChannel: 245 124 0
+          contrastTextChannel: 0 0 0
+        info:
+          main: '#9E9E9E'
+          light: '#BDBDBD'
+          dark: '#757575'
+          contrastText: '#000000'
+          mainChannel: 41 182 246
+          lightChannel: 79 195 247
+          darkChannel: 2 136 209
+          contrastTextChannel: 0 0 0
+        success:
+          main: '#66BB6A'
+          light: '#81C784'
+          dark: '#43A047'
+          contrastText: '#000000'
+          mainChannel: 102 187 106
+          lightChannel: 129 199 132
+          darkChannel: 56 142 60
+          contrastTextChannel: 0 0 0
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#FFFFFF'
+          secondary: '#B0B0B0'
+          disabled: rgba(255, 255, 255, 0.5)
+          icon: rgba(255, 255, 255, 0.5)
+          primaryChannel: 255 255 255
+          secondaryChannel: 255 255 255
+        divider: '#424242'
+        background:
+          paper: '#1E1E1E'
+          default: '#121212'
+          defaultChannel: 18 18 18
+          paperChannel: 18 18 18
+          acrylic: '#1E1E1E'
+        action:
+          active: '#fff'
+          hover: rgba(224, 224, 224, 0.12)
+          hoverOpacity: 0.12
+          selected: rgba(224, 224, 224, 0.16)
+          selectedOpacity: 0.16
+          disabled: rgba(255, 255, 255, 0.3)
+          disabledBackground: rgba(255, 255, 255, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(255, 255, 255, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.24
+          activeChannel: 255 255 255
+          selectedChannel: 255 255 255
+        Alert:
+          errorColor: rgb(244, 199, 199)
+          infoColor: rgb(184, 231, 251)
+          successColor: rgb(204, 232, 205)
+          warningColor: rgb(255, 226, 183)
+          errorFilledBg: 'var(--oxygen-palette-error-dark, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-dark, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-dark, #388e3c)'
+          warningFilledBg: 'var(--oxygen-palette-warning-dark, #f57c00)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: rgba(0, 0, 0, 0.87)
+          errorStandardBg: rgb(22, 11, 11)
+          infoStandardBg: rgb(7, 19, 24)
+          successStandardBg: rgb(12, 19, 13)
+          warningStandardBg: rgb(25, 18, 7)
+          errorIconColor: 'var(--oxygen-palette-error-main, #f44336)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #29b6f6)'
+          successIconColor: 'var(--oxygen-palette-success-main, #66bb6a)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ffa726)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-900, #212121)'
+          darkBg: 'var(--oxygen-palette-background-paper, #121212)'
+          darkColor: 'var(--oxygen-palette-text-primary, #fff)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-600, #757575)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-800, #424242)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-700, #616161)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultIconColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+        FilledInput:
+          bg: rgba(255, 255, 255, 0.09)
+          hoverBg: rgba(255, 255, 255, 0.13)
+          disabledBg: rgba(255, 255, 255, 0.12)
+        LinearProgress:
+          primaryBg: rgb(127, 57, 0)
+          secondaryBg: rgb(58, 58, 58)
+          errorBg: rgb(122, 33, 27)
+          infoBg: rgb(20, 91, 123)
+          successBg: rgb(51, 93, 53)
+          warningBg: rgb(127, 83, 19)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)
+        Slider:
+          primaryTrack: rgb(127, 57, 0)
+          secondaryTrack: rgb(58, 58, 58)
+          errorTrack: rgb(122, 33, 27)
+          infoTrack: rgb(20, 91, 123)
+          successTrack: rgb(51, 93, 53)
+          warningTrack: rgb(127, 83, 19)
+        SnackbarContent:
+          bg: rgb(250, 250, 250)
+          color: rgba(0, 0, 0, 0.87)
+        SpeedDialAction:
+          fabHoverBg: rgb(53, 53, 53)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-600, #757575)'
+          primaryDisabledColor: rgb(114, 51, 0)
+          secondaryDisabledColor: rgb(52, 52, 52)
+          errorDisabledColor: rgb(109, 30, 24)
+          infoDisabledColor: rgb(18, 81, 110)
+          successDisabledColor: rgb(45, 84, 47)
+          warningDisabledColor: rgb(114, 75, 17)
+        TableCell:
+          border: rgba(81, 81, 81, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 255 255 255
+      opacity:
+        inputPlaceholder: 0.5
+        inputUnderline: 0.7
+        switchTrackDisabled: 0.2
+        switchTrack: 0.3
+      overlays:
+      - none
+      - linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))
+      - linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))
+      - linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))
+      - linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))
+      - linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))
+      - linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))
+      - linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))
+      - linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))
+      - linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))
+      - linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))
+      - linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))
+      - linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))
+      - linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))
+      - linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))
+      - linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))
+      - linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))
+      - linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))
+      - linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))
+      - linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))
+      - linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))
+      - linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))
+      - linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))
+      - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
+      - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
+---
+# resource_type: theme
+id: 01900000-0000-7000-8000-000000000076
+handle: pale-indigo
+displayName: Pale Indigo
+description: A soft theme with gentle indigo accents and clean neutral backgrounds.
+theme:
+  defaultColorScheme: light
+  direction: ltr
+  shape:
+    borderRadius: 8
+  typography:
+    fontFamily: '''Inter Variable'', sans-serif'
+    fontWeightRegular: 400
+    fontSize: 14
+    h1:
+      fontSize: 1.75rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h2:
+      fontSize: 1.5rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.2
+    h3:
+      fontSize: 1.375rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.167
+    h4:
+      fontSize: 1.25rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.235
+    h5:
+      fontSize: 1rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.334
+    h6:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.6
+    subtitle1:
+      fontSize: 1.125rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.75
+    subtitle2:
+      fontSize: 0.875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.57
+    body1:
+      fontSize: 0.875rem
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      lineHeight: 1.5
+    body2:
+      fontSize: 0.8125rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.43
+    button:
+      fontSize: 0.875rem
+      fontWeight: 500
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.75
+      textTransform: uppercase
+    caption:
+      fontSize: 0.6875rem
+      fontWeight: 400
+      fontFamily: '''Inter Variable'', sans-serif'
+      lineHeight: 1.66
+    htmlFontSize: 16
+    fontWeightLight: 300
+    fontWeightMedium: 500
+    fontWeightBold: 700
+    overline:
+      fontFamily: '''Inter Variable'', sans-serif'
+      fontWeight: 400
+      fontSize: 0.75rem
+      lineHeight: 2.66
+      textTransform: uppercase
+    inherit:
+      fontFamily: inherit
+      fontWeight: inherit
+      fontSize: inherit
+      lineHeight: inherit
+      letterSpacing: inherit
+  border:
+    width: 1px
+    style: solid
+  colorSchemes:
+    light:
+      palette:
+        mode: light
+        primary:
+          main: '#5567d5'
+          contrastText: '#ffffff'
+          light: '#7785dd'
+          dark: '#3f4db5'
+          mainChannel: 85 103 213
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#757575'
+          contrastText: '#ffffff'
+          light: '#9E9E9E'
+          dark: '#616161'
+          mainChannel: 117 117 117
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        background:
+          default: '#F5F5F5'
+          paper: '#FFFFFF'
+          defaultChannel: 250 250 250
+          paperChannel: 255 255 255
+          acrylic: '#FFFFFF'
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#fff'
+          onBackground: '#000'
+          backgroundChannel: 255 255 255
+          onBackgroundChannel: 0 0 0
+        error:
+          main: '#D32F2F'
+          light: '#EF5350'
+          dark: '#C62828'
+          contrastText: '#ffffff'
+          mainChannel: 211 47 47
+          lightChannel: 239 83 80
+          darkChannel: 198 40 40
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#ED6C02'
+          light: '#FF9800'
+          dark: '#E65100'
+          contrastText: '#ffffff'
+          mainChannel: 237 108 2
+          lightChannel: 255 152 0
+          darkChannel: 230 81 0
+          contrastTextChannel: 255 255 255
+        info:
+          main: '#5567d5'
+          light: '#7785dd'
+          dark: '#3f4db5'
+          contrastText: '#ffffff'
+          mainChannel: 2 136 209
+          lightChannel: 3 169 244
+          darkChannel: 1 87 155
+          contrastTextChannel: 255 255 255
+        success:
+          main: '#2E7D32'
+          light: '#4CAF50'
+          dark: '#1B5E20'
+          contrastText: '#ffffff'
+          mainChannel: 46 125 50
+          lightChannel: 76 175 80
+          darkChannel: 27 94 32
+          contrastTextChannel: 255 255 255
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#212121'
+          secondary: '#757575'
+          disabled: rgba(0, 0, 0, 0.38)
+          primaryChannel: 0 0 0
+          secondaryChannel: 0 0 0
+        divider: '#E0E0E0'
+        action:
+          active: rgba(0, 0, 0, 0.54)
+          hover: rgba(85, 103, 213, 0.08)
+          hoverOpacity: 0.08
+          selected: rgba(85, 103, 213, 0.12)
+          selectedOpacity: 0.12
+          disabled: rgba(0, 0, 0, 0.26)
+          disabledBackground: rgba(0, 0, 0, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(0, 0, 0, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.12
+          activeChannel: 0 0 0
+          selectedChannel: 0 0 0
+        Alert:
+          errorColor: rgb(95, 33, 32)
+          infoColor: rgb(1, 67, 97)
+          successColor: rgb(30, 70, 32)
+          warningColor: rgb(102, 60, 0)
+          errorFilledBg: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-main, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningFilledBg: 'var(--oxygen-palette-warning-main, #ed6c02)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: '#fff'
+          errorStandardBg: rgb(253, 237, 237)
+          infoStandardBg: rgb(229, 246, 253)
+          successStandardBg: rgb(237, 247, 237)
+          warningStandardBg: rgb(255, 244, 229)
+          errorIconColor: 'var(--oxygen-palette-error-main, #d32f2f)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #0288d1)'
+          successIconColor: 'var(--oxygen-palette-success-main, #2e7d32)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ed6c02)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-A100, #f5f5f5)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultIconColor: 'var(--oxygen-palette-grey-700, #616161)'
+        FilledInput:
+          bg: rgba(0, 0, 0, 0.06)
+          hoverBg: rgba(0, 0, 0, 0.09)
+          disabledBg: rgba(0, 0, 0, 0.12)
+        LinearProgress:
+          primaryBg: rgb(255, 201, 158)
+          secondaryBg: rgb(202, 202, 202)
+          errorBg: rgb(238, 175, 175)
+          infoBg: rgb(158, 209, 237)
+          successBg: rgb(175, 205, 177)
+          warningBg: rgb(248, 199, 158)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.11)
+        Slider:
+          primaryTrack: rgb(255, 201, 158)
+          secondaryTrack: rgb(202, 202, 202)
+          errorTrack: rgb(238, 175, 175)
+          infoTrack: rgb(158, 209, 237)
+          successTrack: rgb(175, 205, 177)
+          warningTrack: rgb(248, 199, 158)
+        SnackbarContent:
+          bg: rgb(49, 49, 49)
+          color: '#fff'
+        SpeedDialAction:
+          fabHoverBg: rgb(216, 216, 216)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-400, #bdbdbd)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-common-white, #fff)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-100, #f5f5f5)'
+          primaryDisabledColor: rgb(255, 201, 158)
+          secondaryDisabledColor: rgb(202, 202, 202)
+          errorDisabledColor: rgb(238, 175, 175)
+          infoDisabledColor: rgb(158, 209, 237)
+          successDisabledColor: rgb(175, 205, 177)
+          warningDisabledColor: rgb(248, 199, 158)
+        TableCell:
+          border: rgba(224, 224, 224, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 0 0 0
+      opacity:
+        inputPlaceholder: 0.42
+        inputUnderline: 0.42
+        switchTrackDisabled: 0.12
+        switchTrack: 0.38
+      overlays: []
+    dark:
+      palette:
+        common:
+          black: '#000'
+          white: '#fff'
+          background: '#000'
+          onBackground: '#fff'
+          backgroundChannel: 0 0 0
+          onBackgroundChannel: 255 255 255
+        mode: dark
+        primary:
+          main: '#7785dd'
+          contrastText: '#000000'
+          light: '#99a5e5'
+          dark: '#5567d5'
+          mainChannel: 119 133 221
+          lightChannel: 255 143 51
+          darkChannel: 178 80 0
+          contrastTextChannel: 255 255 255
+        secondary:
+          main: '#9E9E9E'
+          contrastText: '#000000'
+          light: '#BDBDBD'
+          dark: '#757575'
+          mainChannel: 158 158 158
+          lightChannel: 144 144 144
+          darkChannel: 81 81 81
+          contrastTextChannel: 255 255 255
+        error:
+          main: '#EF5350'
+          light: '#E57373'
+          dark: '#E53935'
+          contrastText: '#ffffff'
+          mainChannel: 244 67 54
+          lightChannel: 229 115 115
+          darkChannel: 211 47 47
+          contrastTextChannel: 255 255 255
+        warning:
+          main: '#FFA726'
+          light: '#FFB74D'
+          dark: '#FB8C00'
+          contrastText: '#000000'
+          mainChannel: 255 167 38
+          lightChannel: 255 183 77
+          darkChannel: 245 124 0
+          contrastTextChannel: 0 0 0
+        info:
+          main: '#7785dd'
+          light: '#99a5e5'
+          dark: '#5567d5'
+          contrastText: '#000000'
+          mainChannel: 41 182 246
+          lightChannel: 79 195 247
+          darkChannel: 2 136 209
+          contrastTextChannel: 0 0 0
+        success:
+          main: '#66BB6A'
+          light: '#81C784'
+          dark: '#43A047'
+          contrastText: '#000000'
+          mainChannel: 102 187 106
+          lightChannel: 129 199 132
+          darkChannel: 56 142 60
+          contrastTextChannel: 0 0 0
+        grey:
+          '50': '#fafafa'
+          '100': '#f5f5f5'
+          '200': '#eeeeee'
+          '300': '#e0e0e0'
+          '400': '#bdbdbd'
+          '500': '#9e9e9e'
+          '600': '#757575'
+          '700': '#616161'
+          '800': '#424242'
+          '900': '#212121'
+          A100: '#f5f5f5'
+          A200: '#eeeeee'
+          A400: '#bdbdbd'
+          A700: '#616161'
+        contrastThreshold: 3
+        tonalOffset: 0.2
+        text:
+          primary: '#FFFFFF'
+          secondary: '#B0B0B0'
+          disabled: rgba(255, 255, 255, 0.5)
+          icon: rgba(255, 255, 255, 0.5)
+          primaryChannel: 255 255 255
+          secondaryChannel: 255 255 255
+        divider: '#424242'
+        background:
+          paper: '#1E1E1E'
+          default: '#121212'
+          defaultChannel: 18 18 18
+          paperChannel: 18 18 18
+          acrylic: '#1E1E1E'
+        action:
+          active: '#fff'
+          hover: rgba(119, 133, 221, 0.12)
+          hoverOpacity: 0.12
+          selected: rgba(119, 133, 221, 0.16)
+          selectedOpacity: 0.16
+          disabled: rgba(255, 255, 255, 0.3)
+          disabledBackground: rgba(255, 255, 255, 0.12)
+          disabledOpacity: 0.38
+          focus: rgba(255, 255, 255, 0.12)
+          focusOpacity: 0.12
+          activatedOpacity: 0.24
+          activeChannel: 255 255 255
+          selectedChannel: 255 255 255
+        Alert:
+          errorColor: rgb(244, 199, 199)
+          infoColor: rgb(184, 231, 251)
+          successColor: rgb(204, 232, 205)
+          warningColor: rgb(255, 226, 183)
+          errorFilledBg: 'var(--oxygen-palette-error-dark, #d32f2f)'
+          infoFilledBg: 'var(--oxygen-palette-info-dark, #0288d1)'
+          successFilledBg: 'var(--oxygen-palette-success-dark, #388e3c)'
+          warningFilledBg: 'var(--oxygen-palette-warning-dark, #f57c00)'
+          errorFilledColor: '#fff'
+          infoFilledColor: '#fff'
+          successFilledColor: '#fff'
+          warningFilledColor: rgba(0, 0, 0, 0.87)
+          errorStandardBg: rgb(22, 11, 11)
+          infoStandardBg: rgb(7, 19, 24)
+          successStandardBg: rgb(12, 19, 13)
+          warningStandardBg: rgb(25, 18, 7)
+          errorIconColor: 'var(--oxygen-palette-error-main, #f44336)'
+          infoIconColor: 'var(--oxygen-palette-info-main, #29b6f6)'
+          successIconColor: 'var(--oxygen-palette-success-main, #66bb6a)'
+          warningIconColor: 'var(--oxygen-palette-warning-main, #ffa726)'
+        AppBar:
+          defaultBg: 'var(--oxygen-palette-grey-900, #212121)'
+          darkBg: 'var(--oxygen-palette-background-paper, #121212)'
+          darkColor: 'var(--oxygen-palette-text-primary, #fff)'
+        Avatar:
+          defaultBg: 'var(--oxygen-palette-grey-600, #757575)'
+        Button:
+          inheritContainedBg: 'var(--oxygen-palette-grey-800, #424242)'
+          inheritContainedHoverBg: 'var(--oxygen-palette-grey-700, #616161)'
+        Chip:
+          defaultBorder: 'var(--oxygen-palette-grey-700, #616161)'
+          defaultAvatarColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultIconColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+        FilledInput:
+          bg: rgba(255, 255, 255, 0.09)
+          hoverBg: rgba(255, 255, 255, 0.13)
+          disabledBg: rgba(255, 255, 255, 0.12)
+        LinearProgress:
+          primaryBg: rgb(127, 57, 0)
+          secondaryBg: rgb(58, 58, 58)
+          errorBg: rgb(122, 33, 27)
+          infoBg: rgb(20, 91, 123)
+          successBg: rgb(51, 93, 53)
+          warningBg: rgb(127, 83, 19)
+        Skeleton:
+          bg: rgba(var(--oxygen-palette-text-primaryChannel, undefined) / 0.13)
+        Slider:
+          primaryTrack: rgb(127, 57, 0)
+          secondaryTrack: rgb(58, 58, 58)
+          errorTrack: rgb(122, 33, 27)
+          infoTrack: rgb(20, 91, 123)
+          successTrack: rgb(51, 93, 53)
+          warningTrack: rgb(127, 83, 19)
+        SnackbarContent:
+          bg: rgb(250, 250, 250)
+          color: rgba(0, 0, 0, 0.87)
+        SpeedDialAction:
+          fabHoverBg: rgb(53, 53, 53)
+        StepConnector:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        StepContent:
+          border: 'var(--oxygen-palette-grey-600, #757575)'
+        Switch:
+          defaultColor: 'var(--oxygen-palette-grey-300, #e0e0e0)'
+          defaultDisabledColor: 'var(--oxygen-palette-grey-600, #757575)'
+          primaryDisabledColor: rgb(114, 51, 0)
+          secondaryDisabledColor: rgb(52, 52, 52)
+          errorDisabledColor: rgb(109, 30, 24)
+          infoDisabledColor: rgb(18, 81, 110)
+          successDisabledColor: rgb(45, 84, 47)
+          warningDisabledColor: rgb(114, 75, 17)
+        TableCell:
+          border: rgba(81, 81, 81, 1)
+        Tooltip:
+          bg: rgba(97, 97, 97, 0.92)
+        dividerChannel: 255 255 255
+      opacity:
+        inputPlaceholder: 0.5
+        inputUnderline: 0.7
+        switchTrackDisabled: 0.2
+        switchTrack: 0.3
+      overlays:
+      - none
+      - linear-gradient(rgba(255 255 255 / 0.051), rgba(255 255 255 / 0.051))
+      - linear-gradient(rgba(255 255 255 / 0.069), rgba(255 255 255 / 0.069))
+      - linear-gradient(rgba(255 255 255 / 0.082), rgba(255 255 255 / 0.082))
+      - linear-gradient(rgba(255 255 255 / 0.092), rgba(255 255 255 / 0.092))
+      - linear-gradient(rgba(255 255 255 / 0.101), rgba(255 255 255 / 0.101))
+      - linear-gradient(rgba(255 255 255 / 0.108), rgba(255 255 255 / 0.108))
+      - linear-gradient(rgba(255 255 255 / 0.114), rgba(255 255 255 / 0.114))
+      - linear-gradient(rgba(255 255 255 / 0.119), rgba(255 255 255 / 0.119))
+      - linear-gradient(rgba(255 255 255 / 0.124), rgba(255 255 255 / 0.124))
+      - linear-gradient(rgba(255 255 255 / 0.128), rgba(255 255 255 / 0.128))
+      - linear-gradient(rgba(255 255 255 / 0.132), rgba(255 255 255 / 0.132))
+      - linear-gradient(rgba(255 255 255 / 0.135), rgba(255 255 255 / 0.135))
+      - linear-gradient(rgba(255 255 255 / 0.139), rgba(255 255 255 / 0.139))
+      - linear-gradient(rgba(255 255 255 / 0.142), rgba(255 255 255 / 0.142))
+      - linear-gradient(rgba(255 255 255 / 0.145), rgba(255 255 255 / 0.145))
+      - linear-gradient(rgba(255 255 255 / 0.147), rgba(255 255 255 / 0.147))
+      - linear-gradient(rgba(255 255 255 / 0.15), rgba(255 255 255 / 0.15))
+      - linear-gradient(rgba(255 255 255 / 0.152), rgba(255 255 255 / 0.152))
+      - linear-gradient(rgba(255 255 255 / 0.155), rgba(255 255 255 / 0.155))
+      - linear-gradient(rgba(255 255 255 / 0.157), rgba(255 255 255 / 0.157))
+      - linear-gradient(rgba(255 255 255 / 0.159), rgba(255 255 255 / 0.159))
+      - linear-gradient(rgba(255 255 255 / 0.161), rgba(255 255 255 / 0.161))
+      - linear-gradient(rgba(255 255 255 / 0.163), rgba(255 255 255 / 0.163))
+      - linear-gradient(rgba(255 255 255 / 0.165), rgba(255 255 255 / 0.165))
+---
+# resource_type: application
+id: 01900000-0000-7000-8000-000000000060
+name: Console
+description: Management application for ThunderID
+ouId: 01900000-0000-7000-8000-000000000001
+url: "{{ .PUBLIC_URL }}/console"
+logoUrl: "emoji:👨‍💻"
+authFlowId: 01900000-0000-7000-8000-000000000068
+registrationFlowId: 01900000-0000-7000-8000-000000000069
+isRegistrationFlowEnabled: false
+allowedUserTypes:
+  - Person
+inboundAuthConfig:
+  - type: oauth2
+    config:
+      clientId: CONSOLE
+      redirectUris:
+        - "{{ .PUBLIC_URL }}/console"
+      grantTypes:
+        - authorization_code
+        - refresh_token
+      responseTypes:
+        - code
+      pkceRequired: true
+      tokenEndpointAuthMethod: none
+      publicClient: true
+      token:
+        accessToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - groups
+            - name
+            - ouId
+        idToken:
+          validityPeriod: 3600
+          userAttributes:
+            - given_name
+            - family_name
+            - email
+            - groups
+            - name
+            - ouId
+      scopeClaims:
+        profile:
+          - name
+          - given_name
+          - family_name
+          - picture
+        email:
+          - email
+          - email_verified
+        phone:
+          - phone_number
+          - phone_number_verified
+        group:
+          - groups
+        ou:
+          - ouId
+---
+# resource_type: user
+id: 01900000-0000-7000-8000-000000000030
+type: Person
+ouHandle: default
+attributes:
+  username: "{{ .ADMIN_USERNAME }}"
+  sub: "{{ .ADMIN_USERNAME }}"
+  email: admin@example.com
+  name: Administrator
+  given_name: Admin
+  family_name: User
+  picture: https://example.com/avatar.jpg
+  phone_number: "+12345678920"
+credentials:
+  password: "{{ .ADMIN_PASSWORD }}"
+---
+# resource_type: group
+id: 01900000-0000-7000-8000-000000000040
+name: Administrators
+description: System administrators group
+ouHandle: default
+members:
+  - id: 01900000-0000-7000-8000-000000000030
+    type: user
+---
+# resource_type: role
+id: 01900000-0000-7000-8000-000000000050
+name: Administrator
+description: System administrator role with full permissions
+ouHandle: default
+permissions:
+  - resourceServerId: 01900000-0000-7000-8000-000000000020
+    permissions:
+      - system
+assignments:
+  - id: 01900000-0000-7000-8000-000000000040
+    type: group
+---
+# resource_type: translation
+id: 01900000-0000-7000-8000-000000000091
+language: en-US
+translations:
+  onboarding:
+    forms.email.title: User Email
+    forms.email.fields.email.label: Email
+    forms.email.fields.email.placeholder: Enter email
+    forms.email.actions.next.label: Next
+    forms.user_details.title: User Details
+    forms.user_details.fields.username.label: Username
+    forms.user_details.fields.username.placeholder: Enter username
+    forms.user_details.fields.first_name.label: First Name
+    forms.user_details.fields.first_name.placeholder: Enter first name
+    forms.user_details.fields.last_name.label: Last Name
+    forms.user_details.fields.last_name.placeholder: Enter last name
+    forms.user_details.fields.phone_number.label: Phone Number
+    forms.user_details.fields.phone_number.placeholder: Enter phone number
+    forms.user_details.actions.next.label: Next
+    forms.credential.title: Set Password
+    forms.credential.fields.password.label: Password
+    forms.credential.fields.password.placeholder: Enter password
+    forms.credential.actions.submit.label: Set Password
+    forms.user_type.title: Select a user type
+    forms.user_type.subtitle: Choose a user type (schema) for the new user.
+    forms.user_type.fields.user_type.label: User Type
+    forms.user_type.fields.user_type.placeholder: Select a user type
+    forms.user_type.actions.continue.label: Continue
+    forms.ou_selection.title: Select an organization unit
+    forms.ou_selection.subtitle: Choose which organization unit this user should belong to.
+    forms.ou_selection.fields.ou.label: Organization Unit
+    forms.ou_selection.actions.continue.label: Continue
+    forms.phone.title: Phone Number
+    forms.phone.fields.phone.label: Phone Number
+    forms.phone.fields.phone.placeholder: Enter phone number
+    forms.phone.actions.next.label: Next
+    forms.invite_status.title: Invitation Sent
+    forms.invite_status.message: An invitation has been sent to the user. The user can complete their registration using the link.
+    forms.invite_mode.title: Invite User
+    forms.invite_mode.subtitle: Choose how you'd like to invite this user.
+    forms.invite_mode.actions.email.label: Send Invite Email
+    forms.invite_mode.actions.sms.label: Send Invite SMS
+    forms.invite_mode.actions.link.label: Get Invite Link
+    forms.invite_email_sent.title: Invitation Sent
+    forms.invite_email_sent.message: An invitation email has been sent to the user. They can complete their registration using the link in the email.
+    forms.invite_email_unavailable.title: Email Delivery Failed
+    forms.invite_email_unavailable.message: The invitation email could not be delivered. Please use the link below to share the invite manually.
+    forms.invite_sms_sent.title: Invitation Sent
+    forms.invite_sms_sent.message: An invitation SMS has been sent to the user. They can complete their registration using the link in the message.
+    forms.invite_link_status.title: Invite Link Ready
+    forms.invite_link_status.message: Share the invite link below with the user to complete their registration.
+    forms.invite_link_status.link_label: Invite Link
+    forms.onboarding_mode.title: Add User
+    forms.onboarding_mode.subtitle: Choose whether to create the account now or send an invite for the user to finish onboarding later.
+    forms.onboarding_mode.actions.create.label: Create User
+    forms.onboarding_mode.actions.invite.label: Invite User
+    forms.add_user.title: Add User Details
+    forms.add_user.subtitle: Provide the new user details to create the account immediately.
+    forms.add_user.actions.submit.label: Create User
+    forms.complete_registration.title: Complete Your Account
+    forms.complete_registration.subtitle: Provide remaining details to finish setting up your account.
+    forms.complete_registration.actions.submit.label: Complete Setup
+    forms.add_user_complete.title: User Added Successfully
+    forms.add_user_complete.description: The new account has been created successfully.
+  invite:
+    validating: Validating your invite link...
+    complete.title: Welcome Aboard!
+    complete.description: Your account has been successfully set up. You can now sign in.
+    complete.description.withApp: Your account has been successfully set up for {{appName}}. You can now sign in.
+    complete.backToApp: Back to Application
+    complete.backToApp.withApp: Back to {{appName}}
+    errors.invalid.title: Unable to verify invite
+    errors.invalid.description: This invite link is invalid or has expired.
+    errors.failed.title: Error
+    errors.failed.description: An error occurred. Please try again.
+    goToSignIn: Go to Sign In
+    signIn: Sign In
+  signin:
+    images.app_logo.alt: Application logo
+    forms.credentials.title: Sign In
+    forms.credentials.fields.username.label: Username
+    forms.credentials.fields.username.placeholder: Enter your username
+    forms.credentials.fields.password.label: Password
+    forms.credentials.fields.password.placeholder: Enter your password
+    forms.credentials.actions.submit.label: Sign In
+    forms.magic_link.title: Sign In with Magic Link
+    forms.magic_link.fields.email.label: Email Address
+    forms.magic_link.fields.email.placeholder: Enter your email address
+    forms.magic_link.actions.submit.label: Send Magic Link
+    forms.magic_link.email_sent.title: Check Your Email
+    forms.magic_link.email_sent.description: We sent you a verification link. Please check your inbox and click the link to continue.
+    forms.ciba.notification_sent.heading: Authentication Request Sent
+    forms.ciba.notification_sent.message: A notification has been sent. Follow the link in the notification to continue.
+    forms.ciba.notification_error.heading: Notification Failed
+    forms.ciba.notification_error.message: The authentication notification could not be delivered. Please try again or contact support.
+    forms.ciba.credentials.heading: Confirm Your Identity
+    forms.ciba.credentials.message: Enter your credentials to approve the authentication request.
+    forms.ciba.credentials.actions.approve.label: Approve
+    forms.ciba.consent.heading: Authorize Request
+    forms.ciba.consent.message: By clicking Approve, you confirm that you initiated this request and consent to the action being performed.
+    forms.ciba.consent.actions.approve.label: Approve
+    forms.ciba.success.heading: Authentication Successful
+    forms.ciba.success.message: You have successfully authenticated. You may close this window.
+    forms.passkey.title: Sign in with Passkey
+    forms.passkey.description: Use your passkey to securely sign in to your account without a password.
+    forms.passkey.actions.submit.label: Sign in with Passkey
+    forms.passkey.actions.continue.label: Continue
+    forms.passkey.register.title: Register Passkey
+    forms.passkey.register.description: No passkey found for your account. Enter your password to register a new passkey.
+    forms.passkey.register.actions.submit.label: Register Passkey
+    forms.choose_auth_method.title: Sign In
+    forms.choose_auth_method.fields.username.label: Username
+    forms.choose_auth_method.fields.username.placeholder: Enter your username
+    forms.choose_auth_method.fields.password.label: Password
+    forms.choose_auth_method.fields.password.placeholder: Enter your password
+    forms.choose_auth_method.actions.submit.label: Sign In
+    forms.choose_auth_method.actions.passkey.label: Sign in with Passkey
+    forms.passkey_identifier.title: Sign in with Passkey
+    forms.passkey_identifier.fields.username.label: Username
+    forms.passkey_identifier.fields.username.placeholder: Enter your username
+    forms.passkey_identifier.actions.continue.label: Continue
+    forms.password_for_registration.title: Register Passkey
+    forms.password_for_registration.description: No passkey found for your account. Enter your password to register a new passkey.
+    forms.password_for_registration.fields.password.label: Password
+    forms.password_for_registration.fields.password.placeholder: Enter your password
+    forms.password_for_registration.actions.submit.label: Register Passkey
+    forms.phone.title: Sign In with SMS
+    forms.phone.description: Enter your mobile number to receive a verification code
+    forms.phone.fields.phone.label: Mobile Number
+    forms.phone.fields.phone.placeholder: Enter your mobile number
+    forms.phone.actions.submit.label: Send Code
+    forms.otp.title: Verify Your Identity
+    forms.otp.description: Enter the verification code sent to your phone
+    forms.otp.fields.otp.label: Verification Code
+    forms.otp.fields.otp.placeholder: Enter code
+    forms.otp.actions.submit.label: Verify
+    forms.credentials.links.forgot_password.prefix: Forgot password?
+    forms.credentials.links.forgot_password.label: Reset
+    forms.credentials.links.sign_up.prefix: Don't have an account?
+    forms.credentials.links.sign_up.label: Sign up
+  signup:
+    images.app_logo.alt: Application logo
+    forms.credentials.title: Sign Up
+    forms.credentials.description: Choose your preferred registration method
+    forms.credentials.complete_profile: Complete your profile
+    forms.credentials.fields.username.label: Username
+    forms.credentials.fields.username.placeholder: Enter your username
+    forms.credentials.fields.password.label: Password
+    forms.credentials.fields.password.placeholder: Enter your password
+    forms.credentials.fields.first_name.label: First Name
+    forms.credentials.fields.first_name.placeholder: Enter your first name
+    forms.credentials.fields.last_name.label: Last Name
+    forms.credentials.fields.last_name.placeholder: Enter your last name
+    forms.credentials.fields.email.label: Email
+    forms.credentials.fields.email.placeholder: Enter your email
+    forms.credentials.fields.email_address.label: Email Address
+    forms.credentials.fields.email_address.placeholder: Enter your email address
+    forms.credentials.fields.user_type.label: User Type
+    forms.credentials.fields.user_type.placeholder: Select your user type
+    forms.credentials.actions.continue.label: Continue
+    forms.credentials.actions.submit.label: Sign Up
+    forms.credentials.divider.or: OR
+    forms.passkey.title: Sign Up
+    forms.passkey.description: Sign up with a passkey for secure access without a password
+    forms.passkey.actions.submit.label: Sign up with Passkey
+    forms.passkey.actions.continue.label: Continue
+    forms.passkey.add.title: Add a Passkey
+    forms.passkey.add.description: Would you like to add a passkey to your account for faster and more secure sign-ins?
+    forms.passkey.add.actions.add.label: Add Passkey
+    forms.passkey.add.actions.skip.label: Skip for now
+    forms.user_type.title: Sign Up
+    forms.user_type.fields.user_type.label: User Type
+    forms.user_type.fields.user_type.placeholder: Select your user type
+    forms.user_type.actions.continue.label: Continue
+    forms.user_info.title: Sign Up
+    forms.user_info.fields.first_name.label: First Name
+    forms.user_info.fields.first_name.placeholder: Enter your first name
+    forms.user_info.fields.last_name.label: Last Name
+    forms.user_info.fields.last_name.placeholder: Enter your last name
+    forms.user_info.fields.email_address.label: Email Address
+    forms.user_info.fields.email_address.placeholder: Enter your email address
+    forms.user_info.actions.submit.label: Sign Up
+    forms.user_info.actions.continue.label: Continue
+    forms.registration.title: Sign Up
+    forms.registration.fields.username.label: Username
+    forms.registration.fields.username.placeholder: Enter your username
+    forms.registration.fields.password.label: Password
+    forms.registration.fields.password.placeholder: Enter your password
+    forms.registration.fields.first_name.label: First Name
+    forms.registration.fields.first_name.placeholder: Enter your first name
+    forms.registration.fields.last_name.label: Last Name
+    forms.registration.fields.last_name.placeholder: Enter your last name
+    forms.registration.fields.email_address.label: Email Address
+    forms.registration.fields.email_address.placeholder: Enter your email address
+    forms.registration.actions.submit.label: Sign Up
+    forms.choose_registration_method.title: Sign Up
+    forms.choose_registration_method.description: Choose your preferred registration method
+    forms.choose_registration_method.fields.username.label: Username
+    forms.choose_registration_method.fields.username.placeholder: Enter your username
+    forms.choose_registration_method.fields.password.label: Password
+    forms.choose_registration_method.fields.password.placeholder: Enter your password
+    forms.choose_registration_method.actions.continue.label: Continue
+    forms.choose_registration_method.actions.passkey.label: Sign up with Passkey
+    forms.choose_registration_method.divider.or: OR
+    forms.basic_user_info.title: Sign Up
+    forms.basic_user_info.complete_profile: Complete your profile
+    forms.basic_user_info.fields.first_name.label: First Name
+    forms.basic_user_info.fields.first_name.placeholder: Enter your first name
+    forms.basic_user_info.fields.last_name.label: Last Name
+    forms.basic_user_info.fields.last_name.placeholder: Enter your last name
+    forms.basic_user_info.fields.email.label: Email
+    forms.basic_user_info.fields.email.placeholder: Enter your email
+    forms.basic_user_info.actions.continue.label: Continue
+    forms.collect_passkey_user_info.title: Sign Up
+    forms.collect_passkey_user_info.description: Sign up with a passkey for secure access without a password
+    forms.collect_passkey_user_info.fields.username.label: Username
+    forms.collect_passkey_user_info.fields.username.placeholder: Enter your username
+    forms.collect_passkey_user_info.fields.email.label: Email
+    forms.collect_passkey_user_info.fields.email.placeholder: Enter your email
+    forms.collect_passkey_user_info.actions.continue.label: Continue
+    forms.collect_user_info.title: Sign Up
+    forms.collect_user_info.fields.username.label: Username
+    forms.collect_user_info.fields.username.placeholder: Enter your username
+    forms.collect_user_info.fields.email.label: Email
+    forms.collect_user_info.fields.email.placeholder: Enter your email
+    forms.collect_user_info.fields.password.label: Password
+    forms.collect_user_info.fields.password.placeholder: Enter your password
+    forms.collect_user_info.actions.submit.label: Sign Up
+    forms.email.title: Sign Up
+    forms.email.fields.email.label: Email
+    forms.email.fields.email.placeholder: Enter your email
+    forms.email.actions.next.label: Next
+    forms.user_details.title: Sign Up
+    forms.user_details.fields.username.label: Username
+    forms.user_details.fields.username.placeholder: Enter your username
+    forms.user_details.fields.first_name.label: First Name
+    forms.user_details.fields.first_name.placeholder: Enter your first name
+    forms.user_details.fields.last_name.label: Last Name
+    forms.user_details.fields.last_name.placeholder: Enter your last name
+    forms.user_details.actions.next.label: Next
+    forms.credential.title: Create Password
+    forms.credential.fields.password.label: Password
+    forms.credential.fields.password.placeholder: Enter your password
+    forms.credential.actions.submit.label: Sign Up
+    forms.email_sent.title: Check Your Email
+    forms.email_sent.message: We sent you a verification link. Please check your inbox and click the link to continue.
+    forms.phone.title: Sign Up
+    forms.phone.fields.phone.label: Mobile Number
+    forms.phone.fields.phone.placeholder: Enter your mobile number
+    forms.phone.actions.next.label: Next
+    forms.sms_sent.title: Check Your Phone
+    forms.sms_sent.message: We sent you a verification link via SMS. Please check your messages and click the link to continue.
+    forms.otp.title: Verify Your Phone
+    forms.otp.description: Enter the verification code sent to your phone
+    forms.otp.fields.otp.label: Verification Code
+    forms.otp.fields.otp.placeholder: Enter code
+    forms.otp.actions.submit.label: Verify
+    forms.magic_link.email_sent.title: Check Your Email
+    forms.magic_link.email_sent.description: We sent you a verification link. Please check your inbox and click the link to continue.
+  recovery:
+    forms.username.title: Password Recovery
+    forms.username.subtitle: Enter your username to start the password recovery
+    forms.username.fields.username.label: Username
+    forms.username.fields.username.placeholder: Enter your username
+    forms.email_sent.title: Check Your Email
+    forms.email_sent.message: We sent you a password reset link. Please check your inbox and click the link to reset your password.
+    forms.username.actions.submit.label: Submit
+    forms.email.fields.email.label: Email
+    forms.email.fields.email.placeholder: Enter your email
+    forms.email.actions.next.label: Next
+    forms.otp_sent.title: OTP Sent to your mobile
+    forms.otp_sent.message: We sent you a verification code via SMS. Please check your messages and enter the code to continue.
+    forms.otp_sent.fields.otp.label: Verification Code
+    forms.otp_sent.fields.otp.placeholder: Enter code
+    forms.otp_sent.actions.verify.label: Verify
+    forms.new_password.title: Reset Password
+    forms.new_password.subtitle: Enter a new password for your account
+    forms.new_password.fields.password.label: New Password
+    forms.new_password.fields.password.placeholder: Enter your new password
+    forms.new_password.actions.submit.label: Reset Password
+    forms.complete.title: Password Reset Successful
+    forms.complete.message: Your password has been successfully reset. You can now sign in with your new password.
+    forms.username.links.sign_in.prefix: Remember your password?
+    forms.username.links.sign_in.label: Sign in
+  elements:
+    fields.usertype.label: User Type
+    fields.usertype.placeholder: Select User Type

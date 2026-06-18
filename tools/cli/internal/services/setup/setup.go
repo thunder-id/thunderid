@@ -138,7 +138,6 @@ func RunSetupOnPort(installPath string, verbose bool, port int) error {
 	env := append(os.Environ(),
 		"ADMIN_USERNAME="+adminUser,
 		"ADMIN_PASSWORD="+adminPass,
-		"THUNDER_SKIP_SECURITY=true",
 	)
 	if port > 0 {
 		env = append(env, fmt.Sprintf("THUNDER_PORT=%d", port))

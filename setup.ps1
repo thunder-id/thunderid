@@ -99,121 +99,6 @@ function Log-Debug {
 }
 
 # ============================================================================
-# API Call Helper Function
-# ============================================================================
-
-function Invoke-Api {
-    param(
-        [string]$Method,
-        [string]$Endpoint,
-        [string]$Data = ""
-    )
-
-    # Get base URL from environment variable
-    $baseUrl = if ($env:API_BASE) {
-        $env:API_BASE
-    } else {
-        Log-Error "API_BASE is not set!"
-        return @{
-            StatusCode = 0
-            Body = ""
-            Error = "API_BASE not set"
-        }
-    }
-
-    $url = "$baseUrl$Endpoint"
-
-    Log-Debug "API Call: $Method $url"
-    if ($Data) {
-        Log-Debug "Request Body: $Data"
-    }
-
-    $responseFile = [System.IO.Path]::GetTempFileName()
-    $dataFile = $null
-
-    try {
-        $curlArgs = @(
-            "-X", $Method,
-            "-k",  # Skip SSL verification
-            "-s",  # Silent mode
-            "-w", "%{http_code}",  # Write status code
-            "-H", "Content-Type: application/json",
-            "-o", $responseFile  # Output to file
-        )
-
-        if ($Data -and ($Method -eq "POST" -or $Method -eq "PUT" -or $Method -eq "PATCH")) {
-            # Save data to temp file for curl
-            $dataFile = [System.IO.Path]::GetTempFileName()            
-            if ($PSVersionTable.PSVersion.Major -ge 6) {
-                $Data | Out-File -FilePath $dataFile -Encoding UTF8NoBOM -NoNewline
-            } else {
-                [System.IO.File]::WriteAllText($dataFile, $Data, [System.Text.UTF8Encoding]::new($false))
-            }
-            
-            $curlArgs += @("-d", "@$dataFile")
-        }
-
-        $curlArgs += $url
-
-        Log-Debug "curl command: curl $($curlArgs -join ' ')"
-
-        # Execute curl and capture output
-        $curlOutput = & curl.exe @curlArgs 2>&1
-        $curlExitCode = $LASTEXITCODE
-
-        # The last line should be the status code
-        $statusCode = $curlOutput | Select-Object -Last 1
-
-        # Handle curl errors (nonzero exit code or status code might be empty or non-numeric)
-        if ($curlExitCode -ne 0 -or -not $statusCode -or $statusCode -notmatch '^\d+$') {
-            Log-Error "Failed to execute curl command or received invalid response (exit code: $curlExitCode)"
-            Log-Error "curl output: $($curlOutput -join "`n")"
-            return @{
-                StatusCode = 0
-                Body = ""
-                Error = "curl execution failed (exit code: $curlExitCode): $($curlOutput -join '; ')"
-            }
-        }
-
-        # Read response body (file should always exist, but check defensively)
-        $body = if (Test-Path $responseFile) {
-            Get-Content -Path $responseFile -Raw
-        } else {
-            ""
-        }
-
-        Log-Debug "Response Status: $statusCode"
-        Log-Debug "Response Body: $body"
-
-        $finalBody = if ($body) { $body } else { "" }
-
-        return @{
-            StatusCode = [int]$statusCode
-            Body = $finalBody
-        }
-    }
-    catch {
-        Log-Error "API call failed: $_"
-        Log-Error "Exception: $($_.Exception.Message)"
-
-        return @{
-            StatusCode = 0
-            Body = ""
-            Error = $_.Exception.Message
-        }
-    }
-    finally {
-        # Clean up temp files
-        if (Test-Path $responseFile) {
-            Remove-Item $responseFile -Force -ErrorAction SilentlyContinue
-        }
-        if ($dataFile -and (Test-Path $dataFile)) {
-            Remove-Item $dataFile -Force -ErrorAction SilentlyContinue
-        }
-    }
-}
-
-# ============================================================================
 # Help Function
 # ============================================================================
 
@@ -454,29 +339,11 @@ if ($DEBUG_MODE -and -not (Get-Command dlv -ErrorAction SilentlyContinue)) {
 }
 
 # ============================================================================
-# Start the Server with Security Disabled
+# Create Default Resources (in-process bootstrap)
 # ============================================================================
 
-if ($VERBOSE_MODE) {
-    Write-Host "[WARN] Starting temporary server with security disabled..." -ForegroundColor Yellow
-    Write-Host ""
-}
-
-# Export environment variable to skip security
-$hadSkipSecurity = Test-Path Env:SKIP_SECURITY
-$previousSkipSecurity = $env:SKIP_SECURITY
-$env:SKIP_SECURITY = "true"
-
-# Resolve the server executable path
+# Resolve the script directory (used to locate the consent server and start.ps1).
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$possible = @(
-    (Join-Path $scriptDir "${BINARY_NAME}.exe"),
-    (Join-Path $scriptDir $BINARY_NAME)
-)
-$serverExecPath = $possible | Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $serverExecPath) {
-    $serverExecPath = Join-Path $scriptDir $BINARY_NAME
-}
 
 # Start Consent Server (if enabled)
 $consentProc = $null
@@ -540,305 +407,43 @@ if ($WITH_CONSENT) {
     }
 }
 
-$proc = $null
+# Create the default resources by delegating to start.ps1 -Bootstrap. The consent
+# server (if enabled) was already started above, so --without-consent is passed so
+# start.ps1 does not start a second one. The public URL is exported so the bootstrap
+# subcommand picks it up; admin credentials are read from the ADMIN_USERNAME /
+# ADMIN_PASSWORD environment variables (default admin / admin) when set.
+$env:PUBLIC_URL = $PUBLIC_URL
+
+$startScript = Join-Path $scriptDir 'start.ps1'
+if (-not (Test-Path $startScript)) {
+    Log-Error "start.ps1 is missing: $startScript"
+    exit 1
+}
+
 try {
-    $serverProcessArgs = @{
-        WorkingDirectory = $scriptDir
-        NoNewWindow = $true
-        PassThru = $true
-    }
-    if ($SILENT_MODE) {
-        $serverStdOutLog = [System.IO.Path]::GetTempFileName()
-        $serverStdErrLog = [System.IO.Path]::GetTempFileName()
-        $serverProcessArgs["RedirectStandardOutput"] = $serverStdOutLog
-        $serverProcessArgs["RedirectStandardError"] = $serverStdErrLog
-    }
-
-    if ($DEBUG_MODE) {
-        $dlvArgs = @(
-            'exec'
-            "--listen=:$DEBUG_PORT"
-            '--headless=true'
-            '--api-version=2'
-            '--accept-multiclient'
-            '--continue'
-            $serverExecPath
-        )
-        $serverProcessArgs["FilePath"] = "dlv"
-        $serverProcessArgs["ArgumentList"] = $dlvArgs
-        $proc = Start-Process @serverProcessArgs
-    }
-    else {
-        $serverProcessArgs["FilePath"] = $serverExecPath
-        $proc = Start-Process @serverProcessArgs
-    }
-
-    $SERVER_PID = $proc.Id
-
-    # Cleanup function
-    $cleanup = {
-        if ($VERBOSE_MODE) {
-            Write-Host ""
-            Write-Host "[STOP] Stopping temporary server..." -ForegroundColor Cyan
-        }
-        if ($proc -and -not $proc.HasExited) {
-            try {
-                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            } catch { }
-        }
-        if ($consentProc -and -not $consentProc.HasExited) {
-            try {
-                Stop-Process -Id $consentProc.Id -Force -ErrorAction SilentlyContinue
-            } catch { }
-        }
-    }
-
-    # Register cleanup on exit
-    Register-EngineEvent PowerShell.Exiting -Action $cleanup | Out-Null
-
-    # ============================================================================
-    # Wait for Server to be Ready
-    # ============================================================================
-
     if ($VERBOSE_MODE) {
-        Write-Host "[WAIT] Waiting for server to be ready..." -ForegroundColor Blue
-        Write-Host "   Server URL: $BASE_URL" -ForegroundColor Blue
+        Write-Host "[WAIT] Creating default resources..." -ForegroundColor Blue
     }
 
-    $TIMEOUT = 60
-    $ELAPSED = 0
-    $RETRY_DELAY = 2
-    $lastError = ""
-
-    while ($ELAPSED -lt $TIMEOUT) {
-        Log-Debug "Attempting health check (attempt $([math]::Floor($ELAPSED / $RETRY_DELAY) + 1))..."
-
-        $healthUrl = "$BASE_URL/health/readiness"
-        Log-Debug "Making request to: $healthUrl"
-
-        $requestStart = Get-Date
-        $statusCode = & curl.exe -k -s -w "%{http_code}" -o NUL $healthUrl 2>&1 | Select-Object -Last 1
-        $requestDuration = (Get-Date) - $requestStart
-
-        Log-Debug "Request completed in $([math]::Round($requestDuration.TotalSeconds, 2))s with status: $statusCode"
-
-        if ($statusCode -eq "200") {
-            if ($VERBOSE_MODE) {
-                Write-Host ""
-                Write-Host "[OK] Server is ready" -ForegroundColor Green
-                Log-Debug "Health check response: $body"
-                Write-Host ""
-            }
-            break
-        }
-        else {
-            # Server not ready yet
-            $currentError = "HTTP $statusCode"
-
-            # Log additional details when error status changes
-            if ($currentError -ne $lastError) {
-                Write-Host ""
-                Log-Debug "Health check failed with status: $statusCode"
-
-                if (-not $statusCode -or $statusCode -eq '000') {
-                    Log-Debug "Connection refused - server not yet listening"
-                } elseif ($statusCode -match "^50[0-9]$") {
-                    Log-Debug "Server error - server might be starting"
-                }
-
-                $lastError = $currentError
-                Write-Host "." -NoNewline
-            } else {
-                Write-Host "." -NoNewline
-            }
-        }
-
-        Start-Sleep -Seconds $RETRY_DELAY
-        $ELAPSED += $RETRY_DELAY
-    }
-
-    if ($ELAPSED -ge $TIMEOUT) {
-        Write-Host ""
-        Write-Host "[ERROR] Server health check failed within $TIMEOUT seconds" -ForegroundColor Red
-        Write-Host "Expected server at: $BASE_URL" -ForegroundColor Red
-        Write-Host "Last status: $lastError" -ForegroundColor Red
+    & $startScript --bootstrap --without-consent
+    if ($LASTEXITCODE -ne 0) {
+        Log-Error "Failed to create default resources"
         exit 1
     }
+    Log-Success "Default resources created"
 
-    # ============================================================================
-    # Run Bootstrap Scripts
-    # ============================================================================
-
-    # Export environment variable for bootstrap scripts
-    $env:SETUP_SILENT_MODE = if ($SILENT_MODE) { "true" } else { "false" }
-
-    # Check if bootstrap directory exists
-    if (-not (Test-Path $BOOTSTRAP_DIR)) {
-        Log-Warning "Bootstrap directory not found: $BOOTSTRAP_DIR"
-        Log-Info "Skipping bootstrap execution"
-    }
-    else {
-        Log-Info "========================================="
-        Log-Info "$PRODUCT_NAME Bootstrap Process"
-        Log-Info "========================================="
-        Log-Info "Bootstrap directory: $BOOTSTRAP_DIR"
-        Log-Info "Fail fast: $BOOTSTRAP_FAIL_FAST"
-        Log-Info "Started at: $(Get-Date)"
-        Write-Host ""
-
-        # Collect all PowerShell scripts from bootstrap directory
-        $scripts = @()
-
-        # Find PowerShell scripts in bootstrap directory
-        if (Test-Path $BOOTSTRAP_DIR) {
-            Log-Debug "Scanning $BOOTSTRAP_DIR for PowerShell scripts..."
-            $scripts = Get-ChildItem -Path $BOOTSTRAP_DIR -Filter "*.ps1" -File -ErrorAction SilentlyContinue
-
-            Log-Debug "Found $($scripts.Count) PowerShell script(s)"
-            foreach ($bootstrapScript in $scripts) {
-                Log-Debug "  - $($bootstrapScript.Name)"
-            }
-        }
-
-        # Sort scripts by filename (numeric prefix determines order)
-        $sortedScripts = $scripts | Sort-Object Name
-
-        if ($sortedScripts.Count -eq 0) {
-            Log-Warning "No bootstrap scripts found"
-        }
-        else {
-            Log-Info "Discovered $($sortedScripts.Count) PowerShell script(s)"
-            Log-Debug "Scripts will be executed in this order:"
-            foreach ($bootstrapScript in $sortedScripts) {
-                Log-Debug "  - $($bootstrapScript.Name)"
-            }
-            Write-Host ""
-
-            # Execute scripts
-            $scriptCount = 0
-            $successCount = 0
-            $failedCount = 0
-            $skippedCount = 0
-
-            foreach ($bootstrapScript in $sortedScripts) {
-                $scriptName = $bootstrapScript.Name
-
-                if ($SILENT_MODE) {
-                    if ($scriptName -eq "01-default-resources.ps1" -or $scriptName -eq "01-default-resources.sh") {
-                        Write-Host ""
-                        Write-Host "  Default resources"
-                    }
-                    elseif ($scriptName -eq "02-sample-resources.ps1" -or $scriptName -eq "02-sample-resources.sh") {
-                        Write-Host ""
-                        Write-Host "  Sample resources"
-                    }
-                }
-
-                # Skip if matches skip pattern
-                if ($BOOTSTRAP_SKIP_PATTERN -and ($scriptName -match $BOOTSTRAP_SKIP_PATTERN)) {
-                    Log-Info "[SKIP] Skipping $scriptName (matches skip pattern regex: $BOOTSTRAP_SKIP_PATTERN)"
-                    $skippedCount++
-                    continue
-                }
-
-                # Skip if doesn't match only pattern
-                if ($BOOTSTRAP_ONLY_PATTERN -and ($scriptName -notmatch $BOOTSTRAP_ONLY_PATTERN)) {
-                    Log-Info "[SKIP] Skipping $scriptName (doesn't match only pattern: $BOOTSTRAP_ONLY_PATTERN)"
-                    $skippedCount++
-                    continue
-                }
-
-                Log-Info "[EXEC] Executing: $scriptName"
-                $scriptCount++
-
-                # Execute PowerShell script
-                $startTime = Get-Date
-
-                try {
-                    if ($SILENT_MODE) {
-                        & $bootstrapScript.FullName *> $null
-                    }
-                    else {
-                        & $bootstrapScript.FullName
-                    }
-                    $exitCode = $LASTEXITCODE
-
-                    $endTime = Get-Date
-                    $duration = [math]::Round(($endTime - $startTime).TotalSeconds, 2)
-
-                    if ($exitCode -eq 0 -or $null -eq $exitCode) {
-                        Log-Success "$scriptName completed (${duration}s)"
-                        $successCount++
-                    }
-                    else {
-                        Log-Error "$scriptName failed with exit code $exitCode (${duration}s)"
-                        $failedCount++
-
-                        if ($BOOTSTRAP_FAIL_FAST) {
-                            Log-Error "Stopping bootstrap (BOOTSTRAP_FAIL_FAST=true)"
-                            exit 1
-                        }
-                    }
-                }
-                catch {
-                    $endTime = Get-Date
-                    $duration = [math]::Round(($endTime - $startTime).TotalSeconds, 2)
-
-                    Log-Error "$scriptName failed with error: $_  (${duration}s)"
-                    $failedCount++
-
-                    if ($BOOTSTRAP_FAIL_FAST) {
-                        Log-Error "Stopping bootstrap (BOOTSTRAP_FAIL_FAST=true)"
-                        exit 1
-                    }
-                }
-
-                Write-Host ""
-            }
-
-            # Summary
-            Write-Host ""
-            Log-Info "========================================="
-            Log-Info "Bootstrap Summary"
-            Log-Info "========================================="
-            Log-Info "Total scripts discovered: $($sortedScripts.Count)"
-            Log-Info "Executed: $scriptCount"
-            Log-Success "Successful: $successCount"
-
-            if ($failedCount -gt 0) {
-                Log-Error "Failed: $failedCount"
-            }
-
-            if ($skippedCount -gt 0) {
-                Log-Info "Skipped: $skippedCount"
-            }
-
-            Log-Info "Completed at: $(Get-Date)"
-            Log-Info "========================================="
-
-            if ($failedCount -gt 0) {
-                exit 1
-            }
-
-            Log-Success "Bootstrap completed successfully!"
-        }
-    }
-
-    # ============================================================================
+    # ========================================================================
     # Setup Completed
-    # ============================================================================
+    # ========================================================================
 
     Write-Host ""
     Write-Host ""
     if ($SILENT_MODE) {
         Write-Host "========================================="
-        Write-Host "✅ Setup completed successfully!"
+        Write-Host "Setup completed successfully!"
         Write-Host "========================================="
         Write-Host ""
-        Write-Host "Admin credentials:"
-        Write-Host "  URL:      ${PUBLIC_URL}/console"
-        Write-Host "  Username: admin"
-        Write-Host "  Password: admin"
+        Write-Host "Console URL: ${PUBLIC_URL}/console"
         Write-Host ""
         Write-Host "Run .\start.ps1 to start ${PRODUCT_NAME}."
         Write-Host ""
@@ -851,40 +456,18 @@ try {
         Write-Host "[INFO] Next steps:"
         Write-Host "   1. Start the server: .\start.ps1" -ForegroundColor Cyan
         Write-Host "   2. Access $PRODUCT_NAME at: $BASE_URL" -ForegroundColor Cyan
-        Write-Host "   3. Login with admin credentials:"
-        Write-Host "      Username: admin" -ForegroundColor Cyan
-        Write-Host "      Password: admin" -ForegroundColor Cyan
         Write-Host ""
     }
 }
 finally {
-    # Cleanup
-    if ($VERBOSE_MODE) {
-        Write-Host ""
-        Write-Host "[STOP] Stopping temporary server..." -ForegroundColor Cyan
-    }
-    if ($proc -and -not $proc.HasExited) {
-        try {
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-        } catch { }
-    }
+    # Stop the consent server started above and clean up its temp logs.
     if ($consentProc -and -not $consentProc.HasExited) {
-        try {
-            Stop-Process -Id $consentProc.Id -Force -ErrorAction SilentlyContinue
-        } catch { }
+        try { Stop-Process -Id $consentProc.Id -Force -ErrorAction SilentlyContinue } catch { }
     }
-
-    foreach ($tempLog in @($serverStdOutLog, $serverStdErrLog, $consentStdOutLog, $consentStdErrLog)) {
+    foreach ($tempLog in @($consentStdOutLog, $consentStdErrLog)) {
         if ($tempLog -and (Test-Path $tempLog)) {
             Remove-Item $tempLog -Force -ErrorAction SilentlyContinue
         }
-    }
-
-    # Restore SKIP_SECURITY to its previous state
-    if (-not $hadSkipSecurity) {
-        Remove-Item Env:SKIP_SECURITY -ErrorAction SilentlyContinue
-    } else {
-        $env:SKIP_SECURITY = $previousSkipSecurity
     }
 }
 

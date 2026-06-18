@@ -43,6 +43,10 @@ $DEBUG_MODE = $false
 $WITH_CONSENT = if ($env:WITH_CONSENT -eq 'false') { $false } else { $true }
 $RESOURCES_FILE = ""
 $ENV_FILE = ""
+$BOOTSTRAP_MODE = $false
+$BOOTSTRAP_AND_SERVE = $false
+$BOOTSTRAP_EXTRA_ARGS = @()
+$script:bootstrapExitCode = 0
 
 # Parse command line arguments
 $i = 0
@@ -82,6 +86,32 @@ while ($i -lt $args.Count) {
             $i++
             break
         }
+        '--bootstrap' {
+            # Run the in-process bootstrap one-shot (create default resources) instead
+            # of starting the long-running server, then exit.
+            $BOOTSTRAP_MODE = $true
+            $i++
+            break
+        }
+        '--bootstrap-and-serve' {
+            # Run the in-process bootstrap one-shot first, then start the long-running
+            # server (convenient for local/dev: seed once, then serve).
+            $BOOTSTRAP_AND_SERVE = $true
+            $i++
+            break
+        }
+        '--console-redirect-uris' {
+            $i++
+            if ($i -lt $args.Count) {
+                $BOOTSTRAP_EXTRA_ARGS += @('--console-redirect-uris', $args[$i])
+                $i++
+            }
+            else {
+                Write-Host "Missing value for --console-redirect-uris" -ForegroundColor Red
+                exit 1
+            }
+            break
+        }
         '--env' {
             $i++
             if ($i -lt $args.Count) {
@@ -108,6 +138,8 @@ while ($i -lt $args.Count) {
             Write-Host "  --port PORT          Set application port (default: 8090)"
             Write-Host "  --debug-port PORT    Set debug port (default: 2345)"
             Write-Host "  --without-consent    Disable the bundled consent server"
+            Write-Host "  --bootstrap          Create default resources in-process, then exit (used by setup.ps1)"
+            Write-Host "  --bootstrap-and-serve Create default resources in-process, then start the server"
             Write-Host "  --help               Show this help message"
             Write-Host ""
             Write-Host "First-Time Setup:"
@@ -227,10 +259,13 @@ function Stop-PortListener {
     }
 }
 
-# Kill ports before binding
-Stop-PortListener -port $BACKEND_PORT
-if ($DEBUG_MODE) { Stop-PortListener -port $DEBUG_PORT }
-Start-Sleep -Seconds 1
+# Kill ports before binding. The bootstrap one-shot does not bind the server port,
+# so the check is skipped in that mode.
+if (-not $BOOTSTRAP_MODE) {
+    Stop-PortListener -port $BACKEND_PORT
+    if ($DEBUG_MODE) { Stop-PortListener -port $DEBUG_PORT }
+    Start-Sleep -Seconds 1
+}
 
 # Check if Delve is available for debug mode
 if ($DEBUG_MODE) {
@@ -301,54 +336,76 @@ try {
         }
     }
 
-    $resourcesArgs = @()
-    if ($RESOURCES_FILE -ne "") { $resourcesArgs = @('-resources', $RESOURCES_FILE) }
-
-    if ($DEBUG_MODE) {
-        Write-Host "[INFO] Starting $PRODUCT_NAME Server in DEBUG mode..."
-        Write-Host "[INFO] Application will run on: https://localhost:$BACKEND_PORT"
-        Write-Host "[INFO] Remote debugger will listen on: localhost:$DEBUG_PORT"
-        Write-Host ""
-        Write-Host "[INFO] Connect using remote debugging configuration:" -ForegroundColor Gray
-        Write-Host "   Host: 127.0.0.1, Port: $DEBUG_PORT" -ForegroundColor Gray
-        Write-Host ""
-
-        # Export BACKEND_PORT for the child process (mirrors the non-debug branch)
+    # Bootstrap: create the default resources in-process. Runs for both --bootstrap
+    # (seed-only) and --bootstrap-and-serve. The consent server started above (if
+    # enabled) stays up for the bootstrap — and, in bootstrap-and-serve mode, for the
+    # server too. It is stopped by the finally block.
+    $runServer = (-not $BOOTSTRAP_MODE)
+    if ($BOOTSTRAP_MODE -or $BOOTSTRAP_AND_SERVE) {
+        Write-Host "[INFO] Running $PRODUCT_NAME bootstrap ..."
         $env:BACKEND_PORT = $BACKEND_PORT
-
-        # Start Delve in headless mode
-        $dlvArgs = @(
-            'exec'
-            "--listen=:$DEBUG_PORT"
-            '--headless=true'
-            '--api-version=2'
-            '--accept-multiclient'
-            '--continue'
-            $serverExecPath
-            '--'
-        ) + $resourcesArgs
-        $proc = Start-Process -FilePath dlv -ArgumentList $dlvArgs -WorkingDirectory $scriptDir -NoNewWindow -PassThru
-    }
-    else {
-        Write-Host "[INFO] Starting $PRODUCT_NAME Server ..."
-
-        # Export BACKEND_PORT for the child process
-        $env:BACKEND_PORT = $BACKEND_PORT
-        $proc = Start-Process -FilePath $serverExecPath -ArgumentList $resourcesArgs -WorkingDirectory $scriptDir -NoNewWindow -PassThru
+        $bootstrapArgs = @('bootstrap') + $BOOTSTRAP_EXTRA_ARGS
+        $bp = Start-Process -FilePath $serverExecPath -ArgumentList $bootstrapArgs -WorkingDirectory $scriptDir -NoNewWindow -PassThru -Wait
+        $script:bootstrapExitCode = $bp.ExitCode
+        if ($bp.ExitCode -eq 0) {
+            Write-Host "[INFO] Bootstrap completed."
+        }
+        else {
+            Write-Host "[ERROR] Bootstrap failed." -ForegroundColor Red
+            $runServer = $false
+        }
     }
 
-    Write-Host ""
-    Write-Host "[INFO] Server running. PID: $($proc.Id)"
-    Write-Host ""
-    Write-Host "[INFO] Frontend Apps:"
-    Write-Host "   [GATE] Gate (Login/Register): $BACKEND_PORT/gate"
-    Write-Host "   [DEV]  Console (System Management): $BACKEND_PORT/console"
-    Write-Host ""
+    if ($runServer) {
+        $resourcesArgs = @()
+        if ($RESOURCES_FILE -ne "") { $resourcesArgs = @('-resources', $RESOURCES_FILE) }
 
-    Write-Host "Press Ctrl+C to stop the server."
+        if ($DEBUG_MODE) {
+            Write-Host "[INFO] Starting $PRODUCT_NAME Server in DEBUG mode..."
+            Write-Host "[INFO] Application will run on: https://localhost:$BACKEND_PORT"
+            Write-Host "[INFO] Remote debugger will listen on: localhost:$DEBUG_PORT"
+            Write-Host ""
+            Write-Host "[INFO] Connect using remote debugging configuration:" -ForegroundColor Gray
+            Write-Host "   Host: 127.0.0.1, Port: $DEBUG_PORT" -ForegroundColor Gray
+            Write-Host ""
 
-    # Wait for the background process. This will block until the process exits.
-    Wait-Process -Id $proc.Id
+            # Export BACKEND_PORT for the child process (mirrors the non-debug branch)
+            $env:BACKEND_PORT = $BACKEND_PORT
+
+            # Start Delve in headless mode
+            $dlvArgs = @(
+                'exec'
+                "--listen=:$DEBUG_PORT"
+                '--headless=true'
+                '--api-version=2'
+                '--accept-multiclient'
+                '--continue'
+                $serverExecPath
+                '--'
+            ) + $resourcesArgs
+            $proc = Start-Process -FilePath dlv -ArgumentList $dlvArgs -WorkingDirectory $scriptDir -NoNewWindow -PassThru
+        }
+        else {
+            Write-Host "[INFO] Starting $PRODUCT_NAME Server ..."
+
+            # Export BACKEND_PORT for the child process
+            $env:BACKEND_PORT = $BACKEND_PORT
+            $proc = Start-Process -FilePath $serverExecPath -ArgumentList $resourcesArgs -WorkingDirectory $scriptDir -NoNewWindow -PassThru
+        }
+
+        Write-Host ""
+        Write-Host "[INFO] Server running. PID: $($proc.Id)"
+        Write-Host ""
+        Write-Host "[INFO] Frontend Apps:"
+        Write-Host "   [GATE] Gate (Login/Register): https://localhost:$BACKEND_PORT/gate"
+        Write-Host "   [DEV]  Console (System Management): https://localhost:$BACKEND_PORT/console"
+        Write-Host ""
+
+        Write-Host "Press Ctrl+C to stop the server."
+
+        # Wait for the background process. This will block until the process exits.
+        Wait-Process -Id $proc.Id
+    }
 }
 finally {
     Write-Host "`n[STOP] Stopping server..."
@@ -364,3 +421,8 @@ finally {
         } catch { }
     }
 }
+
+# Propagate a failed bootstrap (seed-only or bootstrap-and-serve), then exit cleanly
+# after a seed-only run.
+if ($script:bootstrapExitCode -ne 0) { exit $script:bootstrapExitCode }
+if ($BOOTSTRAP_MODE) { exit 0 }

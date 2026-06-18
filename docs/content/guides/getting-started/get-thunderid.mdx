@@ -85,6 +85,33 @@ Launch the <ProductName /> server:
 </TabItem>
 </Tabs>
 
+:::tip Seed and start in one step
+For local and development setups, you can combine both steps with the
+`--bootstrap-and-serve` flag. It creates or updates the default resources as
+needed (idempotent, so it's safe to re-run), then starts the server:
+
+<Tabs groupId="os">
+<TabItem value="unix" label="Linux / macOS">
+
+```bash
+./start.sh --bootstrap-and-serve
+```
+
+</TabItem>
+<TabItem value="windows" label="Windows">
+
+```powershell
+.\start.ps1 --bootstrap-and-serve
+```
+
+</TabItem>
+</Tabs>
+
+This replaces the separate `setup` + `start` steps. For staged deployments (where
+initialization runs as a one-time job), keep the two steps separate: `setup` to
+seed, then `start` to serve.
+:::
+
 :::tip Success
 Access <ProductName /> on **https://localhost:8090/console**
 :::

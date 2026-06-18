@@ -1071,60 +1071,35 @@ function run() {
         run_consent
     fi
 
-    # Save original skip security value and temporarily set to true
-    ORIGINAL_SKIP_SECURITY="${SKIP_SECURITY:-}"
-    export SKIP_SECURITY=true
-    run_backend false
+    # Ensure runtime prerequisites (certificates, crypto material, databases) so the
+    # in-process bootstrap can create the default resources before the server starts.
+    echo "=== Ensuring server certificates exist ==="
+    ensure_certificates "$BACKEND_DIR/$SECURITY_DIR" "server"
+    ensure_certificates "$BACKEND_DIR/$SECURITY_DIR" "signing"
 
-    # Run initial data setup
-    echo "⚙️  Running initial data setup..."
+    echo "=== Ensuring sample app certificates exist ==="
+    ensure_certificates "$VANILLA_SAMPLE_APP_DIR" "server"
+    ensure_certificates "$REACT_API_SAMPLE_APP_DIR" "server"
+
+    ensure_crypto_file "$BACKEND_DIR/$SECURITY_DIR"
+
+    echo "Initializing databases..."
+    initialize_databases
+
+    # Create default resources via the in-process bootstrap one-shot (security stays
+    # enabled; the bootstrap runs through the service layer under a runtime context).
+    echo "⚙️  Creating default resources..."
     echo ""
-    
-    # Wait for server to be ready
-    MAX_RETRIES=30
-    RETRY_INTERVAL=2
-    retries=0
-    
-    echo "[INFO] Waiting for ${PRODUCT_NAME} server to be ready..."
-    while [ $retries -lt $MAX_RETRIES ]; do
-        if curl -k -s -f "$BASE_URL/health/readiness" > /dev/null 2>&1; then
-            echo "✓ Server is ready!"
-            break
-        fi
-        
-        retries=$((retries + 1))
-        if [ $retries -ge $MAX_RETRIES ]; then
-            echo "❌ Server did not become ready after $MAX_RETRIES attempts"
-            echo "💡 Please ensure the ${PRODUCT_NAME} server is running at $BASE_URL"
-            exit 1
-        fi
-        
-        echo "[WAITING] Attempt $retries/$MAX_RETRIES - Server not ready yet, retrying in ${RETRY_INTERVAL}s..."
-        sleep $RETRY_INTERVAL
-    done
-    
-    echo ""
-    
-    # Run the bootstrap script directly with environment variable and arguments
-    API_BASE="$BASE_URL" \
+    if ! ( cd "$BACKEND_DIR" && \
         ADMIN_USERNAME="${ADMIN_USERNAME:-}" \
         ADMIN_PASSWORD="${ADMIN_PASSWORD:-}" \
-        "$BACKEND_BASE_DIR/cmd/server/bootstrap/01-default-resources.sh" \
-        --console-redirect-uris "https://localhost:$CONSOLE_APP_DEFAULT_PORT/console"
-
-    if [ $? -ne 0 ]; then
+        PUBLIC_URL="$PUBLIC_URL" \
+        go run . bootstrap --console-redirect-uris "https://localhost:$CONSOLE_APP_DEFAULT_PORT/console" ); then
         echo "❌ Initial data setup failed"
         echo "💡 Check the logs above for more details"
         exit 1
     fi
 
-    echo "🔒 Restoring security setting and restarting backend..."
-    # Restore original SKIP_SECURITY value
-    if [ -n "$ORIGINAL_SKIP_SECURITY" ]; then
-        export SKIP_SECURITY="$ORIGINAL_SKIP_SECURITY"
-    else
-        unset SKIP_SECURITY
-    fi
     # Start backend with initial output but without final output/wait
     start_backend false
 
