@@ -2456,6 +2456,10 @@ const translations = {
     'delete.message': 'Are you sure you want to delete this flow? This action cannot be undone.',
     'delete.disclaimer': 'Warning: All associated configurations will be permanently removed.',
     'delete.error': 'Failed to delete flow. Please try again.',
+    'delete.usages.loading': 'Checking affected resources…',
+    'delete.usages.none': 'No applications or agents are currently using this flow.',
+    'delete.usages.title': 'The following resources will revert to the default flow:',
+    'delete.usages.more': '+{{count}} more',
 
     // Create flow wizard
     'create.steps.type': 'Flow Type',
@@ -3154,6 +3158,10 @@ const translations = {
     'themes.delete.messageUnnamed': 'Are you sure you want to delete this theme? This action cannot be undone.',
     'themes.delete.disclaimer': 'Deleting this theme may affect applications using it.',
     'themes.delete.error': 'Failed to delete theme. Please try again.',
+    'themes.delete.usages.loading': 'Checking affected resources…',
+    'themes.delete.usages.none': 'No applications are currently using this theme.',
+    'themes.delete.usages.title': 'The following applications will revert to the default theme:',
+    'themes.delete.usages.more': '+{{count}} more',
     'layouts.section.title': 'Layouts',
     'layouts.presets.centered.label': 'Centered',
     'layouts.presets.split_screen.label': 'Split Screen',

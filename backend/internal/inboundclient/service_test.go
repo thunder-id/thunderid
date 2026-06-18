@@ -41,6 +41,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 	"github.com/thunder-id/thunderid/tests/mocks/certmock"
 	"github.com/thunder-id/thunderid/tests/mocks/consentmock"
 	"github.com/thunder-id/thunderid/tests/mocks/design/layoutmock"
@@ -2375,4 +2376,40 @@ func (suite *InboundClientServiceTestSuite) TestSyncConsentOnUpdate_UpdatesWhenA
 	}
 	err := svc.syncConsentOnUpdate(context.Background(), "app1", "App 1", client, nil)
 	assert.NoError(suite.T(), err)
+}
+
+// --- GetEntityIDsByThemeID service tests ---
+
+func (suite *InboundClientServiceTestSuite) TestGetEntityIDsByThemeID_NegativeLimit() {
+	svc := newServiceForTest(newInboundClientStoreInterfaceMock(suite.T()))
+	_, _, err := svc.GetEntityIDsByReference(context.Background(), usage.ResourceTypeTheme, "theme-1", -1, 0)
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "limit")
+}
+
+func (suite *InboundClientServiceTestSuite) TestGetEntityIDsByThemeID_NegativeOffset() {
+	svc := newServiceForTest(newInboundClientStoreInterfaceMock(suite.T()))
+	_, _, err := svc.GetEntityIDsByReference(context.Background(), usage.ResourceTypeTheme, "theme-1", 10, -1)
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "offset")
+}
+
+func (suite *InboundClientServiceTestSuite) TestGetEntityIDsByThemeID_StoreError() {
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	store.EXPECT().GetEntityIDsByReference(mock.Anything, usage.ResourceTypeTheme, "theme-1", 10, 0).
+		Return(nil, 0, errors.New("db error"))
+	svc := newServiceForTest(store)
+	_, _, err := svc.GetEntityIDsByReference(context.Background(), usage.ResourceTypeTheme, "theme-1", 10, 0)
+	assert.Error(suite.T(), err)
+}
+
+func (suite *InboundClientServiceTestSuite) TestGetEntityIDsByThemeID_Success() {
+	store := newInboundClientStoreInterfaceMock(suite.T())
+	store.EXPECT().GetEntityIDsByReference(mock.Anything, usage.ResourceTypeTheme, "theme-1", 10, 0).
+		Return([]string{"app-1", "app-2"}, 2, nil)
+	svc := newServiceForTest(store)
+	ids, total, err := svc.GetEntityIDsByReference(context.Background(), usage.ResourceTypeTheme, "theme-1", 10, 0)
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), 2, total)
+	assert.Equal(suite.T(), []string{"app-1", "app-2"}, ids)
 }

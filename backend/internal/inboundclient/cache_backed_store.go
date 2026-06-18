@@ -146,6 +146,11 @@ func (c *cachedBackStore) IsDeclarative(ctx context.Context, entityID string) bo
 	return c.inner.IsDeclarative(ctx, entityID)
 }
 
+func (c *cachedBackStore) GetEntityIDsByReference(
+	ctx context.Context, refType, refID string, limit, offset int) ([]string, int, error) {
+	return c.inner.GetEntityIDsByReference(ctx, refType, refID, limit, offset)
+}
+
 // --- Cache helpers ---
 
 func (c *cachedBackStore) cacheInboundClient(ctx context.Context, client *inboundmodel.InboundClient) {

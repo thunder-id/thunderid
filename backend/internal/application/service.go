@@ -41,6 +41,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -58,6 +59,7 @@ type ApplicationServiceInterface interface {
 		ctx context.Context, appID string, app *model.ApplicationDTO) (
 		*model.ApplicationDTO, *serviceerror.ServiceError)
 	DeleteApplication(ctx context.Context, appID string) *serviceerror.ServiceError
+	GetResourceUsages(ctx context.Context, resourceType, id string) ([]usage.ResourceUsage, error)
 }
 
 // ApplicationService is the default implementation of the ApplicationServiceInterface.
@@ -544,6 +546,54 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 	}
 
 	return as.deleteLocalizedVariants(ctx, appID)
+}
+
+// GetResourceUsages returns the applications that reference the resource identified by
+// (resourceType, id). It implements the usage.Provider interface. The inbound-client store
+// resolves which reference types are tracked, so no per-type handling is needed here. The
+// number of referencing entities is bounded by MaxCompositeStoreRecords (the store limit).
+func (as *applicationService) GetResourceUsages(
+	ctx context.Context, resourceType, id string) ([]usage.ResourceUsage, error) {
+	ids, _, err := as.inboundClientService.GetEntityIDsByReference(
+		ctx, resourceType, id, serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to get entity IDs by reference", log.Error(err))
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []usage.ResourceUsage{}, nil
+	}
+
+	entities, epErr := as.entityProvider.GetEntitiesByIDs(ids)
+	if epErr != nil {
+		as.logger.Error(ctx, "Failed to get entities by IDs", log.Error(epErr))
+		return nil, epErr
+	}
+
+	usages := make([]usage.ResourceUsage, 0, len(entities))
+	for _, e := range entities {
+		// Applications and agents share the inbound-client store; only report applications.
+		if e.Category != entityprovider.EntityCategoryApp {
+			continue
+		}
+		name := ""
+		var sysAttrs map[string]interface{}
+		if len(e.SystemAttributes) > 0 {
+			_ = json.Unmarshal(e.SystemAttributes, &sysAttrs)
+		}
+		if sysAttrs != nil {
+			if n, ok := sysAttrs[fieldName].(string); ok {
+				name = n
+			}
+		}
+		usages = append(usages, usage.ResourceUsage{
+			ResourceType:     usage.ResourceTypeApplication,
+			ID:               e.ID,
+			DisplayName:      name,
+			BehaviorOnDelete: usage.BehaviorFallback,
+		})
+	}
+	return usages, nil
 }
 
 // isIdentifierTaken checks if an entity with the given identifier already exists.

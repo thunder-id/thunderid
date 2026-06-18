@@ -66,6 +66,7 @@ export interface ThemeResponse {
   displayName: string;
   description?: string;
   theme: Theme;
+  isReadOnly?: boolean;
 }
 
 /**
@@ -96,4 +97,31 @@ export interface LayoutResponse {
 export interface DesignResolveResponse {
   theme: Theme;
   layout: LayoutConfig;
+}
+
+/**
+ * A single resource that references a theme.
+ */
+export interface ThemeUsage {
+  resourceType: string;
+  id: string;
+  displayName: string;
+  behaviorOnDelete: 'fallback' | 'cascade';
+}
+
+/**
+ * Per-resource-type count of usages, keyed by resource type (e.g. application, agent).
+ * Null when the counts could not be determined.
+ */
+export type ThemeUsagesSummary = Record<string, number> | null;
+
+/**
+ * Response for the theme usages endpoint, aggregated across all resource types.
+ * totalResults is null when usage data is unavailable (e.g. registry not wired).
+ */
+export interface ThemeUsagesResponse {
+  totalResults: number | null;
+  count: number;
+  summary: ThemeUsagesSummary;
+  usages: ThemeUsage[];
 }

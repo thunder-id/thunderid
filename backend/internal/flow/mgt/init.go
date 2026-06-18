@@ -191,6 +191,12 @@ func registerRoutes(mux *http.ServeMux, handler *flowMgtHandler) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts3),
 	)
+	mux.HandleFunc(middleware.WithCORS("GET /flows/{flowId}/usages", handler.getFlowUsages, opts3))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /flows/{flowId}/usages",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, opts3),
+	)
 	mux.HandleFunc(middleware.WithCORS("GET /flows/{flowId}/versions/{version}", handler.getFlowVersion, opts3))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS /flows/{flowId}/versions/{version}",
 		func(w http.ResponseWriter, r *http.Request) {

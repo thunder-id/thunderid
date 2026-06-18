@@ -111,6 +111,11 @@ export interface ThemeBuilderContextType {
   setIsSaving: (saving: boolean) => void;
 
   /**
+   * Whether the theme is read-only (declarative) and cannot be deleted or modified
+   */
+  isReadOnly: boolean;
+
+  /**
    * Resets the draft to match the original theme
    */
   resetDraft: () => void;

@@ -254,6 +254,98 @@ func (_c *InboundClientServiceInterfaceMock_GetCertificate_Call) RunAndReturn(ru
 	return _c
 }
 
+// GetEntityIDsByReference provides a mock function for the type InboundClientServiceInterfaceMock
+func (_mock *InboundClientServiceInterfaceMock) GetEntityIDsByReference(ctx context.Context, refType string, refID string, limit int, offset int) ([]string, int, error) {
+	ret := _mock.Called(ctx, refType, refID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntityIDsByReference")
+	}
+
+	var r0 []string
+	var r1 int
+	var r2 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, int) ([]string, int, error)); ok {
+		return returnFunc(ctx, refType, refID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, int, int) []string); ok {
+		r0 = returnFunc(ctx, refType, refID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, int, int) int); ok {
+		r1 = returnFunc(ctx, refType, refID, limit, offset)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+	if returnFunc, ok := ret.Get(2).(func(context.Context, string, string, int, int) error); ok {
+		r2 = returnFunc(ctx, refType, refID, limit, offset)
+	} else {
+		r2 = ret.Error(2)
+	}
+	return r0, r1, r2
+}
+
+// InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntityIDsByReference'
+type InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call struct {
+	*mock.Call
+}
+
+// GetEntityIDsByReference is a helper method to define mock.On call
+//   - ctx context.Context
+//   - refType string
+//   - refID string
+//   - limit int
+//   - offset int
+func (_e *InboundClientServiceInterfaceMock_Expecter) GetEntityIDsByReference(ctx interface{}, refType interface{}, refID interface{}, limit interface{}, offset interface{}) *InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call {
+	return &InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call{Call: _e.mock.On("GetEntityIDsByReference", ctx, refType, refID, limit, offset)}
+}
+
+func (_c *InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call) Run(run func(ctx context.Context, refType string, refID string, limit int, offset int)) *InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 int
+		if args[4] != nil {
+			arg4 = args[4].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call) Return(strings []string, n int, err error) *InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call {
+	_c.Call.Return(strings, n, err)
+	return _c
+}
+
+func (_c *InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call) RunAndReturn(run func(ctx context.Context, refType string, refID string, limit int, offset int) ([]string, int, error)) *InboundClientServiceInterfaceMock_GetEntityIDsByReference_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetInboundClientByEntityID provides a mock function for the type InboundClientServiceInterfaceMock
 func (_mock *InboundClientServiceInterfaceMock) GetInboundClientByEntityID(ctx context.Context, entityID string) (*model.InboundClient, error) {
 	ret := _mock.Called(ctx, entityID)

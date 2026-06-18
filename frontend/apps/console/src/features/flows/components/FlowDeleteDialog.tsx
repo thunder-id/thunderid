@@ -16,10 +16,26 @@
  * under the License.
  */
 
-import {Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button, Alert} from '@wso2/oxygen-ui';
+import {
+  Alert,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  List,
+  ListItem,
+  ListItemText,
+  Typography,
+} from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useDeleteFlow from '../api/useDeleteFlow';
+import useGetFlowUsages from '../api/useGetFlowUsages';
+
+const MAX_VISIBLE_USAGES = 5;
 
 export interface FlowDeleteDialogProps {
   /**
@@ -53,6 +69,12 @@ export default function FlowDeleteDialog({
   const deleteFlow = useDeleteFlow();
   const [error, setError] = useState<string | null>(null);
 
+  const {data: usagesData, isLoading: isLoadingUsages} = useGetFlowUsages(flowId, open);
+
+  const usagesKnown = usagesData !== undefined && usagesData.totalResults !== null;
+  const visibleUsages = usagesData?.usages.slice(0, MAX_VISIBLE_USAGES) ?? [];
+  const hiddenCount = (usagesData?.totalResults ?? 0) - visibleUsages.length;
+
   const handleCancel = (): void => {
     if (deleteFlow.isPending) return;
     setError(null);
@@ -79,9 +101,45 @@ export default function FlowDeleteDialog({
       <DialogTitle>{t('flows:delete.title')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{mb: 2}}>{t('flows:delete.message')}</DialogContentText>
-        <Alert severity="warning" sx={{mb: 2}}>
-          {t('flows:delete.disclaimer')}
-        </Alert>
+
+        {isLoadingUsages ? (
+          <Alert severity="info" icon={<CircularProgress size={16} />} sx={{mb: 2}}>
+            {t('flows:delete.usages.loading')}
+          </Alert>
+        ) : !usagesKnown ? (
+          <Alert severity="warning" sx={{mb: 2}}>
+            {t('flows:delete.disclaimer')}
+          </Alert>
+        ) : (usagesData?.totalResults ?? 0) > 0 ? (
+          <Alert severity="warning" sx={{mb: 2}}>
+            <Typography variant="body2" sx={{mb: 1}}>
+              {t('flows:delete.usages.title')}
+            </Typography>
+            <List dense disablePadding>
+              {visibleUsages.map((usage) => (
+                <ListItem key={usage.id} disableGutters sx={{py: 0}}>
+                  <ListItemText primary={<Typography variant="body2">{usage.displayName}</Typography>} />
+                </ListItem>
+              ))}
+              {hiddenCount > 0 && (
+                <ListItem disableGutters sx={{py: 0}}>
+                  <ListItemText
+                    primary={
+                      <Typography variant="body2" color="text.secondary">
+                        {t('flows:delete.usages.more', {count: hiddenCount})}
+                      </Typography>
+                    }
+                  />
+                </ListItem>
+              )}
+            </List>
+          </Alert>
+        ) : (
+          <Alert severity="info" sx={{mb: 2}}>
+            {t('flows:delete.usages.none')}
+          </Alert>
+        )}
+
         {error && (
           <Alert severity="error" sx={{mt: 2}}>
             {error}
@@ -92,7 +150,12 @@ export default function FlowDeleteDialog({
         <Button onClick={handleCancel} disabled={deleteFlow.isPending}>
           {t('common:actions.cancel')}
         </Button>
-        <Button onClick={handleConfirm} color="error" variant="contained" disabled={deleteFlow.isPending}>
+        <Button
+          onClick={handleConfirm}
+          color="error"
+          variant="contained"
+          disabled={deleteFlow.isPending || !flowId || isLoadingUsages}
+        >
           {deleteFlow.isPending ? t('common:status.deleting') : t('common:actions.delete')}
         </Button>
       </DialogActions>

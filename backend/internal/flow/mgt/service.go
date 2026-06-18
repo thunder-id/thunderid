@@ -33,6 +33,7 @@ import (
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -67,6 +68,8 @@ type FlowMgtServiceInterface interface {
 		*CompleteFlowDefinition, *serviceerror.ServiceError)
 	GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *serviceerror.ServiceError)
 	IsValidFlow(ctx context.Context, flowID string, flowType common.FlowType) (bool, *serviceerror.ServiceError)
+	SetUsageRegistry(r usage.Registry)
+	GetFlowUsages(ctx context.Context, flowID string) (*usage.UsagesResponse, *serviceerror.ServiceError)
 }
 
 // flowMgtService is the default implementation of the FlowMgtServiceInterface.
@@ -77,6 +80,7 @@ type flowMgtService struct {
 	executorRegistry executor.ExecutorRegistryInterface
 	compositeStore   *compositeFlowStore
 	transactioner    transaction.Transactioner
+	usageRegistry    usage.Registry
 	logger           *log.Logger
 }
 
@@ -212,6 +216,46 @@ func (s *flowMgtService) GetFlow(ctx context.Context, flowID string) (
 	}
 
 	return flow, nil
+}
+
+// SetUsageRegistry injects the usage registry. Called by servicemanager after the provider
+// services are initialized to avoid a cyclic import.
+func (s *flowMgtService) SetUsageRegistry(r usage.Registry) {
+	s.usageRegistry = r
+}
+
+// GetFlowUsages returns the resources that reference this flow.
+func (s *flowMgtService) GetFlowUsages(
+	ctx context.Context, flowID string) (*usage.UsagesResponse, *serviceerror.ServiceError) {
+	if flowID == "" {
+		return nil, &ErrorMissingFlowID
+	}
+
+	if _, err := s.store.GetFlowByID(ctx, flowID); err != nil {
+		if errors.Is(err, errFlowNotFound) {
+			return nil, &ErrorFlowNotFound
+		}
+		s.logger.Error(ctx, "Failed to get flow", log.String(logKeyFlowID, flowID), log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+
+	if s.usageRegistry == nil {
+		s.logger.Warn(ctx, "Usage registry not set; returning unknown usages", log.String(logKeyFlowID, flowID))
+		return &usage.UsagesResponse{
+			TotalResults: nil,
+			Count:        0,
+			Summary:      nil,
+			Usages:       []usage.ResourceUsage{},
+		}, nil
+	}
+
+	result, err := s.usageRegistry.GetUsages(ctx, usage.ResourceTypeFlow, flowID)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to get flow usages", log.String(logKeyFlowID, flowID), log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+
+	return result, nil
 }
 
 // GetFlowByHandle retrieves a flow definition by its handle and type.

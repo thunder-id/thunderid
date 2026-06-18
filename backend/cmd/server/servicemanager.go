@@ -88,6 +88,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/services"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/template"
+	"github.com/thunder-id/thunderid/internal/system/usage"
 	"github.com/thunder-id/thunderid/internal/user"
 )
 
@@ -356,6 +357,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		logger.Fatal(ctx, "Failed to initialize AgentService", log.Error(err))
 	}
 	exporters = append(exporters, agentExporter)
+
+	// Build the usage registry and register providers, then wire it into the theme
+	// service (two-phase init to avoid cyclic imports).
+	usageRegistry := usage.NewRegistry()
+	usageRegistry.RegisterProvider(applicationService)
+	usageRegistry.RegisterProvider(agentService)
+	themeMgtService.SetUsageRegistry(usageRegistry)
+	flowMgtService.SetUsageRegistry(usageRegistry)
 
 	// Initialize design resolve service for theme and layout resolution
 	designResolveService := resolve.Initialize(mux, themeMgtService, layoutMgtService, applicationService)

@@ -56,6 +56,9 @@ type InboundClientServiceInterface interface {
 	GetInboundClientByEntityID(ctx context.Context, entityID string) (*inboundmodel.InboundClient, error)
 	// GetInboundClientList returns all inbound clients.
 	GetInboundClientList(ctx context.Context) ([]inboundmodel.InboundClient, error)
+	// GetEntityIDsByReference returns paginated entity IDs of inbound clients referencing the resource
+	// identified by (refType, refID). Unknown reference types resolve to no usages.
+	GetEntityIDsByReference(ctx context.Context, refType, refID string, limit, offset int) ([]string, int, error)
 	// UpdateInboundClient validates and persists updates to an inbound client, certificates, and OAuth config.
 	UpdateInboundClient(ctx context.Context, client *inboundmodel.InboundClient,
 		appCert *inboundmodel.Certificate, oauthProfile *inboundmodel.OAuthProfile,
@@ -192,6 +195,19 @@ func (s *inboundClientService) GetInboundClientByEntityID(
 // GetInboundClientList returns all inbound clients.
 func (s *inboundClientService) GetInboundClientList(ctx context.Context) ([]inboundmodel.InboundClient, error) {
 	return s.store.GetInboundClientList(ctx, serverconst.MaxCompositeStoreRecords)
+}
+
+// GetEntityIDsByReference returns paginated entity IDs of inbound clients referencing the resource
+// identified by (refType, refID).
+func (s *inboundClientService) GetEntityIDsByReference(
+	ctx context.Context, refType, refID string, limit, offset int) ([]string, int, error) {
+	if limit < 0 {
+		return nil, 0, fmt.Errorf("invalid limit: must be non-negative, got %d", limit)
+	}
+	if offset < 0 {
+		return nil, 0, fmt.Errorf("invalid offset: must be non-negative, got %d", offset)
+	}
+	return s.store.GetEntityIDsByReference(ctx, refType, refID, limit, offset)
 }
 
 // UpdateInboundClient validates and persists updates to an inbound client, certificates, and OAuth config.
