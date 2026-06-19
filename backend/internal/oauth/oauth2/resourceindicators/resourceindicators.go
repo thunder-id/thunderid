@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
@@ -183,8 +184,10 @@ func UnionScopes(rsValidScopes map[string][]string) []string {
 // ComposeAudiences builds the aud claim from the resolved Resource Servers. When resolvedRSes is
 // non-nil (explicit resource parameter), all resolved RS identifiers are included. When
 // resolvedRSes is nil and granted scopes are present, contributors are discovered via the resource
-// service (implicit audience). If no RS contributes, clientID is returned as the sole fallback
-// audience. If clientID is also empty, an empty slice is returned.
+// service only if audienceResolution is "implicit". In "explicit" mode (default, including empty
+// string), the implicit scope-to-RS reverse-lookup is skipped entirely. If no RS contributes,
+// clientID is returned as the sole fallback audience. If clientID is also empty, an empty slice
+// is returned.
 func ComposeAudiences(
 	ctx context.Context,
 	resourceService resource.ResourceServiceInterface,
@@ -192,10 +195,12 @@ func ComposeAudiences(
 	resolvedRSes []*resource.ResourceServer,
 	grantedScopes []string,
 ) ([]string, *model.ErrorResponse) {
+	audienceResolution := config.GetServerRuntime().Config.OAuth.AudienceResolution
+
 	var rsIdentifiers []string
 	if resolvedRSes != nil {
 		rsIdentifiers = ContributingAudiences(resolvedRSes)
-	} else if len(grantedScopes) > 0 {
+	} else if audienceResolution == "implicit" && len(grantedScopes) > 0 {
 		implicit, svcErr := resourceService.FindResourceServersByPermissions(ctx, grantedScopes)
 		if svcErr != nil {
 			return nil, &model.ErrorResponse{

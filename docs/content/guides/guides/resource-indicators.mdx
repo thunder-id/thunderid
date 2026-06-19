@@ -22,7 +22,16 @@ This feature implements [RFC 8707 — Resource Indicators for OAuth 2.0](https:/
 
 ## How Resource Indicators Work
 
-Without resource indicators, an access token's audience defaults to the client ID. The token carries all scopes the client requested and was authorized for. Resource servers must trust the client to present the correct token to the correct service.
+Without resource indicators, an access token's audience defaults to the client ID (in the default `explicit` mode). The token carries all scopes the client requested and was authorized for. Resource servers must trust the client to present the correct token to the correct service.
+
+:::info Audience Resolution Modes
+<ProductName /> supports two audience resolution modes via the `oauth.audience_resolution` deployment setting:
+
+- **`explicit`** (default): The `aud` claim is populated solely from the `resource` parameter. Without it, `aud` defaults to the client ID. This follows RFC 8707 where the client declares its target audience.
+- **`implicit`**: When no `resource` parameter is provided, <ProductName /> reverse-maps the granted scopes to registered resource servers and includes their identifiers in `aud`. This is a convenience mode and is not recommended for security-sensitive deployments.
+
+See [Configuration — OAuth](/docs/next/guides/getting-started/configuration#oauth-configuration) for details.
+:::
 
 With resource indicators, the client declares the target resource server by passing its identifier in the `resource` parameter. <ProductName /> then:
 

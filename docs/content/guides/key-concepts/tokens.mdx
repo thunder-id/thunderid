@@ -22,10 +22,11 @@ Access tokens are JWTs that a client presents to a resource server to access pro
 
 ### Audience Claim Behavior
 
-The `aud` claim varies based on whether the client used [resource indicators](/docs/next/guides/guides/resource-indicators):
+The `aud` claim varies based on whether the client used [resource indicators](/docs/next/guides/guides/resource-indicators) and the deployment's `oauth.audience_resolution` mode:
 
-- **With `resource` parameter:** The `aud` claim contains the identifier(s) of the targeted resource server(s).
-- **Without `resource` parameter:** <ProductName /> discovers which registered resource servers own the granted scopes and includes their identifiers. If no resource server matches, the `aud` defaults to the client ID.
+- **With `resource` parameter:** The `aud` claim contains the identifier(s) of the targeted resource server(s). This behavior is the same in both modes.
+- **Without `resource` parameter (explicit mode, default):** The `aud` claim defaults to the client ID. No implicit discovery is performed. This follows [RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) where the client declares its target audience.
+- **Without `resource` parameter (implicit mode):** <ProductName /> discovers which registered resource servers own the granted scopes and includes their identifiers. If no resource server matches, the `aud` defaults to the client ID. Enable this mode by setting `oauth.audience_resolution: "implicit"` in `deployment.yaml`.
 - **Single audience:** Serialized as a JSON string (for example, `"aud": "https://api.example.com/booking"`).
 - **Multiple audiences:** Serialized as a JSON array (for example, `"aud": ["https://api.example.com/booking", "https://api.example.com/payments"]`).
 
