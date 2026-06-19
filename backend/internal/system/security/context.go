@@ -28,9 +28,6 @@ const (
 	// securityContextKey is the context key for storing security context.
 	securityContextKey contextKey = "security_context"
 
-	// securitySkippedKey is the context key for marking that security enforcement was skipped.
-	securitySkippedKey contextKey = "security_skipped"
-
 	// runtimeContextKey is the context key for marking a context as an internal runtime caller.
 	runtimeContextKey contextKey = "runtime_context"
 )
@@ -62,24 +59,6 @@ func withSecurityContext(ctx context.Context, authCtx *SecurityContext) context.
 		ctx = context.Background()
 	}
 	return context.WithValue(ctx, securityContextKey, authCtx)
-}
-
-// withSecuritySkipped marks the context to indicate that security enforcement was skipped.
-func withSecuritySkipped(ctx context.Context) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return context.WithValue(ctx, securitySkippedKey, true)
-}
-
-// IsSecuritySkipped returns true if security enforcement was skipped for this context.
-// Consumers such as sysauthz use this to bypass authorization when SKIP_SECURITY is enabled.
-func IsSecuritySkipped(ctx context.Context) bool {
-	if ctx == nil {
-		return false
-	}
-	v, _ := ctx.Value(securitySkippedKey).(bool)
-	return v
 }
 
 // GetSubject retrieves the authenticated subject from the context.

@@ -765,59 +765,59 @@ Environment variable item structure for secret-backed environment variables in `
 - When `preserveJob=false` (default): Successful jobs are deleted immediately. Failed jobs are kept for `ttlSecondsAfterFinished` (24 hours) to allow debugging.
 - When `preserveJob=true`: Job is kept indefinitely regardless of success/failure status. Use this for troubleshooting or audit purposes.
 
-### Bootstrap Script Parameters
+### Bootstrap Resource Parameters
 
-Bootstrap scripts extend ThunderID's setup process by adding your own initialization logic. These scripts run as part of the setup job.
+Custom bootstrap resources extend ThunderID's setup process. Files are mounted into the bootstrap directory (`/opt/thunderid/bootstrap/`) and applied by the in-process bootstrap (`thunderid bootstrap`) through the import service. Each file is a YAML/JSON **resource definition** (the same format as the shipped defaults) — not a shell script.
 
-#### Understanding Default Bootstrap Scripts
+#### Understanding Default Bootstrap Resources
 
-ThunderID provides these default bootstrap scripts in `/opt/thunderid/bootstrap/`:
-- **`common.sh`** - Helper functions for logging (`log_info`, `log_success`, `log_warning`, `log_error`) and API calls (`thunderid_api_call`)
-- **`01-default-resources.sh`** - Creates admin user, default organization, and Person user type
+ThunderID ships its default resource definitions in `/opt/thunderid/bootstrap/01-default-resources.yaml` (organization unit, user/agent types, admin user, system resource server, Administrators group/role, the Console application, flows, themes, and translations). Each document is typed via a `# resource_type: <type>` comment (or inferred from its keys).
 
 #### Configuration Parameters
 
-| Name                        | Description                                                                      | Default |
-| --------------------------- | -------------------------------------------------------------------------------- | ------- |
-| `bootstrap.scripts`         | Inline custom bootstrap scripts (key: filename, value: content)                 | `{}`    |
-| `bootstrap.configMap.name`  | Name of external ConfigMap containing bootstrap scripts                          | `""`    |
-| `bootstrap.configMap.files` | List of script filenames to mount from ConfigMap (empty = mount entire ConfigMap) | `[]`    |
+| Name                        | Description                                                                       | Default |
+| --------------------------- | --------------------------------------------------------------------------------- | ------- |
+| `bootstrap.scripts`         | Inline resource definitions (key: filename, value: content)                       | `{}`    |
+| `bootstrap.configMap.name`  | Name of external ConfigMap containing resource definition files                   | `""`    |
+| `bootstrap.configMap.files` | List of filenames to mount from ConfigMap (empty = mount entire ConfigMap)        | `[]`    |
 
 #### Three Bootstrap Patterns
 
-**Pattern 1: Add Inline Scripts** (Preserves Defaults)
+**Pattern 1: Add Inline Resource Definitions** (Preserves Defaults)
 
-Use `bootstrap.scripts` to define scripts directly in values.yaml. These scripts are added to the default bootstrap scripts.
+Use `bootstrap.scripts` to define resource files directly in values.yaml. They are mounted alongside the shipped defaults.
 
 ```yaml
 bootstrap:
   scripts:
-    30-custom-users.sh: |
-      #!/bin/bash
-      set -e
-      SCRIPT_DIR="$(dirname "${BASH_SOURCE[0]:-$0}")"
-      source "${SCRIPT_DIR}/common.sh"
-
-      log_info "Creating custom user..."
-      thunderid_api_call POST "/users" '{"type":"person","attributes":{"username":"alice","password":"alice123","sub":"alice","email":"alice@example.com"}}'
-      log_success "User created"
+    70-custom-users.yaml: |
+      # resource_type: user
+      type: Person
+      ouHandle: default
+      attributes:
+        username: alice
+        sub: alice
+        email: alice@example.com
+        name: Alice Johnson
+      credentials:
+        password: alice123
 ```
 
-- ✅ Preserves ThunderID's default scripts (`common.sh`, `01-*`)
-- ✅ Can use helper functions from `common.sh`
+- ✅ Preserves ThunderID's shipped default resources
+- ✅ Uses the same definition format as the defaults
 - ✅ No additional configuration needed
 
 ---
 
-**Pattern 2: Add External ConfigMap Scripts** (Preserves Defaults)
+**Pattern 2: Add External ConfigMap Files** (Preserves Defaults)
 
-Use `bootstrap.configMap` with a `files` list to mount specific scripts from an external ConfigMap.
+Use `bootstrap.configMap` with a `files` list to mount specific resource files from an external ConfigMap.
 
 Create your ConfigMap:
 ```bash
 kubectl create configmap my-bootstrap \
-  --from-file=30-users.sh=./30-users.sh \
-  --from-file=40-apps.sh=./40-apps.sh
+  --from-file=70-users.yaml=./70-users.yaml \
+  --from-file=80-apps.yaml=./80-apps.yaml
 ```
 
 Configure Helm values:
@@ -826,27 +826,27 @@ bootstrap:
   configMap:
     name: "my-bootstrap"
     files:
-      - 30-users.sh
-      - 40-apps.sh
+      - 70-users.yaml
+      - 80-apps.yaml
 ```
 
-- ✅ Preserves ThunderID's default scripts
-- ✅ Can use helper functions from `common.sh`
-- ✅ Scripts managed separately from Helm chart
+- ✅ Preserves ThunderID's shipped default resources
+- ✅ Resource files managed separately from the Helm chart
 
 ---
 
-**Pattern 3: Replace All Scripts with ConfigMap** (Complete Replacement)
+**Pattern 3: Replace the Default Resource Bundle with a ConfigMap** (Complete Replacement)
 
-⚠️ **WARNING**: This entirely replaces ThunderID's default bootstrap scripts. Use only if you need complete control.
+⚠️ **WARNING**: This entirely replaces ThunderID's shipped default resource bundle. Use only if you need complete control.
 
-Use `bootstrap.configMap` **without** specifying `files` to mount the entire ConfigMap and replace all defaults.
+Use `bootstrap.configMap` **without** specifying `files` to mount the entire ConfigMap over `bootstrap/`.
 
-Create your complete ConfigMap (must include `common.sh`):
+Create your complete ConfigMap:
 ```bash
 kubectl create configmap complete-bootstrap \
-  --from-file=common.sh=./common.sh \
-  --from-file=01-my-setup.sh=./01-my-setup.sh
+  --from-file=00-org-unit.yaml=./00-org-unit.yaml \
+  --from-file=10-user-types.yaml=./10-user-types.yaml \
+  --from-file=30-admin-user.yaml=./30-admin-user.yaml
 ```
 
 Configure Helm values:
@@ -857,12 +857,9 @@ bootstrap:
     # No files list = mounts entire ConfigMap (replaces all defaults)
 ```
 
-- ⚠️ **Removes ALL default scripts** (`common.sh`, `01-default-resources.sh`)
-- ⚠️ You MUST provide your own `common.sh` with required helper functions
-- ⚠️ No default admin user, organization, or schemas will be created
-- ✅ Complete control over bootstrap process
-
-**For comprehensive examples, helper function documentation, and best practices, see:** [Custom Bootstrap Guide](../../docs/guides/setup/custom-bootstrap.md)
+- ⚠️ **Replaces ALL shipped default resource definitions**
+- ⚠️ You MUST provide a complete resource set (admin user, organization unit, user types, etc.) or the system will be missing core resources
+- ✅ Complete control over the bootstrapped resources
 
 ### Custom Configuration
 

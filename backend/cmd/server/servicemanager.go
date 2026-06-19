@@ -95,8 +95,10 @@ import (
 var observabilitySvc observability.ObservabilityServiceInterface
 
 // registerServices registers all the services with the provided HTTP multiplexer.
+// It also returns the import service so the bootstrap subcommand can create default
+// resources in-process through the same service instances.
 func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface) (
-	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider) {
+	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface) {
 	logger := log.GetLogger()
 
 	// Service registration runs during application startup, outside any request.
@@ -369,7 +371,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	_ = export.Initialize(mux, exporters)
 
 	// Initialize import service
-	_ = importer.Initialize(
+	importService := importer.Initialize(
 		mux,
 		applicationService,
 		idpService,
@@ -412,7 +414,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
 	services.NewHealthCheckService(mux, healthSvc)
 
-	return jwtService, runtimeCryptoSvc
+	return jwtService, runtimeCryptoSvc, importService
 }
 
 // unregisterServices unregisters all services that require cleanup during shutdown.

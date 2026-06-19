@@ -40,15 +40,10 @@ set -e
 # Default settings
 PRODUCT_NAME="ThunderID"
 PRODUCT_NAME_LOWERCASE="$(echo "$PRODUCT_NAME" | tr '[:upper:]' '[:lower:]')"
-BINARY_NAME="${PRODUCT_NAME_LOWERCASE}"
 DEBUG_PORT=${DEBUG_PORT:-2345}
 DEBUG_MODE=${DEBUG_MODE:-false}
 VERBOSE_MODE=${VERBOSE_MODE:-false}
 SILENT_MODE=true
-BOOTSTRAP_FAIL_FAST=${BOOTSTRAP_FAIL_FAST:-true}
-BOOTSTRAP_SKIP_PATTERN="${BOOTSTRAP_SKIP_PATTERN:-}"
-BOOTSTRAP_ONLY_PATTERN="${BOOTSTRAP_ONLY_PATTERN:-}"
-BOOTSTRAP_DIR="${BOOTSTRAP_DIR:-./bootstrap}"
 WITH_CONSENT=${WITH_CONSENT:-true}
 ADMIN_USERNAME_PROVIDED=false
 ADMIN_PASSWORD_PROVIDED=false
@@ -98,31 +93,6 @@ log_error() {
 log_debug() {
     if [ "${DEBUG:-false}" = "true" ] && [ "$VERBOSE_MODE" = "true" ]; then
         echo -e "${CYAN}[DEBUG]${NC} $1"
-    fi
-}
-
-# ============================================================================
-# API Call Helper Function
-# ============================================================================
-
-api_call() {
-    local method="$1"
-    local endpoint="$2"
-    local data="${3:-}"
-
-    local url="${API_BASE}${endpoint}"
-
-    log_debug "API Call: $method $url"
-
-    if [ -z "$data" ]; then
-        curl -k -s -w "\n%{http_code}" -X "$method" \
-            "$url" \
-            -H "Content-Type: application/json" 2>/dev/null || echo "000"
-    else
-        curl -k -s -w "\n%{http_code}" -X "$method" \
-            "$url" \
-            -H "Content-Type: application/json" \
-            -d "$data" 2>/dev/null || echo "000"
     fi
 }
 
@@ -358,19 +328,14 @@ fi
 # ============================================================================
 
 CONSENT_PID=""
-SERVER_PID=""
 
-# Cleanup function
+# Cleanup function — stops the consent server started below.
 cleanup() {
-    if [ "$VERBOSE_MODE" = "true" ]; then
-        echo ""
-        echo -e "${CYAN}🛑 Stopping temporary server...${NC}"
-    fi
-    if [ -n "$SERVER_PID" ]; then
-        kill $SERVER_PID 2>/dev/null || true
-        wait $SERVER_PID 2>/dev/null || true
-    fi
     if [ -n "$CONSENT_PID" ]; then
+        if [ "$VERBOSE_MODE" = "true" ]; then
+            echo ""
+            echo -e "${CYAN}🛑 Stopping consent server...${NC}"
+        fi
         pkill -P $CONSENT_PID 2>/dev/null || true
         kill $CONSENT_PID 2>/dev/null || true
         wait $CONSENT_PID 2>/dev/null || true
@@ -415,240 +380,39 @@ if [ "$WITH_CONSENT" = "true" ]; then
 fi
 
 # ============================================================================
-# Start the Server with Security Disabled
+# Create Default Resources (in-process bootstrap)
 # ============================================================================
+#
+# Delegates to start.sh --bootstrap, which runs the binary's in-process bootstrap
+# one-shot (create the default resources through the service layer, then exit).
+# The consent server, if enabled, was already started above, so --without-consent
+# is passed to avoid starting a second one. Admin credentials and the public URL
+# are exported so the bootstrap subcommand picks them up.
 
-if [ "$VERBOSE_MODE" = "true" ]; then
-    echo -e "${YELLOW}⚠️  Starting temporary server with security disabled...${NC}"
-    echo ""
-fi
-
-# Export environment variable to skip security
-export SKIP_SECURITY=true
-
-if [ "$DEBUG_MODE" = "true" ]; then
-    if [ "$VERBOSE_MODE" = "true" ]; then
-        dlv exec --listen=:$DEBUG_PORT --headless=true --api-version=2 --accept-multiclient --continue ./${BINARY_NAME} &
-    else
-        dlv exec --listen=:$DEBUG_PORT --headless=true --api-version=2 --accept-multiclient --continue ./${BINARY_NAME} >/dev/null 2>&1 &
-    fi
-    SERVER_PID=$!
-else
-    if [ "$VERBOSE_MODE" = "true" ]; then
-        ./${BINARY_NAME} &
-    else
-        ./${BINARY_NAME} >/dev/null 2>&1 &
-    fi
-    SERVER_PID=$!
-fi
-
-# ============================================================================
-# Wait for Server to be Ready
-# ============================================================================
-
-if [ "$VERBOSE_MODE" = "true" ]; then
-    echo -e "${BLUE}⏳ Waiting for server to be ready...${NC}"
-fi
-TIMEOUT=60
-ELAPSED=0
-RETRY_DELAY=2
-
-while [ $ELAPSED -lt $TIMEOUT ]; do
-    if curl -k -s "${BASE_URL}/health/readiness" > /dev/null 2>&1; then
-        if [ "$VERBOSE_MODE" = "true" ]; then
-            echo -e "${GREEN}✓ Server is ready${NC}"
-            echo ""
-        fi
-        break
-    fi
-    sleep $RETRY_DELAY
-    ELAPSED=$((ELAPSED + RETRY_DELAY))
-    if [ "$VERBOSE_MODE" = "true" ]; then
-        printf "."
-    fi
-done
-
-if [ $ELAPSED -ge $TIMEOUT ]; then
-    echo ""
-    echo -e "${RED}❌ Server failed to start within ${TIMEOUT} seconds${NC}"
-    echo -e "${RED}Expected server at: ${BASE_URL}${NC}"
-    exit 1
-fi
-
-# ============================================================================
-# Run Bootstrap Scripts
-# ============================================================================
-
-# Export variables to be used in scripts
-export API_BASE="${BASE_URL}"
 export PUBLIC_URL="${PUBLIC_URL}"
-export SETUP_SILENT_MODE="${SILENT_MODE}"
 export ADMIN_USERNAME
 export ADMIN_PASSWORD
 
-# FD3 always points to the real terminal stdout.
-# Quiet-mode result markers write to FD3 so they reach the terminal even
-# when FD1 (normal stdout) is suppressed inside the bootstrap subshell.
-exec 3>&1
+START_SCRIPT="$(dirname "$0")/start.sh"
+if [ ! -x "$START_SCRIPT" ]; then
+    log_error "start.sh is missing or not executable"
+    exit 1
+fi
 
-# Check if bootstrap directory exists
-if [ ! -d "$BOOTSTRAP_DIR" ]; then
-    log_warning "Bootstrap directory not found: $BOOTSTRAP_DIR"
-    log_info "Skipping bootstrap execution"
+if [ "$VERBOSE_MODE" = "true" ]; then
+    echo -e "${BLUE}⏳ Creating default resources...${NC}"
+fi
+
+BOOTSTRAP_LOG="$(mktemp)"
+if "$START_SCRIPT" --bootstrap --without-consent >"$BOOTSTRAP_LOG" 2>&1; then
+    [ "$VERBOSE_MODE" = "true" ] && cat "$BOOTSTRAP_LOG"
+    rm -f "$BOOTSTRAP_LOG"
+    log_success "Default resources created"
 else
-    log_info "========================================="
-    log_info "${PRODUCT_NAME} Bootstrap Process"
-    log_info "========================================="
-    log_info "Bootstrap directory: $BOOTSTRAP_DIR"
-    log_info "Fail fast: $BOOTSTRAP_FAIL_FAST"
-    log_info "Started at: $(date)"
-    echo ""
-
-    # Collect all scripts from bootstrap directory
-    SCRIPTS=()
-
-    # Find scripts in bootstrap directory (exclude common.sh)
-    if [ -d "$BOOTSTRAP_DIR" ]; then
-        for script in "$BOOTSTRAP_DIR"/*.sh "$BOOTSTRAP_DIR"/*.bash; do
-            [ ! -e "$script" ] && continue
-            if [[ "$(basename "$script")" == "common.sh" ]]; then
-                continue
-            fi
-            SCRIPTS+=("$script")
-        done
-    fi
-
-    # Sort scripts by filename (numeric prefix determines order)
-    IFS=$'\n' SORTED_SCRIPTS=($(printf '%s\n' "${SCRIPTS[@]}" | sort))
-    unset IFS
-
-    if [ ${#SORTED_SCRIPTS[@]} -eq 0 ]; then
-        log_warning "No bootstrap scripts found"
-    else
-        log_info "Discovered ${#SORTED_SCRIPTS[@]} script(s)"
-        echo ""
-
-        # Execute scripts
-        SCRIPT_COUNT=0
-        SUCCESS_COUNT=0
-        FAILED_COUNT=0
-        SKIPPED_COUNT=0
-
-        for script in "${SORTED_SCRIPTS[@]}"; do
-            script_name=$(basename "$script")
-
-            if [ "$SILENT_MODE" = "true" ]; then
-                if [ "$script_name" = "01-default-resources.sh" ]; then
-                    echo ""
-                    echo "  Default resources"
-                elif [ "$script_name" = "02-sample-resources.sh" ]; then
-                    echo ""
-                    echo "  Sample resources"
-                fi
-            fi
-
-            # Skip if matches skip pattern
-            if [ -n "$BOOTSTRAP_SKIP_PATTERN" ] && [[ "$script_name" =~ $BOOTSTRAP_SKIP_PATTERN ]]; then
-                log_info "⊘ Skipping $script_name (matches skip pattern)"
-                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-                continue
-            fi
-
-            # Skip if doesn't match only pattern
-            if [ -n "$BOOTSTRAP_ONLY_PATTERN" ] && ! [[ "$script_name" =~ $BOOTSTRAP_ONLY_PATTERN ]]; then
-                log_info "⊘ Skipping $script_name (doesn't match only pattern)"
-                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
-                continue
-            fi
-
-            # Check if executable
-            if [ ! -x "$script" ]; then
-                log_warning "$script_name is not executable, setting permissions..."
-                chmod +x "$script" || {
-                    log_error "Failed to make $script_name executable"
-                    FAILED_COUNT=$((FAILED_COUNT + 1))
-                    if [ "$BOOTSTRAP_FAIL_FAST" = "true" ]; then
-                        exit 1
-                    fi
-                    continue
-                }
-            fi
-
-            log_info "▶ Executing: $script_name"
-            SCRIPT_COUNT=$((SCRIPT_COUNT + 1))
-
-            # Execute script
-            START_TIME=$(date +%s)
-
-            set +e  # Temporarily disable exit on error to catch errors
-            (
-                set -e  # Re-enable in subshell to catch script errors
-                # In quiet mode suppress all ordinary stdout so only explicit
-                # FD3 writes (log_result_success/failure) reach the terminal.
-                if [ "$SILENT_MODE" = "true" ]; then
-                    exec 1>/dev/null
-                fi
-                source "$script"
-            )
-            EXIT_CODE=$?
-            set -e  # Re-enable exit on error
-
-            END_TIME=$(date +%s)
-            DURATION=$((END_TIME - START_TIME))
-
-            if [ $EXIT_CODE -eq 0 ]; then
-                log_success "$script_name completed (${DURATION}s)"
-                SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
-            else
-                if [ "$VERBOSE_MODE" = "true" ]; then
-                    log_error "$script_name failed with exit code $EXIT_CODE (${DURATION}s)"
-                fi
-                FAILED_COUNT=$((FAILED_COUNT + 1))
-
-                # Check if we should fail fast
-                if [ "$BOOTSTRAP_FAIL_FAST" = "true" ]; then
-                    if [ "$VERBOSE_MODE" = "true" ]; then
-                        log_error "Stopping bootstrap (BOOTSTRAP_FAIL_FAST=true)"
-                    fi
-                    if [ "$SILENT_MODE" = "true" ]; then
-                        echo ""
-                        echo "========================================="
-                        echo "❌ Setup failed."
-                        echo "========================================="
-                        echo ""
-                    fi
-                    exit 1
-                fi
-            fi
-            echo ""
-        done
-
-        # Summary
-        echo ""
-        log_info "========================================="
-        log_info "Bootstrap Summary"
-        log_info "========================================="
-        log_info "Total scripts discovered: ${#SORTED_SCRIPTS[@]}"
-        log_info "Executed: $SCRIPT_COUNT"
-        log_success "Successful: $SUCCESS_COUNT"
-
-        if [ $FAILED_COUNT -gt 0 ] && [ "$VERBOSE_MODE" = "true" ]; then
-            log_error "Failed: $FAILED_COUNT"
-        fi
-
-        if [ $SKIPPED_COUNT -gt 0 ]; then
-            log_info "Skipped: $SKIPPED_COUNT"
-        fi
-
-        log_info "Completed at: $(date)"
-        log_info "========================================="
-
-        if [ $FAILED_COUNT -gt 0 ]; then
-            exit 1
-        fi
-
-        log_success "Bootstrap completed successfully!"
-    fi
+    cat "$BOOTSTRAP_LOG"
+    rm -f "$BOOTSTRAP_LOG"
+    log_error "Failed to create default resources"
+    exit 1
 fi
 
 # ============================================================================

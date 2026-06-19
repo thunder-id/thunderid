@@ -23,7 +23,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -517,115 +516,6 @@ func (suite *SecurityServiceTestSuite) TestProcess_PublicPath_WithInvalidToken()
 
 	userID := GetSubject(ctx)
 	assert.Empty(suite.T(), userID)
-}
-
-// TestProcess_SkipSecurity verifies the behavior of the service when
-// SKIP_SECURITY is set to "true". Each case exercises a distinct
-// combination of token presence, authentication outcome, and authorization
-// outcome to confirm that the skip-security flag either enriches the context
-// normally (when the full flow succeeds) or falls back to the skipped marker
-// (when any step would otherwise have returned an error).
-func (suite *SecurityServiceTestSuite) TestProcess_SkipSecurity() {
-	unprivCtx := newSecurityContext("user123", "ou456", "test_token", []string{}, nil)
-
-	tests := []struct {
-		name        string
-		token       string
-		canHandle   bool
-		authCtx     *SecurityContext
-		authErr     error
-		wantSkipped bool
-		wantSubject string
-	}{
-		{
-			// No authenticator can handle the request — errNoHandlerFound is
-			// suppressed by skipSecurity and the skipped marker is set.
-			name:        "no authenticator handles the request",
-			token:       "",
-			canHandle:   false,
-			wantSkipped: true,
-			wantSubject: "",
-		},
-		{
-			// Both authentication and authorization succeed — the context is
-			// enriched normally and the skipped marker must NOT be present.
-			name:        "authentication and authorization both succeed",
-			token:       "valid_token",
-			canHandle:   true,
-			authCtx:     suite.testCtx,
-			wantSkipped: false,
-			wantSubject: "user123",
-		},
-		{
-			// Authentication fails — the error is suppressed by skipSecurity
-			// and the skipped marker is set.
-			name:        "authentication fails with invalid token",
-			token:       "invalid_token",
-			canHandle:   true,
-			authErr:     errInvalidToken,
-			wantSkipped: true,
-			wantSubject: "",
-		},
-		{
-			// Authentication succeeds but authorization fails due to missing
-			// permissions — the error is suppressed by skipSecurity, the
-			// skipped marker is set, and the subject is still populated because
-			// the security context was enriched before the authz check.
-			name:        "authorization fails due to insufficient permissions",
-			token:       "valid_token",
-			canHandle:   true,
-			authCtx:     unprivCtx,
-			wantSkipped: true,
-			wantSubject: "user123",
-		},
-	}
-
-	for _, tt := range tests {
-		suite.Run(tt.name, func() {
-			_ = os.Setenv("SKIP_SECURITY", "true")
-			suite.T().Cleanup(func() { _ = os.Unsetenv("SKIP_SECURITY") })
-
-			mockAuth := &AuthenticatorInterfaceMock{}
-			service, err := newSecurityService(
-				[]AuthenticatorInterface{mockAuth}, testPublicPaths, apiPermissionEntries)
-			suite.Require().NoError(err)
-
-			req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
-			if tt.token != "" {
-				req.Header.Set("Authorization", "Bearer "+tt.token)
-			}
-
-			mockAuth.On("CanHandle", req).Return(tt.canHandle)
-			if tt.canHandle {
-				mockAuth.On("Authenticate", req).Return(tt.authCtx, tt.authErr)
-			}
-
-			ctx, err := service.Process(req)
-
-			assert.NoError(suite.T(), err)
-			assert.NotNil(suite.T(), ctx)
-			assert.Equal(suite.T(), tt.wantSkipped, IsSecuritySkipped(ctx))
-			assert.Equal(suite.T(), tt.wantSubject, GetSubject(ctx))
-
-			mockAuth.AssertExpectations(suite.T())
-		})
-	}
-}
-
-// Test that the skipped marker is NOT present when authentication and authorization succeed normally.
-func (suite *SecurityServiceTestSuite) TestProcess_SecurityNotSkipped_WhenAuthSucceeds() {
-	req := httptest.NewRequest(http.MethodGet, "/api/protected", nil)
-
-	suite.mockAuth1.On("CanHandle", req).Return(true)
-	suite.mockAuth1.On("Authenticate", req).Return(suite.testCtx, nil)
-
-	ctx, err := suite.service.Process(req)
-
-	assert.NoError(suite.T(), err)
-	assert.NotNil(suite.T(), ctx)
-	// Normal successful flow must NOT mark the context as skipped.
-	assert.False(suite.T(), IsSecuritySkipped(ctx))
-	assert.Equal(suite.T(), "user123", GetSubject(ctx))
 }
 
 // Test that the service returns errInsufficientPermissions when the authenticated

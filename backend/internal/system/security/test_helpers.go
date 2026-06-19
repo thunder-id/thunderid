@@ -50,15 +50,3 @@ func WithSecurityContextTest(ctx context.Context, authCtx *SecurityContext) cont
 	}
 	return context.WithValue(ctx, securityContextKey, authCtx)
 }
-
-// WithSkipSecurityTest returns a context marked as security-skipped.
-// Used for testing purposes.
-func WithSkipSecurityTest(ctx context.Context) context.Context {
-	if !testing.Testing() {
-		panic("only for tests!")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return withSecuritySkipped(ctx)
-}

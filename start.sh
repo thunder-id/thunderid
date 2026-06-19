@@ -27,6 +27,9 @@ DEBUG_MODE=${DEBUG_MODE:-false}
 WITH_CONSENT=${WITH_CONSENT:-true}
 RESOURCES_FILE=""
 ENV_FILE=""
+BOOTSTRAP_MODE=false
+BOOTSTRAP_AND_SERVE=false
+BOOTSTRAP_EXTRA_ARGS=()
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -47,6 +50,22 @@ while [[ $# -gt 0 ]]; do
             WITH_CONSENT=false
             shift
             ;;
+        --bootstrap)
+            # Run the in-process bootstrap one-shot (create default resources) instead
+            # of starting the long-running server, then exit.
+            BOOTSTRAP_MODE=true
+            shift
+            ;;
+        --bootstrap-and-serve)
+            # Run the in-process bootstrap one-shot first, then start the long-running
+            # server (convenient for local/dev: seed once, then serve).
+            BOOTSTRAP_AND_SERVE=true
+            shift
+            ;;
+        --console-redirect-uris)
+            BOOTSTRAP_EXTRA_ARGS+=(--console-redirect-uris "$2")
+            shift 2
+            ;;
         --env)
             ENV_FILE="$2"
             shift 2
@@ -65,6 +84,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --port PORT          Set application port (default: 8090)"
             echo "  --debug-port PORT    Set debug port (default: 2345)"
             echo "  --without-consent    Disable the bundled consent server"
+            echo "  --bootstrap          Create default resources in-process, then exit (used by setup.sh)"
+            echo "  --bootstrap-and-serve Create default resources in-process, then start the server"
             echo "  --help               Show this help message"
             echo ""
             echo "First-Time Setup:"
@@ -165,10 +186,13 @@ load_env_file() {
     done < "$ENV_FILE"
 }
 
-# Check if ports are available
-check_port $BACKEND_PORT "${PRODUCT_NAME} server"
-if [ "$DEBUG_MODE" = "true" ]; then
-    check_port $DEBUG_PORT "Debug server"
+# Check if ports are available. The bootstrap one-shot does not bind the server
+# port, so the check is skipped in that mode.
+if [ "$BOOTSTRAP_MODE" != "true" ]; then
+    check_port "$BACKEND_PORT" "${PRODUCT_NAME} server"
+    if [ "$DEBUG_MODE" = "true" ]; then
+        check_port "$DEBUG_PORT" "Debug server"
+    fi
 fi
 
 # Check if Delve is available for debug mode
@@ -235,6 +259,24 @@ if [ "$WITH_CONSENT" = "true" ]; then
     if [ $CONSENT_ELAPSED -ge $CONSENT_TIMEOUT ]; then
         echo "Error: Consent server failed to become ready within ${CONSENT_TIMEOUT}s"
         exit 1
+    fi
+fi
+
+# Bootstrap: create the default resources in-process. In --bootstrap mode this is the
+# only action (exit afterwards). In --bootstrap-and-serve mode it runs first and then
+# the long-running server is started below. The consent server started above stays up
+# for the bootstrap (entity-type creation depends on it) — and, in bootstrap-and-serve
+# mode, for the server too.
+if [ "$BOOTSTRAP_MODE" = "true" ] || [ "$BOOTSTRAP_AND_SERVE" = "true" ]; then
+    echo "⚡ Running ${PRODUCT_NAME} bootstrap ..."
+    if BACKEND_PORT=$BACKEND_PORT "./${BINARY_NAME}" bootstrap "${BOOTSTRAP_EXTRA_ARGS[@]}"; then
+        echo "✅ Bootstrap completed."
+    else
+        echo "❌ Bootstrap failed."
+        exit 1
+    fi
+    if [ "$BOOTSTRAP_MODE" = "true" ]; then
+        exit 0
     fi
 fi
 

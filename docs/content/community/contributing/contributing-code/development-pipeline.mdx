@@ -214,7 +214,7 @@ cd tests/e2e/server && ./setup.sh
 ./start.sh &
 ```
 
-`setup.sh` starts the server temporarily with security disabled, runs the bootstrap scripts (which register default resources and sample app OAuth clients), and stops the server cleanly. `start.sh` then starts it with security enabled.
+`setup.sh` creates the default resources via the in-process `bootstrap` one-shot. It delegates to `start.sh --bootstrap`, which seeds resources through the service layer (no temporary server or security bypass) and runs the bundled consent server for the run. `start.sh` then starts the server with security enabled.
 
 **3. Extract sample apps and start the SDK sample**
 
@@ -372,7 +372,7 @@ This runs `pnpm audit` and `npm audit` at the `high` severity level. Note that C
 make test_e2e
 ```
 
-This handles the full setup automatically. The script starts the server with security disabled, imports declarative resources for the sample apps, and restarts the server with security enabled. The script then builds and starts the sample app and runs Playwright. Stop any already-running <ProductName /> instance before using this command.
+This handles the full setup automatically. The script seeds the default resources via the in-process bootstrap, starts the server (with security enabled) loading the sample-app declarative resources, and authenticates as the admin user to run Playwright. Stop any already-running <ProductName /> instance before using this command.
 
 ### Generating Mocks
 
@@ -450,8 +450,8 @@ pnpm build
 If you have not already created the `Console` application and the default admin user, you can do so by running the following command:
 
 ```bash
-API_BASE="https://localhost:8090" \
-  backend/cmd/server/bootstrap/01-default-resources.sh \
+PUBLIC_URL="https://localhost:8090" \
+  go run -C backend/cmd/server . bootstrap \
   --console-redirect-uris "https://localhost:5191/console"
 ```
 

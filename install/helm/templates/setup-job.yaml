@@ -213,13 +213,13 @@ spec:
             {{- end }}
             {{- if or .Values.bootstrap.scripts .Values.bootstrap.configMap.name }}
             {{- if and .Values.bootstrap.configMap.name (not .Values.bootstrap.configMap.files) }}
-            # Pattern 3: Replace entire bootstrap directory (configMap without files list)
+            # Pattern 3: Replace the entire default resource bundle (configMap without files list)
             - name: bootstrap-scripts
               mountPath: /opt/thunderid/bootstrap
             {{- else }}
-            # Pattern 1 & 2: Mount individual scripts to preserve defaults
+            # Pattern 1 & 2: Mount individual resource definitions alongside the shipped defaults
 
-            # Pattern 1: Inline scripts from values.yaml
+            # Pattern 1: Inline resource definitions from values.yaml
             {{- if .Values.bootstrap.scripts }}
             {{- range $filename, $content := .Values.bootstrap.scripts }}
             - name: bootstrap-scripts

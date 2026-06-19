@@ -34,8 +34,8 @@ import (
 
 // OUAuthzTestSuite validates the OU authorization model end-to-end.
 //
-// The bootstrap script (01-default-resources.sh/.ps1) seeds the following
-// hierarchical permission structure under the "system" resource server:
+// The in-process bootstrap (backend/cmd/server/bootstrap/01-default-resources.yaml)
+// seeds the following hierarchical permission structure under the "system" resource server:
 //
 //	system RS  (name: "System")
 //	└── Resource  "system"      → permission "system"

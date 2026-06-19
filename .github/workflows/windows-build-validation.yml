@@ -266,11 +266,11 @@ jobs:
           Set-Location "tests/e2e/server"
           ./setup.ps1
 
-      - name: 🚀 Start Server (Without Security)
+      - name: 🚀 Start Server
         shell: bash
         run: |
           cd tests/e2e/server
-          SKIP_SECURITY=true ./${PRODUCT_NAME_LOWER}.exe > server.log 2>&1 &
+          ./${PRODUCT_NAME_LOWER}.exe > server.log 2>&1 &
           echo "SERVER_PID=$!" >> $GITHUB_ENV
           sleep 5
 

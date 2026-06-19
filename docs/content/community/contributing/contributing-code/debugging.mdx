@@ -75,17 +75,13 @@ Open a terminal and switch to the <ProductName /> root directory:
 cd <repo-root>
 ```
 
-Run the backend with API security disabled:
+Seed the initial data (one-time only) with the in-process `bootstrap` subcommand.
+It creates the default resources directly through the service layer, so no running
+server or security bypass is required:
 
 ```bash
-SKIP_SECURITY=true make run_backend
-```
-
-In a **new terminal**, seed data (one-time only):
-
-```bash
-API_BASE="https://localhost:8090" \
-  backend/cmd/server/bootstrap/01-default-resources.sh \
+PUBLIC_URL="https://localhost:8090" \
+  go run -C backend/cmd/server . bootstrap \
   --console-redirect-uris "https://localhost:5191/console"
 ```
 
