@@ -60,6 +60,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
+	"github.com/thunder-id/thunderid/internal/integration"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/oauth"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
@@ -231,6 +232,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		logger.Fatal(ctx, "Failed to initialize NotificationService", log.Error(err))
 	}
 	exporters = append(exporters, notificationExporter)
+
+	// Register the read-only integrations catalog aggregated from the domain packages.
+	integrations := append(idp.Integrations(), notification.Integrations()...)
+	integration.Initialize(mux, integrations)
 
 	// Initialize passkey service
 	passkeyService := passkey.Initialize(entityService)

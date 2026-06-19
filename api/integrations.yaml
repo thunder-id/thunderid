@@ -1,0 +1,198 @@
+openapi: 3.0.3
+
+info:
+  title: Integrations API
+  description: >-
+    Read-only catalog of integrations (identity providers, notification senders, ...)
+    that ThunderID can connect to. The console renders the integrations catalog and
+    connector configuration forms from this metadata, and a future marketplace can
+    register additional connectors into it.
+  version: "1.0"
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Integrations
+    description: Discover the integrations available to connect and their configuration shape.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /integrations:
+    get:
+      tags:
+        - Integrations
+      summary: List available integrations
+      description: >-
+        Returns every connector ThunderID can integrate with, grouped by category, along
+        with the configuration fields each connector accepts.
+      responses:
+        "200":
+          description: The connector catalog
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogResponse'
+              example:
+                connectors:
+                  - type: "GOOGLE"
+                    displayName: "Google"
+                    category: "SOCIAL_LOGIN"
+                    hostedCredentials: false
+                    fields:
+                      - name: "client_id"
+                        required: true
+                      - name: "client_secret"
+                        required: true
+                        secret: true
+                      - name: "redirect_uri"
+                        required: true
+                  - type: "twilio"
+                    displayName: "Twilio"
+                    category: "SMS"
+                    hostedCredentials: false
+                    fields:
+                      - name: "account_sid"
+                        required: true
+                      - name: "auth_token"
+                        required: true
+                        secret: true
+                      - name: "sender_id"
+                        required: true
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "CATALOG-5000"
+                message:
+                  key: "error.catalog.internal_error"
+                  defaultValue: "An unexpected error occurred"
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:8090/oauth2/authorize
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+        clientCredentials:
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  schemas:
+    CatalogResponse:
+      type: object
+      required:
+        - connectors
+      properties:
+        connectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/Connector'
+
+    Connector:
+      type: object
+      required:
+        - type
+        - displayName
+        - category
+        - hostedCredentials
+        - fields
+      properties:
+        type:
+          type: string
+          description: Stable connector type identifier.
+          example: "GOOGLE"
+        displayName:
+          type: string
+          description: Default human-readable name (the console may localize it).
+          example: "Google"
+        category:
+          type: string
+          description: Category used to group the connector in the catalog.
+          enum: [SOCIAL_LOGIN, ENTERPRISE, SMS]
+          example: "SOCIAL_LOGIN"
+        hostedCredentials:
+          type: boolean
+          description: >-
+            Whether ThunderID ships default test credentials for this connector
+            (hosted/cloud deployments). False for self-hosted.
+          example: false
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorField'
+
+    ConnectorField:
+      type: object
+      required:
+        - name
+        - required
+      properties:
+        name:
+          type: string
+          description: Property key as stored on the connector instance.
+          example: "client_secret"
+        required:
+          type: boolean
+          description: Whether the property must be provided for the connector to work.
+          example: true
+        secret:
+          type: boolean
+          description: Whether the value is sensitive (masked on read, write-only on write).
+          example: true
+        readOnly:
+          type: boolean
+          description: Whether the value is managed by ThunderID and cannot be edited.
+          example: false
+        default:
+          type: string
+          description: Value pre-filled when the connector is configured.
+          example: "https://accounts.google.com/o/oauth2/v2/auth"
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: "Error code. Codes follow the CATALOG-XXXX convention."
+          example: "CATALOG-5000"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+
+    I18nMessage:
+      type: object
+      required:
+        - key
+        - defaultValue
+      properties:
+        key:
+          type: string
+          description: Translation key for the message.
+          example: "error.catalog.internal_error"
+        defaultValue:
+          type: string
+          description: Default message text when no translation is available.
+          example: "An unexpected error occurred"
