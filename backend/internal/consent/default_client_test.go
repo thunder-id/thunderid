@@ -33,6 +33,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/httpmock"
 )
@@ -129,6 +130,28 @@ func (s *DefaultClientTestSuite) TestCreateConsentElements_Success() {
 	s.Nil(svcErr)
 	s.Len(result, 1)
 	s.Equal("email", result[0].Name)
+}
+
+func (s *DefaultClientTestSuite) TestDoRequest_PropagatesCorrelationID() {
+	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
+	c := newTestClient(s.T(), httpMock)
+
+	var gotCorrelationID string
+	respBody := elementsCreateResponseDTO{
+		Data: []elementResponseDTO{{ID: "e1", Name: "email", Type: "basic"}},
+	}
+	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
+		RunAndReturn(func(req *http.Request) (*http.Response, error) {
+			gotCorrelationID = req.Header.Get("X-Correlation-ID")
+			return buildHTTPResponse(s.T(), http.StatusOK, respBody), nil
+		})
+
+	ctx := sysContext.WithTraceID(context.Background(), "trace-xyz")
+	inputs := []ConsentElementInput{{Name: "email", Namespace: NamespaceAttribute}}
+	_, svcErr := c.createConsentElements(ctx, "ou1", inputs)
+
+	s.Nil(svcErr)
+	s.Equal("trace-xyz", gotCorrelationID)
 }
 
 func (s *DefaultClientTestSuite) TestCreateConsentElements_BadRequest() {

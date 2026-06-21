@@ -692,7 +692,21 @@ External authentication provider settings.
 | `authn_provider.type` | `default` | Provider type (`default` or `rest`) |
 | `authn_provider.rest.base_url` | `""` | Base URL for REST authentication provider |
 | `authn_provider.rest.timeout` | `10` | Request timeout in seconds |
+| `authn_provider.rest.correlation_id_header` | `X-Correlation-ID` | Header used to forward the request's correlation ID (trace ID) to the REST provider. Set a different name if the provider expects one. |
 | `authn_provider.rest.security.api_key` | `""` | API key for REST provider authentication |
+
+### Correlation ID Propagation
+
+Each request is assigned a correlation ID (trace ID), which the server generates when the client does not supply one. <ProductName /> forwards this ID on outbound HTTP calls so a request can be traced across services. The REST authentication provider, the consent service, the flow HTTP request executor, and the Vonage notification provider all set the `X-Correlation-ID` header when it is missing. For the REST authentication provider, the header name is configurable via `authn_provider.rest.correlation_id_header`.
+
+**Example** — forward the correlation ID under a custom header name:
+```yaml
+authn_provider:
+  type: rest
+  rest:
+    base_url: "https://my-authn-service"
+    correlation_id_header: "X-Trace-Token"
+```
 
 ## CORS Configuration
 

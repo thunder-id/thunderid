@@ -652,9 +652,10 @@ type EntityProviderConfig struct {
 
 // RestConfig holds the REST authentication provider configuration details.
 type RestConfig struct {
-	BaseURL  string             `yaml:"base_url" json:"base_url"`
-	Timeout  int                `yaml:"timeout" json:"timeout"`
-	Security RestSecurityConfig `yaml:"security" json:"security"`
+	BaseURL             string             `yaml:"base_url" json:"base_url"`
+	Timeout             int                `yaml:"timeout" json:"timeout"`
+	CorrelationIDHeader string             `yaml:"correlation_id_header" json:"correlation_id_header"`
+	Security            RestSecurityConfig `yaml:"security" json:"security"`
 }
 
 // RestSecurityConfig holds the REST authentication provider security configuration details.

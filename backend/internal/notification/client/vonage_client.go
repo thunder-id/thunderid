@@ -27,6 +27,8 @@ import (
 	"net/http"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -126,6 +128,7 @@ func (v *VonageClient) sendSMS(ctx context.Context, data common.NotificationData
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set(serverconst.CorrelationIDHeaderName, sysContext.GetTraceID(ctx))
 	req.SetBasicAuth(v.apiKey, v.apiSecret)
 
 	resp, err := v.httpClient.Do(req)

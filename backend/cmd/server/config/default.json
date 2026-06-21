@@ -238,6 +238,7 @@
     "rest": {
       "base_url": "",
       "timeout": 10,
+      "correlation_id_header": "X-Correlation-ID",
       "security": {
         "api_key": ""
       }

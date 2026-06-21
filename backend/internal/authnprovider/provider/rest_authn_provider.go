@@ -26,6 +26,7 @@ import (
 	"net/http"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	systemhttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
@@ -34,10 +35,11 @@ import (
 
 // restAuthnProvider is an authentication provider that communicates with an external service via REST.
 type restAuthnProvider struct {
-	baseURL    string
-	apiKey     string
-	httpClient systemhttp.HTTPClientInterface
-	logger     *log.Logger
+	baseURL             string
+	apiKey              string
+	correlationIDHeader string
+	httpClient          systemhttp.HTTPClientInterface
+	logger              *log.Logger
 }
 
 // AuthenticateRequest is the request body for the authentication endpoint.
@@ -61,12 +63,14 @@ type apiErrorResponse struct {
 }
 
 // newRestAuthnProvider creates a new REST authentication provider.
-func newRestAuthnProvider(baseURL, apiKey string, httpClient systemhttp.HTTPClientInterface) AuthnProviderInterface {
+func newRestAuthnProvider(baseURL, apiKey, correlationIDHeader string,
+	httpClient systemhttp.HTTPClientInterface) AuthnProviderInterface {
 	return &restAuthnProvider{
-		baseURL:    baseURL,
-		apiKey:     apiKey,
-		httpClient: httpClient,
-		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RestAuthnProvider")),
+		baseURL:             baseURL,
+		apiKey:              apiKey,
+		correlationIDHeader: correlationIDHeader,
+		httpClient:          httpClient,
+		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RestAuthnProvider")),
 	}
 }
 
@@ -182,6 +186,7 @@ func (p *restAuthnProvider) doRequest(ctx context.Context, url string, body io.R
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(p.correlationIDHeader, sysContext.GetTraceID(ctx))
 	if p.apiKey != "" {
 		req.Header.Set("API-KEY", p.apiKey)
 	}

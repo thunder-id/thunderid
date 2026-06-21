@@ -36,6 +36,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/ou"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	i18ncore "github.com/thunder-id/thunderid/internal/system/i18n/core"
@@ -446,6 +448,11 @@ func (h *httpRequestExecutor) executeRequest(ctx *core.NodeContext, config *http
 	// Set headers
 	for key, value := range config.Headers {
 		req.Header.Set(key, value)
+	}
+
+	// Propagate the correlation ID unless the flow explicitly configured one.
+	if req.Header.Get(serverconst.CorrelationIDHeaderName) == "" {
+		req.Header.Set(serverconst.CorrelationIDHeaderName, sysContext.GetTraceID(ctx.Context))
 	}
 
 	// Set default Content-Type for requests with body
