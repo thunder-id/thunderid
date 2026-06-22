@@ -865,6 +865,7 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 			AllowedUserTypes:          req.AllowedUserTypes,
 		},
 		Template:  req.Template,
+		AppSecret: req.AppSecret,
 		URL:       req.URL,
 		LogoURL:   req.LogoURL,
 		TosURI:    req.TosURI,

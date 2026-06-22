@@ -43,6 +43,12 @@ paths:
                 value:
                   applicationId: "550e8400-e29b-41d4-a716-446655440000"
                   flowType: "AUTHENTICATION"
+              initialRequestBackendApp:
+                summary: Initial request from a backend/server-side application
+                value:
+                  applicationId: "550e8400-e29b-41d4-a716-446655440000"
+                  flowType: "AUTHENTICATION"
+                  appSecret: "550e8400e29b41d4a716446655440000abcdef0123456789"
               subSequentRequestExample:
                 summary: Subsequent request
                 value:
@@ -215,6 +221,13 @@ components:
             - REGISTRATION
             - RECOVERY
           example: "AUTHENTICATION"
+        appSecret:
+          type: string
+          description: >
+            App Secret used to authenticate backend/server-side applications when
+            initiating a flow directly. Required for non-public clients that do not
+            use the redirect-based authorization_code flow; ignored for other applications.
+          example: "550e8400e29b41d4a716446655440000abcdef0123456789"
         verbose:
           type: boolean
           description: When true, the response includes full UI metadata (meta/components) for prompt nodes

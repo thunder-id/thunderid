@@ -39,6 +39,71 @@ func (_m *ActorProviderMock) EXPECT() *ActorProviderMock_Expecter {
 	return &ActorProviderMock_Expecter{mock: &_m.Mock}
 }
 
+// AuthenticateActor provides a mock function for the type ActorProviderMock
+func (_mock *ActorProviderMock) AuthenticateActor(ctx context.Context, identifiers map[string]interface{}, credentials map[string]interface{}) *common.ServiceError {
+	ret := _mock.Called(ctx, identifiers, credentials)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AuthenticateActor")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, map[string]interface{}, map[string]interface{}) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, identifiers, credentials)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// ActorProviderMock_AuthenticateActor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AuthenticateActor'
+type ActorProviderMock_AuthenticateActor_Call struct {
+	*mock.Call
+}
+
+// AuthenticateActor is a helper method to define mock.On call
+//   - ctx context.Context
+//   - identifiers map[string]interface{}
+//   - credentials map[string]interface{}
+func (_e *ActorProviderMock_Expecter) AuthenticateActor(ctx interface{}, identifiers interface{}, credentials interface{}) *ActorProviderMock_AuthenticateActor_Call {
+	return &ActorProviderMock_AuthenticateActor_Call{Call: _e.mock.On("AuthenticateActor", ctx, identifiers, credentials)}
+}
+
+func (_c *ActorProviderMock_AuthenticateActor_Call) Run(run func(ctx context.Context, identifiers map[string]interface{}, credentials map[string]interface{})) *ActorProviderMock_AuthenticateActor_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 map[string]interface{}
+		if args[1] != nil {
+			arg1 = args[1].(map[string]interface{})
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderMock_AuthenticateActor_Call) Return(serviceError *common.ServiceError) *ActorProviderMock_AuthenticateActor_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *ActorProviderMock_AuthenticateActor_Call) RunAndReturn(run func(ctx context.Context, identifiers map[string]interface{}, credentials map[string]interface{}) *common.ServiceError) *ActorProviderMock_AuthenticateActor_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetActor provides a mock function for the type ActorProviderMock
 func (_mock *ActorProviderMock) GetActor(actorID string) (*providers.Entity, *common.ServiceError) {
 	ret := _mock.Called(actorID)

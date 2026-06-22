@@ -57,6 +57,9 @@ func initiateFlow(appID, flowType string, verbose bool, inputs map[string]string
 		"applicationId": appID,
 		"flowType":      flowType,
 	}
+	if appSecret := testutils.GetAppSecret(appID); appSecret != "" {
+		flowReqBody["appSecret"] = appSecret
+	}
 	if verbose {
 		flowReqBody["verbose"] = true
 	}
@@ -106,6 +109,9 @@ func InitiateAuthFlowWithError(appID string, inputs map[string]string) (*ErrorRe
 	flowReqBody := map[string]interface{}{
 		"applicationId": appID,
 		"flowType":      "AUTHENTICATION",
+	}
+	if appSecret := testutils.GetAppSecret(appID); appSecret != "" {
+		flowReqBody["appSecret"] = appSecret
 	}
 	if len(inputs) > 0 {
 		flowReqBody["inputs"] = inputs

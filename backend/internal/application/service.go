@@ -125,7 +125,26 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 		clientSecret = inboundAuthConfig.OAuthConfig.ClientSecret
 	}
 
-	appEntity, sysCredsJSON, buildErr := buildAppEntity(appID, app, clientID, clientSecret)
+	// Issue an App Secret only to applications that can initiate a flow directly via the Flow
+	// Execution API — i.e. backend / server-side apps. Public clients (browser SPAs, mobile apps)
+	// and redirect-based (authorization_code) clients initiate their flows through the OAuth
+	// component, so they have no use for an App Secret and never receive one — any caller-supplied
+	// value for such apps is ignored. For eligible apps, an explicitly provided value (e.g.
+	// declarative resources) is preserved; otherwise one is generated.
+	appSecret := ""
+	if isAppSecretEligible(inboundAuthConfig) {
+		appSecret = app.AppSecret
+		if appSecret == "" {
+			generatedAppSecret, secretErr := oauthutils.GenerateOAuth2ClientSecret()
+			if secretErr != nil {
+				as.logger.Error(ctx, "Failed to generate App Secret", log.Error(secretErr))
+				return nil, &tidcommon.InternalServerError
+			}
+			appSecret = generatedAppSecret
+		}
+	}
+
+	appEntity, sysCredsJSON, buildErr := buildAppEntity(appID, app, clientID, clientSecret, appSecret)
 	if buildErr != nil {
 		as.logger.Error(ctx, "Failed to build entity for create", log.Error(buildErr))
 		return nil, &tidcommon.InternalServerError
@@ -170,8 +189,11 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 			oauthCfg.Certificate = nil
 		}
 	}
-	return buildReturnApplicationDTO(appID, &appForReturn, inboundClient.Assertion, processedDTO.Metadata,
-		inboundAuthConfig, oauthToken, userInfo, scopeClaims), nil
+	returnDTO := buildReturnApplicationDTO(appID, &appForReturn, inboundClient.Assertion, processedDTO.Metadata,
+		inboundAuthConfig, oauthToken, userInfo, scopeClaims)
+	// Surface the App Secret once, on creation only.
+	returnDTO.AppSecret = appSecret
+	return returnDTO, nil
 }
 
 // ValidateApplication validates the application data transfer object.
@@ -440,27 +462,40 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		return &tidcommon.InternalServerError
 	}
 
-	// Decide credential disposition:
-	// - No OAuth config, or OAuth method that doesn't use a client secret → clear stored credentials.
+	// Rotate the App Secret when a new value is supplied (e.g. a regenerate request). Only
+	// applications eligible to hold an App Secret — backend / server-side apps that are neither
+	// public nor redirect-based — may have one set; a value supplied for an ineligible app is
+	// ignored. Credential updates merge, so this preserves the stored client secret, and an empty
+	// value leaves the existing App Secret intact.
+	if app.AppSecret != "" && isAppSecretEligible(inboundAuthConfig) {
+		appSecretJSON, marshalErr := buildSystemCredentials("", app.AppSecret)
+		if marshalErr != nil {
+			as.logger.Error(ctx, "Failed to build App Secret credentials for update", log.Error(marshalErr))
+			return &tidcommon.InternalServerError
+		}
+		if epErr := as.entityProvider.UpdateSystemCredentials(appID, appSecretJSON); epErr != nil {
+			if svcErr := mapEntityProviderError(epErr); svcErr != nil {
+				return svcErr
+			}
+			as.logger.Error(ctx, "Failed to update App Secret credentials",
+				log.String("appID", appID), log.Error(epErr))
+			return &tidcommon.InternalServerError
+		}
+	}
+
+	// Decide client-secret disposition:
+	// - No OAuth config, or OAuth method that doesn't use a client secret → leave credentials as-is.
 	// - OAuth method requires a secret + new secret supplied → store the new secret.
 	// - OAuth method requires a secret + no new secret supplied → leave existing secret intact (no rotation).
 	if inboundAuthConfig == nil || inboundAuthConfig.OAuthConfig == nil ||
 		!appRequiresClientSecret(inboundAuthConfig.OAuthConfig) {
-		if epErr := as.entityProvider.UpdateSystemCredentials(appID, nil); epErr != nil {
-			if svcErr := mapEntityProviderError(epErr); svcErr != nil {
-				return svcErr
-			}
-			as.logger.Error(ctx, "Failed to clear entity system credentials",
-				log.String("appID", appID), log.Error(epErr))
-			return &tidcommon.InternalServerError
-		}
 		return nil
 	}
 	if inboundAuthConfig.OAuthConfig.ClientSecret == "" {
 		return nil
 	}
 
-	sysCredsJSON, marshalErr := buildSystemCredentials(inboundAuthConfig.OAuthConfig.ClientSecret)
+	sysCredsJSON, marshalErr := buildSystemCredentials(inboundAuthConfig.OAuthConfig.ClientSecret, "")
 	if marshalErr != nil {
 		as.logger.Error(ctx, "Failed to build entity system credentials for update", log.Error(marshalErr))
 		return &tidcommon.InternalServerError
@@ -476,6 +511,21 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 	}
 
 	return nil
+}
+
+// isAppSecretEligible reports whether an application may hold an App Secret. Eligible apps are
+// backend / server-side apps — those that are neither public clients nor redirect-based
+// (authorization_code) clients. An app with no OAuth config (e.g. an embedded server-side app)
+// is eligible.
+func isAppSecretEligible(inboundAuthConfig *providers.InboundAuthConfigWithSecret) bool {
+	if inboundAuthConfig == nil || inboundAuthConfig.OAuthConfig == nil {
+		return true
+	}
+	oauthConfig := inboundAuthConfig.OAuthConfig
+	if oauthConfig.PublicClient {
+		return false
+	}
+	return !slices.Contains(oauthConfig.GrantTypes, providers.GrantTypeAuthorizationCode)
 }
 
 // appRequiresClientSecret reports whether the OAuth config implies a confidential client requiring a secret.
@@ -809,14 +859,14 @@ func buildSystemAttributes(app *model.ApplicationDTO, clientID string) (json.Raw
 }
 
 // buildAppEntity constructs an entity and system credentials for entity creation.
-func buildAppEntity(appID string, app *model.ApplicationDTO, clientID string, plaintextSecret string) (
-	*providers.Entity, json.RawMessage, error) {
+func buildAppEntity(appID string, app *model.ApplicationDTO, clientID string, plaintextSecret string,
+	appSecret string) (*providers.Entity, json.RawMessage, error) {
 	sysAttrsJSON, err := buildSystemAttributes(app, clientID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build entity system attributes: %w", err)
 	}
 
-	sysCredsJSON, err := buildSystemCredentials(plaintextSecret)
+	sysCredsJSON, err := buildSystemCredentials(plaintextSecret, appSecret)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build entity system credentials: %w", err)
 	}
@@ -832,15 +882,21 @@ func buildAppEntity(appID string, app *model.ApplicationDTO, clientID string, pl
 	return e, sysCredsJSON, nil
 }
 
-// buildSystemCredentials builds the system credentials JSON for the entity.
-func buildSystemCredentials(clientSecret string) (json.RawMessage, error) {
-	if clientSecret == "" {
+// buildSystemCredentials builds the system credentials JSON for the entity. Both the OAuth client
+// secret and the App Secret are optional; only non-empty values are included.
+func buildSystemCredentials(clientSecret string, appSecret string) (json.RawMessage, error) {
+	creds := map[string]interface{}{}
+	if clientSecret != "" {
+		creds[fieldClientSecret] = clientSecret
+	}
+	if appSecret != "" {
+		creds[fieldAppSecret] = appSecret
+	}
+	if len(creds) == 0 {
 		return nil, nil
 	}
 
-	return json.Marshal(map[string]interface{}{
-		fieldClientSecret: clientSecret,
-	})
+	return json.Marshal(creds)
 }
 
 // getOAuthInboundAuthConfigDTO returns the single OAuth InboundAuthConfigDTO.

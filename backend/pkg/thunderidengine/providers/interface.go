@@ -52,6 +52,9 @@ type ActorProvider interface {
 	GetInboundClientByID(
 		ctx context.Context, id string,
 	) (*InboundClient, *common.ServiceError)
+	AuthenticateActor(
+		ctx context.Context, identifiers, credentials map[string]interface{},
+	) *common.ServiceError
 	GetActor(actorID string) (*Entity, *common.ServiceError)
 	GetActorGroups(actorID string) ([]EntityGroup, *common.ServiceError)
 }

@@ -48,6 +48,7 @@ func TestStoreBasicOperations(t *testing.T) {
 	}
 	if entity == nil {
 		t.Fatal("Expected entity, got nil")
+		return
 	}
 
 	retrievedNotification, ok := entity.Data.(TestNotification)
@@ -107,6 +108,7 @@ func TestStoreStringConvenienceMethods(t *testing.T) {
 	}
 	if entity == nil {
 		t.Fatal("Expected entity, got nil")
+		return
 	}
 
 	// Type assert the data back to TestNotification
@@ -237,6 +239,7 @@ func TestSingletonStore(t *testing.T) {
 	}
 	if entity == nil {
 		t.Fatal("Expected entity, got nil")
+		return
 	}
 
 	retrievedNotification, ok := entity.Data.(TestNotification)

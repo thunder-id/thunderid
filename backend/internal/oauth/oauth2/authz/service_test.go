@@ -42,6 +42,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowexecmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
@@ -129,7 +130,7 @@ func (suite *AuthorizeServiceTestSuite) SetupTest() {
 func (suite *AuthorizeServiceTestSuite) newService() *authorizeService {
 	return &authorizeService{
 		cfg:             authorizeServiceCfgFromRuntime(),
-		inboundClient:   actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider),
+		inboundClient:   actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr()),
 		authZValidator:  suite.mockValidator,
 		authCodeStore:   suite.mockAuthzCodeStore,
 		authReqStore:    suite.mockAuthReqStore,
@@ -1945,4 +1946,10 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Ac
 
 	assert.Nil(suite.T(), authErr)
 	assert.NotNil(suite.T(), result)
+}
+
+// noopAuthnMgr returns an authentication-provider mock with no expectations, for tests that
+// build a real actor provider but never exercise actor authentication.
+func noopAuthnMgr() *managermock.AuthnProviderManagerMock {
+	return &managermock.AuthnProviderManagerMock{}
 }

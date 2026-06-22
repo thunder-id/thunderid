@@ -150,6 +150,25 @@ You can select multiple user types. If no user types are configured, all user ty
 
 To rotate the client secret, open the application's **OAuth** tab and click **Regenerate Secret**.
 
+### App Secret
+
+The **App Secret** is a credential separate from the Client Secret. <ProductName /> issues an App Secret only to applications that can initiate a sign-in flow directly. These are Backend Services and server-side apps using embedded sign-in — any non-public app that does **not** use the redirect-based `authorization_code` flow. Applications that sign in by redirect (Browser Apps, Mobile Apps, and redirect-based Full-stack Apps) initiate their flows through the OAuth component. They are not issued an App Secret.
+
+The two credentials serve different purposes:
+
+- The **Client Secret** authenticates your application at the OAuth 2.0 **token endpoint**.
+- The **App Secret** authenticates your application when it **initiates a sign-in flow directly** via the Flow Execution API — the embedded sign-in path used by server-side applications.
+
+A Backend Service or server-side app can hold both. It uses its Client Secret at the token endpoint (for example, for the `client_credentials` grant). It uses its App Secret to initiate a sign-in flow directly. Copy the App Secret from the application details page immediately after creation — like the Client Secret, it is shown only once. To rotate it later, open the application's settings and click **Regenerate App Secret**.
+
+To initiate a new flow, pass the App Secret in the `appSecret` field of the Flow Execution request. See the [Flow Execution API Reference](/docs/next/apis/#tag/flow-execution) for the full request payload.
+
+Any application configured with the redirect-based `authorization_code` grant cannot initiate a flow directly, whether it is public (Browser Apps, Mobile Apps) or confidential (Full-stack Apps). Such applications must use the redirect-based sign-in flow, and direct requests are rejected with `403 Forbidden`. Every other application must present a valid App Secret. This includes apps without a redirect-based OAuth profile and server-side embedded apps with no OAuth profile at all. Flow **continuation** requests (those carrying an `executionId`) do not require the App Secret.
+
+:::note
+Backend apps created through the Console or REST API receive an auto-generated App Secret, surfaced once in the response. A backend app managed declaratively (in a YAML resource file) should set an explicit `appSecret` field. Any auto-generated value is not surfaced back to the definition, so without an explicit value you have no secret to present at `POST /flow/execute`. Declaring it keeps the definition deterministic and reproducible.
+:::
+
 ### Redirect URIs
 
 Redirect URIs are the URLs <ProductName /> sends the authorization code (or token) to after a successful sign-in. You must register every URI your application uses.

@@ -114,6 +114,34 @@ vi.mock('../../../RegenerateSecretDialog', () => ({
     ) : null,
 }));
 
+vi.mock('../../../RegenerateAppSecretDialog', () => ({
+  default: ({
+    open,
+    applicationId,
+    onClose,
+    onSuccess,
+  }: {
+    open: boolean;
+    applicationId: string | null;
+    onClose: () => void;
+    onSuccess?: (appSecret: string) => void;
+  }) =>
+    open ? (
+      <div data-testid="regenerate-app-secret-dialog" data-application-id={applicationId}>
+        <button type="button" onClick={onClose} data-testid="app-secret-dialog-close">
+          Close
+        </button>
+        <button
+          type="button"
+          onClick={() => onSuccess?.('new-test-app-secret')}
+          data-testid="app-secret-dialog-success"
+        >
+          Trigger Success
+        </button>
+      </div>
+    ) : null,
+}));
+
 vi.mock('../../../ClientSecretSuccessDialog', () => ({
   default: ({open, clientSecret, onClose}: {open: boolean; clientSecret: string; onClose: () => void}) =>
     open ? (
