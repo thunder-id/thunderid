@@ -87,7 +87,8 @@ func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	service := Initialize(mux, suite.mockJWTService, nil, nil,
-		suite.mockTokenValidator, actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider),
+		suite.mockTokenValidator,
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr()),
 		suite.mockAttributeCacheService, suite.mockDiscoveryService, suite.mockDPoPVerifier, testhelpers.OAuthConfig())
 
 	assert.NotNil(suite.T(), service)
@@ -97,7 +98,8 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	mux := http.NewServeMux()
 
 	Initialize(mux, suite.mockJWTService, nil, nil,
-		suite.mockTokenValidator, actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider),
+		suite.mockTokenValidator,
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr()),
 		suite.mockAttributeCacheService, suite.mockDiscoveryService, suite.mockDPoPVerifier, testhelpers.OAuthConfig())
 
 	// Verify that the routes are registered by attempting to get a handler for them.

@@ -21,6 +21,7 @@ package actorprovider
 import (
 	"context"
 	"errors"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -30,21 +31,30 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
-// actorProvider delegates actor resolution to inbound-client and entity-provider services.
+// fieldUserID is the identifier key the authentication provider uses to authenticate an actor by
+// its entity ID.
+const fieldUserID = "userID"
+
+// actorProvider delegates actor resolution to inbound-client and entity-provider services, and
+// actor authentication to the authentication provider.
 type actorProvider struct {
 	inboundClient  inboundclient.InboundClientServiceInterface
 	entityProvider entityprovider.EntityProviderInterface
+	authnProvider  providers.AuthnProviderManagerInterface
 	logger         *log.Logger
 }
 
-// newActorProvider creates a new actorProvider backed by the given inbound-client and entity-provider.
+// newActorProvider creates a new actorProvider backed by the given inbound-client, entity-provider,
+// and authentication provider.
 func newActorProvider(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider providers.AuthnProviderManagerInterface,
 ) providers.ActorProviderInterface {
 	return &actorProvider{
 		inboundClient:  inboundClient,
 		entityProvider: entityProvider,
+		authnProvider:  authnProvider,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ActorProvider")),
 	}
 }
@@ -93,6 +103,50 @@ func (p *actorProvider) GetInboundClientByID(
 		return nil, &tidcommon.InternalServerError
 	}
 	return client, nil
+}
+
+// GetFlowInitiationMode derives, at runtime, how the given application is permitted to initiate a
+// new authentication flow directly over HTTP. The classification is computed from the application's
+// inbound protocol configuration and returned as a protocol-neutral mode so callers (e.g. the flow
+// executor) need not inspect protocol-specific data. A non-existent application returns
+// ErrorActorNotFound so callers can distinguish an unknown app from a backend app.
+func (p *actorProvider) GetFlowInitiationMode(
+	ctx context.Context, id string,
+) (providers.FlowInitiationMode, *tidcommon.ServiceError) {
+	profile, svcErr := p.GetOAuthProfileByID(ctx, id)
+	if svcErr != nil && svcErr.Code != ErrorActorNotFound.Code {
+		return "", svcErr
+	}
+
+	// No protocol profile means either a server-side embedded app (exists, no OAuth config) or a
+	// non-existent application. Confirm existence so an unknown app surfaces as ErrorActorNotFound
+	// rather than being treated as a backend app.
+	if profile == nil {
+		if _, clientErr := p.GetInboundClientByID(ctx, id); clientErr != nil {
+			return "", clientErr
+		}
+		return providers.FlowInitiationModeAppSecret, nil
+	}
+
+	// A redirect-based (authorization_code) profile — public or confidential — must initiate flows
+	// through the protocol component, not via a direct HTTP call.
+	if slices.Contains(profile.GrantTypes, string(providers.GrantTypeAuthorizationCode)) {
+		return providers.FlowInitiationModeRedirectOnly, nil
+	}
+	return providers.FlowInitiationModeAppSecret, nil
+}
+
+// AuthenticateActor verifies the supplied credentials against the actor identified by actorID.
+// It returns nil when authentication succeeds and a service error otherwise. The default
+// implementation delegates to the authentication provider, which performs the credential lookup
+// and constant-time verification generically through the entity layer. A custom actor provider may
+// implement its own scheme.
+func (p *actorProvider) AuthenticateActor(
+	ctx context.Context, actorID string, credentials map[string]interface{},
+) *tidcommon.ServiceError {
+	_, _, svcErr := p.authnProvider.AuthenticateUser(ctx,
+		map[string]interface{}{fieldUserID: actorID}, credentials, nil, nil, providers.AuthUser{})
+	return svcErr
 }
 
 // GetActor returns the backing entity record for the given actor ID.

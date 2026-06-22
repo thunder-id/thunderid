@@ -39,6 +39,71 @@ func (_m *ActorProviderInterfaceMock) EXPECT() *ActorProviderInterfaceMock_Expec
 	return &ActorProviderInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// AuthenticateActor provides a mock function for the type ActorProviderInterfaceMock
+func (_mock *ActorProviderInterfaceMock) AuthenticateActor(ctx context.Context, actorID string, credentials map[string]interface{}) *common.ServiceError {
+	ret := _mock.Called(ctx, actorID, credentials)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AuthenticateActor")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, map[string]interface{}) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, actorID, credentials)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// ActorProviderInterfaceMock_AuthenticateActor_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AuthenticateActor'
+type ActorProviderInterfaceMock_AuthenticateActor_Call struct {
+	*mock.Call
+}
+
+// AuthenticateActor is a helper method to define mock.On call
+//   - ctx context.Context
+//   - actorID string
+//   - credentials map[string]interface{}
+func (_e *ActorProviderInterfaceMock_Expecter) AuthenticateActor(ctx interface{}, actorID interface{}, credentials interface{}) *ActorProviderInterfaceMock_AuthenticateActor_Call {
+	return &ActorProviderInterfaceMock_AuthenticateActor_Call{Call: _e.mock.On("AuthenticateActor", ctx, actorID, credentials)}
+}
+
+func (_c *ActorProviderInterfaceMock_AuthenticateActor_Call) Run(run func(ctx context.Context, actorID string, credentials map[string]interface{})) *ActorProviderInterfaceMock_AuthenticateActor_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 map[string]interface{}
+		if args[2] != nil {
+			arg2 = args[2].(map[string]interface{})
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_AuthenticateActor_Call) Return(serviceError *common.ServiceError) *ActorProviderInterfaceMock_AuthenticateActor_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_AuthenticateActor_Call) RunAndReturn(run func(ctx context.Context, actorID string, credentials map[string]interface{}) *common.ServiceError) *ActorProviderInterfaceMock_AuthenticateActor_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetActor provides a mock function for the type ActorProviderInterfaceMock
 func (_mock *ActorProviderInterfaceMock) GetActor(actorID string) (*providers.Entity, *common.ServiceError) {
 	ret := _mock.Called(actorID)
@@ -163,6 +228,74 @@ func (_c *ActorProviderInterfaceMock_GetActorGroups_Call) Return(entityGroups []
 }
 
 func (_c *ActorProviderInterfaceMock_GetActorGroups_Call) RunAndReturn(run func(actorID string) ([]providers.EntityGroup, *common.ServiceError)) *ActorProviderInterfaceMock_GetActorGroups_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetFlowInitiationMode provides a mock function for the type ActorProviderInterfaceMock
+func (_mock *ActorProviderInterfaceMock) GetFlowInitiationMode(ctx context.Context, id string) (providers.FlowInitiationMode, *common.ServiceError) {
+	ret := _mock.Called(ctx, id)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetFlowInitiationMode")
+	}
+
+	var r0 providers.FlowInitiationMode
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (providers.FlowInitiationMode, *common.ServiceError)); ok {
+		return returnFunc(ctx, id)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) providers.FlowInitiationMode); ok {
+		r0 = returnFunc(ctx, id)
+	} else {
+		r0 = ret.Get(0).(providers.FlowInitiationMode)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, id)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderInterfaceMock_GetFlowInitiationMode_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFlowInitiationMode'
+type ActorProviderInterfaceMock_GetFlowInitiationMode_Call struct {
+	*mock.Call
+}
+
+// GetFlowInitiationMode is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+func (_e *ActorProviderInterfaceMock_Expecter) GetFlowInitiationMode(ctx interface{}, id interface{}) *ActorProviderInterfaceMock_GetFlowInitiationMode_Call {
+	return &ActorProviderInterfaceMock_GetFlowInitiationMode_Call{Call: _e.mock.On("GetFlowInitiationMode", ctx, id)}
+}
+
+func (_c *ActorProviderInterfaceMock_GetFlowInitiationMode_Call) Run(run func(ctx context.Context, id string)) *ActorProviderInterfaceMock_GetFlowInitiationMode_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_GetFlowInitiationMode_Call) Return(flowInitiationMode providers.FlowInitiationMode, serviceError *common.ServiceError) *ActorProviderInterfaceMock_GetFlowInitiationMode_Call {
+	_c.Call.Return(flowInitiationMode, serviceError)
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_GetFlowInitiationMode_Call) RunAndReturn(run func(ctx context.Context, id string) (providers.FlowInitiationMode, *common.ServiceError)) *ActorProviderInterfaceMock_GetFlowInitiationMode_Call {
 	_c.Call.Return(run)
 	return _c
 }

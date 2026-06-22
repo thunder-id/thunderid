@@ -17,10 +17,13 @@
  */
 
 // Application ID of the native app used for E2E admin authentication.
-// Declared in the vanilla sample thunderid-config with a fixed UUID. Uses only the
-// client_credentials grant type and is therefore not subject to the redirect-based
-// flow initiation guard.
+// Declared in tests/e2e/thunderid-config.yaml with a fixed UUID. Uses only the
+// client_credentials grant type, so it is not subject to the redirect-based flow
+// initiation guard, but as a backend app it must present its App Secret to initiate a flow.
 const E2E_ADMIN_NATIVE_APP_ID = "019e3a5c-0501-7f3e-a66e-66fc7918c3a7";
+
+// App Secret declared for the E2E admin native app in tests/e2e/thunderid-config.yaml.
+const E2E_ADMIN_NATIVE_APP_SECRET = "e2e-admin-native-app-secret";
 
 /**
  * Obtain a short-lived admin bearer token via the flow execution API.
@@ -33,7 +36,7 @@ export async function getAdminToken(request: import("@playwright/test").APIReque
   const applicationId = E2E_ADMIN_NATIVE_APP_ID;
 
   const flowResponse = await request.post(`${serverUrl}/flow/execute`, {
-    data: { applicationId, flowType: "AUTHENTICATION" },
+    data: { applicationId, appSecret: E2E_ADMIN_NATIVE_APP_SECRET, flowType: "AUTHENTICATION" },
     ignoreHTTPSErrors: true,
   });
   if (!flowResponse.ok()) throw new Error(`Failed to start authentication flow: ${await flowResponse.text()}`);

@@ -33,6 +33,7 @@ type ApplicationDTO struct {
 	Name        string `json:"name" jsonschema:"Application name."`
 	Description string `json:"description,omitempty" jsonschema:"Optional description of the application's purpose or functionality."`
 	Template    string `json:"template,omitempty" jsonschema:"Application template. Optional. Pre-configured application type template."`
+	AppSecret   string `json:"appSecret,omitempty" jsonschema:"App Secret. Returned once on creation for backend/server-side apps — non-public clients that do not use the redirect-based authorization_code flow. Used to authenticate when initiating a flow directly via the Flow Execution API."`
 
 	URL       string   `json:"url,omitempty" jsonschema:"Application home URL. Optional. The main URL where your application is hosted."`
 	LogoURL   string   `json:"logoUrl,omitempty" jsonschema:"Logo image URL. Optional. Displayed in login pages and application listings."`
@@ -110,6 +111,7 @@ type ApplicationRequest struct {
 	Name        string   `json:"name" yaml:"name" native:"required,min=3,max=100"`
 	Description string   `json:"description" yaml:"description"`
 	Template    string   `json:"template,omitempty" yaml:"template,omitempty"`
+	AppSecret   string   `json:"appSecret,omitempty" yaml:"appSecret,omitempty"`
 	URL         string   `json:"url,omitempty" yaml:"url,omitempty" native:"omitempty,url,max=2048"`
 	LogoURL     string   `json:"logoUrl,omitempty" yaml:"logoUrl,omitempty" native:"omitempty,url,max=2048"`
 	TosURI      string   `json:"tosUri,omitempty" yaml:"tosUri,omitempty" native:"omitempty,url,max=2048"`
@@ -129,6 +131,7 @@ type ApplicationRequestWithID struct {
 	Name        string   `json:"name" yaml:"name"`
 	Description string   `json:"description" yaml:"description"`
 	Template    string   `json:"template,omitempty" yaml:"template,omitempty"`
+	AppSecret   string   `json:"appSecret,omitempty" yaml:"appSecret,omitempty"`
 	URL         string   `json:"url,omitempty" yaml:"url,omitempty"`
 	LogoURL     string   `json:"logoUrl,omitempty" yaml:"logoUrl,omitempty"`
 	TosURI      string   `json:"tosUri,omitempty" yaml:"tosUri,omitempty"`
@@ -148,6 +151,7 @@ type ApplicationCompleteResponse struct {
 	Description string   `json:"description,omitempty"`
 	ClientID    string   `json:"clientId,omitempty"`
 	Template    string   `json:"template,omitempty"`
+	AppSecret   string   `json:"appSecret,omitempty"`
 	URL         string   `json:"url,omitempty"`
 	LogoURL     string   `json:"logoUrl,omitempty"`
 	TosURI      string   `json:"tosUri,omitempty"`

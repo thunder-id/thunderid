@@ -68,7 +68,7 @@ func TestClientAuthTestSuite(t *testing.T) {
 }
 
 func (suite *ClientAuthTestSuite) actorProvider() providers.ActorProviderInterface {
-	return actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider)
+	return actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr())
 }
 
 func (suite *ClientAuthTestSuite) SetupTest() {
@@ -1294,4 +1294,10 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_MultipleKeysMatche
 	err := validateClientAssertion(context.Background(),
 		oauthApp, suite.mockJwtService, testEndpointURL, "test-client", fakeJWT)
 	assert.Nil(suite.T(), err)
+}
+
+// noopAuthnMgr returns an authentication-provider mock with no expectations, for tests that
+// build a real actor provider but never exercise actor authentication.
+func noopAuthnMgr() *managermock.AuthnProviderManagerInterfaceMock {
+	return &managermock.AuthnProviderManagerInterfaceMock{}
 }

@@ -251,6 +251,14 @@ export interface Application {
   template?: string;
 
   /**
+   * App Secret used to authenticate the application when it initiates a flow directly via the
+   * Flow Execution API. Issued to backend / server-side (non-public) applications and returned
+   * only once, in the create response. Not present in GET responses.
+   * @example 'a1b2c3d4e5f6...'
+   */
+  appSecret?: string;
+
+  /**
    * Inbound authentication configuration
    * Contains OAuth2/OIDC settings
    * Note: clientSecret is masked in GET responses

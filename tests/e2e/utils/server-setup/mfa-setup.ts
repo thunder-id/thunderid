@@ -179,14 +179,17 @@ export class MFASetup {
    * Get admin authentication token
    */
   private async getAdminToken(): Promise<string> {
-    // Use the native app declared in the vanilla sample thunderid-config with a fixed UUID.
-    // It uses only client_credentials so it is not subject to the redirect-based flow guard.
+    // Use the native app declared in tests/e2e/thunderid-config.yaml with a fixed UUID.
+    // It uses only client_credentials so it is not subject to the redirect-based flow guard,
+    // but as a backend app it must present its App Secret to initiate a flow.
     const adminAppId = "019e3a5c-0501-7f3e-a66e-66fc7918c3a7";
+    const adminAppSecret = "e2e-admin-native-app-secret";
 
     // Step 1: Start authentication flow
     const flowResponse = await this.request.post(`${this.config.serverUrl}/flow/execute`, {
       data: {
         applicationId: adminAppId,
+        appSecret: adminAppSecret,
         flowType: "AUTHENTICATION",
       },
       ignoreHTTPSErrors: true,

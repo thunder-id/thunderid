@@ -33,9 +33,14 @@ export interface ShowClientSecretProps {
    */
   clientId?: string;
   /**
-   * The client secret that needs to be saved
+   * The OAuth client secret that needs to be saved. Used to authenticate at the token endpoint.
    */
-  clientSecret: string;
+  clientSecret?: string;
+  /**
+   * The App Secret that needs to be saved. Used to authenticate when initiating a flow directly
+   * via the Flow Execution API. Issued to backend / server-side applications.
+   */
+  appSecret?: string;
   /**
    * Callback when user clicks copy secret button
    */
@@ -47,18 +52,22 @@ export interface ShowClientSecretProps {
 }
 
 /**
- * Component that displays the client secret that needs to be saved
- * with security reminders and educational content
+ * Component that displays the credentials (client secret and/or App Secret) that need to be saved
+ * with security reminders and educational content. An application may have both: the client secret
+ * authenticates at the OAuth token endpoint, while the App Secret authenticates direct flow
+ * initiation via the Flow Execution API.
  */
 export default function ShowClientSecret({
   appName,
   clientId = '',
-  clientSecret,
+  clientSecret = '',
+  appSecret = '',
   onCopySecret = () => null,
   onContinue,
 }: ShowClientSecretProps): JSX.Element {
   const {t} = useTranslation();
   const [showSecret, setShowSecret] = useState(false);
+  const [showAppSecret, setShowAppSecret] = useState(false);
   const {copy: copyClientId} = useCopyToClipboard({
     resetDelay: 2000,
   }) as {copied: boolean; copy: (text: string) => Promise<void>};
@@ -66,17 +75,32 @@ export default function ShowClientSecret({
     resetDelay: 2000,
     onCopy: onCopySecret,
   }) as {copied: boolean; copy: (text: string) => Promise<void>};
+  const {copy: copyAppSecret} = useCopyToClipboard({
+    resetDelay: 2000,
+  }) as {copied: boolean; copy: (text: string) => Promise<void>};
+
+  // The primary secret backs the footer copy button: prefer the client secret, fall back to the
+  // App Secret for embedded apps that only have the latter.
+  const primarySecret = clientSecret || appSecret;
 
   const handleClientIdCopy = async (): Promise<void> => {
     await copyClientId(clientId);
   };
 
   const handleCopy = async (): Promise<void> => {
-    await copy(clientSecret);
+    await copy(primarySecret);
+  };
+
+  const handleAppSecretCopy = async (): Promise<void> => {
+    await copyAppSecret(appSecret);
   };
 
   const handleToggleVisibility = (): void => {
     setShowSecret(!showSecret);
+  };
+
+  const handleToggleAppSecretVisibility = (): void => {
+    setShowAppSecret(!showAppSecret);
   };
 
   return (
@@ -160,47 +184,103 @@ export default function ShowClientSecret({
             </>
           )}
 
-          <Divider />
+          {clientSecret && (
+            <>
+              <Divider />
 
-          <Box>
-            <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
-              {t('applications:clientSecret.clientSecretLabel')}
-            </Typography>
-            <TextField
-              fullWidth
-              data-testid="application-client-secret-value"
-              type={showSecret ? 'text' : 'password'}
-              value={clientSecret}
-              InputProps={{
-                readOnly: true,
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label={t('applications:regenerateSecret.success.toggleVisibility')}
-                      onClick={handleToggleVisibility}
-                      edge="end"
-                      size="small"
-                    >
-                      {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </IconButton>
-                    <IconButton
-                      aria-label={`${t('common:actions.copy')} ${t('applications:clientSecret.clientSecretLabel')}`}
-                      onClick={() => {
-                        handleCopy().catch(() => {
-                          // Error already handled in handleCopy
-                        });
-                      }}
-                      edge="end"
-                      size="small"
-                      sx={{ml: 0.5}}
-                    >
-                      <Copy size={16} />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 0.5}}>
+                  {t('applications:clientSecret.clientSecretLabel')}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
+                  {t('applications:clientSecret.purpose')}
+                </Typography>
+                <TextField
+                  fullWidth
+                  data-testid="application-client-secret-value"
+                  type={showSecret ? 'text' : 'password'}
+                  value={clientSecret}
+                  InputProps={{
+                    readOnly: true,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          aria-label={t('applications:regenerateSecret.success.toggleVisibility')}
+                          onClick={handleToggleVisibility}
+                          edge="end"
+                          size="small"
+                        >
+                          {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </IconButton>
+                        <IconButton
+                          aria-label={`${t('common:actions.copy')} ${t('applications:clientSecret.clientSecretLabel')}`}
+                          onClick={() => {
+                            copy(clientSecret).catch(() => {
+                              // Error already handled in copy
+                            });
+                          }}
+                          edge="end"
+                          size="small"
+                          sx={{ml: 0.5}}
+                        >
+                          <Copy size={16} />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+            </>
+          )}
+
+          {appSecret && (
+            <>
+              <Divider />
+
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 0.5}}>
+                  {t('applications:appSecret.label')}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 1}}>
+                  {t('applications:appSecret.purpose')}
+                </Typography>
+                <TextField
+                  fullWidth
+                  data-testid="application-app-secret-value"
+                  type={showAppSecret ? 'text' : 'password'}
+                  value={appSecret}
+                  InputProps={{
+                    readOnly: true,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          aria-label={t('applications:regenerateSecret.success.toggleVisibility')}
+                          onClick={handleToggleAppSecretVisibility}
+                          edge="end"
+                          size="small"
+                        >
+                          {showAppSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </IconButton>
+                        <IconButton
+                          aria-label={`${t('common:actions.copy')} ${t('applications:appSecret.label')}`}
+                          onClick={() => {
+                            handleAppSecretCopy().catch(() => {
+                              // Error already handled in handleAppSecretCopy
+                            });
+                          }}
+                          edge="end"
+                          size="small"
+                          sx={{ml: 0.5}}
+                        >
+                          <Copy size={16} />
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Box>
+            </>
+          )}
         </Stack>
       </Box>
 
