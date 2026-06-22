@@ -23,8 +23,10 @@ import (
 	"context"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/database/dbtypes"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/redisstore"
 	"github.com/thunder-id/thunderid/internal/system/healthcheck/model"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -37,12 +39,12 @@ type HealthCheckServiceInterface interface {
 // HealthCheckService is the default implementation of the HealthCheckServiceInterface.
 type HealthCheckService struct {
 	DBProvider    provider.DBProviderInterface
-	RedisProvider provider.RedisProviderInterface
+	RedisProvider redisstore.RedisProviderInterface
 }
 
 // Initialize creates a new instance of HealthCheckService with the provided dependencies.
 func Initialize(dbProvider provider.DBProviderInterface,
-	redisProvider provider.RedisProviderInterface) HealthCheckServiceInterface {
+	redisProvider redisstore.RedisProviderInterface) HealthCheckServiceInterface {
 	return &HealthCheckService{
 		DBProvider:    dbProvider,
 		RedisProvider: redisProvider,
@@ -90,7 +92,7 @@ func (hcs *HealthCheckService) checkConfigDatabaseStatus(ctx context.Context, qu
 
 // checkRuntimeDatabaseStatus checks the status of the runtime database with the specified query.
 func (hcs *HealthCheckService) checkRuntimeDatabaseStatus(ctx context.Context, query dbmodel.DBQuery) model.Status {
-	if config.GetServerRuntime().Config.Database.Runtime.Type == provider.DataSourceTypeRedis {
+	if config.GetServerRuntime().Config.Database.Runtime.Type == dbtypes.DataSourceTypeRedis {
 		return hcs.checkRedisRuntimeStatus(ctx)
 	}
 	dbClient, err := hcs.DBProvider.GetRuntimeDBClient()

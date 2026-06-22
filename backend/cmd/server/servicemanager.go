@@ -29,9 +29,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	attributecacheconfig "github.com/thunder-id/thunderid/internal/attributecache/config"
 	"github.com/thunder-id/thunderid/internal/authn"
 	authnAssert "github.com/thunder-id/thunderid/internal/authn/assert"
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnconfig "github.com/thunder-id/thunderid/internal/authn/config"
 	authnConsent "github.com/thunder-id/thunderid/internal/authn/consent"
 	"github.com/thunder-id/thunderid/internal/authn/github"
 	"github.com/thunder-id/thunderid/internal/authn/google"
@@ -44,6 +46,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authz"
 	"github.com/thunder-id/thunderid/internal/authzen"
 	"github.com/thunder-id/thunderid/internal/cert"
+	certconfig "github.com/thunder-id/thunderid/internal/cert/config"
 	"github.com/thunder-id/thunderid/internal/consent"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	"github.com/thunder-id/thunderid/internal/design/resolve"
@@ -55,6 +58,7 @@ import (
 	flowcore "github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
+	flowsqlstore "github.com/thunder-id/thunderid/internal/flow/flowexec/sqlstore"
 	"github.com/thunder-id/thunderid/internal/flow/flowmeta"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
@@ -64,7 +68,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/oauth"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	oauth2authz "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
+	authzsqlstore "github.com/thunder-id/thunderid/internal/oauth/oauth2/authz/sqlstore"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
+	cibasqlstore "github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba/sqlstore"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dcr"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	jtisqlstore "github.com/thunder-id/thunderid/internal/oauth/oauth2/jti/sqlstore"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
+	parsqlstore "github.com/thunder-id/thunderid/internal/oauth/oauth2/par/sqlstore"
 	"github.com/thunder-id/thunderid/internal/openid4vp"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
@@ -72,7 +84,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/database/dbtypes"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/redisstore"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/email"
 	"github.com/thunder-id/thunderid/internal/system/export"
@@ -89,6 +103,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/services"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/template"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/internal/user"
 )
 
@@ -233,11 +248,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 	exporters = append(exporters, notificationExporter)
 
+	authnCfg := authnconfig.FromServerRuntime()
+
 	// Initialize passkey service
-	passkeyService := passkey.Initialize(entityService)
+	passkeyService := passkey.Initialize(entityService, authnCfg)
 
 	// Initialize magic link service
-	magicLinkService := magiclink.Initialize(jwtService, entityProvider)
+	magicLinkService := magiclink.Initialize(jwtService, entityProvider, authnCfg)
 
 	// Initialize otp core service
 	otpCoreService := otp.Initialize(otpService, entityProvider)
@@ -245,7 +262,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Initialize federated authentication services.
 	oauthAuthnService := authnOAuth.Initialize(idpService, entityProvider)
 	oidcAuthnService := authnOIDC.Initialize(oauthAuthnService, jwtService, idpService)
-	googleAuthnService := google.Initialize(oidcAuthnService, jwtService)
+	googleAuthnService := google.Initialize(oidcAuthnService, jwtService, authnCfg)
 	githubAuthnService := github.Initialize(oauthAuthnService)
 
 	federatedAuths := map[idp.IDPType]authncm.FederatedAuthenticator{
@@ -269,12 +286,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Initialize authentication services.
 	authAssertGen := authnAssert.Initialize()
-	consentEnforcer := authnConsent.Initialize(consentService, jwtService)
+	consentEnforcer := authnConsent.Initialize(consentService, jwtService, authnCfg)
 
 	authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen, passkeyService,
-		otpCoreService, magicLinkService, oauthAuthnService, oidcAuthnService, googleAuthnService, githubAuthnService)
+		otpCoreService, magicLinkService, oauthAuthnService, oidcAuthnService, googleAuthnService, githubAuthnService,
+		authnCfg)
 
-	attributeCacheService := attributecache.Initialize()
+	attributeCacheService := attributecache.Initialize(attributecacheconfig.FromServerRuntime())
 
 	emailClient := initEmailClient(ctx, logger)
 	flowFactory, graphCache, execRegistry, interceptorRegistry := initializeFlowCoreAndExecutor(ctx, logger,
@@ -313,7 +331,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		logger.Fatal(ctx, "Failed to initialize FlowMgtService", log.Error(err))
 	}
 	exporters = append(exporters, flowMgtExporter)
-	certservice, err := cert.Initialize(cacheManager, dbprovider.GetDBProvider())
+	certservice, err := cert.Initialize(cacheManager, dbprovider.GetDBProvider(), certconfig.FromServerRuntime())
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize CertificateService", log.Error(err))
 	}
@@ -382,8 +400,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		agentService,
 	)
 
+	flowCfg := flowconfig.FromServerRuntime()
+	flowStore, flowTransactioner := buildFlowRuntimeStore(ctx, logger, flowCfg)
 	flowExecService, err := flowexec.Initialize(mux, flowMgtService, actorProvider,
-		execRegistry, interceptorRegistry, observabilitySvc, runtimeCryptoSvc, flowconfig.FromServerRuntime())
+		execRegistry, interceptorRegistry, observabilitySvc, runtimeCryptoSvc, flowStore, flowTransactioner, flowCfg)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
@@ -392,7 +412,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	oauthCfg := oauthconfig.FromServerRuntime()
 	err = oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
 		flowExecService, observabilitySvc, runtimeCryptoSvc, ouService, attributeCacheService, authZService,
-		resourceService, i18nService, idpService, oauthCfg)
+		resourceService, i18nService, idpService, buildOAuthRuntimeStores(ctx, logger, oauthCfg), oauthCfg)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}
@@ -404,7 +424,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 
 	// Register the health service.
-	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
+	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), redisstore.GetRedisProvider())
 	services.NewHealthCheckService(mux, healthSvc)
 
 	return jwtService, runtimeCryptoSvc
@@ -424,6 +444,56 @@ func initEmailClient(ctx context.Context, logger *log.Logger) email.EmailClientI
 		return nil
 	}
 	return client
+}
+
+// buildOAuthRuntimeStores selects the SQL or Redis implementation for each OAuth
+// runtime store based on the configured runtime datasource type. Keeping this
+// selection in the composition root lets the oauth package stay free of SQL
+// driver imports.
+func buildOAuthRuntimeStores(
+	ctx context.Context, logger *log.Logger, cfg oauthconfig.Config,
+) oauth.RuntimeStores {
+	if cfg.RuntimeDBType == dbtypes.DataSourceTypeRedis {
+		redisProvider := redisstore.GetRedisProvider()
+		return oauth.RuntimeStores{
+			JTI:                jti.NewRedisStore(redisProvider, cfg.DeploymentID),
+			CIBA:               ciba.NewRedisStore(redisProvider, cfg.DeploymentID),
+			PAR:                par.NewRedisStore(redisProvider, cfg.DeploymentID),
+			AuthzCode:          oauth2authz.NewRedisAuthorizationCodeStore(redisProvider, cfg.DeploymentID),
+			AuthzRequest:       oauth2authz.NewRedisAuthorizationRequestStore(redisProvider, cfg.DeploymentID),
+			AuthzTransactioner: redisProvider.GetTransactioner(),
+		}
+	}
+	transactioner, err := dbprovider.GetDBProvider().GetRuntimeDBTransactioner()
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize OAuth runtime transactioner", log.Error(err))
+	}
+	return oauth.RuntimeStores{
+		JTI:                jtisqlstore.NewStore(cfg.DeploymentID),
+		CIBA:               cibasqlstore.NewStore(cfg.DeploymentID),
+		PAR:                parsqlstore.NewStore(cfg.DeploymentID),
+		AuthzCode:          authzsqlstore.NewAuthorizationCodeStore(cfg.DeploymentID),
+		AuthzRequest:       authzsqlstore.NewAuthorizationRequestStore(cfg.DeploymentID),
+		AuthzTransactioner: transactioner,
+	}
+}
+
+// buildFlowRuntimeStore selects the SQL or Redis flow context store (and its transactioner)
+// based on the configured runtime datasource type. Keeping this selection in the composition
+// root lets the flowexec package stay free of SQL driver imports.
+func buildFlowRuntimeStore(
+	ctx context.Context, logger *log.Logger, cfg flowconfig.Config,
+) (flowexec.FlowStoreInterface, transaction.Transactioner) {
+	if cfg.RuntimeDBType == dbtypes.DataSourceTypeRedis {
+		redisProvider := redisstore.GetRedisProvider()
+		return flowexec.NewRedisStore(redisProvider, cfg.DeploymentID), redisProvider.GetTransactioner()
+	}
+	dbProvider := dbprovider.GetDBProvider()
+	transactioner, err := dbProvider.GetRuntimeDBTransactioner()
+	if err != nil {
+		logger.Fatal(ctx, "Failed to initialize flow runtime store", log.Error(err))
+	}
+	return flowsqlstore.NewStore(dbProvider, cfg.DeploymentID), transactioner
 }
 
 // initializeFlowCoreAndExecutor initializes the flow core and executor services.

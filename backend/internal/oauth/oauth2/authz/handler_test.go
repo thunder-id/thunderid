@@ -604,7 +604,7 @@ func (suite *AuthorizeHandlerTestSuite) TestGetErrorPageRedirectURL_Success() {
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_Success() {
-	authRequestCtx := &authRequestContext{
+	authRequestCtx := &AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:         "test-client",
 			RedirectURI:      "https://client.example.com/callback",
@@ -630,7 +630,7 @@ func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_Success() {
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_MissingClientID() {
-	authRequestCtx := &authRequestContext{
+	authRequestCtx := &AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "",
 			RedirectURI: "https://client.example.com/callback",
@@ -648,7 +648,7 @@ func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_MissingClientID
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_MissingRedirectURI() {
-	authRequestCtx := &authRequestContext{
+	authRequestCtx := &AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "test-client",
 			RedirectURI: "",
@@ -666,7 +666,7 @@ func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_MissingRedirect
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_EmptyUserID() {
-	authRequestCtx := &authRequestContext{
+	authRequestCtx := &AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "test-client-id",
 			RedirectURI: "https://client.example.com/callback",
@@ -684,7 +684,7 @@ func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_EmptyUserID() {
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_ZeroAuthTime() {
-	authRequestCtx := &authRequestContext{
+	authRequestCtx := &AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "test-client-id",
 			RedirectURI: "https://client.example.com/callback",
@@ -707,7 +707,7 @@ func (suite *AuthorizeHandlerTestSuite) TestGetAuthorizationCode_ZeroAuthTime() 
 }
 
 func (suite *AuthorizeHandlerTestSuite) TestCreateAuthorizationCode_WithClaimsLocales() {
-	authRequestCtx := &authRequestContext{
+	authRequestCtx := &AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:         "test-client",
 			RedirectURI:      "https://client.example.com/callback",

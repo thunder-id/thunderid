@@ -23,9 +23,8 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
-	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
-	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/observability"
@@ -34,31 +33,20 @@ import (
 
 // Initialize creates and configures the flow execution service components.
 // The observabilitySvc parameter is optional (can be nil) - if nil, observability events won't be published.
+// The flow store and transactioner are selected by the composition root and injected, so this
+// package does not depend on the SQL database provider.
 func Initialize(
 	mux *http.ServeMux,
 	flowProvider FlowProviderInterface,
 	actorProvider actorprovider.ActorProviderInterface,
-	executorRegistry executor.ExecutorRegistryInterface,
+	executorRegistry core.ExecutorRegistryInterface,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	cryptoSvc kmprovider.RuntimeCryptoProvider,
+	flowStore FlowStoreInterface,
+	transactioner transaction.Transactioner,
 	cfg flowconfig.Config,
 ) (FlowExecServiceInterface, error) {
-	var flowStore flowStoreInterface
-	var transactioner transaction.Transactioner
-
-	if cfg.RuntimeDBType == dbprovider.DataSourceTypeRedis {
-		flowStore = newRedisFlowStore(dbprovider.GetRedisProvider(), cfg.DeploymentID)
-		transactioner = transaction.NewNoOpTransactioner()
-	} else {
-		dbProvider := dbprovider.GetDBProvider()
-		var err error
-		transactioner, err = dbProvider.GetRuntimeDBTransactioner()
-		if err != nil {
-			return nil, err
-		}
-		flowStore = newFlowStore(dbProvider, cfg.DeploymentID)
-	}
 	interceptorRunner := newInterceptorRunner(interceptorRegistry)
 	flowEngine := newFlowEngine(executorRegistry, interceptorRunner, observabilitySvc)
 	flowExecService := newFlowExecService(flowProvider, flowStore, flowEngine,

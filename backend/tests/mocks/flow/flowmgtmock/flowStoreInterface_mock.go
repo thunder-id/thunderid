@@ -103,8 +103,8 @@ func (_c *flowStoreInterfaceMock_CreateFlow_Call) Run(run func(ctx context.Conte
 	return _c
 }
 
-func (_c *flowStoreInterfaceMock_CreateFlow_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_CreateFlow_Call {
-	_c.Call.Return(completeFlowDefinition, err)
+func (_c *flowStoreInterfaceMock_CreateFlow_Call) Return(v *flowmgt.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_CreateFlow_Call {
+	_c.Call.Return(v, err)
 	return _c
 }
 
@@ -234,8 +234,8 @@ func (_c *flowStoreInterfaceMock_GetFlowByHandle_Call) Run(run func(ctx context.
 	return _c
 }
 
-func (_c *flowStoreInterfaceMock_GetFlowByHandle_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_GetFlowByHandle_Call {
-	_c.Call.Return(completeFlowDefinition, err)
+func (_c *flowStoreInterfaceMock_GetFlowByHandle_Call) Return(v *flowmgt.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_GetFlowByHandle_Call {
+	_c.Call.Return(v, err)
 	return _c
 }
 
@@ -302,8 +302,8 @@ func (_c *flowStoreInterfaceMock_GetFlowByID_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *flowStoreInterfaceMock_GetFlowByID_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_GetFlowByID_Call {
-	_c.Call.Return(completeFlowDefinition, err)
+func (_c *flowStoreInterfaceMock_GetFlowByID_Call) Return(v *flowmgt.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_GetFlowByID_Call {
+	_c.Call.Return(v, err)
 	return _c
 }
 
@@ -676,8 +676,8 @@ func (_c *flowStoreInterfaceMock_RestoreFlowVersion_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *flowStoreInterfaceMock_RestoreFlowVersion_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_RestoreFlowVersion_Call {
-	_c.Call.Return(completeFlowDefinition, err)
+func (_c *flowStoreInterfaceMock_RestoreFlowVersion_Call) Return(v *flowmgt.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_RestoreFlowVersion_Call {
+	_c.Call.Return(v, err)
 	return _c
 }
 
@@ -750,8 +750,8 @@ func (_c *flowStoreInterfaceMock_UpdateFlow_Call) Run(run func(ctx context.Conte
 	return _c
 }
 
-func (_c *flowStoreInterfaceMock_UpdateFlow_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_UpdateFlow_Call {
-	_c.Call.Return(completeFlowDefinition, err)
+func (_c *flowStoreInterfaceMock_UpdateFlow_Call) Return(v *flowmgt.CompleteFlowDefinition, err error) *flowStoreInterfaceMock_UpdateFlow_Call {
+	_c.Call.Return(v, err)
 	return _c
 }
 

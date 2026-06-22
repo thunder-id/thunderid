@@ -49,7 +49,7 @@ type PARServiceInterface interface {
 
 // parService implements PARServiceInterface.
 type parService struct {
-	store           parStoreInterface
+	store           PARStoreInterface
 	resourceService resource.ResourceServiceInterface
 	cfg             oauthconfig.Config
 	logger          *log.Logger
@@ -57,7 +57,7 @@ type parService struct {
 
 // newPARService creates a new PAR service instance.
 func newPARService(
-	store parStoreInterface, resourceService resource.ResourceServiceInterface, cfg oauthconfig.Config,
+	store PARStoreInterface, resourceService resource.ResourceServiceInterface, cfg oauthconfig.Config,
 ) PARServiceInterface {
 	return &parService{
 		store:           store,
@@ -143,7 +143,7 @@ func (s *parService) HandlePushedAuthorizationRequest(
 		Prompt:              params[oauth2const.RequestParamPrompt],
 	}
 
-	parRequest := pushedAuthorizationRequest{
+	parRequest := PushedAuthorizationRequest{
 		ClientID:        oauthApp.ClientID,
 		OAuthParameters: oauthParams,
 	}

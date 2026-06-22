@@ -38,7 +38,7 @@ import (
 type attributeUniquenessValidator struct {
 	core.ExecutorInterface
 	entityTypeService entitytype.EntityTypeServiceInterface
-	entityProvider    entityprovider.EntityProviderInterface
+	entityProvider    entityprovider.EntityResolverInterface
 	authnProvider     authnprovidermgr.AuthnProviderManagerInterface
 	logger            *log.Logger
 }
@@ -47,7 +47,7 @@ type attributeUniquenessValidator struct {
 func newAttributeUniquenessValidator(
 	flowFactory core.FlowFactoryInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	entityProvider entityprovider.EntityResolverInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *attributeUniquenessValidator {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameAttributeUniquenessValidator))

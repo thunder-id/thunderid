@@ -45,7 +45,7 @@ func (suite *RedisCacheTestSuite) SetupSuite() {
 			TTL:             3600,
 			EvictionPolicy:  "LRU",
 			CleanupInterval: 300,
-			Redis: config.RedisConfig{
+			Redis: config.RedisDataSource{
 				Address:   "localhost:6379",
 				KeyPrefix: "test",
 			},

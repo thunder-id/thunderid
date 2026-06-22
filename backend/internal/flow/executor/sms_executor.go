@@ -43,14 +43,14 @@ type smsExecutor struct {
 	logger          *log.Logger
 	notifSenderSvc  notification.NotificationSenderServiceInterface
 	templateService template.TemplateServiceInterface
-	entityProvider  entityprovider.EntityProviderInterface
+	entityProvider  entityprovider.EntityResolverInterface
 }
 
 // newSMSExecutor creates a new instance of smsExecutor.
 func newSMSExecutor(flowFactory core.FlowFactoryInterface,
 	notifSenderSvc notification.NotificationSenderServiceInterface,
 	templateService template.TemplateServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface) *smsExecutor {
+	entityProvider entityprovider.EntityResolverInterface) *smsExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SMSExecutor"))
 	base := flowFactory.CreateExecutor(
 		ExecutorNameSMSExecutor,

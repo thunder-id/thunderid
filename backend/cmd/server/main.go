@@ -39,6 +39,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/redisstore"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -261,6 +262,13 @@ func gracefulShutdown(
 		logger.Error(ctx, "Error closing database connections", log.Error(err))
 	} else {
 		logger.Debug(ctx, "Database connections closed successfully")
+	}
+
+	// Close the Redis runtime store if it was initialized.
+	if err := redisstore.Close(); err != nil {
+		logger.Error(ctx, "Error closing Redis runtime store", log.Error(err))
+	} else {
+		logger.Debug(ctx, "Redis runtime store closed successfully")
 	}
 
 	if cacheManager != nil {

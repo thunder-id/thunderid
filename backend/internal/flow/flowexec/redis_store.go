@@ -27,7 +27,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/redisstore"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
@@ -54,8 +54,8 @@ type redisFlowStore struct {
 	deploymentID string
 }
 
-// newRedisFlowStore creates a new Redis-backed flow store.
-func newRedisFlowStore(p provider.RedisProviderInterface, deploymentID string) flowStoreInterface {
+// NewRedisStore creates a new Redis-backed flow store.
+func NewRedisStore(p redisstore.RedisProviderInterface, deploymentID string) FlowStoreInterface {
 	return &redisFlowStore{
 		client:       p.GetRedisClient(),
 		keyPrefix:    p.GetKeyPrefix(),

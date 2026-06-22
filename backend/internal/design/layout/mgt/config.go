@@ -28,6 +28,23 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
+// Config represents the configuration for the layout management service.
+type Config struct {
+	DeploymentID string
+	StoreConfig  config.DatabaseConfig
+	LayoutConfig config.LayoutConfig
+}
+
+// FromServerRuntime builds authentication configuration from the global server runtime.
+func FromServerRuntime() Config {
+	runtime := config.GetServerRuntime()
+	return Config{
+		DeploymentID: runtime.Config.Server.Identifier,
+		StoreConfig:  runtime.Config.Database,
+		LayoutConfig: runtime.Config.Layout,
+	}
+}
+
 // getLayoutStoreMode determines the store mode for layouts.
 //
 // Resolution order:

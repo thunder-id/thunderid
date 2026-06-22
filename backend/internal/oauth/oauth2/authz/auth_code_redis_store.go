@@ -27,7 +27,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/redisstore"
 )
 
 // consumeAuthCodeScript atomically transitions an authorization code from ACTIVE to INACTIVE.
@@ -56,9 +56,9 @@ type redisAuthorizationCodeStore struct {
 	deploymentID string
 }
 
-// newRedisAuthorizationCodeStore creates a new Redis-backed authorization code store.
-func newRedisAuthorizationCodeStore(
-	p provider.RedisProviderInterface, deploymentID string,
+// NewRedisAuthorizationCodeStore creates a new Redis-backed authorization code store.
+func NewRedisAuthorizationCodeStore(
+	p redisstore.RedisProviderInterface, deploymentID string,
 ) AuthorizationCodeStoreInterface {
 	return &redisAuthorizationCodeStore{
 		client:       p.GetRedisClient(),
@@ -112,7 +112,7 @@ func (s *redisAuthorizationCodeStore) GetAuthorizationCode(
 	data, err := s.client.Get(ctx, s.authCodeKey(authCode)).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return nil, errAuthorizationCodeNotFound
+			return nil, ErrAuthorizationCodeNotFound
 		}
 		return nil, fmt.Errorf("failed to get authorization code from Redis: %w", err)
 	}

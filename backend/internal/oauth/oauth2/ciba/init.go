@@ -45,9 +45,9 @@ func Initialize(
 	flowExecService flowexec.FlowExecServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	resourceService resource.ResourceServiceInterface,
+	store CIBARequestStoreInterface,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
-	store := newCIBAStore(cfg)
 	cibaSvc := newCIBAService(store, flowExecService, jwtService, actorProvider, resourceService, cfg)
 	cibaHandler := newCIBAHandler(cibaSvc)
 	registerRoutes(mux, cibaHandler, actorProvider, authnProvider, jwtService, discoveryService)

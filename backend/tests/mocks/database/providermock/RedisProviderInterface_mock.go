@@ -7,6 +7,7 @@ package providermock
 import (
 	"github.com/redis/go-redis/v9"
 	mock "github.com/stretchr/testify/mock"
+	"github.com/thunder-id/thunderid/internal/system/transaction"
 )
 
 // NewRedisProviderInterfaceMock creates a new instance of RedisProviderInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -122,6 +123,52 @@ func (_c *RedisProviderInterfaceMock_GetRedisClient_Call) Return(client *redis.C
 }
 
 func (_c *RedisProviderInterfaceMock_GetRedisClient_Call) RunAndReturn(run func() *redis.Client) *RedisProviderInterfaceMock_GetRedisClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetTransactioner provides a mock function for the type RedisProviderInterfaceMock
+func (_mock *RedisProviderInterfaceMock) GetTransactioner() transaction.Transactioner {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTransactioner")
+	}
+
+	var r0 transaction.Transactioner
+	if returnFunc, ok := ret.Get(0).(func() transaction.Transactioner); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(transaction.Transactioner)
+		}
+	}
+	return r0
+}
+
+// RedisProviderInterfaceMock_GetTransactioner_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTransactioner'
+type RedisProviderInterfaceMock_GetTransactioner_Call struct {
+	*mock.Call
+}
+
+// GetTransactioner is a helper method to define mock.On call
+func (_e *RedisProviderInterfaceMock_Expecter) GetTransactioner() *RedisProviderInterfaceMock_GetTransactioner_Call {
+	return &RedisProviderInterfaceMock_GetTransactioner_Call{Call: _e.mock.On("GetTransactioner")}
+}
+
+func (_c *RedisProviderInterfaceMock_GetTransactioner_Call) Run(run func()) *RedisProviderInterfaceMock_GetTransactioner_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *RedisProviderInterfaceMock_GetTransactioner_Call) Return(transactioner transaction.Transactioner) *RedisProviderInterfaceMock_GetTransactioner_Call {
+	_c.Call.Return(transactioner)
+	return _c
+}
+
+func (_c *RedisProviderInterfaceMock_GetTransactioner_Call) RunAndReturn(run func() transaction.Transactioner) *RedisProviderInterfaceMock_GetTransactioner_Call {
 	_c.Call.Return(run)
 	return _c
 }

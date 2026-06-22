@@ -27,8 +27,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/redisstore"
 )
 
 // redisClient abstracts the Redis commands used by the attribute cache store.
@@ -40,7 +39,7 @@ type redisClient interface {
 	Del(ctx context.Context, keys ...string) *redis.IntCmd
 }
 
-// redisAttributeCacheStore is the Redis-backed implementation of attributeCacheStoreInterface.
+// redisAttributeCacheStore is the Redis-backed implementation of AttributeCacheStoreInterface.
 type redisAttributeCacheStore struct {
 	client       redisClient
 	keyPrefix    string
@@ -48,11 +47,12 @@ type redisAttributeCacheStore struct {
 }
 
 // newRedisAttributeCacheStore creates a new Redis-backed attribute cache store.
-func newRedisAttributeCacheStore(p provider.RedisProviderInterface) attributeCacheStoreInterface {
+func newRedisAttributeCacheStore(deploymentID string,
+	p redisstore.RedisProviderInterface) AttributeCacheStoreInterface {
 	return &redisAttributeCacheStore{
 		client:       p.GetRedisClient(),
 		keyPrefix:    p.GetKeyPrefix(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		deploymentID: deploymentID,
 	}
 }
 

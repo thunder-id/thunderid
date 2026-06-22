@@ -49,14 +49,16 @@ type sessionStore struct {
 	dbProvider   provider.DBProviderInterface
 	deploymentID string
 	logger       *log.Logger
+	cfg          config.DatabaseConfig
 }
 
 // newSessionStore creates a new instance of sessionStore.
-func newSessionStore() sessionStoreInterface {
+func newSessionStore(deploymentID string, cfg config.DatabaseConfig) sessionStoreInterface {
 	return &sessionStore{
 		dbProvider:   provider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		deploymentID: deploymentID,
 		logger:       log.GetLogger().With(log.String(log.LoggerKeyComponentName, "WebAuthnSessionStore")),
+		cfg:          cfg,
 	}
 }
 

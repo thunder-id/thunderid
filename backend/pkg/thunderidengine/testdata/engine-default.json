@@ -1,0 +1,130 @@
+{
+  "server": {
+    "hostname": "localhost",
+    "port": 8090,
+    "http_only": false,
+    "identifier": "default-deployment",
+    "security": {
+      "jwks_cache_ttl": 300,
+      "trusted_issuer": {
+        "issuer": "",
+        "jwks_url": "",
+        "audience": "",
+        "required_claims": []
+      }
+    }
+  },
+  "gate_client": {
+    "hostname": "localhost",
+    "port": 8090,
+    "scheme": "https",
+    "path": "/gate"
+  },
+  "cache": {
+    "disabled": false,
+    "type": "inmemory",
+    "size": 1000,
+    "ttl": 3600,
+    "eviction_policy": "LRU",
+    "cleanup_interval": 300,
+    "properties": []
+  },
+  "jwt": {
+    "validity_period": 3600,
+    "audience": "application",
+    "preferred_key_id": "default-key",
+    "leeway": 30
+  },
+  "oauth": {
+    "refresh_token": {
+      "renew_on_grant": false,
+      "validity_period": 86400
+    },
+    "authorization_code": {
+      "validity_period": 600
+    },
+    "par": {
+      "require_par": false,
+      "expires_in": 60
+    },
+    "dpop": {
+      "required": false,
+      "iat_window": 60,
+      "leeway": 5,
+      "allowed_algs": ["ES256", "PS256", "ES384", "ES512", "EdDSA", "RS256"],
+      "max_jti_length": 256
+    },
+    "allow_wildcard_redirect_uri": false
+  },
+  "flow": {
+    "default_auth_flow_handle": "default-basic-flow",
+    "user_onboarding_flow_handle": "default-user-onboarding",
+    "max_version_history": 10,
+    "auto_infer_registration": false,
+    "store": "declarative"
+  },
+  "declarative_resources": {
+    "enabled": false
+  },
+  "observability": {
+    "enabled": false,
+    "output": {
+      "console": {
+        "enabled": false,
+        "format": "json",
+        "categories": ["observability.all"]
+      }
+    }
+  },
+  "crypto": {
+    "password_hashing": {
+      "algorithm": "PBKDF2",
+      "pbkdf2": {
+        "iterations": 600000,
+        "key_size": 32,
+        "salt_size": 16
+      },
+      "sha256": {
+        "salt_size": 16
+      }
+    }
+  },
+  "resource": {
+    "default_delimiter": ":",
+    "store": "declarative"
+  },
+  "organization_unit": {
+    "store": "declarative"
+  },
+  "identity_provider": {
+    "store": "declarative"
+  },
+  "entity_type": {
+    "store": "declarative"
+  },
+  "role": {
+    "store": "declarative"
+  },
+  "theme": {
+    "store": "declarative"
+  },
+  "layout": {
+    "store": "declarative"
+  },
+  "translation": {
+    "store": "declarative"
+  },
+  "consent": {
+    "enabled": false,
+    "base_url": "",
+    "timeout": 5,
+    "max_retries": 3
+  },
+  "notification": {
+    "otp": {
+      "length": 6,
+      "use_numeric_only": true,
+      "validity_period_seconds": 120
+    }
+  }
+}

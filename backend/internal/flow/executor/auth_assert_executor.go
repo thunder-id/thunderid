@@ -54,7 +54,7 @@ type authAssertExecutor struct {
 	ouService           ou.OrganizationUnitServiceInterface
 	authAssertGenerator assert.AuthAssertGeneratorInterface
 	authnProvider       authnprovidermgr.AuthnProviderManagerInterface
-	entityProvider      entityprovider.EntityProviderInterface
+	entityProvider      entityprovider.EntityResolverInterface
 	attributeCacheSvc   attributecache.AttributeCacheServiceInterface
 	roleService         role.RoleServiceInterface
 	logger              *log.Logger
@@ -69,7 +69,7 @@ func newAuthAssertExecutor(
 	ouService ou.OrganizationUnitServiceInterface,
 	assertGenerator assert.AuthAssertGeneratorInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	entityProvider entityprovider.EntityResolverInterface,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	roleService role.RoleServiceInterface,
 ) *authAssertExecutor {

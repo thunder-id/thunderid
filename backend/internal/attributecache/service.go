@@ -57,11 +57,11 @@ type AttributeCacheServiceInterface interface {
 
 // attributeCacheService is the default implementation of the AttributeCacheServiceInterface.
 type attributeCacheService struct {
-	store attributeCacheStoreInterface
+	store AttributeCacheStoreInterface
 }
 
 // newAttributeCacheService creates a new instance of attributeCacheService with injected dependencies.
-func newAttributeCacheService(store attributeCacheStoreInterface) AttributeCacheServiceInterface {
+func newAttributeCacheService(store AttributeCacheStoreInterface) AttributeCacheServiceInterface {
 	return &attributeCacheService{
 		store: store,
 	}

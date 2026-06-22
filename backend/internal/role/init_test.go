@@ -63,6 +63,16 @@ func (suite *InitTestSuite) SetupTest() {
 	runtime.Config.DeclarativeResources.Enabled = false
 }
 
+func (suite *InitTestSuite) TestInitializeDeclarativeReadOnly_NoDatabase() {
+	runtime := config.GetServerRuntime()
+	runtime.Config.DeclarativeResources.Enabled = true
+	runtime.Config.Role.Store = string(serverconst.StoreModeDeclarative)
+
+	svc, err := InitializeDeclarativeReadOnly(nil, nil)
+	suite.NoError(err)
+	suite.NotNil(svc)
+}
+
 // TestInitializeStoreMutableMode tests store initialization in mutable mode.
 func (suite *InitTestSuite) TestInitializeStoreMutableMode() {
 	runtime := config.GetServerRuntime()

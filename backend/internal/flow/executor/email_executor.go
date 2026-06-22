@@ -36,13 +36,13 @@ type emailExecutor struct {
 	logger          *log.Logger
 	emailClient     email.EmailClientInterface
 	templateService template.TemplateServiceInterface
-	entityProvider  entityprovider.EntityProviderInterface
+	entityProvider  entityprovider.EntityResolverInterface
 }
 
 // newEmailExecutor creates a new instance of the email executor.
 func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.EmailClientInterface,
 	templateService template.TemplateServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface) *emailExecutor {
+	entityProvider entityprovider.EntityResolverInterface) *emailExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EmailExecutor"))
 	base := flowFactory.CreateExecutor(
 		ExecutorNameEmailExecutor,

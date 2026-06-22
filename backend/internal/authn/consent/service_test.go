@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authn "github.com/thunder-id/thunderid/internal/authn/config"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/consent"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -70,7 +71,7 @@ func (s *ConsentEnforcerServiceTestSuite) SetupTest() {
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestNewConsentEnforcerService() {
-	svc := newConsentEnforcerService(s.mockConsentSvc, s.mockJWTSvc)
+	svc := newConsentEnforcerService(s.mockConsentSvc, s.mockJWTSvc, authn.FromServerRuntime())
 	s.NotNil(svc)
 }
 

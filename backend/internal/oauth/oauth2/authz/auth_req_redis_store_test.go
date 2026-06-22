@@ -40,7 +40,7 @@ type RedisAuthorizationRequestStoreTestSuite struct {
 	store      *redisAuthorizationRequestStore
 	mockClient *authReqRedisClientMock
 	ctx        context.Context
-	authReq    authRequestContext
+	authReq    AuthRequestContext
 	redisKey   string
 }
 
@@ -57,7 +57,7 @@ func (suite *RedisAuthorizationRequestStoreTestSuite) SetupTest() {
 		deploymentID:   redisTestDeploymentID,
 		validityPeriod: 10 * time.Minute,
 	}
-	suite.authReq = authRequestContext{
+	suite.authReq = AuthRequestContext{
 		OAuthParameters: model.OAuthParameters{
 			ClientID:    "test-client-id",
 			RedirectURI: "https://client.example.com/callback",
@@ -119,7 +119,7 @@ func (suite *RedisAuthorizationRequestStoreTestSuite) TestGetRequest_EmptyKey() 
 	found, result, err := suite.store.GetRequest(suite.ctx, "")
 	suite.NoError(err)
 	suite.False(found)
-	suite.Equal(authRequestContext{}, result)
+	suite.Equal(AuthRequestContext{}, result)
 }
 
 func (suite *RedisAuthorizationRequestStoreTestSuite) TestGetRequest_NotFound() {
@@ -130,7 +130,7 @@ func (suite *RedisAuthorizationRequestStoreTestSuite) TestGetRequest_NotFound() 
 	found, result, err := suite.store.GetRequest(suite.ctx, redisTestReqKey)
 	suite.NoError(err)
 	suite.False(found)
-	suite.Equal(authRequestContext{}, result)
+	suite.Equal(AuthRequestContext{}, result)
 }
 
 func (suite *RedisAuthorizationRequestStoreTestSuite) TestGetRequest_GetError() {
@@ -142,7 +142,7 @@ func (suite *RedisAuthorizationRequestStoreTestSuite) TestGetRequest_GetError() 
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to get authorization request from Redis")
 	suite.False(found)
-	suite.Equal(authRequestContext{}, result)
+	suite.Equal(AuthRequestContext{}, result)
 }
 
 func (suite *RedisAuthorizationRequestStoreTestSuite) TestGetRequest_UnmarshalError() {
@@ -154,7 +154,7 @@ func (suite *RedisAuthorizationRequestStoreTestSuite) TestGetRequest_UnmarshalEr
 	suite.Error(err)
 	suite.Contains(err.Error(), "failed to unmarshal authorization request")
 	suite.False(found)
-	suite.Equal(authRequestContext{}, result)
+	suite.Equal(AuthRequestContext{}, result)
 }
 
 // Tests for ClearRequest

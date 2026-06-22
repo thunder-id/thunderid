@@ -19,18 +19,19 @@
 package passkey
 
 import (
+	authn "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/entity"
-	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/dbtypes"
+	"github.com/thunder-id/thunderid/internal/system/database/redisstore"
 )
 
 // Initialize initializes the WebAuthn authentication service.
-func Initialize(entitySvc entity.EntityServiceInterface) PasskeyServiceInterface {
+func Initialize(entitySvc entity.EntityServiceInterface, cfg authn.Config) PasskeyServiceInterface {
 	var store sessionStoreInterface
-	if config.GetServerRuntime().Config.Database.Runtime.Type == provider.DataSourceTypeRedis {
-		store = newRedisSessionStore(provider.GetRedisProvider())
+	if cfg.StoreConfig.Runtime.Type == dbtypes.DataSourceTypeRedis {
+		store = newRedisSessionStore(cfg.DeploymentID, redisstore.GetRedisProvider())
 	} else {
-		store = newSessionStore()
+		store = newSessionStore(cfg.DeploymentID, cfg.StoreConfig)
 	}
 
 	return newPasskeyService(entitySvc, store)

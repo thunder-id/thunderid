@@ -10,7 +10,7 @@ import (
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/flow/mgt"
+	"github.com/thunder-id/thunderid/internal/flow/flowdef"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
@@ -42,23 +42,23 @@ func (_m *FlowProviderInterfaceMock) EXPECT() *FlowProviderInterfaceMock_Expecte
 }
 
 // GetFlowByHandle provides a mock function for the type FlowProviderInterfaceMock
-func (_mock *FlowProviderInterfaceMock) GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (*flowmgt.CompleteFlowDefinition, *serviceerror.ServiceError) {
+func (_mock *FlowProviderInterfaceMock) GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (*flowdef.CompleteFlowDefinition, *serviceerror.ServiceError) {
 	ret := _mock.Called(ctx, handle, flowType)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetFlowByHandle")
 	}
 
-	var r0 *flowmgt.CompleteFlowDefinition
+	var r0 *flowdef.CompleteFlowDefinition
 	var r1 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, common.FlowType) (*flowmgt.CompleteFlowDefinition, *serviceerror.ServiceError)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, common.FlowType) (*flowdef.CompleteFlowDefinition, *serviceerror.ServiceError)); ok {
 		return returnFunc(ctx, handle, flowType)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, common.FlowType) *flowmgt.CompleteFlowDefinition); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, common.FlowType) *flowdef.CompleteFlowDefinition); ok {
 		r0 = returnFunc(ctx, handle, flowType)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*flowmgt.CompleteFlowDefinition)
+			r0 = ret.Get(0).(*flowdef.CompleteFlowDefinition)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, common.FlowType) *serviceerror.ServiceError); ok {
@@ -107,12 +107,12 @@ func (_c *FlowProviderInterfaceMock_GetFlowByHandle_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *FlowProviderInterfaceMock_GetFlowByHandle_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowProviderInterfaceMock_GetFlowByHandle_Call {
+func (_c *FlowProviderInterfaceMock_GetFlowByHandle_Call) Return(completeFlowDefinition *flowdef.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowProviderInterfaceMock_GetFlowByHandle_Call {
 	_c.Call.Return(completeFlowDefinition, serviceError)
 	return _c
 }
 
-func (_c *FlowProviderInterfaceMock_GetFlowByHandle_Call) RunAndReturn(run func(ctx context.Context, handle string, flowType common.FlowType) (*flowmgt.CompleteFlowDefinition, *serviceerror.ServiceError)) *FlowProviderInterfaceMock_GetFlowByHandle_Call {
+func (_c *FlowProviderInterfaceMock_GetFlowByHandle_Call) RunAndReturn(run func(ctx context.Context, handle string, flowType common.FlowType) (*flowdef.CompleteFlowDefinition, *serviceerror.ServiceError)) *FlowProviderInterfaceMock_GetFlowByHandle_Call {
 	_c.Call.Return(run)
 	return _c
 }

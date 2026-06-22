@@ -22,8 +22,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 )
 
-// pushedAuthorizationRequest holds the stored PAR data.
-type pushedAuthorizationRequest struct {
+// PushedAuthorizationRequest holds the stored PAR data.
+type PushedAuthorizationRequest struct {
 	ClientID        string
 	OAuthParameters model.OAuthParameters
 }

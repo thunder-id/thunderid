@@ -29,13 +29,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/resource"
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
 // Initialize initializes the PAR handler and registers its routes.
 // Returns the PARServiceInterface so the authorization endpoint can resolve request_uri parameters.
+// The store is selected by the composition root and injected, keeping this package free of SQL
+// driver imports.
 func Initialize(
 	mux *http.ServeMux,
 	actorProvider actorprovider.ActorProviderInterface,
@@ -44,23 +45,15 @@ func Initialize(
 	discoveryService discovery.DiscoveryServiceInterface,
 	resourceService resource.ResourceServiceInterface,
 	dpopVerifier dpop.VerifierInterface,
+	store PARStoreInterface,
 	cfg oauthconfig.Config,
 ) PARServiceInterface {
-	store := initializePARStore(cfg)
 	parSvc := newPARService(store, resourceService, cfg)
 	parEndpoint := discoveryService.GetOAuth2AuthorizationServerMetadata(
 		context.Background()).PushedAuthorizationRequestEndpoint
 	handler := newPARHandler(parSvc, dpopVerifier, parEndpoint)
 	registerRoutes(mux, handler, actorProvider, authnProvider, jwtService, discoveryService)
 	return parSvc
-}
-
-// initializePARStore selects the PAR store implementation based on the configured runtime DB type.
-func initializePARStore(cfg oauthconfig.Config) parStoreInterface {
-	if cfg.RuntimeDBType == provider.DataSourceTypeRedis {
-		return newRedisPARRequestStore(provider.GetRedisProvider(), cfg.DeploymentID)
-	}
-	return newPARRequestStore(cfg.DeploymentID)
 }
 
 // registerRoutes registers the PAR endpoint route with client authentication middleware.

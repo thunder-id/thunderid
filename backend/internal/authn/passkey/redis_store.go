@@ -27,8 +27,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/redisstore"
 )
 
 // redisClient abstracts the Redis commands used by the passkey session store.
@@ -46,11 +45,11 @@ type redisSessionStore struct {
 }
 
 // newRedisSessionStore creates a new Redis-backed passkey session store.
-func newRedisSessionStore(p provider.RedisProviderInterface) sessionStoreInterface {
+func newRedisSessionStore(deploymentID string, p redisstore.RedisProviderInterface) sessionStoreInterface {
 	return &redisSessionStore{
 		client:       p.GetRedisClient(),
 		keyPrefix:    p.GetKeyPrefix(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		deploymentID: deploymentID,
 	}
 }
 

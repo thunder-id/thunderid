@@ -56,6 +56,11 @@ type AuthorizationCode struct {
 	DPoPJkt             string
 }
 
+// AuthRequestContext holds OAuth authorization request information.
+type AuthRequestContext struct {
+	OAuthParameters oauth2model.OAuthParameters
+}
+
 // AuthZPostRequest represents the request body for the authorization POST request.
 type AuthZPostRequest struct {
 	AuthID    string `json:"authId"`

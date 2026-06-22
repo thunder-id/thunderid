@@ -20,6 +20,7 @@ package actorprovider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -104,4 +105,57 @@ func (p *actorProvider) GetActorGroups(
 	actorID string,
 ) ([]entityprovider.EntityGroup, *entityprovider.EntityProviderError) {
 	return p.entityProvider.GetTransitiveEntityGroups(actorID)
+}
+
+// The following methods implement entityprovider.EntityResolverInterface by delegating to the
+// backing entity provider, so an actor provider can be used wherever flow executors need to
+// resolve entities.
+
+// IdentifyEntity resolves an entity ID from indexed attribute filters.
+func (p *actorProvider) IdentifyEntity(
+	filters map[string]interface{},
+) (*string, *entityprovider.EntityProviderError) {
+	return p.entityProvider.IdentifyEntity(filters)
+}
+
+// SearchEntities searches for all entities matching the given filters.
+func (p *actorProvider) SearchEntities(
+	filters map[string]interface{},
+) ([]*entityprovider.Entity, *entityprovider.EntityProviderError) {
+	return p.entityProvider.SearchEntities(filters)
+}
+
+// GetEntity retrieves an entity by ID.
+func (p *actorProvider) GetEntity(
+	entityID string,
+) (*entityprovider.Entity, *entityprovider.EntityProviderError) {
+	return p.entityProvider.GetEntity(entityID)
+}
+
+// CreateEntity creates a new entity.
+func (p *actorProvider) CreateEntity(
+	entity *entityprovider.Entity, systemCredentials json.RawMessage,
+) (*entityprovider.Entity, *entityprovider.EntityProviderError) {
+	return p.entityProvider.CreateEntity(entity, systemCredentials)
+}
+
+// UpdateCredentials updates schema-defined credentials for an entity.
+func (p *actorProvider) UpdateCredentials(
+	entityID string, credentials json.RawMessage,
+) *entityprovider.EntityProviderError {
+	return p.entityProvider.UpdateCredentials(entityID, credentials)
+}
+
+// UpdateAttributes updates schema-defined attributes for an entity.
+func (p *actorProvider) UpdateAttributes(
+	entityID string, attributes json.RawMessage,
+) *entityprovider.EntityProviderError {
+	return p.entityProvider.UpdateAttributes(entityID, attributes)
+}
+
+// GetTransitiveEntityGroups retrieves all groups an entity belongs to, including inherited groups.
+func (p *actorProvider) GetTransitiveEntityGroups(
+	entityID string,
+) ([]entityprovider.EntityGroup, *entityprovider.EntityProviderError) {
+	return p.entityProvider.GetTransitiveEntityGroups(entityID)
 }

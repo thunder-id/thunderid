@@ -29,6 +29,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/authn/assert"
 	"github.com/thunder-id/thunderid/internal/authn/common"
+	authn "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/authn/github"
 	"github.com/thunder-id/thunderid/internal/authn/google"
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
@@ -40,7 +41,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/idp"
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -96,6 +96,7 @@ type authenticationService struct {
 	googleService          google.GoogleOIDCAuthnServiceInterface
 	githubService          github.GithubOAuthAuthnServiceInterface
 	passkeyService         passkey.PasskeyServiceInterface
+	cfg                    authn.Config
 }
 
 // newAuthenticationService creates a new instance of AuthenticationService.
@@ -111,6 +112,7 @@ func newAuthenticationService(
 	googleAuthnSvc google.GoogleOIDCAuthnServiceInterface,
 	githubAuthnSvc github.GithubOAuthAuthnServiceInterface,
 	passkeySvc passkey.PasskeyServiceInterface,
+	cfg authn.Config,
 ) AuthenticationServiceInterface {
 	return &authenticationService{
 		idpService:             idpSvc,
@@ -124,6 +126,7 @@ func newAuthenticationService(
 		googleService:          googleAuthnSvc,
 		githubService:          githubAuthnSvc,
 		passkeyService:         passkeySvc,
+		cfg:                    cfg,
 	}
 }
 
@@ -435,7 +438,7 @@ func (as *authenticationService) validateAndAppendAuthAssertion(
 	}
 
 	// Generate auth assertion JWT
-	jwtConfig := config.GetServerRuntime().Config.JWT
+	jwtConfig := as.cfg.JWTConfig
 	jwtClaims["aud"] = jwtConfig.Audience
 	token, _, err := as.jwtService.GenerateJWT(ctx, user.ID, jwtConfig.Issuer,
 		jwtConfig.ValidityPeriod, jwtClaims, jwt.TokenTypeJWT, "")
@@ -470,7 +473,7 @@ func (as *authenticationService) getAssertionResult(ctx context.Context, existin
 // extractClaimsFromAssertion extracts assurance context and subject from an existing JWT assertion.
 func (as *authenticationService) extractClaimsFromAssertion(ctx context.Context, assertion string,
 	logger *log.Logger) (*assert.AssuranceContext, string, *serviceerror.ServiceError) {
-	jwtConfig := config.GetServerRuntime().Config.JWT
+	jwtConfig := as.cfg.JWTConfig
 
 	if err := as.jwtService.VerifyJWT(ctx, assertion, "", jwtConfig.Issuer); err != nil {
 		logger.Debug(ctx, "Failed to verify JWT signature of the assertion",
@@ -618,7 +621,7 @@ func (as *authenticationService) createSessionToken(ctx context.Context, idpID s
 		"auth_data": sessionData,
 	}
 
-	jwtConfig := config.GetServerRuntime().Config.JWT
+	jwtConfig := as.cfg.JWTConfig
 	claims["aud"] = "auth-svc"
 	token, _, err := as.jwtService.GenerateJWT(ctx, "auth-svc", jwtConfig.Issuer, 600, claims, jwt.TokenTypeJWT, "")
 	if err != nil {
@@ -632,7 +635,7 @@ func (as *authenticationService) createSessionToken(ctx context.Context, idpID s
 func (as *authenticationService) verifyAndDecodeSessionToken(ctx context.Context, token string, logger *log.Logger) (
 	*AuthSessionData, *serviceerror.ServiceError) {
 	// Verify JWT signature and claims
-	jwtConfig := config.GetServerRuntime().Config.JWT
+	jwtConfig := as.cfg.JWTConfig
 	svcErr := as.jwtService.VerifyJWT(ctx, token, "auth-svc", jwtConfig.Issuer)
 	if svcErr != nil {
 		logger.Debug(ctx, "Error verifying session token", log.String("error", svcErr.Error.DefaultValue))

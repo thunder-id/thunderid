@@ -27,7 +27,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/redisstore"
 )
 
 // markAuthenticatedScript atomically transitions a CIBA auth request from PENDING to AUTHENTICATED,
@@ -75,9 +75,9 @@ type redisCIBARequestStore struct {
 	deploymentID string
 }
 
-// newRedisCIBARequestStore creates a new Redis-backed CIBA request store.
-func newRedisCIBARequestStore(
-	p provider.RedisProviderInterface, deploymentID string,
+// NewRedisStore creates a new Redis-backed CIBA request store.
+func NewRedisStore(
+	p redisstore.RedisProviderInterface, deploymentID string,
 ) CIBARequestStoreInterface {
 	return &redisCIBARequestStore{
 		client:       p.GetRedisClient(),

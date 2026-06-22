@@ -19,6 +19,7 @@
 package magiclink
 
 import (
+	authn "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 )
@@ -27,6 +28,7 @@ import (
 func Initialize(
 	jwtSvc jwt.JWTServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	cfg authn.Config,
 ) MagicLinkAuthnServiceInterface {
-	return newMagicLinkAuthnService(jwtSvc, entityProvider)
+	return newMagicLinkAuthnService(jwtSvc, entityProvider, cfg)
 }

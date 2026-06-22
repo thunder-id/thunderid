@@ -23,7 +23,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	"github.com/thunder-id/thunderid/internal/flow/flowdef"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 )
 
@@ -39,6 +39,14 @@ type FlowExecServiceInterface interface {
 // FlowProviderInterface defines the flow management operations required for flow execution.
 type FlowProviderInterface interface {
 	GetFlowByHandle(ctx context.Context, handle string, flowType common.FlowType) (
-		*flowmgt.CompleteFlowDefinition, *serviceerror.ServiceError)
+		*flowdef.CompleteFlowDefinition, *serviceerror.ServiceError)
 	GetGraph(ctx context.Context, flowID string) (core.GraphInterface, *serviceerror.ServiceError)
+}
+
+// FlowStoreInterface defines the methods for flow context storage operations.
+type FlowStoreInterface interface {
+	StoreFlowContext(ctx context.Context, dbModel FlowContextDB, expirySeconds int64) error
+	GetFlowContext(ctx context.Context, executionID string) (*FlowContextDB, error)
+	UpdateFlowContext(ctx context.Context, dbModel FlowContextDB) error
+	DeleteFlowContext(ctx context.Context, executionID string) error
 }

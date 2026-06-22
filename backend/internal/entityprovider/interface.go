@@ -76,3 +76,30 @@ type EntityProviderInterface interface {
 	GetEntityList(category EntityCategory, limit, offset int,
 		filters map[string]interface{}) ([]Entity, *EntityProviderError)
 }
+
+// EntityResolverInterface is the narrow subset of entity operations consumed by flow
+// executors. It is satisfied both by the full EntityProviderInterface (standalone server)
+// and by the actor provider (embedding application), so executors can resolve entities from
+// whichever of the two the host supplies. Only the methods executors actually use are exposed.
+type EntityResolverInterface interface {
+	// IdentifyEntity resolves an entity ID from indexed attribute filters (e.g., email, clientId).
+	IdentifyEntity(filters map[string]interface{}) (*string, *EntityProviderError)
+
+	// SearchEntities searches for all entities matching the given filters.
+	SearchEntities(filters map[string]interface{}) ([]*Entity, *EntityProviderError)
+
+	// GetEntity retrieves an entity by ID. Credentials are never returned.
+	GetEntity(entityID string) (*Entity, *EntityProviderError)
+
+	// CreateEntity creates a new entity.
+	CreateEntity(entity *Entity, systemCredentials json.RawMessage) (*Entity, *EntityProviderError)
+
+	// UpdateCredentials updates schema-defined credentials for an entity.
+	UpdateCredentials(entityID string, credentials json.RawMessage) *EntityProviderError
+
+	// UpdateAttributes updates schema-defined attributes for an entity.
+	UpdateAttributes(entityID string, attributes json.RawMessage) *EntityProviderError
+
+	// GetTransitiveEntityGroups retrieves all groups an entity belongs to, including inherited groups.
+	GetTransitiveEntityGroups(entityID string) ([]EntityGroup, *EntityProviderError)
+}
