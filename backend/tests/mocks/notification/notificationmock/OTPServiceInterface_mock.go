@@ -39,6 +39,76 @@ func (_m *OTPServiceInterfaceMock) EXPECT() *OTPServiceInterfaceMock_Expecter {
 	return &OTPServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// GenerateOTP provides a mock function for the type OTPServiceInterfaceMock
+func (_mock *OTPServiceInterfaceMock) GenerateOTP(ctx context.Context, request common.GenerateOTPDTO) (*common.GenerateOTPResultDTO, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, request)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GenerateOTP")
+	}
+
+	var r0 *common.GenerateOTPResultDTO
+	var r1 *serviceerror.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.GenerateOTPDTO) (*common.GenerateOTPResultDTO, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, request)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.GenerateOTPDTO) *common.GenerateOTPResultDTO); ok {
+		r0 = returnFunc(ctx, request)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.GenerateOTPResultDTO)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, common.GenerateOTPDTO) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, request)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// OTPServiceInterfaceMock_GenerateOTP_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GenerateOTP'
+type OTPServiceInterfaceMock_GenerateOTP_Call struct {
+	*mock.Call
+}
+
+// GenerateOTP is a helper method to define mock.On call
+//   - ctx context.Context
+//   - request common.GenerateOTPDTO
+func (_e *OTPServiceInterfaceMock_Expecter) GenerateOTP(ctx interface{}, request interface{}) *OTPServiceInterfaceMock_GenerateOTP_Call {
+	return &OTPServiceInterfaceMock_GenerateOTP_Call{Call: _e.mock.On("GenerateOTP", ctx, request)}
+}
+
+func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) Run(run func(ctx context.Context, request common.GenerateOTPDTO)) *OTPServiceInterfaceMock_GenerateOTP_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 common.GenerateOTPDTO
+		if args[1] != nil {
+			arg1 = args[1].(common.GenerateOTPDTO)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) Return(generateOTPResultDTO *common.GenerateOTPResultDTO, serviceError *serviceerror.ServiceError) *OTPServiceInterfaceMock_GenerateOTP_Call {
+	_c.Call.Return(generateOTPResultDTO, serviceError)
+	return _c
+}
+
+func (_c *OTPServiceInterfaceMock_GenerateOTP_Call) RunAndReturn(run func(ctx context.Context, request common.GenerateOTPDTO) (*common.GenerateOTPResultDTO, *serviceerror.ServiceError)) *OTPServiceInterfaceMock_GenerateOTP_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SendOTP provides a mock function for the type OTPServiceInterfaceMock
 func (_mock *OTPServiceInterfaceMock) SendOTP(ctx context.Context, request common.SendOTPDTO) (*common.SendOTPResultDTO, *serviceerror.ServiceError) {
 	ret := _mock.Called(ctx, request)

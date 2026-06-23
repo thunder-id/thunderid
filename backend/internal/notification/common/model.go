@@ -95,14 +95,27 @@ type VerifyOTPResponse struct {
 
 // SendOTPDTO represents the service layer data structure for sending an OTP.
 type SendOTPDTO struct {
-	Recipient string
-	SenderID  string
-	Channel   string
+	Recipient     string
+	SenderID      string
+	Channel       string
+	RecipientAttr string
 }
 
 // SendOTPResultDTO represents the service layer result for OTP send operation.
 type SendOTPResultDTO struct {
 	SessionToken string
+}
+
+// GenerateOTPDTO is the input for OTP generation without delivery.
+type GenerateOTPDTO struct {
+	Recipient     string
+	RecipientAttr string
+}
+
+// GenerateOTPResultDTO is the result of OTP generation without delivery.
+type GenerateOTPResultDTO struct {
+	SessionToken string
+	OTPValue     string
 }
 
 // VerifyOTPDTO represents the service layer data structure for verifying an OTP.
@@ -113,17 +126,19 @@ type VerifyOTPDTO struct {
 
 // VerifyOTPResultDTO represents the service layer result for OTP verify operation.
 type VerifyOTPResultDTO struct {
-	Status    OTPVerifyStatus
-	Recipient string
+	Status        OTPVerifyStatus
+	Recipient     string
+	RecipientAttr string
 }
 
 // OTPSessionData represents the data stored in the OTP session token.
 type OTPSessionData struct {
-	Recipient  string `json:"recipient"`
-	Channel    string `json:"channel"`
-	SenderID   string `json:"senderId"`
-	OTPValue   string `json:"otp_value"`
-	ExpiryTime int64  `json:"expiry_time"`
+	Recipient     string `json:"recipient"`
+	RecipientAttr string `json:"recipientAttr,omitempty"`
+	Channel       string `json:"channel"`
+	SenderID      string `json:"senderId"`
+	OTPValue      string `json:"otp_value"`
+	ExpiryTime    int64  `json:"expiry_time"`
 }
 
 // NotificationSenderRequestWithID represents the request structure for creating a notification sender

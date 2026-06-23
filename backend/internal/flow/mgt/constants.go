@@ -36,8 +36,6 @@ const (
 	userTypeResolverNodeID = "ut_res_node"
 	// userTypePromptNodeID is the node ID for the inferred user type prompt node
 	userTypePromptNodeID = "ut_prompt_node"
-	// phoneInputPromptNodeID is the node ID for the inferred phone input prompt node
-	phoneInputPromptNodeID = "phone_prompt_node"
 	// defaultNodeWidth is the default width for a node layout
 	defaultNodeWidth = 100
 	// defaultNodeHeight is the default height for a node layout

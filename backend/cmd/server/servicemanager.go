@@ -240,7 +240,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	magicLinkService := magiclink.Initialize(jwtService, entityProvider)
 
 	// Initialize otp core service
-	otpCoreService := otp.Initialize(otpService, entityProvider)
+	otpCoreService := otp.Initialize(otpService)
 
 	// Initialize federated authentication services.
 	oauthAuthnService := authnOAuth.Initialize(idpService, entityProvider)

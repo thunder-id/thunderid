@@ -431,18 +431,35 @@ func buildSMSOTPRecoveryFlow(senderID string) testutils.Flow {
 					"name": "IdentifyingExecutor",
 					"mode": "identify",
 				},
-				"onSuccess": "send_otp",
+				"onSuccess": "generate_otp",
 				"onFailure": "otp_sent_status",
 			},
 			{
-				"id":   "send_otp",
+				"id":   "generate_otp",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "OTPExecutor",
+					"mode": "generate",
+					"inputs": []map[string]interface{}{
+						{
+							"ref":        "input_username",
+							"identifier": "username",
+							"type":       "TEXT_INPUT",
+							"required":   true,
+						},
+					},
+				},
+				"onSuccess": "sms_send",
+			},
+			{
+				"id":   "sms_send",
 				"type": "TASK_EXECUTION",
 				"properties": map[string]interface{}{
-					"senderId": senderID,
+					"senderId":    senderID,
+					"smsTemplate": "OTP",
 				},
 				"executor": map[string]interface{}{
-					"name": "SMSOTPAuthExecutor",
-					"mode": "send",
+					"name": "SMSExecutor",
 				},
 				"onSuccess": "otp_sent_status",
 				"onFailure": "otp_sent_status",
@@ -470,19 +487,8 @@ func buildSMSOTPRecoveryFlow(senderID string) testutils.Flow {
 			{
 				"id":   "verify_otp",
 				"type": "TASK_EXECUTION",
-				"inputs": []map[string]interface{}{
-					{
-						"ref":        "input_otp",
-						"identifier": "otp",
-						"type":       "OTP_INPUT",
-						"required":   true,
-					},
-				},
-				"properties": map[string]interface{}{
-					"senderId": senderID,
-				},
 				"executor": map[string]interface{}{
-					"name": "SMSOTPAuthExecutor",
+					"name": "OTPExecutor",
 					"mode": "verify",
 				},
 				"onSuccess": "prompt_new_password",

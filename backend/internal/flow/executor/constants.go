@@ -21,7 +21,6 @@ package executor
 // Executor name constants
 const (
 	ExecutorNameCredentialsAuth = "CredentialsAuthExecutor"
-	ExecutorNameSMSAuth         = "SMSOTPAuthExecutor"
 	ExecutorNameMagicLink       = "MagicLinkExecutor"
 	// nolint:gosec // G101: This is an executor name, not a credential
 	ExecutorNamePasskeyAuth                  = "PasskeyAuthExecutor"
@@ -47,6 +46,7 @@ const (
 	ExecutorNameAttributeUniquenessValidator = "AttributeUniquenessValidator"
 	ExecutorNameSMSExecutor                  = "SMSExecutor"
 	ExecutorNameFederatedAuthResolver        = "FederatedAuthResolverExecutor"
+	ExecutorNameOTPExecutor                  = "OTPExecutor"
 )
 
 // Executor mode constants
@@ -112,7 +112,10 @@ const (
 	propertyKeyPresentationDefinitionID                = "presentation_definition_id"
 	propertyKeyCallbackType                            = "callbackType"
 	propertyKeyLoginHintAttribute                      = "loginHintAttribute"
+	propertyKeyMaxOTPAttempts                          = "maxAttempts"
 )
 
 // nonSearchableInputs contains the list of user inputs/ attributes that are non-searchable.
-var nonSearchableInputs = []string{"password", "code", "nonce", "otp", "token", "userInputMagicLinkToken"}
+var nonSearchableInputs = []string{
+	"password", "code", "nonce", "otp", "token", "userInputMagicLinkToken", "otpSessionToken",
+}

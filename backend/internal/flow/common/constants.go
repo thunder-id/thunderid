@@ -231,11 +231,17 @@ const (
 	// that have already been prompted to the user, even if the user left them empty.
 	RuntimeKeyPresentedOptionalInputs = "presentedOptionalInputs"
 	// RuntimeKeySMSOTPMobileNumber holds the resolved mobile number for SMS OTP verification.
-	// TODO: Revisit when the generic OTP executor is implemented.
 	RuntimeKeySMSOTPMobileNumber = "smsOTPMobileNumber"
 	// RuntimeKeySMSOTPPhoneAttr holds the schema attribute name used to look up the mobile number.
-	// TODO: Revisit when the generic OTP executor is implemented.
 	RuntimeKeySMSOTPPhoneAttr = "smsOTPPhoneAttr"
+	// RuntimeKeyOTPValue holds the plaintext OTP produced by OTPExecutor in generate mode.
+	// SMSExecutor reads this key via its generic RuntimeData loop and passes it to the SMS template as "otp".
+	RuntimeKeyOTPValue = "otp"
+	// RuntimeKeyOTPSessionToken holds the OTP session JWT produced by OTPExecutor in generate mode
+	// and consumed by OTPExecutor in verify mode.
+	RuntimeKeyOTPSessionToken = "otpSessionToken"
+	// RuntimeKeyOTPAttemptCount holds the number of OTP generation attempts for the current flow execution.
+	RuntimeKeyOTPAttemptCount = "attemptCount"
 	// RuntimeKeyMagicLinkUsedJti is the JWT ID claim value of a magic link token that has already been used.
 	RuntimeKeyMagicLinkUsedJti = "magicLinkUsedJti"
 	// RuntimeKeyOAuthState holds the generated OAuth state parameter for CSRF validation.
