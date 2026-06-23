@@ -5,8 +5,6 @@
 package clientmock
 
 import (
-	"context"
-
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/notification/common"
 )
@@ -129,69 +127,6 @@ func (_c *NotificationClientInterfaceMock_IsChannelSupported_Call) Return(b bool
 }
 
 func (_c *NotificationClientInterfaceMock_IsChannelSupported_Call) RunAndReturn(run func(channel common.ChannelType) bool) *NotificationClientInterfaceMock_IsChannelSupported_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Send provides a mock function for the type NotificationClientInterfaceMock
-func (_mock *NotificationClientInterfaceMock) Send(ctx context.Context, channel common.ChannelType, data common.NotificationData) error {
-	ret := _mock.Called(ctx, channel, data)
-
-	if len(ret) == 0 {
-		panic("no return value specified for Send")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.ChannelType, common.NotificationData) error); ok {
-		r0 = returnFunc(ctx, channel, data)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// NotificationClientInterfaceMock_Send_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Send'
-type NotificationClientInterfaceMock_Send_Call struct {
-	*mock.Call
-}
-
-// Send is a helper method to define mock.On call
-//   - ctx context.Context
-//   - channel common.ChannelType
-//   - data common.NotificationData
-func (_e *NotificationClientInterfaceMock_Expecter) Send(ctx interface{}, channel interface{}, data interface{}) *NotificationClientInterfaceMock_Send_Call {
-	return &NotificationClientInterfaceMock_Send_Call{Call: _e.mock.On("Send", ctx, channel, data)}
-}
-
-func (_c *NotificationClientInterfaceMock_Send_Call) Run(run func(ctx context.Context, channel common.ChannelType, data common.NotificationData)) *NotificationClientInterfaceMock_Send_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		var arg1 common.ChannelType
-		if args[1] != nil {
-			arg1 = args[1].(common.ChannelType)
-		}
-		var arg2 common.NotificationData
-		if args[2] != nil {
-			arg2 = args[2].(common.NotificationData)
-		}
-		run(
-			arg0,
-			arg1,
-			arg2,
-		)
-	})
-	return _c
-}
-
-func (_c *NotificationClientInterfaceMock_Send_Call) Return(err error) *NotificationClientInterfaceMock_Send_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *NotificationClientInterfaceMock_Send_Call) RunAndReturn(run func(ctx context.Context, channel common.ChannelType, data common.NotificationData) error) *NotificationClientInterfaceMock_Send_Call {
 	_c.Call.Return(run)
 	return _c
 }
