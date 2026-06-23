@@ -117,7 +117,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
 
 	// Replace the URL with test server URL
 	customClient := client.(*CustomClient)
-	customClient.url = server.URL
+	customClient.config.url = server.URL
 
 	data := common.MessageData{
 		Recipient: "+15559876543",
@@ -147,7 +147,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_FORM_Success() {
 
 	// Replace the URL with test server URL
 	customClient := client.(*CustomClient)
-	customClient.url = server.URL
+	customClient.config.url = server.URL
 
 	data := common.MessageData{
 		Recipient: "+15559876543",
@@ -174,7 +174,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_Error() {
 
 	// Replace the URL with test server URL
 	customClient := client.(*CustomClient)
-	customClient.url = server.URL
+	customClient.config.url = server.URL
 
 	data := common.MessageData{
 		Recipient: "+15559876543",
@@ -193,7 +193,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_NetworkError() {
 
 	// Use an invalid URL to force a network error
 	customClient := client.(*CustomClient)
-	customClient.url = "http://invalid-custom-url.local:99999"
+	customClient.config.url = "http://invalid-custom-url.local:99999"
 
 	data := common.MessageData{
 		Recipient: "+15559876543",

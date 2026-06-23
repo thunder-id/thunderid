@@ -19,9 +19,55 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"strings"
+
+	"github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
+
+// httpWebhookConfig holds the configuration for HTTP webhook clients.
+type httpWebhookConfig struct {
+	url         string
+	httpMethod  string
+	httpHeaders map[string]string
+	contentType string
+}
+
+// parseHTTPWebhookConfig parses the HTTP webhook configuration from the given notification sender properties.
+func parseHTTPWebhookConfig(
+	ctx context.Context,
+	sender common.NotificationSenderDTO,
+	logger *log.Logger,
+) (httpWebhookConfig, error) {
+	config := httpWebhookConfig{}
+
+	for _, prop := range sender.Properties {
+		value, err := prop.GetValue()
+		if err != nil {
+			return config, fmt.Errorf("failed to get property value for %s: %w", prop.GetName(), err)
+		}
+
+		switch prop.GetName() {
+		case common.CustomPropKeyURL:
+			config.url = value
+		case common.CustomPropKeyHTTPMethod:
+			config.httpMethod = strings.ToUpper(value)
+		case common.CustomPropKeyHTTPHeaders:
+			headers, err := parseHTTPHeaders(value)
+			if err != nil {
+				return config, fmt.Errorf("failed to parse HTTP headers: %w", err)
+			}
+			config.httpHeaders = headers
+		case common.CustomPropKeyContentType:
+			config.contentType = strings.ToUpper(value)
+		default:
+			logger.Warn(ctx, "Unknown property for HTTP webhook client", log.String("property", prop.GetName()))
+		}
+	}
+	return config, nil
+}
 
 // parseHTTPHeaders parses a comma-separated string of HTTP headers into a map.
 func parseHTTPHeaders(headersString string) (map[string]string, error) {

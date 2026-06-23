@@ -39,12 +39,9 @@ const (
 
 // CustomClient implements the NotificationClientInterface for sending messages via a custom message provider.
 type CustomClient struct {
-	name        string
-	url         string
-	httpMethod  string
-	httpHeaders map[string]string
-	contentType string
-	httpClient  syshttp.HTTPClientInterface
+	name       string
+	config     httpWebhookConfig
+	httpClient syshttp.HTTPClientInterface
 }
 
 // newCustomClient creates a new instance of CustomClient.
@@ -54,29 +51,11 @@ func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 	client := &CustomClient{}
 	client.name = sender.Name
 
-	for _, prop := range sender.Properties {
-		value, err := prop.GetValue()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get property value for %s: %w", prop.GetName(), err)
-		}
-
-		switch prop.GetName() {
-		case common.CustomPropKeyURL:
-			client.url = value
-		case common.CustomPropKeyHTTPMethod:
-			client.httpMethod = strings.ToUpper(value)
-		case common.CustomPropKeyHTTPHeaders:
-			headers, err := parseHTTPHeaders(value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse HTTP headers: %w", err)
-			}
-			client.httpHeaders = headers
-		case common.CustomPropKeyContentType:
-			client.contentType = strings.ToUpper(value)
-		default:
-			logger.Warn(ctx, "Unknown property for Custom client", log.String("property", prop.GetName()))
-		}
+	config, err := parseHTTPWebhookConfig(ctx, sender, logger)
+	if err != nil {
+		return nil, err
 	}
+	client.config = config
 	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
 
 	return client, nil
@@ -110,13 +89,13 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) err
 	var req *http.Request
 	var err error
 
-	if strings.ToUpper(c.contentType) == "JSON" {
-		req, err = http.NewRequest(c.httpMethod, c.url, bytes.NewBufferString(data.Body))
+	if strings.ToUpper(c.config.contentType) == "JSON" {
+		req, err = http.NewRequest(c.config.httpMethod, c.config.url, bytes.NewBufferString(data.Body))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJSON)
-	} else if strings.ToUpper(c.contentType) == "FORM" {
+	} else if strings.ToUpper(c.config.contentType) == "FORM" {
 		formData := url.Values{}
 		lines := strings.Split(data.Body, "\n")
 		for _, line := range lines {
@@ -125,16 +104,16 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) err
 				formData.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
 			}
 		}
-		req, err = http.NewRequest(c.httpMethod, c.url, strings.NewReader(formData.Encode()))
+		req, err = http.NewRequest(c.config.httpMethod, c.config.url, strings.NewReader(formData.Encode()))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeFormURLEncoded)
 	} else {
-		return fmt.Errorf("unsupported content type: %s", c.contentType)
+		return fmt.Errorf("unsupported content type: %s", c.config.contentType)
 	}
 
-	for key, value := range c.httpHeaders {
+	for key, value := range c.config.httpHeaders {
 		req.Header.Set(key, value)
 	}
 

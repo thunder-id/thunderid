@@ -119,7 +119,7 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_JSON_Success() {
 
 	// Replace the URL with test server URL
 	customClient := client.(*HTTPEmailClient)
-	customClient.url = server.URL
+	customClient.config.url = server.URL
 
 	data := common.EmailData{
 		Recipient: "user@example.com",
@@ -151,7 +151,7 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_FORM_Success() {
 
 	// Replace the URL with test server URL
 	customClient := client.(*HTTPEmailClient)
-	customClient.url = server.URL
+	customClient.config.url = server.URL
 
 	data := common.EmailData{
 		Recipient: "user@example.com",
@@ -180,7 +180,7 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_Error() {
 
 	// Replace the URL with test server URL
 	customClient := client.(*HTTPEmailClient)
-	customClient.url = server.URL
+	customClient.config.url = server.URL
 
 	data := common.EmailData{
 		Recipient: "user@example.com",
@@ -200,7 +200,7 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_NetworkError() {
 
 	// Use an invalid URL to force a network error
 	customClient := client.(*HTTPEmailClient)
-	customClient.url = "http://invalid-custom-url.local:99999"
+	customClient.config.url = "http://invalid-custom-url.local:99999"
 
 	data := common.EmailData{
 		Recipient: "user@example.com",

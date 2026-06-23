@@ -40,12 +40,9 @@ const (
 
 // HTTPEmailClient implements the EmailClientInterface for sending emails via a custom HTTP webhook.
 type HTTPEmailClient struct {
-	name        string
-	url         string
-	httpMethod  string
-	httpHeaders map[string]string
-	contentType string
-	httpClient  syshttp.HTTPClientInterface
+	name       string
+	config     httpWebhookConfig
+	httpClient syshttp.HTTPClientInterface
 }
 
 // newHTTPEmailClient creates a new instance of HTTPEmailClient.
@@ -55,29 +52,11 @@ func newHTTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO
 	client := &HTTPEmailClient{}
 	client.name = sender.Name
 
-	for _, prop := range sender.Properties {
-		value, err := prop.GetValue()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get property value for %s: %w", prop.GetName(), err)
-		}
-
-		switch prop.GetName() {
-		case common.CustomPropKeyURL:
-			client.url = value
-		case common.CustomPropKeyHTTPMethod:
-			client.httpMethod = strings.ToUpper(value)
-		case common.CustomPropKeyHTTPHeaders:
-			headers, err := parseHTTPHeaders(value)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse HTTP headers: %w", err)
-			}
-			client.httpHeaders = headers
-		case common.CustomPropKeyContentType:
-			client.contentType = strings.ToUpper(value)
-		default:
-			logger.Warn(ctx, "Unknown property for HTTP Email client", log.String("property", prop.GetName()))
-		}
+	config, err := parseHTTPWebhookConfig(ctx, sender, logger)
+	if err != nil {
+		return nil, err
 	}
+	client.config = config
 	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
 
 	return client, nil
@@ -96,7 +75,7 @@ func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error
 	var req *http.Request
 	var err error
 
-	if strings.ToUpper(c.contentType) == "JSON" {
+	if strings.ToUpper(c.config.contentType) == "JSON" {
 		payload := map[string]interface{}{
 			"recipient": data.Recipient,
 			"subject":   data.Subject,
@@ -108,12 +87,12 @@ func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error
 			return fmt.Errorf("failed to marshal JSON payload: %w", marshalErr)
 		}
 
-		req, err = http.NewRequest(c.httpMethod, c.url, bytes.NewBuffer(jsonBytes))
+		req, err = http.NewRequest(c.config.httpMethod, c.config.url, bytes.NewBuffer(jsonBytes))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJSON)
-	} else if strings.ToUpper(c.contentType) == "FORM" {
+	} else if strings.ToUpper(c.config.contentType) == "FORM" {
 		formData := url.Values{}
 		formData.Add("recipient", data.Recipient)
 		formData.Add("subject", data.Subject)
@@ -124,16 +103,16 @@ func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error
 			formData.Add("is_html", "false")
 		}
 
-		req, err = http.NewRequest(c.httpMethod, c.url, strings.NewReader(formData.Encode()))
+		req, err = http.NewRequest(c.config.httpMethod, c.config.url, strings.NewReader(formData.Encode()))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeFormURLEncoded)
 	} else {
-		return fmt.Errorf("unsupported content type: %s", c.contentType)
+		return fmt.Errorf("unsupported content type: %s", c.config.contentType)
 	}
 
-	for key, value := range c.httpHeaders {
+	for key, value := range c.config.httpHeaders {
 		req.Header.Set(key, value)
 	}
 
