@@ -2,6 +2,14 @@
 
 A sample React application that demonstrates app-native flow orchestration with ThunderID — covering login, registration, and basic profile management.
 
+> [!WARNING]
+> **Not supported for browser SPAs (sign-in).** This sample initiates **sign-in** by calling
+> `POST /flow/execute` directly from the browser (the "app-native" pattern). Browser single-page
+> applications are **not supported** for direct sign-in initiation and must sign in using the
+> redirect-based OAuth2 `authorization_code` + PKCE flow — see the
+> [`react-sdk-sample`](../react-sdk-sample) for the recommended approach. This sample is kept only
+> as a reference for the low-level flow API used by server-side clients and the hosted sign-in pages.
+
 ## Prerequisites
 
 - Node.js 20+
