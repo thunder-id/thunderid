@@ -29,9 +29,20 @@ import (
 // httpClientTimeout is the timeout duration for the HTTP client.
 const httpClientTimeout = 10 * time.Second
 
-// NotificationClientInterface defines the provider client interface for sending notifications.
+// NotificationClientInterface defines the base provider client interface for sending notifications.
 type NotificationClientInterface interface {
 	GetName() string
 	IsChannelSupported(channel common.ChannelType) bool
-	Send(ctx context.Context, channel common.ChannelType, data common.NotificationData) error
+}
+
+// MessageClientInterface defines the client interface for sending SMS/Messages.
+type MessageClientInterface interface {
+	NotificationClientInterface
+	Send(ctx context.Context, channel common.ChannelType, data common.MessageData) error
+}
+
+// EmailClientInterface defines the client interface for sending Emails.
+type EmailClientInterface interface {
+	NotificationClientInterface
+	Send(ctx context.Context, data common.EmailData) error
 }
