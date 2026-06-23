@@ -167,7 +167,8 @@ func (c *SMTPEmailClient) buildMessage(emailData common.EmailData, recipient str
 
 // sendViaSMTP handles the low-level SMTP communication, connection setup,
 // optional TLS upgrade, authentication, and message transmission.
-func (c *SMTPEmailClient) sendViaSMTP(ctx context.Context, serverAddress string, recipients []string, message string) error {
+func (c *SMTPEmailClient) sendViaSMTP(
+	ctx context.Context, serverAddress string, recipients []string, message string) error {
 	conn, err := net.DialTimeout("tcp", serverAddress, smtpDialTimeout)
 	if err != nil {
 		return fmt.Errorf("smtp connection failed: %w", err)

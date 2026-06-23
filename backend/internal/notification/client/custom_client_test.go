@@ -228,31 +228,6 @@ func (suite *CustomClientTestSuite) TestSendSMS_UnsupportedContentType() {
 	suite.Contains(err.Error(), "unsupported content type")
 }
 
-func (suite *CustomClientTestSuite) TestGetHeadersFromString_Success() {
-	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
-	customClient := client.(*CustomClient)
-
-	headers, err := customClient.getHeadersFromString("Authorization:Bearer token,X-Api-Key:key123")
-
-	suite.NoError(err)
-	suite.Equal(2, len(headers))
-	suite.Equal("Bearer token", headers["Authorization"])
-	suite.Equal("key123", headers["X-Api-Key"])
-}
-
-func (suite *CustomClientTestSuite) TestGetHeadersFromString_InvalidFormat() {
-	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
-	customClient := client.(*CustomClient)
-
-	headers, err := customClient.getHeadersFromString("InvalidHeader")
-
-	suite.Error(err)
-	suite.Nil(headers)
-	suite.Contains(err.Error(), "invalid HTTP header format")
-}
-
 func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
 	sender := suite.getValidCustomSenderJSON()
 	sender.Properties = append(sender.Properties, createProperty("unknown_prop", "value", false))

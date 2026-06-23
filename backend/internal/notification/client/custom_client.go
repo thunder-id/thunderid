@@ -66,7 +66,7 @@ func newCustomClient(ctx context.Context, sender common.NotificationSenderDTO) (
 		case common.CustomPropKeyHTTPMethod:
 			client.httpMethod = strings.ToUpper(value)
 		case common.CustomPropKeyHTTPHeaders:
-			headers, err := client.getHeadersFromString(value)
+			headers, err := parseHTTPHeaders(value)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse HTTP headers: %w", err)
 			}
@@ -158,20 +158,4 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) err
 	}
 
 	return nil
-}
-
-// getHeadersFromString parses a string of HTTP headers into a map.
-func (c *CustomClient) getHeadersFromString(headersString string) (map[string]string, error) {
-	headers := make(map[string]string)
-	for _, header := range strings.Split(headersString, ",") {
-		parts := strings.SplitN(header, ":", 2)
-		if len(parts) == 2 {
-			key := strings.TrimSpace(parts[0])
-			value := strings.TrimSpace(parts[1])
-			headers[key] = value
-		} else {
-			return nil, fmt.Errorf("invalid HTTP header format: %s", header)
-		}
-	}
-	return headers, nil
 }
