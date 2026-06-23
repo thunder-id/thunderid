@@ -17,6 +17,8 @@ servers:
         default: "8090"
 
 tags:
+  - name: Email Senders
+    description: Email notification sender management operations.
   - name: Message Senders
     description: Message notification sender management operations.
   - name: One Time Password (OTP)
@@ -566,6 +568,246 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+
+  /notification-senders/email:
+    get:
+      summary: List email notification senders
+      description: Retrieve a list of email notification senders.
+      tags:
+        - Email Senders
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailNotificationSenderList'
+        "500":
+          description: 'Internal Server Error: An unexpected error occurred while processing the request'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create a new email notification sender
+      description: Create a new email notification sender with the provided details.
+      tags:
+        - Email Senders
+      requestBody:
+        description: Email notification sender data
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailNotificationSender'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailNotificationSenderResponse'
+        "400":
+          description: 'Bad Request: The request is invalid or malformed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "MNS-1006"
+                message:
+                  key: "error.notificationservice.invalid_request_format"
+                  defaultValue: "Invalid request format"
+                description:
+                  key: "error.notificationservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed or contains invalid data"
+        "409":
+          description: 'Conflict: An email notification sender with the same name already exists'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "MNS-1005"
+                message:
+                  key: "error.notificationservice.duplicate_sender_name"
+                  defaultValue: "Duplicate sender name"
+                description:
+                  key: "error.notificationservice.duplicate_sender_name_description"
+                  defaultValue: "A sender with the same name already exists"
+        "500":
+          description: 'Internal Server Error: An unexpected error occurred while processing the request'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /notification-senders/email/{id}:
+    get:
+      summary: Get an email notification sender by ID
+      description: Retrieve an email notification sender by its unique identifier.
+      tags:
+        - Email Senders
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the email notification sender
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailNotificationSenderResponse'
+        "400":
+          description: 'Bad Request: The requested ID format is invalid'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "MNS-1002"
+                message:
+                  key: "error.notificationservice.invalid_sender_id"
+                  defaultValue: "Invalid sender ID"
+                description:
+                  key: "error.notificationservice.invalid_sender_id_description"
+                  defaultValue: "The provided sender ID is invalid"
+        "404":
+          description: 'Not Found: The email notification sender with the specified ID was not found'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "MNS-1001"
+                message:
+                  key: "error.notificationservice.sender_not_found"
+                  defaultValue: "Sender not found"
+                description:
+                  key: "error.notificationservice.sender_not_found_description"
+                  defaultValue: "The requested notification sender could not be found"
+        "500":
+          description: 'Internal Server Error: An unexpected error occurred while processing the request'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update an email notification sender
+      description: Update an existing email notification sender.
+      tags:
+        - Email Senders
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the email notification sender
+          schema:
+            type: string
+      requestBody:
+        description: Updated email notification sender data
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailNotificationSender'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailNotificationSenderResponse'
+        "400":
+          description: 'Bad Request: The request is invalid or malformed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "MNS-1006"
+                message:
+                  key: "error.notificationservice.invalid_request_format"
+                  defaultValue: "Invalid request format"
+                description:
+                  key: "error.notificationservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed or contains invalid data"
+        "404":
+          description: 'Not Found: The email notification sender with the specified ID was not found'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "MNS-1001"
+                message:
+                  key: "error.notificationservice.sender_not_found"
+                  defaultValue: "Sender not found"
+                description:
+                  key: "error.notificationservice.sender_not_found_description"
+                  defaultValue: "The requested notification sender could not be found"
+        "409":
+          description: 'Conflict: An email notification sender with the same name already exists'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "MNS-1005"
+                message:
+                  key: "error.notificationservice.duplicate_sender_name"
+                  defaultValue: "Duplicate sender name"
+                description:
+                  key: "error.notificationservice.duplicate_sender_name_description"
+                  defaultValue: "A sender with the same name already exists"
+        "500":
+          description: 'Internal Server Error: An unexpected error occurred while processing the request'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete an email notification sender
+      description: Delete an email notification sender by its unique identifier.
+      tags:
+        - Email Senders
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Unique identifier of the email notification sender
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: 'Bad Request: The requested ID format is invalid'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "MNS-1002"
+                message:
+                  key: "error.notificationservice.invalid_sender_id"
+                  defaultValue: "Invalid sender ID"
+                description:
+                  key: "error.notificationservice.invalid_sender_id_description"
+                  defaultValue: "The provided sender ID is invalid"
+        "500":
+          description: 'Internal Server Error: An unexpected error occurred while processing the request'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /notification-senders/otp/send:
     post:
       summary: Send a One Time Password (OTP)
@@ -836,6 +1078,68 @@ components:
           items:
             $ref: '#/components/schemas/Property'
 
+
+    EmailNotificationSenderList:
+      type: array
+      description: List of email notification senders
+      items:
+        $ref: '#/components/schemas/EmailNotificationSenderResponse'
+
+    EmailNotificationSenderResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the email notification sender
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        name:
+          type: string
+          description: Name of the email notification sender
+          example: "SMTP Email Sender"
+        description:
+          type: string
+          description: Description of the email notification sender
+          example: "Sender for sending emails via SMTP"
+        provider:
+          type: string
+          description: Provider of the email notification sender
+          enum:
+            - "smtp"
+            - "http"
+          example: "smtp"
+        properties:
+          type: array
+          description: Properties of the email notification sender.
+          items:
+            $ref: '#/components/schemas/Property'
+
+    EmailNotificationSender:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Name of the email notification sender
+          example: "SMTP Email Sender"
+        description:
+          type: string
+          description: Description of the email notification sender
+          example: "Sender for sending emails via SMTP"
+        provider:
+          type: string
+          description: Provider of the email notification sender
+          enum:
+            - "smtp"
+            - "http"
+          example: "smtp"
+        properties:
+          type: array
+          description: Properties of the email notification sender.
+          items:
+            $ref: '#/components/schemas/Property'
+      required:
+        - name
+        - provider
+        - properties
     MessageNotificationSender:
       type: object
       properties:
