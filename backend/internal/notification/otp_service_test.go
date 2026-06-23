@@ -526,7 +526,7 @@ func (suite *OTPServiceTestSuite) TestSendOTP_ClientChannelNotSupported() {
 		template.TemplateTypeSMS, mock.Anything).
 		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
 
-	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
+	mm := clientmock.NewMessageClientInterfaceMock(suite.T())
 	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(false).Once()
 	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
 	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()

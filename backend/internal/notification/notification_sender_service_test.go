@@ -114,7 +114,6 @@ func (suite *NotificationSenderServiceTestSuite) TestSendSMS_WrongSenderType() {
 	suite.mockSenderMgtSvc.On("GetSender", mock.Anything, "email-sender-001").Return(sender, nil).Once()
 
 	mm := clientmock.NewNotificationClientInterfaceMock(suite.T())
-	mm.EXPECT().IsChannelSupported(common.ChannelTypeSMS).Return(true).Maybe()
 	suite.mockClientFactory.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
 
 	err := suite.service.SendMessage(context.Background(), common.ChannelTypeSMS, "email-sender-001",
