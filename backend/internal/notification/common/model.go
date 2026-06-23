@@ -35,10 +35,12 @@ type MessageData struct {
 
 // EmailData holds the payload for sending an email.
 type EmailData struct {
-	Recipient string
-	Subject   string
-	Body      string
-	IsHTML    bool
+	To      []string
+	CC      []string
+	BCC     []string
+	Subject string
+	Body    string
+	IsHTML  bool
 }
 
 // OTP represents the data structure for an OTP (One-Time Password).
