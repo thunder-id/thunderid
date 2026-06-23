@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,12 +40,14 @@ import (
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notification"
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/template"
 )
 
 const svcLoggerComponentName = "AuthenticationService"
@@ -90,6 +93,8 @@ type authenticationService struct {
 	authAssertionGenerator assert.AuthAssertGeneratorInterface
 	authnProvider          authnprovidermgr.AuthnProviderManagerInterface
 	otpService             otp.OTPAuthnServiceInterface
+	notifSenderSvc         notification.NotificationSenderServiceInterface
+	templateService        template.TemplateServiceInterface
 	magicLinkService       magiclink.MagicLinkAuthnServiceInterface
 	oauthService           oauth.OAuthAuthnServiceInterface
 	oidcService            oidc.OIDCAuthnServiceInterface
@@ -105,6 +110,8 @@ func newAuthenticationService(
 	authAssertGen assert.AuthAssertGeneratorInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 	otpAuthnSvc otp.OTPAuthnServiceInterface,
+	notifSenderSvc notification.NotificationSenderServiceInterface,
+	templateSvc template.TemplateServiceInterface,
 	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
 	oauthAuthnSvc oauth.OAuthAuthnServiceInterface,
 	oidcAuthnSvc oidc.OIDCAuthnServiceInterface,
@@ -118,6 +125,8 @@ func newAuthenticationService(
 		authAssertionGenerator: authAssertGen,
 		authnProvider:          authnProvider,
 		otpService:             otpAuthnSvc,
+		notifSenderSvc:         notifSenderSvc,
+		templateService:        templateSvc,
 		magicLinkService:       magicLinkSvc,
 		oauthService:           oauthAuthnSvc,
 		oidcService:            oidcAuthnSvc,
@@ -190,10 +199,31 @@ func (as *authenticationService) AuthenticateWithCredentials(ctx context.Context
 	return authResponse, nil
 }
 
-// SendOTP sends an OTP to the specified recipient for authentication.
+// SendOTP generates an OTP, renders the SMS template, and delivers it to the recipient.
 func (as *authenticationService) SendOTP(ctx context.Context, senderID string, channel notifcommon.ChannelType,
 	recipient string) (string, *serviceerror.ServiceError) {
-	return as.otpService.SendOTP(ctx, senderID, channel, recipient)
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, svcLoggerComponentName))
+
+	sessionToken, otpValue, _, svcErr := as.otpService.GenerateOTP(ctx, recipient, "mobileNumber")
+	if svcErr != nil {
+		return "", svcErr
+	}
+
+	otpCfg := config.GetServerRuntime().Config.Notification.OTP
+	expiryMinutes := strconv.FormatInt(int64(otpCfg.ValidityPeriodSeconds)/60, 10)
+	templateData := template.TemplateData{"otp": otpValue, "expiryMinutes": expiryMinutes}
+	rendered, renderErr := as.templateService.Render(ctx, template.ScenarioOTP, template.TemplateTypeSMS, templateData)
+	if renderErr != nil {
+		logger.Error(ctx, "Failed to render OTP template", log.String("error", renderErr.Code))
+		return "", &serviceerror.InternalServerError
+	}
+
+	notifData := notifcommon.NotificationData{Recipient: recipient, Body: rendered.Body}
+	if sendErr := as.notifSenderSvc.Send(ctx, channel, senderID, notifData); sendErr != nil {
+		return "", sendErr
+	}
+
+	return sessionToken, nil
 }
 
 // VerifyOTP verifies an OTP and returns the authenticated user.
@@ -239,7 +269,7 @@ func (as *authenticationService) VerifyOTP(ctx context.Context, sessionToken str
 			OUID:       entityRef.OUID,
 			Attributes: nil, // Attributes not needed for assertion generation in OTP flow
 		}
-		svcErr = as.validateAndAppendAuthAssertion(ctx, authResponse, userForAssertion, common.AuthenticatorSMSOTP,
+		svcErr = as.validateAndAppendAuthAssertion(ctx, authResponse, userForAssertion, common.AuthenticatorOTP,
 			existingAssertion, logger)
 		if svcErr != nil {
 			return nil, svcErr

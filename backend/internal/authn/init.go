@@ -35,8 +35,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/reactsdk"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/template"
 )
 
 // Initialize initializes the authentication service and registers its routes.
@@ -49,6 +51,8 @@ func Initialize(
 	authAssertGen assert.AuthAssertGeneratorInterface,
 	passkeySvc passkey.PasskeyServiceInterface,
 	otpSvc otp.OTPAuthnServiceInterface,
+	notifSenderSvc notification.NotificationSenderServiceInterface,
+	templateSvc template.TemplateServiceInterface,
 	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
 	oauthSvc oauth.OAuthAuthnServiceInterface,
 	oidcSvc oidc.OIDCAuthnServiceInterface,
@@ -60,7 +64,7 @@ func Initialize(
 		Factors: []common.AuthenticationFactor{common.FactorKnowledge},
 	})
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
-		Name:    common.AuthenticatorSMSOTP,
+		Name:    common.AuthenticatorOTP,
 		Factors: []common.AuthenticationFactor{common.FactorPossession},
 	})
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
@@ -98,6 +102,8 @@ func Initialize(
 		authAssertGen,
 		authnProvider,
 		otpSvc,
+		notifSenderSvc,
+		templateSvc,
 		magicLinkSvc,
 		oauthSvc,
 		oidcSvc,

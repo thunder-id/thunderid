@@ -44,7 +44,7 @@ const resolveStepMetadata = (resources: Resources, steps: Step[]): Step[] => {
     const executorMode = (stepData?.action?.executor as {mode?: string} | undefined)?.mode;
 
     if (executorName && resources?.executors) {
-      // For executors with modes (like SMSOTPAuthExecutor), match on both name and mode
+      // For executors with modes (like OTPExecutor), match on both name and mode
       const executorWithMeta = resources.executors.find((executor) => {
         const executorData = executor.data as StepData | undefined;
         const metaExecutorName = executorData?.action?.executor?.name;

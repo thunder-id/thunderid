@@ -60,10 +60,10 @@ const computeExecutorConnections = (params: ComputeExecutorConnectionsParams): E
     });
   }
 
-  // Process notification senders (for SMS OTP executor)
+  // Process notification senders (for SMS executor)
   if (notificationSenders && notificationSenders.length > 0) {
     const senderIds = notificationSenders.map((sender) => sender.id);
-    executorMap.set(ExecutionTypes.SMSOTPAuth, senderIds);
+    executorMap.set(ExecutionTypes.SMSExecutor, senderIds);
   }
 
   return Array.from(executorMap.entries()).map(([executorName, connections]) => ({

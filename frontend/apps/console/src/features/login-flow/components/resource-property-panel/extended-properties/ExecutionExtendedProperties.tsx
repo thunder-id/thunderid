@@ -33,7 +33,6 @@ import OUResolverProperties from './execution-properties/OUResolverProperties';
 import PasskeyProperties from './execution-properties/PasskeyProperties';
 import PermissionValidatorProperties from './execution-properties/PermissionValidatorProperties';
 import ProvisioningProperties from './execution-properties/ProvisioningProperties';
-import SmsOtpProperties from './execution-properties/SmsOtpProperties';
 import SmsProperties from './execution-properties/SmsProperties';
 import UserTypeResolverProperties from './execution-properties/UserTypeResolverProperties';
 import type {CommonResourcePropertiesPropsInterface} from '@/features/flows/components/resource-property-panel/ResourceProperties';
@@ -80,9 +79,6 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
   let executorSpecificProperties: ReactNode = null;
 
   switch (executorName) {
-    case ExecutionTypes.SMSOTPAuth:
-      executorSpecificProperties = <SmsOtpProperties resource={resource} onChange={onChange} />;
-      break;
     case ExecutionTypes.ConsentExecutor:
       executorSpecificProperties = <ConsentProperties resource={resource} onChange={onChange} />;
       break;

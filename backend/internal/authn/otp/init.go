@@ -19,12 +19,10 @@
 package otp
 
 import (
-	"github.com/thunder-id/thunderid/internal/entityprovider"
-	"github.com/thunder-id/thunderid/internal/notification"
+	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 )
 
 // Initialize initializes the OTP authentication service.
-func Initialize(otpSvc notification.OTPServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface) OTPAuthnServiceInterface {
-	return newOTPAuthnService(otpSvc, entityProvider)
+func Initialize(jwtSvc jwt.JWTServiceInterface) OTPAuthnServiceInterface {
+	return newOTPAuthnService(jwtSvc)
 }

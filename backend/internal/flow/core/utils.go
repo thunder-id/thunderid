@@ -160,10 +160,14 @@ func collectMissingInputs(ctx *NodeContext, presentedOptionalInputs map[string]s
 		if _, ok := ctx.UserInputs[input.Identifier]; ok {
 			continue
 		}
-		if _, ok := ctx.RuntimeData[input.Identifier]; ok {
-			logger.Debug(ctx.Context, "Input available in runtime data, skipping",
-				log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
-			continue
+		// OTP inputs require explicit user submission; skip the runtime data check entirely
+		// to prevent a generated OTP value in RuntimeData from bypassing the user prompt.
+		if input.Type != common.InputTypeOTP {
+			if _, ok := ctx.RuntimeData[input.Identifier]; ok {
+				logger.Debug(ctx.Context, "Input available in runtime data, skipping",
+					log.String("identifier", input.Identifier), log.Bool("isRequired", input.Required))
+				continue
+			}
 		}
 		if value, ok := ctx.ForwardedData[input.Identifier]; ok {
 			if _, isString := value.(string); isString {

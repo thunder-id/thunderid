@@ -178,12 +178,6 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
     fields: [{name: 'data.properties.idpId', errorMessageKey: 'flows:core.validation.fields.input.idpId'}],
     generalMessageKey: 'flows:core.validation.fields.executor.general',
   },
-  // SMS OTP executor
-  {
-    match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.SMSOTPAuth,
-    fields: [{name: 'data.properties.senderId', errorMessageKey: 'flows:core.validation.fields.input.senderId'}],
-    generalMessageKey: 'flows:core.validation.fields.executor.general',
-  },
   // SMS executor
   {
     match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.SMSExecutor,

@@ -121,7 +121,10 @@ func (e *emailExecutor) executeSend(ctx *core.NodeContext) (*common.ExecutorResp
 			return nil, fmt.Errorf("email template property is empty in node configuration")
 		}
 		scenario = template.ScenarioType(tmplStr)
+		logger.Info(ctx.Context, "EmailExecutor: resolved email template", log.String("scenario", tmplStr))
 	} else {
+		logger.Info(ctx.Context, "EmailExecutor: emailTemplate property missing from node configuration",
+			log.Int("nodePropertyCount", len(ctx.NodeProperties)))
 		return nil, fmt.Errorf("missing required property: %s", propertyKeyEmailTemplate)
 	}
 

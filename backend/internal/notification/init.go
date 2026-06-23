@@ -22,6 +22,7 @@ import (
 	"context"
 	"net/http"
 
+	authnOTP "github.com/thunder-id/thunderid/internal/authn/otp"
 	"github.com/thunder-id/thunderid/internal/notification/client"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -35,7 +36,7 @@ import (
 // Initialize creates and configures the notification service components.
 func Initialize(mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
 	templateService template.TemplateServiceInterface) (
-	NotificationSenderMgtSvcInterface, OTPServiceInterface, NotificationSenderServiceInterface,
+	NotificationSenderMgtSvcInterface, NotificationSenderServiceInterface,
 	declarativeresource.ResourceExporter, error) {
 	var notificationStore notificationStoreInterface
 	var tx transaction.Transactioner
@@ -49,7 +50,7 @@ func Initialize(mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
 			// Service initialization runs during application startup, outside any request.
 			log.GetLogger().Error(context.Background(),
 				"Failed to initialize notification store", log.Error(err))
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
@@ -57,19 +58,20 @@ func Initialize(mux *http.ServeMux, jwtService jwt.JWTServiceInterface,
 
 	if config.GetServerRuntime().Config.DeclarativeResources.Enabled {
 		if err := loadDeclarativeResources(notificationStore); err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
 	clientFactory := client.Initialize()
-	otpService := newOTPService(mgtService, jwtService, templateService, clientFactory)
+	otpAuthnSvc := authnOTP.Initialize(jwtService)
+	otpService := newOTPService(otpAuthnSvc, mgtService, templateService, clientFactory)
 	notificationSenderService := newNotificationSenderService(mgtService, clientFactory)
 	handler := newMessageNotificationSenderHandler(mgtService, otpService)
 	registerRoutes(mux, handler)
 
 	// Create and return exporter
 	exporter := newNotificationSenderExporter(mgtService)
-	return mgtService, otpService, notificationSenderService, exporter, nil
+	return mgtService, notificationSenderService, exporter, nil
 }
 
 // registerRoutes registers the HTTP routes for notification services.

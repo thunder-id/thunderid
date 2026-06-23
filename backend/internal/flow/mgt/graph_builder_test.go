@@ -1025,7 +1025,7 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutorMode() {
 			{
 				ID:       "task",
 				Type:     "TASK_EXECUTION",
-				Executor: &ExecutorDefinition{Name: "SMSOTPAuthExecutor", Mode: "send"},
+				Executor: &ExecutorDefinition{Name: "OTPExecutor", Mode: "generate"},
 			},
 		},
 	}
@@ -1044,9 +1044,9 @@ func (s *GraphBuilderTestSuite) TestBuildGraph_WithExecutorMode() {
 		"task", "TASK_EXECUTION", map[string]interface{}(nil), false, true).Return(
 		mockTaskNode, nil)
 
-	s.mockExecutorRegistry.EXPECT().IsRegistered("SMSOTPAuthExecutor").Return(true)
-	mockTaskNode.EXPECT().SetExecutorName("SMSOTPAuthExecutor")
-	mockTaskNode.EXPECT().SetMode("send") // Verify mode is set
+	s.mockExecutorRegistry.EXPECT().IsRegistered("OTPExecutor").Return(true)
+	mockTaskNode.EXPECT().SetExecutorName("OTPExecutor")
+	mockTaskNode.EXPECT().SetMode("generate")
 	mockTaskNode.EXPECT().SetInputs([]common.Input{})
 
 	mockGraph.EXPECT().AddNode(mockStartNode).Return(nil)
