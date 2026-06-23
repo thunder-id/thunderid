@@ -329,16 +329,21 @@ nodes:
       nextNode: send_sms
 - id: send_sms
   type: TASK_EXECUTION
-  properties:
-    senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
   executor:
-    name: SMSOTPAuthExecutor
-    mode: send
+    name: OTPExecutor
+    mode: generate
     inputs:
     - ref: input_sms_001
       type: TEXT_INPUT
       identifier: username
       required: true
+  onSuccess: sms_send
+- id: sms_send
+  type: TASK_EXECUTION
+  properties:
+    senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
+  executor:
+    name: SMSExecutor
   onSuccess: prompt_otp
 - id: prompt_otp
   type: PROMPT
@@ -372,10 +377,8 @@ nodes:
       nextNode: verify_sms
 - id: verify_sms
   type: TASK_EXECUTION
-  properties:
-    senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
   executor:
-    name: SMSOTPAuthExecutor
+    name: OTPExecutor
     mode: verify
     inputs:
     - ref: otp_input
@@ -630,11 +633,16 @@ nodes:
   onSuccess: send_sms
 - id: send_sms
   type: TASK_EXECUTION
+  executor:
+    name: OTPExecutor
+    mode: generate
+  onSuccess: sms_send
+- id: sms_send
+  type: TASK_EXECUTION
   properties:
     senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
   executor:
-    name: SMSOTPAuthExecutor
-    mode: send
+    name: SMSExecutor
   onSuccess: prompt_otp
 - id: prompt_otp
   type: PROMPT
@@ -668,10 +676,8 @@ nodes:
       nextNode: verify_sms
 - id: verify_sms
   type: TASK_EXECUTION
-  properties:
-    senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
   executor:
-    name: SMSOTPAuthExecutor
+    name: OTPExecutor
     mode: verify
     inputs:
     - ref: otp_input
@@ -917,16 +923,21 @@ nodes:
       nextNode: send_sms
 - id: send_sms
   type: TASK_EXECUTION
-  properties:
-    senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
   executor:
-    name: SMSOTPAuthExecutor
-    mode: send
+    name: OTPExecutor
+    mode: generate
     inputs:
     - ref: sms_identifier_input
       identifier: username
       type: TEXT_INPUT
       required: true
+  onSuccess: sms_send
+- id: sms_send
+  type: TASK_EXECUTION
+  properties:
+    senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
+  executor:
+    name: SMSExecutor
   onSuccess: prompt_otp
 - id: prompt_otp
   type: PROMPT
@@ -965,10 +976,8 @@ nodes:
       nextNode: verify_sms
 - id: verify_sms
   type: TASK_EXECUTION
-  properties:
-    senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
   executor:
-    name: SMSOTPAuthExecutor
+    name: OTPExecutor
     mode: verify
     inputs:
     - ref: otp_input
@@ -1290,11 +1299,16 @@ nodes:
   onSuccess: send_sms
 - id: send_sms
   type: TASK_EXECUTION
+  executor:
+    name: OTPExecutor
+    mode: generate
+  onSuccess: sms_send
+- id: sms_send
+  type: TASK_EXECUTION
   properties:
     senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
   executor:
-    name: SMSOTPAuthExecutor
-    mode: send
+    name: SMSExecutor
   onSuccess: prompt_otp
 - id: prompt_otp
   type: PROMPT
@@ -1333,10 +1347,8 @@ nodes:
       nextNode: verify_sms
 - id: verify_sms
   type: TASK_EXECUTION
-  properties:
-    senderId: "{{.SAMPLE_APP_SMS_SENDER_ID}}"
   executor:
-    name: SMSOTPAuthExecutor
+    name: OTPExecutor
     mode: verify
     inputs:
     - ref: otp_input

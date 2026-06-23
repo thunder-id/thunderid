@@ -21,7 +21,6 @@ import type {ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
 import GithubExecution from './GithubExecution';
 import GoogleExecution from './GoogleExecution';
-import SmsOtpExecution from './SmsOtpExecution';
 import type {ExecutionMinimalPropsInterface} from '../ExecutionMinimal';
 import {ExecutionTypes} from '@/features/flows/models/steps';
 import resolveStaticResourcePath from '@/features/flows/utils/resolveStaticResourcePath';
@@ -57,10 +56,6 @@ function ExecutionFactory({resource}: ExecutionFactoryPropsInterface): ReactElem
 
   if (executorName === ExecutionTypes.GithubFederation) {
     return <GithubExecution resource={resource} />;
-  }
-
-  if (executorName === ExecutionTypes.SMSOTPAuth) {
-    return <SmsOtpExecution resource={resource} />;
   }
 
   // For all other executors, render icon and action/mode label

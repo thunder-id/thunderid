@@ -112,13 +112,13 @@ describe('computeExecutorConnections', () => {
   });
 
   describe('Notification Senders', () => {
-    it('should map notification senders to SMSOTPAuthExecutor', () => {
+    it('should map notification senders to SMSExecutor', () => {
       const senders = [createNotificationSender('sender-1')];
 
       const result = computeExecutorConnections({notificationSenders: senders});
 
       expect(result).toHaveLength(1);
-      expect(result[0].executorName).toBe(ExecutionTypes.SMSOTPAuth);
+      expect(result[0].executorName).toBe(ExecutionTypes.SMSExecutor);
       expect(result[0].connections).toEqual(['sender-1']);
     });
 
@@ -132,7 +132,7 @@ describe('computeExecutorConnections', () => {
       const result = computeExecutorConnections({notificationSenders: senders});
 
       expect(result).toHaveLength(1);
-      expect(result[0].executorName).toBe(ExecutionTypes.SMSOTPAuth);
+      expect(result[0].executorName).toBe(ExecutionTypes.SMSExecutor);
       expect(result[0].connections).toEqual(['sender-1', 'sender-2', 'sender-3']);
     });
   });
@@ -150,7 +150,7 @@ describe('computeExecutorConnections', () => {
       expect(result).toHaveLength(2);
 
       const googleConnection = result.find((c) => c.executorName === ExecutionTypes.GoogleFederation);
-      const smsConnection = result.find((c) => c.executorName === ExecutionTypes.SMSOTPAuth);
+      const smsConnection = result.find((c) => c.executorName === ExecutionTypes.SMSExecutor);
 
       expect(googleConnection?.connections).toEqual(['google-1']);
       expect(smsConnection?.connections).toEqual(['sender-1']);
@@ -173,7 +173,7 @@ describe('computeExecutorConnections', () => {
 
       const googleConnection = result.find((c) => c.executorName === ExecutionTypes.GoogleFederation);
       const githubConnection = result.find((c) => c.executorName === ExecutionTypes.GithubFederation);
-      const smsConnection = result.find((c) => c.executorName === ExecutionTypes.SMSOTPAuth);
+      const smsConnection = result.find((c) => c.executorName === ExecutionTypes.SMSExecutor);
 
       expect(googleConnection?.connections).toEqual(['google-1', 'google-2']);
       expect(githubConnection?.connections).toEqual(['github-1']);

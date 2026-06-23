@@ -105,8 +105,8 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 				ID:   "auth",
 				Type: "TASK_EXECUTION",
 				Executor: &providers.ExecutorDefinition{
-					Name: executor.ExecutorNameSMSAuth,
-					Mode: executor.ExecutorModeSend,
+					Name: executor.ExecutorNameOTPExecutor,
+					Mode: executor.ExecutorModeGenerate,
 				},
 				OnSuccess: "auth_assert",
 			},
@@ -147,14 +147,6 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 	s.True(s.hasNode(regFlow.Nodes, userTypeResolverNodeID))
 	resolverNode := s.getNode(regFlow.Nodes, userTypeResolverNodeID)
 	s.Equal(executor.ExecutorNameUserTypeResolver, resolverNode.Executor.Name)
-
-	// Verify phone input prompt was inserted before SMS send node
-	s.True(s.hasNode(regFlow.Nodes, phoneInputPromptNodeID))
-	phonePromptNode := s.getNode(regFlow.Nodes, phoneInputPromptNodeID)
-	s.Equal(string(common.NodeTypePrompt), phonePromptNode.Type)
-	s.Equal("auth", phonePromptNode.Prompts[0].Action.NextNode, "Phone prompt should point to SMS send node")
-	s.Len(phonePromptNode.Prompts[0].Inputs, 1)
-	s.Equal(providers.InputTypePhone, phonePromptNode.Prompts[0].Inputs[0].Type)
 }
 
 func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssertAndMultiplePaths() {
@@ -184,7 +176,8 @@ func (s *FlowInferenceServiceTestSuite) TestInferRegistrationFlow_WithAuthAssert
 				ID:   "auth2",
 				Type: "TASK_EXECUTION",
 				Executor: &providers.ExecutorDefinition{
-					Name: executor.ExecutorNameSMSAuth,
+					Name: executor.ExecutorNameOTPExecutor,
+					Mode: executor.ExecutorModeGenerate,
 				},
 				OnSuccess: "auth_assert",
 			},
@@ -505,7 +498,7 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_SMSNo
 			ID:   "sms",
 			Type: "TASK_EXECUTION",
 			Executor: &providers.ExecutorDefinition{
-				Name: executor.ExecutorNameSMSAuth,
+				Name: executor.ExecutorNameOTPExecutor,
 				Mode: executor.ExecutorModeVerify,
 			},
 			OnSuccess: "end",
@@ -540,8 +533,8 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Phone
 			ID:   "sms",
 			Type: "TASK_EXECUTION",
 			Executor: &providers.ExecutorDefinition{
-				Name: executor.ExecutorNameSMSAuth,
-				Mode: executor.ExecutorModeSend,
+				Name: executor.ExecutorNameOTPExecutor,
+				Mode: executor.ExecutorModeGenerate,
 			},
 			OnSuccess: "end",
 		},
@@ -562,8 +555,8 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Inser
 			ID:   "sms",
 			Type: "TASK_EXECUTION",
 			Executor: &providers.ExecutorDefinition{
-				Name: executor.ExecutorNameSMSAuth,
-				Mode: executor.ExecutorModeSend,
+				Name: executor.ExecutorNameOTPExecutor,
+				Mode: executor.ExecutorModeGenerate,
 			},
 			OnSuccess: "end",
 		},
@@ -597,8 +590,8 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_Inser
 			ID:   "sms",
 			Type: "TASK_EXECUTION",
 			Executor: &providers.ExecutorDefinition{
-				Name: executor.ExecutorNameSMSAuth,
-				Mode: executor.ExecutorModeSend,
+				Name: executor.ExecutorNameOTPExecutor,
+				Mode: executor.ExecutorModeGenerate,
 			},
 			OnSuccess: "end",
 		},
@@ -622,8 +615,8 @@ func (s *FlowInferenceServiceTestSuite) TestInsertPhoneInputPromptIfNeeded_UsesE
 			ID:   "sms",
 			Type: "TASK_EXECUTION",
 			Executor: &providers.ExecutorDefinition{
-				Name: executor.ExecutorNameSMSAuth,
-				Mode: executor.ExecutorModeSend,
+				Name: executor.ExecutorNameOTPExecutor,
+				Mode: executor.ExecutorModeGenerate,
 				Inputs: []providers.InputDefinition{
 					{Ref: "phone_input_dvq8", Identifier: "mobile", Type: providers.InputTypePhone, Required: true},
 				},

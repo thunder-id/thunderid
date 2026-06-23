@@ -52,7 +52,7 @@ Required environment values:
 | Basic authentication | Username and password via `CredentialsAuthExecutor` |
 | Google | Social login via `GoogleOIDCAuthExecutor` |
 | GitHub | Social login via `GithubOAuthExecutor` |
-| SMS OTP | One-time password via `SMSOTPAuthExecutor` (send + verify modes) |
+| SMS OTP | One-time password via `OTPExecutor` (generate + verify modes) paired with `SMSExecutor` for delivery |
 | Passkeys | FIDO2/WebAuthn via `PasskeyAuthExecutor` (challenge + verify / register modes) |
 
 The UI adapts automatically to the options returned by the active flow — no code changes needed when switching flows.

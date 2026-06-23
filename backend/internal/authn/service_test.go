@@ -40,6 +40,7 @@ import (
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/template"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/assertmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/githubmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/googlemock"
@@ -50,6 +51,8 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
+	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/templatemock"
 )
 
 const (
@@ -67,6 +70,7 @@ const (
 	testRelyingPartyName = "Example Inc"
 	testCredentialID     = "credential-id-123" // #nosec G101
 	testCredentialType   = "public-key"
+	testSenderID         = "sender_123"
 )
 
 type AuthenticationServiceTestSuite struct {
@@ -76,6 +80,8 @@ type AuthenticationServiceTestSuite struct {
 	mockAssertGenerator *assertmock.AuthAssertGeneratorInterfaceMock
 	mockAuthnProvider   *managermock.AuthnProviderManagerMock
 	mockOTPService      *otpmock.OTPAuthnServiceInterfaceMock
+	mockNotifSenderSvc  *notificationmock.NotificationSenderServiceInterfaceMock
+	mockTemplateService *templatemock.TemplateServiceInterfaceMock
 	mockOAuthService    *oauthmock.OAuthAuthnServiceInterfaceMock
 	mockOIDCService     *oidcmock.OIDCAuthnServiceInterfaceMock
 	mockGoogleService   *googlemock.GoogleOIDCAuthnServiceInterfaceMock
@@ -126,6 +132,8 @@ func (suite *AuthenticationServiceTestSuite) SetupTest() {
 	suite.mockAssertGenerator = &assertmock.AuthAssertGeneratorInterfaceMock{}
 	suite.mockAuthnProvider = &managermock.AuthnProviderManagerMock{}
 	suite.mockOTPService = &otpmock.OTPAuthnServiceInterfaceMock{}
+	suite.mockNotifSenderSvc = notificationmock.NewNotificationSenderServiceInterfaceMock(suite.T())
+	suite.mockTemplateService = templatemock.NewTemplateServiceInterfaceMock(suite.T())
 	suite.mockOAuthService = &oauthmock.OAuthAuthnServiceInterfaceMock{}
 	suite.mockOIDCService = &oidcmock.OIDCAuthnServiceInterfaceMock{}
 	suite.mockGoogleService = &googlemock.GoogleOIDCAuthnServiceInterfaceMock{}
@@ -138,6 +146,8 @@ func (suite *AuthenticationServiceTestSuite) SetupTest() {
 		authAssertionGenerator: suite.mockAssertGenerator,
 		authnProvider:          suite.mockAuthnProvider,
 		otpService:             suite.mockOTPService,
+		notifSenderSvc:         suite.mockNotifSenderSvc,
+		templateService:        suite.mockTemplateService,
 		oauthService:           suite.mockOAuthService,
 		oidcService:            suite.mockOIDCService,
 		googleService:          suite.mockGoogleService,
@@ -449,21 +459,47 @@ func (suite *AuthenticationServiceTestSuite) TestAuthenticateWithCredentialsExis
 }
 
 func (suite *AuthenticationServiceTestSuite) TestSendOTPSuccess() {
-	senderID := "sender_123"
+	senderID := testSenderID
 	recipient := "+1234567890"
-	sessionToken := testSessionTkn
 
-	suite.mockOTPService.On("SendOTP", mock.Anything, senderID, notifcommon.ChannelTypeSMS, recipient).
-		Return(sessionToken, nil)
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number").
+		Return(testSessionTkn, "123456", int64(300), nil)
+	suite.mockTemplateService.On("Render",
+		mock.Anything, template.ScenarioOTP, template.TemplateTypeSMS, mock.Anything).
+		Return(&template.RenderedTemplate{Body: "Your OTP is 123456"}, nil)
+	suite.mockNotifSenderSvc.On("Send",
+		mock.Anything, notifcommon.ChannelTypeSMS, senderID, mock.Anything).
+		Return(nil)
 
 	result, err := suite.service.SendOTP(context.Background(), senderID, notifcommon.ChannelTypeSMS, recipient)
 
 	suite.Nil(err)
-	suite.Equal(sessionToken, result)
+	suite.Equal(testSessionTkn, result)
 }
 
-func (suite *AuthenticationServiceTestSuite) TestSendOTPServiceError() {
-	senderID := "sender_123"
+func (suite *AuthenticationServiceTestSuite) TestSendOTPGenerateError() {
+	senderID := testSenderID
+	recipient := "+1234567890"
+	svcErr := &tidcommon.ServiceError{
+		Type:  tidcommon.ClientErrorType,
+		Code:  "OTP_ERROR",
+		Error: tidcommon.I18nMessage{Key: "error.test.otp_error", DefaultValue: "OTP error"},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.test.failed_to_generate_otp", DefaultValue: "Failed to generate OTP"},
+	}
+
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number").
+		Return("", "", int64(0), svcErr)
+
+	result, err := suite.service.SendOTP(context.Background(), senderID, notifcommon.ChannelTypeSMS, recipient)
+
+	suite.Empty(result)
+	suite.NotNil(err)
+	suite.Equal(svcErr.Code, err.Code)
+}
+
+func (suite *AuthenticationServiceTestSuite) TestSendOTPSendError() {
+	senderID := testSenderID
 	recipient := "+1234567890"
 	svcErr := &tidcommon.ServiceError{
 		Type:  tidcommon.ClientErrorType,
@@ -474,8 +510,14 @@ func (suite *AuthenticationServiceTestSuite) TestSendOTPServiceError() {
 		},
 	}
 
-	suite.mockOTPService.On("SendOTP", mock.Anything, senderID, notifcommon.ChannelTypeSMS, recipient).
-		Return("", svcErr)
+	suite.mockOTPService.On("GenerateOTP", mock.Anything, recipient, "mobile_number").
+		Return(testSessionTkn, "123456", int64(300), nil)
+	suite.mockTemplateService.On("Render",
+		mock.Anything, template.ScenarioOTP, template.TemplateTypeSMS, mock.Anything).
+		Return(&template.RenderedTemplate{Body: "Your OTP is 123456"}, nil)
+	suite.mockNotifSenderSvc.On("Send",
+		mock.Anything, notifcommon.ChannelTypeSMS, senderID, mock.Anything).
+		Return(svcErr)
 
 	result, err := suite.service.SendOTP(context.Background(), senderID, notifcommon.ChannelTypeSMS, recipient)
 
@@ -2253,6 +2295,8 @@ func (suite *AuthenticationServiceTestSuite) TestNewAuthenticationService() {
 		suite.mockAssertGenerator,
 		suite.mockAuthnProvider,
 		suite.mockOTPService,
+		suite.mockNotifSenderSvc,
+		suite.mockTemplateService,
 		nil,
 		suite.mockOAuthService,
 		suite.mockOIDCService,

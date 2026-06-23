@@ -237,9 +237,11 @@ Node-level `properties` are injected into runtime data before the executor runs,
 
 ```json
 {
-  "id": "send-otp",
+  "id": "send-sms",
   "type": "TASK_EXECUTION",
-  "executor": "OTPNotificationSender",
+  "executor": {
+    "name": "SMSExecutor"
+  },
   "properties": {
     "senderId": "sms-sender-01"
   },
@@ -264,7 +266,7 @@ Widgets are pre-built, reusable flow segments that combine a View node and one o
 | **Username + Password** | A login form wired to the Identifier + Password executor. |
 | **Continue with Google** | Social login using Google. |
 | **Continue with GitHub** | Social login using GitHub. |
-| **Continue with SMS OTP** | An OTP input view wired to the Verify SMS OTP executor. |
+| **Continue with SMS OTP** | An OTP input view wired to the Verify OTP executor. |
 | **Sign In with Passkey** | A passkey prompt wired to the passkey verification executors. |
 | **Provisioning** | A Provisioning executor wired to a dynamic input view that prompts for missing schema attributes. |
 | **Self Sign Up Link** | A rich text link that redirects the user to the self-registration flow. |
@@ -326,8 +328,8 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Verify Passkey** | Verifies the user's passkey response. | Request Passkey must have run |
 | **Start Passkey Registration** | Begins the passkey registration ceremony. | Relying party configured |
 | **Finish Passkey Registration** | Completes the passkey registration ceremony. | Start Passkey Registration must have run |
-| **Send SMS OTP** | Sends an OTP to the user's registered mobile number. | SMS sender configured |
-| **Verify SMS OTP** | Verifies the OTP code the user entered. | Send SMS OTP must have run |
+| **Generate OTP** | Generates a time-limited OTP and forwards it for delivery. | — |
+| **Verify OTP** | Verifies the OTP code the user entered. | Generate OTP must have run |
 | **Generate Magic Link** | Generates a magic link authentication token and sends it to the user. | — |
 | **Verify Magic Link** | Verifies the magic link token submitted by the user. | Generate Magic Link must have run |
 | **Identify User** | Looks up a user by identifier in the user store. | — |
@@ -382,7 +384,7 @@ Each View node (Step or Widget) collects user input that must be read by a speci
 | View (Step or Widget) | Required Executor(s) | Prerequisites | Notes |
 |---|---|---|---|
 | **Username + Password** (Step or Widget) | Identifier + Password | — | The executor reads the username and password fields submitted by the View. |
-| **SMS OTP View** (Step or Widget) | Send SMS OTP → Verify SMS OTP | User's mobile number must be on record | Place **Send SMS OTP** before the View (no user input needed); place **Verify SMS OTP** after to validate the code the user enters. |
+| **SMS OTP View** (Step or Widget) | Generate OTP → Send SMS → Verify OTP | User's mobile number must be on record | Place **Generate OTP** and **Send SMS** before the View (no user input needed); place **Verify OTP** after to validate the code the user enters. |
 | **Passkey View** (Step or Widget) | Request Passkey → Verify Passkey | — | Both executors are required as a pair. **Request Passkey** issues the challenge; **Verify Passkey** validates the response. |
 | **Consent View** (Step) | User Consent | User must be authenticated | The executor reads the consent decisions submitted by the View. The user's ID must already be in the flow context. |
 | **Continue with Google** (Widget) | Google | — | Redirect-based. The executor handles the OAuth redirect and reads the authorization code returned by Google. |
@@ -397,7 +399,8 @@ Some Executors run entirely in the background and do not need a preceding View t
 |---|---|---|
 | **Auth Assertion Generator** | Last Executor before the END node in every authentication flow | User must be authenticated by prior Executors |
 | **Authorization** | After authentication Executors, before Auth Assertion Generator | User must be authenticated |
-| **Send SMS OTP** | Before the SMS OTP View | User's mobile number must be on record |
+| **Generate OTP** | Before the SMS OTP View | — |
+| **Send SMS** | After Generate OTP, before the SMS OTP View | User's mobile number must be on record |
 | **Send Email** | After the flow collects the recipient email | Recipient email input; `inviteLink` for invite and self-registration templates |
 | **Provisioning** | After identity collection in registration flows | — |
 | **Identify User** | Early in the flow, after the user submits an identifier | — |
@@ -905,83 +908,75 @@ Completes the WebAuthn registration ceremony and stores the new credential in th
 #### OTP
 
 <details>
-<summary>Send SMS OTP</summary>
+<summary>Generate OTP</summary>
 
-Generates a time-limited OTP and sends it to the user's mobile number via SMS. Runs in the background — no user interaction at this step.
+Generates a time-limited OTP, stores the session token in runtime data, and forwards the OTP code to downstream delivery executors via `ForwardedData`. Runs in the background — no user interaction at this step.
 
-**When to use:** Any step requiring SMS-based verification. Place this executor *before* the OTP input View. Always paired with **Verify SMS OTP**.
+**When to use:** Any step requiring OTP-based verification. Place this executor *before* the delivery executor (e.g., **Send SMS**) and the OTP input View. Always paired with **Verify OTP**.
 
-**Prerequisites:**
-- An SMS sender must be configured in <ProductName />. See [SMS Providers](../../notifications/sms-providers/).
-- `senderId` node property must be set — the executor hard-fails if `senderId` is not configured
+**How it identifies the user:**
 
-**Phone number resolution order:**
-1. A phone-type input from the node's configured inputs (from View)
-2. `mobile_number` from user inputs
-3. The user's stored phone attribute (looked up by username or email first, then fetched from the user store)
+The executor resolves the OTP recipient in this order:
+1. **UserID from authenticated context** — if a prior executor (e.g., Identifier + Password) has already authenticated the user, the userID is read directly and the OTP is keyed to that user.
+2. **UserID from declared inputs** — if the user is not yet authenticated, the executor uses the declared node inputs (e.g., `mobile_number`) to look up the user in the user store.
+3. **Registration flows** — if no user is found and the flow type is registration, the first declared phone or email input value is used directly as the OTP recipient (since no user exists yet).
 
-In registration flows, the executor prompts for the mobile number if not already available and checks for uniqueness — failing if the number is already registered.
-
-**Input Configuration:** None. The mobile number is resolved from prior inputs or user store. This executor has no registered node input default.
+**Input Configuration:**
+- `mobile_number` (optional) — used to look up the user in the user store by their phone number. Required in non-authenticated flows where phone number is the user identifier.
 
 **Executor properties:**
 
 | Property | UI Label | Required | Description |
 |---|---|---|---|
-| `senderId` | Notification Sender | Yes | The notification sender ID configured in <ProductName /> |
+| `maxAttempts` | — | No | Maximum OTP generation attempts before the flow fails. Default: `3` |
 
 **Example:**
 
 ```json
 {
-  "id": "send_sms_otp",
+  "id": "generate_otp",
   "type": "TASK_EXECUTION",
-  "properties": {
-    "senderId": "<sender-id>"
-  },
   "executor": {
-    "name": "SMSOTPAuthExecutor",
-    "mode": "send"
+    "name": "OTPExecutor",
+    "mode": "generate"
   },
-  "onSuccess": "prompt_otp"
+  "onSuccess": "send_sms"
 }
 ```
 
 **Failure conditions:**
-- `senderId` node property missing or empty
-- Mobile number not found in context or user store
-- Maximum resend attempts (3) exceeded
-- SMS service error
+- User not found for the provided phone number
+- User not identified and no identifying input declared
+- Maximum OTP generation attempts exceeded (default: 3)
+- OTP service error
 
 </details>
 
 <details>
-<summary>Verify SMS OTP</summary>
+<summary>Verify OTP</summary>
 
-Validates the OTP code the user entered against the code dispatched by Send SMS OTP.
+Validates the OTP code the user entered against the session token stored by Generate OTP.
 
-**When to use:** Immediately after the SMS OTP View. Always follows **Send SMS OTP** in the same flow.
+**When to use:** Immediately after the OTP input View. Always follows **Generate OTP** in the same flow.
 
 **Prerequisites:**
-- `otpSessionToken` (required) — set in runtime data by Send SMS OTP. Not a configurable node input. The executor fails if absent.
-- An SMS sender must be configured in <ProductName />. See [SMS Providers](../../notifications/sms-providers/).
+- `otpSessionToken` (required) — set in runtime data by Generate OTP. Not a configurable node input. The executor fails if absent.
 
-**View pairing:** Must be immediately preceded by the **SMS OTP View**, which collects the OTP code the user received.
+**View pairing:** Must be immediately preceded by the OTP input View, which collects the OTP code the user received.
 
 **Input Configuration:**
 - `otp` (required) — the OTP code entered by the user. Default: `otp`
+
+**Executor properties:** None.
 
 **Example:**
 
 ```json
 {
-  "id": "verify_sms_otp",
+  "id": "verify_otp",
   "type": "TASK_EXECUTION",
-  "properties": {
-    "senderId": "<sender-id>"
-  },
   "executor": {
-    "name": "SMSOTPAuthExecutor",
+    "name": "OTPExecutor",
     "mode": "verify"
   },
   "onSuccess": "auth_assert",
@@ -991,7 +986,7 @@ Validates the OTP code the user entered against the code dispatched by Send SMS 
 
 **Failure conditions:**
 - OTP code incorrect — allow the user to retry (limit: 3 attempts)
-- OTP session token missing (Send SMS OTP did not run)
+- OTP session token missing (Generate OTP did not run)
 - OTP expired (user waited too long to enter it)
 - Authentication service error
 

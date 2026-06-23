@@ -67,34 +67,36 @@ The Google executor manages the OAuth redirect to Google and the callback. It re
 
 ## Add SMS OTP as the Second Factor
 
-After a successful username + password check, the flow sends a one-time password (OTP) to the user's registered mobile number and asks them to verify it. This second factor is built from three nodes:
+After a successful username + password check, the flow sends a one-time password (OTP) to the user's registered mobile number and asks them to verify it. This second factor is built from four nodes:
 
 | Node | Role |
 |---|---|
-| **Send SMS OTP** Executor | Generates the OTP and sends it via SMS. Runs in the background — no user interaction at this step. |
+| **Generate OTP** Executor | Generates the OTP and stores it for delivery. Runs in the background — no user interaction. |
+| **Send SMS** Executor | Delivers the generated OTP to the user's mobile number via SMS. Runs in the background — no user interaction. |
 | **SMS OTP View** | Presents the OTP entry screen to the user. |
-| **Verify SMS OTP** Executor | Validates the code the user entered. |
+| **Verify OTP** Executor | Validates the code the user entered. |
 
-## Add the Send SMS OTP Executor
+## Add the Generate OTP and Send SMS Executors
 
-1. From the left panel under **Executors**, click **+** next to **Send SMS OTP**.
-2. Click the <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline",verticalAlign:"middle"}}><path d="M11 10.27 7 3.34"></path><path d="m11 13.73-4 6.93"></path><path d="M12 22v-2"></path><path d="M12 2v2"></path><path d="M14 12h8"></path><path d="m17 20.66-1-1.73"></path><path d="m17 3.34-1 1.73"></path><path d="M2 12h2"></path><path d="m20.66 17-1.73-1"></path><path d="m20.66 7-1.73 1"></path><path d="m3.34 17 1.73-1"></path><path d="m3.34 7 1.73 1"></path><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="12" r="8"></circle></svg> configure icon on the **Send SMS OTP** Executor node.
-3. Set the **Notification Sender** property to the sender name of your configured SMS sender.
-4. Connect the **Identifier + Password** Executor's **success** output to the **Send SMS OTP** Executor's input.
+1. From the left panel under **Executors**, click **+** next to **Generate OTP**.
+2. Connect the **Identifier + Password** Executor's **success** output to the **Generate OTP** Executor's input.
+3. From the left panel under **Executors**, click **+** next to **Send SMS**.
+4. Click the <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline",verticalAlign:"middle"}}><path d="M11 10.27 7 3.34"></path><path d="m11 13.73-4 6.93"></path><path d="M12 22v-2"></path><path d="M12 2v2"></path><path d="M14 12h8"></path><path d="m17 20.66-1-1.73"></path><path d="m17 3.34-1 1.73"></path><path d="M2 12h2"></path><path d="m20.66 17-1.73-1"></path><path d="m20.66 7-1.73 1"></path><path d="m3.34 17 1.73-1"></path><path d="m3.34 7 1.73 1"></path><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="12" r="8"></circle></svg> configure icon on the **Send SMS** Executor node.
+5. Set the **Notification Sender** property to the sender name of your configured SMS sender.
+6. Set the **SMS Template** property to the scenario name of the SMS template to use (e.g., `OTP` for the built-in OTP template).
+7. Connect the **Generate OTP** Executor's **success** output to the **Send SMS** Executor's input.
 
-## Add the OTP View and Verify SMS OTP Executor
+## Add the OTP View and Verify OTP Executor
 
 1. From **Steps**, click **+** next to **SMS OTP View**. Click the **Verify** button component and set its **Type** property to `SUBMIT`.
-2. From **Executors**, click **+** next to **Verify SMS OTP**.
-3. Connect **Send SMS OTP** success → **SMS OTP View**.
-4. Connect **SMS OTP View** action output → **Verify SMS OTP Executor**.
+2. From **Executors**, click **+** next to **Verify OTP**.
+3. Connect **Send SMS** success → **SMS OTP View**.
+4. Connect **SMS OTP View** action output → **Verify OTP** Executor.
 
-## Configure the Verify SMS OTP Executor
+## Configure the Verify OTP Executor
 
-1. Click the configure icon on the **Verify SMS OTP** Executor node.
-2. Set the **Notification Sender** property to the same sender name you configured for the Send SMS OTP executor.
-3. Connect the **Verify SMS OTP** Executor's **incomplete** output back to the **SMS OTP View** node so users can retry an incorrect code.
-4. Connect the **Verify SMS OTP** Executor's **success** output to the **Auth Assertion Generator** Executor's input.
+1. Connect the **Verify OTP** Executor's **incomplete** output back to the **SMS OTP View** node so users can retry an incorrect code.
+2. Connect the **Verify OTP** Executor's **success** output to the **Auth Assertion Generator** Executor's input.
 
 ## Verify the Wiring
 
@@ -105,14 +107,15 @@ Before saving, confirm these connections:
 | **START** | — | **Username + Password View** |
 | **Username + Password View** (Sign In) | action | **Identifier + Password** Executor |
 | **Username + Password View** (Continue with Google) | action | **Google** Executor |
-| **Identifier + Password** | success | **Send SMS OTP** Executor |
+| **Identifier + Password** | success | **Generate OTP** Executor |
 | **Identifier + Password** | incomplete | **Username + Password View** |
 | **Google** | success | **Auth Assertion Generator** Executor |
-| **Send SMS OTP** | success | **SMS OTP View** |
-| **SMS OTP View** (Verify) | action | **Verify SMS OTP** Executor |
-| **Verify SMS OTP** | success | **Auth Assertion Generator** Executor |
-| **Verify SMS OTP** | incomplete | **SMS OTP View** |
-| **Verify SMS OTP** | failure | *(unconnected — flow terminates; wire to error View in production)* |
+| **Generate OTP** | success | **Send SMS** Executor |
+| **Send SMS** | success | **SMS OTP View** |
+| **SMS OTP View** (Verify) | action | **Verify OTP** Executor |
+| **Verify OTP** | success | **Auth Assertion Generator** Executor |
+| **Verify OTP** | incomplete | **SMS OTP View** |
+| **Verify OTP** | failure | *(unconnected — flow terminates; wire to error View in production)* |
 | **Auth Assertion Generator** | success | **END** |
 
 :::note

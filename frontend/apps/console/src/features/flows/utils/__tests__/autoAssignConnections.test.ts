@@ -110,9 +110,9 @@ describe('autoAssignConnections', () => {
 
   describe('SMS OTP Executor', () => {
     it('should auto-assign senderId when there is exactly one connection', () => {
-      const nodes = [createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSOTPAuth)];
+      const nodes = [createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSExecutor)];
       const connections: ExecutorConnectionInterface[] = [
-        {executorName: ExecutionTypes.SMSOTPAuth, connections: ['sms-sender-1']},
+        {executorName: ExecutionTypes.SMSExecutor, connections: ['sms-sender-1']},
       ];
 
       autoAssignConnections(nodes, connections);
@@ -121,9 +121,11 @@ describe('autoAssignConnections', () => {
     });
 
     it('should auto-assign senderId when properties.senderId is placeholder', () => {
-      const nodes = [createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSOTPAuth, {senderId: '{{SENDER_ID}}'})];
+      const nodes = [
+        createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSExecutor, {senderId: '{{SENDER_ID}}'}),
+      ];
       const connections: ExecutorConnectionInterface[] = [
-        {executorName: ExecutionTypes.SMSOTPAuth, connections: ['sms-sender-1']},
+        {executorName: ExecutionTypes.SMSExecutor, connections: ['sms-sender-1']},
       ];
 
       autoAssignConnections(nodes, connections);
@@ -132,9 +134,9 @@ describe('autoAssignConnections', () => {
     });
 
     it('should auto-assign senderId when properties.senderId is empty string', () => {
-      const nodes = [createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSOTPAuth, {senderId: ''})];
+      const nodes = [createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSExecutor, {senderId: ''})];
       const connections: ExecutorConnectionInterface[] = [
-        {executorName: ExecutionTypes.SMSOTPAuth, connections: ['sms-sender-1']},
+        {executorName: ExecutionTypes.SMSExecutor, connections: ['sms-sender-1']},
       ];
 
       autoAssignConnections(nodes, connections);
@@ -144,10 +146,10 @@ describe('autoAssignConnections', () => {
 
     it('should not overwrite existing senderId', () => {
       const nodes = [
-        createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSOTPAuth, {senderId: 'existing-sender'}),
+        createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSExecutor, {senderId: 'existing-sender'}),
       ];
       const connections: ExecutorConnectionInterface[] = [
-        {executorName: ExecutionTypes.SMSOTPAuth, connections: ['new-sender']},
+        {executorName: ExecutionTypes.SMSExecutor, connections: ['new-sender']},
       ];
 
       autoAssignConnections(nodes, connections);
@@ -156,9 +158,9 @@ describe('autoAssignConnections', () => {
     });
 
     it('should not auto-assign when there are multiple SMS senders', () => {
-      const nodes = [createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSOTPAuth)];
+      const nodes = [createNode('node-1', StepTypes.Execution, ExecutionTypes.SMSExecutor)];
       const connections: ExecutorConnectionInterface[] = [
-        {executorName: ExecutionTypes.SMSOTPAuth, connections: ['sender-1', 'sender-2']},
+        {executorName: ExecutionTypes.SMSExecutor, connections: ['sender-1', 'sender-2']},
       ];
 
       autoAssignConnections(nodes, connections);
@@ -236,12 +238,12 @@ describe('autoAssignConnections', () => {
       const nodes = [
         createNode('node-1', StepTypes.Execution, ExecutionTypes.GoogleFederation),
         createNode('node-2', StepTypes.Execution, ExecutionTypes.GithubFederation),
-        createNode('node-3', StepTypes.Execution, ExecutionTypes.SMSOTPAuth),
+        createNode('node-3', StepTypes.Execution, ExecutionTypes.SMSExecutor),
       ];
       const connections: ExecutorConnectionInterface[] = [
         {executorName: ExecutionTypes.GoogleFederation, connections: ['google-idp-1']},
         {executorName: ExecutionTypes.GithubFederation, connections: ['github-idp-1']},
-        {executorName: ExecutionTypes.SMSOTPAuth, connections: ['sms-sender-1']},
+        {executorName: ExecutionTypes.SMSExecutor, connections: ['sms-sender-1']},
       ];
 
       autoAssignConnections(nodes, connections);

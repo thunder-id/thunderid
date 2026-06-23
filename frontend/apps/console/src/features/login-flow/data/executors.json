@@ -26,8 +26,8 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "SMS OTP Executor",
-      "label": "Send SMS OTP",
+      "header": "OTP Executor",
+      "label": "Generate OTP",
       "image": "assets/images/icons/mobile-message.svg",
       "showOnResourcePanel": true
     },
@@ -35,8 +35,16 @@
       "action": {
         "type": "EXECUTOR",
         "executor": {
-          "name": "SMSOTPAuthExecutor",
-          "mode": "send"
+          "name": "OTPExecutor",
+          "mode": "generate",
+          "inputs": [
+            {
+              "ref": "input_mobile",
+              "type": "PHONE_INPUT",
+              "identifier": "mobile_number",
+              "required": true
+            }
+          ]
         },
         "onSuccess": "",
         "onFailure": "",
@@ -49,8 +57,8 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "SMS OTP Executor",
-      "label": "Verify SMS OTP",
+      "header": "OTP Executor",
+      "label": "Verify OTP",
       "image": "assets/images/icons/mobile-message.svg",
       "showOnResourcePanel": true
     },
@@ -58,7 +66,7 @@
       "action": {
         "type": "EXECUTOR",
         "executor": {
-          "name": "SMSOTPAuthExecutor",
+          "name": "OTPExecutor",
           "mode": "verify"
         },
         "onSuccess": "",

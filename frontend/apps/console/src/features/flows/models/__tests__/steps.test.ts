@@ -114,8 +114,8 @@ describe('steps models', () => {
       expect(ExecutionTypes.MagicLinkExecutor).toBe('MagicLinkExecutor');
     });
 
-    it('should have SMSOTPAuth type', () => {
-      expect(ExecutionTypes.SMSOTPAuth).toBe('SMSOTPAuthExecutor');
+    it('should have OTPExecutor type', () => {
+      expect(ExecutionTypes.OTPExecutor).toBe('OTPExecutor');
     });
 
     it('should have ConsentExecutor type', () => {

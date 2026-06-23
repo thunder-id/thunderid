@@ -63,8 +63,8 @@ const autoAssignConnections = (nodes: Node[], availableConnections: ExecutorConn
         return;
       }
 
-      // Handle SMS OTP executor - uses senderId
-      if (executorName === ExecutionTypes.SMSOTPAuth) {
+      // Handle SMS executor - uses senderId
+      if (executorName === ExecutionTypes.SMSExecutor) {
         if (properties?.senderId === SENDER_ID_PLACEHOLDER || properties?.senderId === '' || !properties?.senderId) {
           // Initialize properties if needed
           step.data.properties ??= {};

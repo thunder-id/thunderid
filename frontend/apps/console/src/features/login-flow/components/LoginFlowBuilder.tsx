@@ -45,7 +45,7 @@ import {ExecutionTypes, StepTypes, type StepData} from '@/features/flows/models/
 import useIdentityProviders from '@/features/integrations/api/useIdentityProviders';
 import useNotificationSenders from '@/features/notification-senders/api/useNotificationSenders';
 
-const SMS_EXECUTORS = new Set<string>([ExecutionTypes.SMSOTPAuth, ExecutionTypes.SMSExecutor]);
+const SMS_EXECUTORS = new Set<string>([ExecutionTypes.SMSExecutor]);
 
 function LoginFlowBuilder() {
   const {flowId} = useParams<{flowId: string}>();

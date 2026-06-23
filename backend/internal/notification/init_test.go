@@ -87,13 +87,11 @@ func (suite *InitTestSuite) TearDownSuite() {
 }
 
 func (suite *InitTestSuite) TestInitialize() {
-	mgtService, otpService, _, _, err := Initialize(suite.mux, suite.mockJWTService, suite.mockTemplateService)
+	mgtService, _, _, _, err := Initialize(suite.mux, suite.mockJWTService, suite.mockTemplateService)
 	suite.NoError(err)
 
 	suite.NotNil(mgtService)
-	suite.NotNil(otpService)
 	suite.Implements((*NotificationSenderMgtSvcInterface)(nil), mgtService)
-	suite.Implements((*OTPServiceInterface)(nil), otpService)
 }
 
 // TestInitialize_WithDeclarativeResourcesEnabled_FileLoading tests that notification senders can be

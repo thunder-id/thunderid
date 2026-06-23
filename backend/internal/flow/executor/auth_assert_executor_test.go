@@ -360,7 +360,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExtractAuthenticatorReferences() {
 			EndTime:      1000,
 		},
 		"node2": {
-			ExecutorName: ExecutorNameSMSAuth,
+			ExecutorName: ExecutorNameOTPExecutor,
 			ExecutorType: providers.ExecutorTypeAuthentication,
 			Status:       providers.FlowStatusComplete,
 			Step:         1,
@@ -383,7 +383,7 @@ func (suite *AuthAssertExecutorTestSuite) TestExtractAuthenticatorReferences() {
 	refs := suite.executor.extractAuthenticatorReferences(history)
 
 	assert.Len(suite.T(), refs, 2)
-	assert.Equal(suite.T(), authncm.AuthenticatorSMSOTP, refs[0].Authenticator)
+	assert.Equal(suite.T(), authncm.AuthenticatorOTP, refs[0].Authenticator)
 	assert.Equal(suite.T(), 1, refs[0].Step)
 	assert.Equal(suite.T(), authncm.AuthenticatorCredentials, refs[1].Authenticator)
 	assert.Equal(suite.T(), 2, refs[1].Step)
@@ -412,20 +412,20 @@ func (suite *AuthAssertExecutorTestSuite) TestExtractAuthenticatorReferences_Unk
 	assert.Empty(suite.T(), refs)
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestExtractAuthenticatorReferences_SMSOTPSendVerifyMode() {
+func (suite *AuthAssertExecutorTestSuite) TestExtractAuthenticatorReferences_OTPGenerateVerifyMode() {
 	history := map[string]*providers.NodeExecutionRecord{
-		"sms_send_node": {
-			ExecutorName: ExecutorNameSMSAuth,
+		"otp_generate_node": {
+			ExecutorName: ExecutorNameOTPExecutor,
 			ExecutorType: providers.ExecutorTypeAuthentication,
-			ExecutorMode: "send",
+			ExecutorMode: ExecutorModeGenerate,
 			Status:       providers.FlowStatusComplete,
 			Step:         1,
 			EndTime:      1000,
 		},
-		"sms_verify_node": {
-			ExecutorName: ExecutorNameSMSAuth,
+		"otp_verify_node": {
+			ExecutorName: ExecutorNameOTPExecutor,
 			ExecutorType: providers.ExecutorTypeAuthentication,
-			ExecutorMode: "verify",
+			ExecutorMode: ExecutorModeVerify,
 			Status:       providers.FlowStatusComplete,
 			Step:         2,
 			EndTime:      2000,
@@ -434,9 +434,9 @@ func (suite *AuthAssertExecutorTestSuite) TestExtractAuthenticatorReferences_SMS
 
 	refs := suite.executor.extractAuthenticatorReferences(history)
 
-	// Should only have one SMS OTP authenticator, not two
+	// Should only have one OTP authenticator reference, not two
 	assert.Len(suite.T(), refs, 1)
-	assert.Equal(suite.T(), authncm.AuthenticatorSMSOTP, refs[0].Authenticator)
+	assert.Equal(suite.T(), authncm.AuthenticatorOTP, refs[0].Authenticator)
 	assert.Equal(suite.T(), 1, refs[0].Step)
 }
 

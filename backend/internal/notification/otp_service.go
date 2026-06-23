@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -38,8 +39,27 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/template"
 )
 
+const otpSessionAudience = "otp-svc"
+
+// otpSessionData holds the data encoded in the OTP session JWT.
+// JSON field names match those used by authn/otp for session token compatibility.
+type otpSessionData struct {
+	Recipient     string `json:"recipient"`
+	RecipientAttr string `json:"recipientAttr,omitempty"`
+	OTPValue      string `json:"otp_value"`
+	ExpiryTime    int64  `json:"expiry_time"`
+}
+
+// generatedOTP holds the raw OTP value and its expiry timestamp.
+type generatedOTP struct {
+	Value              string
+	ExpiryTimeInMillis int64
+}
+
 // OTPServiceInterface defines the interface for OTP operations.
 type OTPServiceInterface interface {
+	GenerateOTP(ctx context.Context, recipient, recipientAttr string) (
+		sessionToken string, otpValue string, expirySeconds int64, svcErr *tidcommon.ServiceError)
 	SendOTP(ctx context.Context, request common.SendOTPDTO) (*common.SendOTPResultDTO, *tidcommon.ServiceError)
 	VerifyOTP(ctx context.Context, request common.VerifyOTPDTO) (
 		*common.VerifyOTPResultDTO, *tidcommon.ServiceError)
@@ -47,6 +67,7 @@ type OTPServiceInterface interface {
 
 // otpService implements the OTPServiceInterface.
 type otpService struct {
+	logger           *log.Logger
 	jwtService       jwt.JWTServiceInterface
 	senderMgtService NotificationSenderMgtSvcInterface
 	clientFactory    client.ClientFactoryInterface
@@ -58,6 +79,7 @@ func newOTPService(notifSenderSvc NotificationSenderMgtSvcInterface,
 	jwtSvc jwt.JWTServiceInterface, templateSvc template.TemplateServiceInterface,
 	clientFactory client.ClientFactoryInterface) OTPServiceInterface {
 	return &otpService{
+		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService")),
 		jwtService:       jwtSvc,
 		senderMgtService: notifSenderSvc,
 		clientFactory:    clientFactory,
@@ -65,10 +87,44 @@ func newOTPService(notifSenderSvc NotificationSenderMgtSvcInterface,
 	}
 }
 
+// GenerateOTP generates an OTP and session token for the recipient without delivering it.
+func (s *otpService) GenerateOTP(ctx context.Context, recipient, recipientAttr string) (
+	string, string, int64, *tidcommon.ServiceError) {
+	logger := s.logger
+
+	recipient = strings.TrimSpace(recipient)
+	if recipient == "" {
+		return "", "", 0, &ErrorInvalidRecipient
+	}
+
+	otp, err := s.generateOTP()
+	if err != nil {
+		logger.Error(ctx, "Failed to generate OTP", log.Error(err))
+		return "", "", 0, &tidcommon.InternalServerError
+	}
+
+	sessionData := otpSessionData{
+		Recipient:     recipient,
+		RecipientAttr: recipientAttr,
+		OTPValue:      cryptolib.GenerateThumbprintFromString(otp.Value),
+		ExpiryTime:    otp.ExpiryTimeInMillis,
+	}
+
+	sessionToken, err := s.createSessionToken(ctx, sessionData)
+	if err != nil {
+		logger.Error(ctx, "Failed to create OTP session token", log.Error(err))
+		return "", "", 0, &tidcommon.InternalServerError
+	}
+
+	expirySeconds := s.getOTPValidityPeriodInMillis() / 1000
+	logger.Debug(ctx, "OTP generated successfully", log.MaskedString("recipient", recipient))
+	return sessionToken, otp.Value, expirySeconds, nil
+}
+
 // SendOTP sends an OTP to the specified recipient using the provided sender.
 func (s *otpService) SendOTP(
 	ctx context.Context, otpDTO common.SendOTPDTO) (*common.SendOTPResultDTO, *tidcommon.ServiceError) {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService"))
+	logger := s.logger
 	logger.Debug(ctx, "Sending OTP", log.MaskedString("recipient", otpDTO.Recipient),
 		log.String("channel", otpDTO.Channel), log.String("senderId", otpDTO.SenderID))
 
@@ -91,38 +147,19 @@ func (s *otpService) SendOTP(
 		return nil, &ErrorSenderNotFound
 	}
 
-	// TODO: Validate whether the sender supports the requested channel when necessary
-	//  improvements are implemented.
-
-	otp, err := s.generateOTP()
-	if err != nil {
-		logger.Error(ctx, "Failed to generate OTP", log.Error(err))
+	sessionToken, otpValue, _, otpErr := s.GenerateOTP(ctx, otpDTO.Recipient, "mobile_number")
+	if otpErr != nil {
+		logger.Error(ctx, "Failed to generate OTP", log.String("error", otpErr.Code))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	// Send OTP based on channel
 	switch common.ChannelType(otpDTO.Channel) {
 	case common.ChannelTypeSMS:
-		if svcErr := s.sendSMSOTP(ctx, otpDTO.Recipient, otp.Value, *sender, logger); svcErr != nil {
+		if svcErr := s.sendSMSOTP(ctx, otpDTO.Recipient, otpValue, *sender, logger); svcErr != nil {
 			return nil, svcErr
 		}
 	default:
 		return nil, &ErrorUnsupportedChannel
-	}
-
-	// Create session token
-	sessionData := common.OTPSessionData{
-		Recipient:  otpDTO.Recipient,
-		Channel:    otpDTO.Channel,
-		SenderID:   otpDTO.SenderID,
-		OTPValue:   cryptolib.GenerateThumbprintFromString(otp.Value),
-		ExpiryTime: otp.ExpiryTimeInMillis,
-	}
-
-	sessionToken, err := s.createSessionToken(ctx, sessionData)
-	if err != nil {
-		logger.Error(ctx, "Failed to create session token", log.Error(err))
-		return nil, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx, "OTP sent successfully", log.MaskedString("recipient", otpDTO.Recipient))
@@ -135,7 +172,7 @@ func (s *otpService) SendOTP(
 // VerifyOTP verifies the provided OTP against the session token.
 func (s *otpService) VerifyOTP(
 	ctx context.Context, otpDTO common.VerifyOTPDTO) (*common.VerifyOTPResultDTO, *tidcommon.ServiceError) {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService"))
+	logger := s.logger
 	logger.Debug(ctx, "Verifying OTP")
 
 	if err := s.validateOTPVerifyRequest(otpDTO); err != nil {
@@ -147,35 +184,34 @@ func (s *otpService) VerifyOTP(
 		return nil, svcErr
 	}
 
-	// Check if OTP has expired
-	currentTime := time.Now().UnixMilli()
-	if currentTime > sessionData.ExpiryTime {
+	if time.Now().UnixMilli() > sessionData.ExpiryTime {
 		logger.Debug(ctx, "OTP has expired")
 		return &common.VerifyOTPResultDTO{
-			Status:    common.OTPVerifyStatusInvalid,
-			Recipient: sessionData.Recipient,
+			Status:        common.OTPVerifyStatusInvalid,
+			Recipient:     sessionData.Recipient,
+			RecipientAttr: sessionData.RecipientAttr,
 		}, nil
 	}
 
-	// Verify OTP value by comparing hashes
-	providedOTPHash := cryptolib.GenerateThumbprintFromString(otpDTO.OTPCode)
-	if providedOTPHash != sessionData.OTPValue {
+	if cryptolib.GenerateThumbprintFromString(otpDTO.OTPCode) != sessionData.OTPValue {
 		logger.Debug(ctx, "Invalid OTP provided")
 		return &common.VerifyOTPResultDTO{
-			Status:    common.OTPVerifyStatusInvalid,
-			Recipient: sessionData.Recipient,
+			Status:        common.OTPVerifyStatusInvalid,
+			Recipient:     sessionData.Recipient,
+			RecipientAttr: sessionData.RecipientAttr,
 		}, nil
 	}
 
 	return &common.VerifyOTPResultDTO{
-		Status:    common.OTPVerifyStatusVerified,
-		Recipient: sessionData.Recipient,
+		Status:        common.OTPVerifyStatusVerified,
+		Recipient:     sessionData.Recipient,
+		RecipientAttr: sessionData.RecipientAttr,
 	}, nil
 }
 
 // validateOTPSendRequest validates the OTP send request.
 func (s *otpService) validateOTPSendRequest(request common.SendOTPDTO) *tidcommon.ServiceError {
-	if request.Recipient == "" {
+	if strings.TrimSpace(request.Recipient) == "" {
 		return &ErrorInvalidRecipient
 	}
 	if request.SenderID == "" {
@@ -198,68 +234,12 @@ func (s *otpService) validateOTPVerifyRequest(request common.VerifyOTPDTO) *tidc
 	return nil
 }
 
-// generateOTP generates a random OTP based on the configurations.
-func (s *otpService) generateOTP() (common.OTP, error) {
-	charSet := s.getOTPCharset()
-	otpLength := s.getOTPLength()
-
-	chars := []rune(charSet)
-	result := make([]rune, otpLength)
-
-	for i := 0; i < otpLength; i++ {
-		max := big.NewInt(int64(len(chars)))
-		n, err := rand.Int(rand.Reader, max)
-		if err != nil {
-			return common.OTP{}, fmt.Errorf("failed to generate random number: %w", err)
-		}
-		result[i] = chars[n.Int64()]
-	}
-
-	token := string(result)
-	currentTime := time.Now().UnixMilli()
-	validityPeriod := s.getOTPValidityPeriodInMillis()
-
-	return common.OTP{
-		Value:                  token,
-		GeneratedTimeInMillis:  currentTime,
-		ValidityPeriodInMillis: validityPeriod,
-		ExpiryTimeInMillis:     currentTime + validityPeriod,
-	}, nil
-}
-
-// getOTPCharset returns the character set for OTP generation.
-func (s *otpService) getOTPCharset() string {
-	if s.useOnlyNumericChars() {
-		return "9245378016"
-	}
-	return "KIGXHOYSPRWCEFMVUQLZDNABJT9245378016"
-}
-
-// resolveOTPConfig returns the effective OTP configuration for this otpService.
-func (s *otpService) resolveOTPConfig() config.OTPConfig {
-	return config.GetServerRuntime().Config.Notification.OTP
-}
-
-// getOTPLength returns the length of the OTP.
-func (s *otpService) getOTPLength() int {
-	return s.resolveOTPConfig().Length
-}
-
-// useOnlyNumericChars determines whether to use only numeric characters.
-func (s *otpService) useOnlyNumericChars() bool {
-	return s.resolveOTPConfig().UseNumericOnly
-}
-
-// getOTPValidityPeriodInMillis returns the validity period of the OTP in milliseconds.
-func (s *otpService) getOTPValidityPeriodInMillis() int64 {
-	return int64(s.resolveOTPConfig().ValidityPeriodSeconds) * 1000
-}
-
 // sendSMSOTP sends an SMS OTP to the recipient.
-func (s *otpService) sendSMSOTP(ctx context.Context, recipient, otp string,
+func (s *otpService) sendSMSOTP(ctx context.Context, recipient, otpVal string,
 	sender common.NotificationSenderDTO, logger *log.Logger) *tidcommon.ServiceError {
-	expiryMinutes := strconv.FormatInt(s.getOTPValidityPeriodInMillis()/60000, 10)
-	templateData := template.TemplateData{"otp": otp, "expiryMinutes": expiryMinutes}
+	otpCfg := s.resolveOTPConfig()
+	expiryMinutes := strconv.FormatInt(int64(otpCfg.ValidityPeriodSeconds)/60, 10)
+	templateData := template.TemplateData{"otpCode": otpVal, "expiryMinutes": expiryMinutes}
 	rendered, svcErr := s.templateService.Render(ctx, template.ScenarioOTP, template.TemplateTypeSMS, templateData)
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to render SMS OTP template", log.String("error", svcErr.Code))
@@ -284,38 +264,55 @@ func (s *otpService) sendSMSOTP(ctx context.Context, recipient, otp string,
 	return nil
 }
 
-// createSessionToken creates a JWT session token with OTP session data.
-func (s *otpService) createSessionToken(ctx context.Context, sessionData common.OTPSessionData) (string, error) {
-	claims := map[string]interface{}{
-		"otp_data": sessionData,
+// generateOTP generates a random OTP value based on server configuration.
+func (s *otpService) generateOTP() (generatedOTP, error) {
+	charSet := s.getOTPCharset()
+	length := s.getOTPLength()
+
+	chars := []rune(charSet)
+	result := make([]rune, length)
+	for i := 0; i < length; i++ {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
+		if err != nil {
+			return generatedOTP{}, fmt.Errorf("failed to generate random number: %w", err)
+		}
+		result[i] = chars[n.Int64()]
 	}
 
-	// Use a short validity period for the token (same as OTP expiry)
-	validityPeriod := (sessionData.ExpiryTime - time.Now().UnixMilli()) / 1000
+	now := time.Now().UnixMilli()
+	validity := s.getOTPValidityPeriodInMillis()
+	return generatedOTP{
+		Value:              string(result),
+		ExpiryTimeInMillis: now + validity,
+	}, nil
+}
+
+// createSessionToken creates a JWT containing the OTP session data.
+func (s *otpService) createSessionToken(ctx context.Context, sessionData otpSessionData) (string, error) {
+	claims := map[string]interface{}{
+		"otp_data": sessionData,
+		"aud":      otpSessionAudience,
+	}
+	validitySeconds := (sessionData.ExpiryTime - time.Now().UnixMilli()) / 1000
 	jwtConfig := config.GetServerRuntime().Config.JWT
 
-	claims["aud"] = "otp-svc"
 	token, _, err := s.jwtService.GenerateJWT(
-		ctx, "otp-svc", jwtConfig.Issuer, validityPeriod, claims, jwt.TokenTypeJWT, "")
+		ctx, otpSessionAudience, jwtConfig.Issuer, validitySeconds, claims, jwt.TokenTypeJWT, "")
 	if err != nil {
 		return "", fmt.Errorf("failed to generate JWT token: %v", err)
 	}
-
 	return token, nil
 }
 
-// verifyAndDecodeSessionToken verifies the JWT signature and decodes the session data.
-func (s *otpService) verifyAndDecodeSessionToken(ctx context.Context, token string, logger *log.Logger) (
-	*common.OTPSessionData, *tidcommon.ServiceError) {
-	// Verify JWT signature
+// verifyAndDecodeSessionToken verifies the JWT signature and decodes the embedded OTP session data.
+func (s *otpService) verifyAndDecodeSessionToken(ctx context.Context, token string,
+	logger *log.Logger) (*otpSessionData, *tidcommon.ServiceError) {
 	jwtConfig := config.GetServerRuntime().Config.JWT
-	svcErr := s.jwtService.VerifyJWT(ctx, token, "otp-svc", jwtConfig.Issuer)
-	if svcErr != nil {
-		logger.Debug(ctx, "Invalid session token", log.String("error", svcErr.Error.DefaultValue))
+	if svcErr := s.jwtService.VerifyJWT(ctx, token, otpSessionAudience, jwtConfig.Issuer); svcErr != nil {
+		logger.Debug(ctx, "Invalid OTP session token", log.String("error", svcErr.Error.DefaultValue))
 		return nil, &ErrorInvalidSessionToken
 	}
 
-	// Parse and extract OTP session data
 	payload, err := jwt.DecodeJWTPayload(token)
 	if err != nil {
 		return nil, &ErrorInvalidSessionToken
@@ -331,11 +328,34 @@ func (s *otpService) verifyAndDecodeSessionToken(ctx context.Context, token stri
 		return nil, &ErrorInvalidSessionToken
 	}
 
-	var sessionData common.OTPSessionData
-	err = json.Unmarshal(otpDataBytes, &sessionData)
-	if err != nil {
+	var sessionData otpSessionData
+	if err := json.Unmarshal(otpDataBytes, &sessionData); err != nil {
 		return nil, &ErrorInvalidSessionToken
 	}
 
 	return &sessionData, nil
+}
+
+// resolveOTPConfig returns the effective OTP configuration for this otpService.
+// This is the single point of config access; future callers can pass flow-level overrides here.
+func (s *otpService) resolveOTPConfig() config.OTPConfig {
+	return config.GetServerRuntime().Config.Notification.OTP
+}
+
+// getOTPCharset returns the character set for OTP generation.
+func (s *otpService) getOTPCharset() string {
+	if s.resolveOTPConfig().UseNumericOnly {
+		return "9245378016"
+	}
+	return "KIGXHOYSPRWCEFMVUQLZDNABJT9245378016"
+}
+
+// getOTPLength returns the configured OTP length.
+func (s *otpService) getOTPLength() int {
+	return s.resolveOTPConfig().Length
+}
+
+// getOTPValidityPeriodInMillis returns the OTP validity period in milliseconds.
+func (s *otpService) getOTPValidityPeriodInMillis() int64 {
+	return int64(s.resolveOTPConfig().ValidityPeriodSeconds) * 1000
 }
