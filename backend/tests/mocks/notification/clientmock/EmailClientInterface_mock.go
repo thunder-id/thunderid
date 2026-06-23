@@ -82,57 +82,6 @@ func (_c *EmailClientInterfaceMock_GetName_Call) RunAndReturn(run func() string)
 	return _c
 }
 
-// IsChannelSupported provides a mock function for the type EmailClientInterfaceMock
-func (_mock *EmailClientInterfaceMock) IsChannelSupported(channel common.ChannelType) bool {
-	ret := _mock.Called(channel)
-
-	if len(ret) == 0 {
-		panic("no return value specified for IsChannelSupported")
-	}
-
-	var r0 bool
-	if returnFunc, ok := ret.Get(0).(func(common.ChannelType) bool); ok {
-		r0 = returnFunc(channel)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-	return r0
-}
-
-// EmailClientInterfaceMock_IsChannelSupported_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsChannelSupported'
-type EmailClientInterfaceMock_IsChannelSupported_Call struct {
-	*mock.Call
-}
-
-// IsChannelSupported is a helper method to define mock.On call
-//   - channel common.ChannelType
-func (_e *EmailClientInterfaceMock_Expecter) IsChannelSupported(channel interface{}) *EmailClientInterfaceMock_IsChannelSupported_Call {
-	return &EmailClientInterfaceMock_IsChannelSupported_Call{Call: _e.mock.On("IsChannelSupported", channel)}
-}
-
-func (_c *EmailClientInterfaceMock_IsChannelSupported_Call) Run(run func(channel common.ChannelType)) *EmailClientInterfaceMock_IsChannelSupported_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 common.ChannelType
-		if args[0] != nil {
-			arg0 = args[0].(common.ChannelType)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *EmailClientInterfaceMock_IsChannelSupported_Call) Return(b bool) *EmailClientInterfaceMock_IsChannelSupported_Call {
-	_c.Call.Return(b)
-	return _c
-}
-
-func (_c *EmailClientInterfaceMock_IsChannelSupported_Call) RunAndReturn(run func(channel common.ChannelType) bool) *EmailClientInterfaceMock_IsChannelSupported_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // Send provides a mock function for the type EmailClientInterfaceMock
 func (_mock *EmailClientInterfaceMock) Send(ctx context.Context, data common.EmailData) error {
 	ret := _mock.Called(ctx, data)

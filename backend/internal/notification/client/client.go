@@ -32,12 +32,12 @@ const httpClientTimeout = 10 * time.Second
 // NotificationClientInterface defines the base provider client interface for sending notifications.
 type NotificationClientInterface interface {
 	GetName() string
-	IsChannelSupported(channel common.ChannelType) bool
 }
 
 // MessageClientInterface defines the client interface for sending SMS/Messages.
 type MessageClientInterface interface {
 	NotificationClientInterface
+	IsChannelSupported(channel common.ChannelType) bool
 	Send(ctx context.Context, channel common.ChannelType, data common.MessageData) error
 }
 

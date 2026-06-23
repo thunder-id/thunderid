@@ -66,13 +66,13 @@ func (s *notificationSenderService) SendMessage(ctx context.Context, channel com
 		return svcErr
 	}
 
-	if !_client.IsChannelSupported(channel) {
-		return &ErrorUnsupportedChannel
-	}
-
 	messageClient, ok := _client.(client.MessageClientInterface)
 	if !ok {
 		return &ErrorRequestedSenderIsNotOfExpectedType
+	}
+
+	if !messageClient.IsChannelSupported(channel) {
+		return &ErrorUnsupportedChannel
 	}
 
 	if err := messageClient.Send(ctx, channel, data); err != nil {

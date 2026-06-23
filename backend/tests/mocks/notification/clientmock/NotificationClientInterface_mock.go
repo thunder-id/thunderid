@@ -6,7 +6,6 @@ package clientmock
 
 import (
 	mock "github.com/stretchr/testify/mock"
-	"github.com/thunder-id/thunderid/internal/notification/common"
 )
 
 // NewNotificationClientInterfaceMock creates a new instance of NotificationClientInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -76,57 +75,6 @@ func (_c *NotificationClientInterfaceMock_GetName_Call) Return(s string) *Notifi
 }
 
 func (_c *NotificationClientInterfaceMock_GetName_Call) RunAndReturn(run func() string) *NotificationClientInterfaceMock_GetName_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// IsChannelSupported provides a mock function for the type NotificationClientInterfaceMock
-func (_mock *NotificationClientInterfaceMock) IsChannelSupported(channel common.ChannelType) bool {
-	ret := _mock.Called(channel)
-
-	if len(ret) == 0 {
-		panic("no return value specified for IsChannelSupported")
-	}
-
-	var r0 bool
-	if returnFunc, ok := ret.Get(0).(func(common.ChannelType) bool); ok {
-		r0 = returnFunc(channel)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-	return r0
-}
-
-// NotificationClientInterfaceMock_IsChannelSupported_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsChannelSupported'
-type NotificationClientInterfaceMock_IsChannelSupported_Call struct {
-	*mock.Call
-}
-
-// IsChannelSupported is a helper method to define mock.On call
-//   - channel common.ChannelType
-func (_e *NotificationClientInterfaceMock_Expecter) IsChannelSupported(channel interface{}) *NotificationClientInterfaceMock_IsChannelSupported_Call {
-	return &NotificationClientInterfaceMock_IsChannelSupported_Call{Call: _e.mock.On("IsChannelSupported", channel)}
-}
-
-func (_c *NotificationClientInterfaceMock_IsChannelSupported_Call) Run(run func(channel common.ChannelType)) *NotificationClientInterfaceMock_IsChannelSupported_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 common.ChannelType
-		if args[0] != nil {
-			arg0 = args[0].(common.ChannelType)
-		}
-		run(
-			arg0,
-		)
-	})
-	return _c
-}
-
-func (_c *NotificationClientInterfaceMock_IsChannelSupported_Call) Return(b bool) *NotificationClientInterfaceMock_IsChannelSupported_Call {
-	_c.Call.Return(b)
-	return _c
-}
-
-func (_c *NotificationClientInterfaceMock_IsChannelSupported_Call) RunAndReturn(run func(channel common.ChannelType) bool) *NotificationClientInterfaceMock_IsChannelSupported_Call {
 	_c.Call.Return(run)
 	return _c
 }
