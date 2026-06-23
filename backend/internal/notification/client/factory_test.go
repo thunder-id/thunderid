@@ -113,10 +113,10 @@ func (suite *ClientFactoryTestSuite) TestGetClient() {
 			expected: "Test Custom",
 		},
 		{
-			name: "custom_email",
+			name: "http_email",
 			sender: common.NotificationSenderDTO{
-				Name:     "Test Custom Email",
-				Provider: common.MessageProviderTypeCustom,
+				Name:     "Test HTTP Email",
+				Provider: common.MessageProviderTypeHTTP,
 				Type:     common.NotificationSenderTypeEmail,
 				Properties: []cmodels.Property{
 					createTestProperty("url", "https://api.example.com/email", false),
@@ -124,7 +124,21 @@ func (suite *ClientFactoryTestSuite) TestGetClient() {
 					createTestProperty("content_type", "JSON", false),
 				},
 			},
-			expected: "Test Custom Email",
+			expected: "Test HTTP Email",
+		},
+		{
+			name: "smtp_email",
+			sender: common.NotificationSenderDTO{
+				Name:     "Test SMTP Email",
+				Provider: common.MessageProviderTypeSMTP,
+				Type:     common.NotificationSenderTypeEmail,
+				Properties: []cmodels.Property{
+					createTestProperty(common.SMTPPropKeyHost, "smtp.example.com", false),
+					createTestProperty(common.SMTPPropKeyPort, "587", false),
+					createTestProperty(common.SMTPPropKeyFromAddress, "no-reply@example.com", false),
+				},
+			},
+			expected: "Test SMTP Email",
 		},
 	}
 
@@ -181,6 +195,19 @@ func (suite *ClientFactoryTestSuite) TestGetClientWithError() {
 				Type:     common.NotificationSenderTypeMessage,
 				// url is secret here and invalid ciphertext
 				Properties: makeInvalidSecretProps("url"),
+			},
+		},
+		{
+			name: "smtp_decryption_error",
+			sender: common.NotificationSenderDTO{
+				Name:     "Bad SMTP",
+				Provider: common.MessageProviderTypeSMTP,
+				Type:     common.NotificationSenderTypeEmail,
+				Properties: append(makeInvalidSecretProps(common.SMTPPropKeyPassword),
+					createTestProperty(common.SMTPPropKeyHost, "smtp.example.com", false),
+					createTestProperty(common.SMTPPropKeyPort, "587", false),
+					createTestProperty(common.SMTPPropKeyFromAddress, "test@example.com", false),
+					createTestProperty(common.SMTPPropKeyEnableAuth, "true", false)),
 			},
 		},
 	}

@@ -56,7 +56,7 @@ func (suite *HTTPEmailClientTestSuite) SetupSuite() {
 func (suite *HTTPEmailClientTestSuite) getValidCustomSenderJSON() common.NotificationSenderDTO {
 	return common.NotificationSenderDTO{
 		Name:     "Test HTTP Email",
-		Provider: common.MessageProviderTypeCustom,
+		Provider: common.MessageProviderTypeHTTP,
 		Type:     common.NotificationSenderTypeEmail,
 		Properties: []cmodels.Property{
 			createProperty("url", "https://api.example.com/email", false),

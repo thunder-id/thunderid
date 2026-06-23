@@ -58,8 +58,10 @@ func (p *clientFactory) GetClient(ctx context.Context, sender common.Notificatio
 		}
 	case common.NotificationSenderTypeEmail:
 		switch sender.Provider {
-		case common.MessageProviderTypeCustom:
+		case common.MessageProviderTypeHTTP:
 			_client, err = newHTTPEmailClient(ctx, sender)
+		case common.MessageProviderTypeSMTP:
+			_client, err = newSMTPEmailClient(ctx, sender)
 		default:
 			return nil, &ErrorInvalidProvider
 		}
