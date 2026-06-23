@@ -2443,6 +2443,7 @@ const translations = {
     'resource_logo_dialog.url_section.label': 'Use a custom image URL',
     'resource_logo_dialog.url_section.placeholder': 'https://example.com/logo.png',
     'resource_logo_dialog.url_section.helper_text': 'Enter a direct URL to a custom logo image',
+    'resource_logo_dialog.url_section.error_text': 'Enter a valid image URL (e.g. https://example.com/logo.png)',
     'resource_logo_dialog.actions.cancel': 'Cancel',
     'resource_logo_dialog.actions.select': 'Select',
   },

@@ -22,12 +22,9 @@ import {Edit} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback} from 'react';
 import type {ReactNode, JSX, KeyboardEvent} from 'react';
 import ResourceLogoDialog from './ResourceLogoDialog';
+import isValidLogoUri from '../utils/isValidLogoUri';
 
 const EMOJI_SCHEME = 'emoji:';
-
-function isUrl(value: string): boolean {
-  return value.startsWith('http://') || value.startsWith('https://');
-}
 
 function resolveDisplayValue(value: string): string {
   return value.startsWith(EMOJI_SCHEME) ? value.slice(EMOJI_SCHEME.length) : value;
@@ -126,7 +123,7 @@ export default function ResourceAvatar({
 
   const hasValue = Boolean(value);
   const displayValue: string = hasValue ? resolveDisplayValue(value!) : '';
-  const isUrlValue: boolean = Boolean(displayValue) && isUrl(displayValue);
+  const isUrlValue: boolean = Boolean(displayValue) && isValidLogoUri(displayValue);
   const imgError: boolean = imgErrorUrl === displayValue && Boolean(displayValue);
 
   const resolvedFallbackIcon: ReactNode =

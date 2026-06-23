@@ -230,6 +230,49 @@ describe('ResourceLogoDialog', () => {
     });
   });
 
+  describe('User interaction — URL validation', () => {
+    it('should keep the Select button disabled when the entered URL is invalid', () => {
+      render(<ResourceLogoDialog {...defaultProps} value="" />);
+
+      const urlInput = screen.getByPlaceholderText(/https:\/\/example\.com\/logo\.png/i);
+      fireEvent.change(urlInput, {target: {value: 'not a url'}});
+
+      expect(screen.getByRole('button', {name: /^select$/i})).toBeDisabled();
+    });
+
+    it('should show an inline error message when the entered URL is invalid', () => {
+      render(<ResourceLogoDialog {...defaultProps} value="" />);
+
+      const urlInput = screen.getByPlaceholderText(/https:\/\/example\.com\/logo\.png/i);
+      fireEvent.change(urlInput, {target: {value: 'javascript:alert(1)'}});
+
+      expect(screen.getByText(/enter a valid image url/i)).toBeInTheDocument();
+    });
+
+    it('should not call onSelect when Select is clicked with an invalid URL', () => {
+      const onSelect = vi.fn();
+      render(<ResourceLogoDialog {...defaultProps} onSelect={onSelect} value="" />);
+
+      const urlInput = screen.getByPlaceholderText(/https:\/\/example\.com\/logo\.png/i);
+      fireEvent.change(urlInput, {target: {value: 'example.com/logo.png'}});
+      fireEvent.click(screen.getByRole('button', {name: /^select$/i}));
+
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it('should accept an absolute path as a valid logo URL', () => {
+      const onSelect = vi.fn();
+      render(<ResourceLogoDialog {...defaultProps} onSelect={onSelect} value="" />);
+
+      const urlInput = screen.getByPlaceholderText(/https:\/\/example\.com\/logo\.png/i);
+      fireEvent.change(urlInput, {target: {value: '/assets/logo.png'}});
+
+      expect(screen.getByRole('button', {name: /^select$/i})).not.toBeDisabled();
+      fireEvent.click(screen.getByRole('button', {name: /^select$/i}));
+      expect(onSelect).toHaveBeenCalledWith('/assets/logo.png');
+    });
+  });
+
   describe('Initial state — plain emoji value without prefix', () => {
     it('should pre-populate emoji state when value is a raw emoji character without emoji: prefix', () => {
       render(<ResourceLogoDialog {...defaultProps} value="🎉" />);
