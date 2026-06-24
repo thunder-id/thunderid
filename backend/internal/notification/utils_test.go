@@ -154,6 +154,66 @@ func (suite *UtilsTestSuite) TestValidateMessageNotificationSender_Custom() {
 	suite.Nil(err)
 }
 
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_EmptyProvider() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test Sender",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: "",
+	}
+
+	err := validateEmailNotificationSender(sender)
+
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidProvider.Code, err.Code)
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_InvalidProvider() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test Sender",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: "invalid-provider",
+	}
+
+	err := validateEmailNotificationSender(sender)
+
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidProvider.Code, err.Code)
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_SMTP() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test SMTP",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: common.MessageProviderTypeSMTP,
+		Properties: []cmodels.Property{
+			createTestProperty("host", "smtp.example.com", false),
+			createTestProperty("port", "587", false),
+			createTestProperty("from_address", "no-reply@example.com", false),
+		},
+	}
+
+	err := validateEmailNotificationSender(sender)
+
+	suite.Nil(err)
+}
+
+func (suite *UtilsTestSuite) TestValidateEmailNotificationSender_HTTP() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test HTTP Email",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: common.MessageProviderTypeHTTP,
+		Properties: []cmodels.Property{
+			createTestProperty("url", "https://api.example.com/email", false),
+			createTestProperty("http_method", "POST", false),
+			createTestProperty("content_type", "JSON", false),
+		},
+	}
+
+	err := validateEmailNotificationSender(sender)
+
+	suite.Nil(err)
+}
+
 func (suite *UtilsTestSuite) TestValidateTwilioProperties() {
 	properties := []cmodels.Property{
 		createTestProperty("account_sid", "AC00112233445566778899aabbccddeeff", true),

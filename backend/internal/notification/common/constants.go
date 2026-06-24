@@ -50,6 +50,8 @@ type ChannelType string
 const (
 	// ChannelTypeSMS represents the SMS channel.
 	ChannelTypeSMS ChannelType = "sms"
+	// ChannelTypeEmail represents the Email channel.
+	ChannelTypeEmail ChannelType = "email"
 )
 
 // OTPVerifyStatus defines the status of OTP verification.
