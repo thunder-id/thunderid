@@ -107,6 +107,71 @@ func (c *compositeRoleStore) GetRoleList(ctx context.Context, limit, offset int)
 	return roles, nil
 }
 
+// GetRoleListCountByOUID retrieves the total count of unique roles belonging to the given
+// organization unit across both stores.
+func (c *compositeRoleStore) GetRoleListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	capCount := func(fn func(context.Context, string) (int, error)) func() (int, error) {
+		return func() (int, error) {
+			count, err := fn(ctx, ouID)
+			if err != nil {
+				return 0, err
+			}
+			return min(count, serverconst.MaxCompositeStoreRecords), nil
+		}
+	}
+	roles, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		capCount(c.dbStore.GetRoleListCountByOUID),
+		capCount(c.fileStore.GetRoleListCountByOUID),
+		func(count int) ([]Role, error) { return c.dbStore.GetRoleListByOUID(ctx, ouID, count, 0) },
+		func(count int) ([]Role, error) { return c.fileStore.GetRoleListByOUID(ctx, ouID, count, 0) },
+		mergeRoles,
+		serverconst.MaxCompositeStoreRecords+1,
+		0,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return 0, err
+	}
+	if limitExceeded {
+		return 0, errResultLimitExceededInCompositeMode
+	}
+
+	return len(roles), nil
+}
+
+// GetRoleListByOUID retrieves roles belonging to the given organization unit from both stores
+// and merges them.
+func (c *compositeRoleStore) GetRoleListByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]Role, error) {
+	capCount := func(fn func(context.Context, string) (int, error)) func() (int, error) {
+		return func() (int, error) {
+			count, err := fn(ctx, ouID)
+			if err != nil {
+				return 0, err
+			}
+			return min(count, serverconst.MaxCompositeStoreRecords), nil
+		}
+	}
+	roles, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		capCount(c.dbStore.GetRoleListCountByOUID),
+		capCount(c.fileStore.GetRoleListCountByOUID),
+		func(count int) ([]Role, error) { return c.dbStore.GetRoleListByOUID(ctx, ouID, count, 0) },
+		func(count int) ([]Role, error) { return c.fileStore.GetRoleListByOUID(ctx, ouID, count, 0) },
+		mergeRoles,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return roles, nil
+}
+
 // CreateRole creates a new role in the database store only.
 func (c *compositeRoleStore) CreateRole(ctx context.Context, id string, role RoleCreationDetail) error {
 	return c.dbStore.CreateRole(ctx, id, role)

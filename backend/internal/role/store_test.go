@@ -252,6 +252,185 @@ func (suite *RoleStoreTestSuite) TestGetRoleList() {
 	}
 }
 
+func (suite *RoleStoreTestSuite) TestGetRoleListCountByOUID() {
+	testCases := []struct {
+		name          string
+		setupMocks    func()
+		expectedCount int
+		shouldErr     bool
+		checkError    func(error) bool
+	}{
+		{
+			name: "Success",
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.
+					On("QueryContext", mock.Anything, queryGetRoleListCountByOUID, "ou1", testDeploymentID).
+					Return([]map[string]interface{}{
+						{"total": int64(3)},
+					}, nil)
+			},
+			expectedCount: 3,
+			shouldErr:     false,
+		},
+		{
+			name: "QueryError",
+			setupMocks: func() {
+				queryError := errors.New("query error")
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.
+					On("QueryContext", mock.Anything, queryGetRoleListCountByOUID, "ou1", testDeploymentID).
+					Return(nil, queryError)
+			},
+			expectedCount: 0,
+			shouldErr:     true,
+			checkError: func(err error) bool {
+				suite.Contains(err.Error(), "failed to execute count query")
+				return true
+			},
+		},
+		{
+			name: "DBClientError",
+			setupMocks: func() {
+				dbError := errors.New("db client error")
+				suite.mockDBProvider.On("GetConfigDBClient").Return(nil, dbError)
+			},
+			expectedCount: 0,
+			shouldErr:     true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store = &roleStore{
+				dbProvider:   suite.mockDBProvider,
+				deploymentID: testDeploymentID,
+			}
+
+			tc.setupMocks()
+
+			count, err := suite.store.GetRoleListCountByOUID(context.Background(), "ou1")
+
+			if tc.shouldErr {
+				suite.Error(err)
+				suite.Equal(tc.expectedCount, count)
+				if tc.checkError != nil {
+					tc.checkError(err)
+				}
+			} else {
+				suite.NoError(err)
+				suite.Equal(tc.expectedCount, count)
+			}
+		})
+	}
+}
+
+func (suite *RoleStoreTestSuite) TestGetRoleListByOUID() {
+	testCases := []struct {
+		name          string
+		limit         int
+		offset        int
+		setupMocks    func()
+		expectedRoles []Role
+		shouldErr     bool
+		checkError    func(error) bool
+	}{
+		{
+			name:   "Success",
+			limit:  10,
+			offset: 0,
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.
+					On("QueryContext", mock.Anything, queryGetRoleListByOUID, "ou1", 10, 0, testDeploymentID).
+					Return([]map[string]interface{}{
+						{"id": "role1", "name": "Admin", "description": "Admin role", "ou_id": "ou1"},
+					}, nil)
+			},
+			expectedRoles: []Role{
+				{ID: "role1", Name: "Admin"},
+			},
+			shouldErr: false,
+		},
+		{
+			name:   "QueryError",
+			limit:  10,
+			offset: 0,
+			setupMocks: func() {
+				queryError := errors.New("query error")
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.
+					On("QueryContext", mock.Anything, queryGetRoleListByOUID, "ou1", 10, 0, testDeploymentID).
+					Return(nil, queryError)
+			},
+			shouldErr: true,
+		},
+		{
+			name:   "InvalidRowData",
+			limit:  10,
+			offset: 0,
+			setupMocks: func() {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.
+					On("QueryContext", mock.Anything, queryGetRoleListByOUID, "ou1", 10, 0, testDeploymentID).
+					Return([]map[string]interface{}{
+						{
+							"id": 123, "name": "Admin",
+							"description": "Admin role", "ou_id": "ou1",
+						},
+					}, nil)
+			},
+			shouldErr: true,
+			checkError: func(err error) bool {
+				suite.Contains(err.Error(), "failed to build role from result row")
+				return true
+			},
+		},
+		{
+			name:   "DBClientError",
+			limit:  10,
+			offset: 0,
+			setupMocks: func() {
+				dbError := errors.New("db client error")
+				suite.mockDBProvider.On("GetConfigDBClient").Return(nil, dbError)
+			},
+			shouldErr: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockDBProvider = providermock.NewDBProviderInterfaceMock(suite.T())
+			suite.mockDBClient = providermock.NewDBClientInterfaceMock(suite.T())
+			suite.store = &roleStore{
+				dbProvider:   suite.mockDBProvider,
+				deploymentID: testDeploymentID,
+			}
+
+			tc.setupMocks()
+
+			roles, err := suite.store.GetRoleListByOUID(context.Background(), "ou1", tc.limit, tc.offset)
+
+			if tc.shouldErr {
+				suite.Error(err)
+				suite.Nil(roles)
+				if tc.checkError != nil {
+					tc.checkError(err)
+				}
+			} else {
+				suite.NoError(err)
+				suite.Len(roles, len(tc.expectedRoles))
+				if len(tc.expectedRoles) > 0 {
+					suite.Equal(tc.expectedRoles[0].ID, roles[0].ID)
+					suite.Equal(tc.expectedRoles[0].Name, roles[0].Name)
+				}
+			}
+		})
+	}
+}
+
 func (suite *RoleStoreTestSuite) TestCreateRole() {
 	testCases := []struct {
 		name       string

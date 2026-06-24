@@ -37,6 +37,8 @@ var getDBProvider = provider.GetDBProvider
 type roleStoreInterface interface {
 	GetRoleListCount(ctx context.Context) (int, error)
 	GetRoleList(ctx context.Context, limit, offset int) ([]Role, error)
+	GetRoleListCountByOUID(ctx context.Context, ouID string) (int, error)
+	GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error)
 	CreateRole(ctx context.Context, id string, role RoleCreationDetail) error
 	GetRole(ctx context.Context, id string) (RoleWithPermissions, error)
 	IsRoleExist(ctx context.Context, id string) (bool, error)
@@ -110,6 +112,45 @@ func (s *roleStore) GetRoleList(ctx context.Context, limit, offset int) ([]Role,
 	}
 
 	results, err := dbClient.QueryContext(ctx, queryGetRoleList, limit, offset, s.deploymentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute role list query: %w", err)
+	}
+
+	roles := make([]Role, 0)
+	for _, row := range results {
+		role, err := buildRoleBasicInfoFromResultRow(row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build role from result row: %w", err)
+		}
+		roles = append(roles, role)
+	}
+
+	return roles, nil
+}
+
+// GetRoleListCountByOUID retrieves the total count of roles belonging to the given organization unit.
+func (s *roleStore) GetRoleListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return 0, err
+	}
+
+	countResults, err := dbClient.QueryContext(ctx, queryGetRoleListCountByOUID, ouID, s.deploymentID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute count query: %w", err)
+	}
+
+	return parseCountResult(countResults)
+}
+
+// GetRoleListByOUID retrieves roles belonging to the given organization unit with pagination.
+func (s *roleStore) GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryGetRoleListByOUID, ouID, limit, offset, s.deploymentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute role list query: %w", err)
 	}

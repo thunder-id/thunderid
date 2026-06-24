@@ -225,6 +225,15 @@ func (ouh *organizationUnitHandler) HandleOUGroupsListRequest(w http.ResponseWri
 		})
 }
 
+// HandleOURolesListRequest handles the list roles in organization unit request.
+func (ouh *organizationUnitHandler) HandleOURolesListRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ouh.handleResourceListRequest(w, r, "roles",
+		func(id string, limit, offset int) (interface{}, *serviceerror.ServiceError) {
+			return ouh.service.GetOrganizationUnitRoles(ctx, id, limit, offset)
+		})
+}
+
 // handleError handles service errors and returns appropriate HTTP responses.
 func (
 	ouh *organizationUnitHandler) handleError(ctx context.Context,
@@ -485,6 +494,9 @@ func (ouh *organizationUnitHandler) handleResourceListByPathRequest(
 		case *GroupListResponse:
 			totalResults = resp.TotalResults
 			count = resp.Count
+		case *RoleListResponse:
+			totalResults = resp.TotalResults
+			count = resp.Count
 		}
 
 		logger.Debug(r.Context(), "Successfully listed resources in organization unit by path",
@@ -524,6 +536,15 @@ func (ouh *organizationUnitHandler) HandleOUGroupsListByPathRequest(w http.Respo
 	ouh.handleResourceListByPathRequest(w, r, "groups",
 		func(path string, limit, offset int) (interface{}, *serviceerror.ServiceError) {
 			return ouh.service.GetOrganizationUnitGroupsByPath(ctx, path, limit, offset)
+		})
+}
+
+// HandleOURolesListByPathRequest handles the list roles in organization unit by path request.
+func (ouh *organizationUnitHandler) HandleOURolesListByPathRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	ouh.handleResourceListByPathRequest(w, r, "roles",
+		func(path string, limit, offset int) (interface{}, *serviceerror.ServiceError) {
+			return ouh.service.GetOrganizationUnitRolesByPath(ctx, path, limit, offset)
 		})
 }
 

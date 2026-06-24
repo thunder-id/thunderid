@@ -41,11 +41,14 @@ func Initialize(
 	ouService oupkg.OrganizationUnitServiceInterface,
 	resourceService resourcepkg.ResourceServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-) (RoleServiceInterface, RoleAssignmentServiceInterface, declarativeresource.ResourceExporter, error) {
+) (
+	RoleServiceInterface, RoleAssignmentServiceInterface, oupkg.OURoleResolver,
+	declarativeresource.ResourceExporter, error,
+) {
 	// Step 1: Initialize store and transactioner based on store mode (no declarative loading yet)
 	roleStore, transactioner, fileStore, dbStore, err := initializeStore()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// Step 2: Create service with store
@@ -57,7 +60,7 @@ func Initialize(
 	// Step 3: Load declarative resources into store (if applicable)
 	if fileStore != nil {
 		if err := loadDeclarativeResources(fileStore, dbStore, roleService); err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
 
@@ -67,7 +70,8 @@ func Initialize(
 	roleHandler := newRoleHandler(roleService, assignmentService)
 	registerRoutes(mux, roleHandler)
 	exporter := newRoleExporter(roleService, assignmentService)
-	return roleService, assignmentService, exporter, nil
+	ouRoleResolver := newOURoleResolver(roleStore)
+	return roleService, assignmentService, ouRoleResolver, exporter, nil
 }
 
 // Store Selection (based on role.store configuration):
