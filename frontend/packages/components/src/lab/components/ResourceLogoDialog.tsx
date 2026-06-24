@@ -34,11 +34,12 @@ import {X} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import EmojiPicker from './EmojiPicker/EmojiPicker';
+import isValidLogoUri from '../utils/isValidLogoUri';
 
 const EMOJI_SCHEME = 'emoji:';
 
-function isUrl(value: string): boolean {
-  return value.startsWith('http://') || value.startsWith('https://');
+function isUrlValue(value: string): boolean {
+  return !value.startsWith(EMOJI_SCHEME) && isValidLogoUri(value);
 }
 
 /**
@@ -81,10 +82,10 @@ export default function ResourceLogoDialog({
 }: ResourceLogoDialogProps): JSX.Element {
   const {t} = useTranslation('elements');
   const [pendingEmoji, setPendingEmoji] = useState<string>(() => {
-    if (!open || isUrl(value)) return '';
+    if (!open || isUrlValue(value)) return '';
     return value.startsWith(EMOJI_SCHEME) ? value.slice(EMOJI_SCHEME.length) : value;
   });
-  const [pendingUrl, setPendingUrl] = useState<string>(() => (open && isUrl(value) ? value : ''));
+  const [pendingUrl, setPendingUrl] = useState<string>(() => (open && isUrlValue(value) ? value : ''));
   const [prevOpen, setPrevOpen] = useState<boolean>(open);
   const [prevValue, setPrevValue] = useState<string>(value);
 
@@ -92,7 +93,7 @@ export default function ResourceLogoDialog({
     setPrevOpen(open);
     setPrevValue(value);
     if (open) {
-      if (isUrl(value)) {
+      if (isUrlValue(value)) {
         setPendingUrl(value);
         setPendingEmoji('');
       } else {
@@ -113,8 +114,12 @@ export default function ResourceLogoDialog({
     if (url) setPendingEmoji('');
   }, []);
 
+  const isUrlValid: boolean = isValidLogoUri(pendingUrl);
+  const urlHasError: boolean = Boolean(pendingUrl) && !isUrlValid;
+
   const handleSelect = useCallback((): void => {
     if (pendingUrl) {
+      if (!isValidLogoUri(pendingUrl)) return;
       onSelect(pendingUrl);
     } else if (pendingEmoji) {
       onSelect(EMOJI_SCHEME + pendingEmoji);
@@ -122,7 +127,7 @@ export default function ResourceLogoDialog({
     onClose();
   }, [pendingUrl, pendingEmoji, onSelect, onClose]);
 
-  const canSelect = Boolean(pendingUrl || pendingEmoji);
+  const canSelect = Boolean((pendingUrl && isUrlValid) || pendingEmoji);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -151,12 +156,18 @@ export default function ResourceLogoDialog({
               <TextField
                 fullWidth
                 size="small"
+                error={urlHasError}
                 placeholder={t('resource_logo_dialog.url_section.placeholder', 'https://example.com/logo.png')}
                 value={pendingUrl}
                 onChange={(e) => handleUrlChange(e.target.value)}
               />
-              <FormHelperText>
-                {t('resource_logo_dialog.url_section.helper_text', 'Enter a direct URL to a custom logo image')}
+              <FormHelperText error={urlHasError}>
+                {urlHasError
+                  ? t(
+                      'resource_logo_dialog.url_section.error_text',
+                      'Enter a valid image URL (e.g. https://example.com/logo.png)',
+                    )
+                  : t('resource_logo_dialog.url_section.helper_text', 'Enter a direct URL to a custom logo image')}
               </FormHelperText>
             </Box>
           </Stack>
