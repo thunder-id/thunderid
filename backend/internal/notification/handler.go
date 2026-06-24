@@ -340,7 +340,10 @@ func (
 }
 
 // getDTOFromSenderRequest sanitizes the sender request and converts it to a NotificationSenderDTO.
-func getDTOFromSenderRequest(sender *common.NotificationSenderRequest, senderType common.NotificationSenderType) (*common.NotificationSenderDTO, error) {
+func getDTOFromSenderRequest(
+	sender *common.NotificationSenderRequest,
+	senderType common.NotificationSenderType,
+) (*common.NotificationSenderDTO, error) {
 	name := sysutils.SanitizeString(sender.Name)
 	description := sysutils.SanitizeString(sender.Description)
 	providerStr := sysutils.SanitizeString(sender.Provider)

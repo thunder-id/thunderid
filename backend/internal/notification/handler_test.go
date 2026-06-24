@@ -64,10 +64,20 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderListRequest() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
 	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
-	sender1 := common.NotificationSenderDTO{ID: "id1", Name: "s1", Type: common.NotificationSenderTypeMessage, Provider: common.MessageProviderTypeTwilio,
-		Properties: []cmodels.Property{createTestProperty("k", "v", false)}}
-	sender2 := common.NotificationSenderDTO{ID: "id2", Name: "s2", Type: common.NotificationSenderTypeMessage, Provider: common.MessageProviderTypeVonage,
-		Properties: []cmodels.Property{createTestProperty("k2", "v2", false)}}
+	sender1 := common.NotificationSenderDTO{
+		ID:         "id1",
+		Name:       "s1",
+		Type:       common.NotificationSenderTypeMessage,
+		Provider:   common.MessageProviderTypeTwilio,
+		Properties: []cmodels.Property{createTestProperty("k", "v", false)},
+	}
+	sender2 := common.NotificationSenderDTO{
+		ID:         "id2",
+		Name:       "s2",
+		Type:       common.NotificationSenderTypeMessage,
+		Provider:   common.MessageProviderTypeVonage,
+		Properties: []cmodels.Property{createTestProperty("k2", "v2", false)},
+	}
 
 	m.On("ListSenders", mock.Anything).Return([]common.NotificationSenderDTO{sender1, sender2}, nil).Once()
 
@@ -180,8 +190,13 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest() {
 	updateReq := common.NotificationSenderRequest{Name: "Updated",
 		Provider: "twilio", Properties: []cmodels.PropertyDTO{}}
 	body, _ := json.Marshal(updateReq)
-	updatedDTO := common.NotificationSenderDTO{ID: "s-1", Name: "Updated",
-		Type: common.NotificationSenderTypeMessage, Provider: common.MessageProviderTypeTwilio, Properties: []cmodels.Property{}}
+	updatedDTO := common.NotificationSenderDTO{
+		ID:         "s-1",
+		Name:       "Updated",
+		Type:       common.NotificationSenderTypeMessage,
+		Provider:   common.MessageProviderTypeTwilio,
+		Properties: []cmodels.Property{},
+	}
 	getDTO := &common.NotificationSenderDTO{ID: "s-1", Type: common.NotificationSenderTypeMessage}
 	m.On("GetSender", mock.Anything, "s-1").Return(getDTO, nil).Once()
 	m.On("UpdateSender", mock.Anything, "s-1", mock.Anything).Return(&updatedDTO, nil).Once()
