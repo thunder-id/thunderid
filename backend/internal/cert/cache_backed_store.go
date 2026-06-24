@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 
+	cert "github.com/thunder-id/thunderid/internal/cert/config"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -38,11 +39,12 @@ type cacheBackedStore struct {
 // NewCachedBackedCertificateStore creates a new instance of CachedBackedCertificateStore.
 func newCachedBackedCertificateStore(
 	certByIDCache cache.CacheInterface[*Certificate],
-	certByReferenceCache cache.CacheInterface[*Certificate]) certificateStoreInterface {
+	certByReferenceCache cache.CacheInterface[*Certificate],
+	cfg cert.Config) certificateStoreInterface {
 	return &cacheBackedStore{
 		certByIDCache:        certByIDCache,
 		certByReferenceCache: certByReferenceCache,
-		store:                newCertificateStore(),
+		store:                newCertificateStore(cfg.DeploymentID, cfg.StoreConfig),
 	}
 }
 

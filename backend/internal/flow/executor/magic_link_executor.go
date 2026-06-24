@@ -38,7 +38,7 @@ import (
 type magicLinkExecutor struct {
 	core.ExecutorInterface
 	identifyingExecutorInterface
-	entityProvider   entityprovider.EntityProviderInterface
+	entityProvider   entityprovider.EntityResolverInterface
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface
 	authnProvider    authnprovidermgr.AuthnProviderManagerInterface
 	logger           *log.Logger
@@ -61,7 +61,7 @@ func newMagicLinkExecutor(
 	flowFactory core.FlowFactoryInterface,
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	entityProvider entityprovider.EntityResolverInterface,
 ) *magicLinkExecutor {
 	defaultInputs := []common.Input{{
 		Ref:        "magic_link_token_input",

@@ -68,6 +68,16 @@ func newExecutor(name string, executorType common.ExecutorType, defaultInputs []
 	}
 }
 
+// NewBaseExecutor returns a base ExecutorInterface that supplies the boilerplate executor
+// behavior (name, type, inputs, prerequisites, default execution policy). Embed it in a custom
+// executor and override Execute, mirroring how the built-in executors are constructed from the
+// flow factory. It exists so the public thunderidengine SDK can offer a base executor to
+// embedders without exposing the flow factory.
+func NewBaseExecutor(name string, executorType common.ExecutorType, defaultInputs,
+	prerequisites []common.Input) ExecutorInterface {
+	return newExecutor(name, executorType, defaultInputs, prerequisites)
+}
+
 // GetName returns the name of the executor.
 func (e *executor) GetName() string {
 	return e.Name

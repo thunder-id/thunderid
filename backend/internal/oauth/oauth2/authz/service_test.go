@@ -79,7 +79,7 @@ type AuthorizeServiceTestSuite struct {
 	mockEntityProvider  *entityprovidermock.EntityProviderInterfaceMock
 	mockJWTService      *jwtmock.JWTServiceInterfaceMock
 	mockAuthzCodeStore  *AuthorizationCodeStoreInterfaceMock
-	mockAuthReqStore    *authorizationRequestStoreInterfaceMock
+	mockAuthReqStore    *AuthorizationRequestStoreInterfaceMock
 	mockFlowExecService *flowexecmock.FlowExecServiceInterfaceMock
 	mockValidator       *AuthorizationValidatorInterfaceMock
 }
@@ -117,7 +117,7 @@ func (suite *AuthorizeServiceTestSuite) SetupTest() {
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockAuthzCodeStore = NewAuthorizationCodeStoreInterfaceMock(suite.T())
-	suite.mockAuthReqStore = newAuthorizationRequestStoreInterfaceMock(suite.T())
+	suite.mockAuthReqStore = NewAuthorizationRequestStoreInterfaceMock(suite.T())
 	suite.mockFlowExecService = flowexecmock.NewFlowExecServiceInterfaceMock(suite.T())
 	suite.mockValidator = NewAuthorizationValidatorInterfaceMock(suite.T())
 }
@@ -447,7 +447,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Se
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_InvalidAuthID() {
-	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, "invalid-key").Return(false, authRequestContext{}, nil)
+	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, "invalid-key").Return(false, AuthRequestContext{}, nil)
 
 	svc := suite.newService()
 	redirectURI, authErr := svc.HandleAuthorizationCallback(context.Background(), "invalid-key", "test-assertion")
@@ -459,7 +459,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_InvalidA
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_StoreError() {
 	suite.mockAuthReqStore.EXPECT().GetRequest(mock.Anything, "db-fail-key").
-		Return(false, authRequestContext{}, errors.New("db connection error"))
+		Return(false, AuthRequestContext{}, errors.New("db connection error"))
 
 	svc := suite.newService()
 	redirectURI, authErr := svc.HandleAuthorizationCallback(context.Background(), "db-fail-key", "test-assertion")
@@ -470,7 +470,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_StoreErr
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_MissingAssertion() {
-	authCtx := authRequestContext{
+	authCtx := AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "test-client",
 			RedirectURI: "https://client.example.com/callback",
@@ -492,7 +492,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_MissingA
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_InvalidAssertionSignature() {
-	authCtx := authRequestContext{
+	authCtx := AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "test-client",
 			RedirectURI: "https://client.example.com/callback",
@@ -516,7 +516,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_InvalidA
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_FailedToDecodeAssertion() {
-	authCtx := authRequestContext{
+	authCtx := AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "test-client",
 			RedirectURI: "https://client.example.com/callback",
@@ -541,7 +541,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_FailedTo
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_PersistAuthCodeError() {
-	authCtx := authRequestContext{
+	authCtx := AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "test-client",
 			RedirectURI: "https://client.example.com/callback",
@@ -567,7 +567,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_PersistA
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_Success() {
-	authCtx := authRequestContext{
+	authCtx := AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "test-client",
 			RedirectURI: "https://client.example.com/callback",
@@ -589,7 +589,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_Success(
 }
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_WithState() {
-	authCtx := authRequestContext{
+	authCtx := AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "test-client",
 			RedirectURI: "https://client.example.com/callback",
@@ -613,7 +613,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_WithStat
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_EmptyAuthorizedPermissions() {
 	// svcJWTWithIat has only "sub" and "iat" — no authorized_permissions.
 	// Permission scopes in the auth context should be cleared.
-	authCtx := authRequestContext{
+	authCtx := AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:         "test-client",
 			RedirectURI:      "https://client.example.com/callback",
@@ -634,7 +634,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_EmptyAut
 
 func (suite *AuthorizeServiceTestSuite) TestHandleAuthorizationCallback_CreateAuthCodeError() {
 	// Empty ClientID in auth context → createAuthorizationCode will fail.
-	authCtx := authRequestContext{
+	authCtx := AuthRequestContext{
 		OAuthParameters: oauth2model.OAuthParameters{
 			ClientID:    "",
 			RedirectURI: "https://client.example.com/callback",
@@ -666,13 +666,13 @@ func (suite *AuthorizeServiceTestSuite) TestGetAuthorizationCodeDetails_GetError
 
 func (suite *AuthorizeServiceTestSuite) TestGetAuthorizationCodeDetails_NotFound() {
 	suite.mockAuthzCodeStore.EXPECT().GetAuthorizationCode(mock.Anything, "invalid-code").
-		Return(nil, errAuthorizationCodeNotFound)
+		Return(nil, ErrAuthorizationCodeNotFound)
 
 	svc := suite.newService()
 	result, err := svc.GetAuthorizationCodeDetails(context.Background(), "client-id", "invalid-code")
 
 	assert.Nil(suite.T(), result)
-	assert.ErrorIs(suite.T(), err, errAuthorizationCodeNotFound)
+	assert.ErrorIs(suite.T(), err, ErrAuthorizationCodeNotFound)
 }
 
 func (suite *AuthorizeServiceTestSuite) TestGetAuthorizationCodeDetails_ClientIDMismatch() {

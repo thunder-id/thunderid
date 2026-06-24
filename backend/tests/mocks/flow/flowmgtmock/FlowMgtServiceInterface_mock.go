@@ -101,8 +101,8 @@ func (_c *FlowMgtServiceInterfaceMock_CreateFlow_Call) Run(run func(ctx context.
 	return _c
 }
 
-func (_c *FlowMgtServiceInterfaceMock_CreateFlow_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowMgtServiceInterfaceMock_CreateFlow_Call {
-	_c.Call.Return(completeFlowDefinition, serviceError)
+func (_c *FlowMgtServiceInterfaceMock_CreateFlow_Call) Return(v *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowMgtServiceInterfaceMock_CreateFlow_Call {
+	_c.Call.Return(v, serviceError)
 	return _c
 }
 
@@ -230,8 +230,8 @@ func (_c *FlowMgtServiceInterfaceMock_GetFlow_Call) Run(run func(ctx context.Con
 	return _c
 }
 
-func (_c *FlowMgtServiceInterfaceMock_GetFlow_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowMgtServiceInterfaceMock_GetFlow_Call {
-	_c.Call.Return(completeFlowDefinition, serviceError)
+func (_c *FlowMgtServiceInterfaceMock_GetFlow_Call) Return(v *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowMgtServiceInterfaceMock_GetFlow_Call {
+	_c.Call.Return(v, serviceError)
 	return _c
 }
 
@@ -306,8 +306,8 @@ func (_c *FlowMgtServiceInterfaceMock_GetFlowByHandle_Call) Run(run func(ctx con
 	return _c
 }
 
-func (_c *FlowMgtServiceInterfaceMock_GetFlowByHandle_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowMgtServiceInterfaceMock_GetFlowByHandle_Call {
-	_c.Call.Return(completeFlowDefinition, serviceError)
+func (_c *FlowMgtServiceInterfaceMock_GetFlowByHandle_Call) Return(v *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowMgtServiceInterfaceMock_GetFlowByHandle_Call {
+	_c.Call.Return(v, serviceError)
 	return _c
 }
 
@@ -754,8 +754,8 @@ func (_c *FlowMgtServiceInterfaceMock_RestoreFlowVersion_Call) Run(run func(ctx 
 	return _c
 }
 
-func (_c *FlowMgtServiceInterfaceMock_RestoreFlowVersion_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowMgtServiceInterfaceMock_RestoreFlowVersion_Call {
-	_c.Call.Return(completeFlowDefinition, serviceError)
+func (_c *FlowMgtServiceInterfaceMock_RestoreFlowVersion_Call) Return(v *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowMgtServiceInterfaceMock_RestoreFlowVersion_Call {
+	_c.Call.Return(v, serviceError)
 	return _c
 }
 
@@ -830,8 +830,8 @@ func (_c *FlowMgtServiceInterfaceMock_UpdateFlow_Call) Run(run func(ctx context.
 	return _c
 }
 
-func (_c *FlowMgtServiceInterfaceMock_UpdateFlow_Call) Return(completeFlowDefinition *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowMgtServiceInterfaceMock_UpdateFlow_Call {
-	_c.Call.Return(completeFlowDefinition, serviceError)
+func (_c *FlowMgtServiceInterfaceMock_UpdateFlow_Call) Return(v *flowmgt.CompleteFlowDefinition, serviceError *serviceerror.ServiceError) *FlowMgtServiceInterfaceMock_UpdateFlow_Call {
+	_c.Call.Return(v, serviceError)
 	return _c
 }
 

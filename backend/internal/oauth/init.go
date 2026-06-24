@@ -37,7 +37,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/granthandlers"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/introspect"
-	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jwksresolver"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/token"
@@ -70,6 +69,7 @@ func Initialize(
 	resourceService resource.ResourceServiceInterface,
 	i18nService i18nmgt.I18nServiceInterface,
 	idpService idp.IDPServiceInterface,
+	stores RuntimeStores,
 	cfg oauthconfig.Config,
 ) error {
 	jwks.Initialize(mux, runtimeCrypto)
@@ -80,14 +80,14 @@ func Initialize(
 	tokenBuilder, tokenValidator := tokenservice.Initialize(cfg, jwtService, jweService, resolver, idpService)
 	scopeValidator := scope.Initialize()
 	discoveryService := discovery.Initialize(mux, runtimeCrypto, cfg)
-	jtiStore := jti.Initialize(cfg)
-	dpopVerifier := dpop.Initialize(cfg, jtiStore)
+	dpopVerifier := dpop.Initialize(cfg, stores.JTI)
 	parService := par.Initialize(mux, actorProvider, authnProvider, jwtService, discoveryService,
-		resourceService, dpopVerifier, cfg)
+		resourceService, dpopVerifier, stores.PAR, cfg)
 	cibaService := ciba.Initialize(mux, jwtService, actorProvider, authnProvider, flowExecService,
-		discoveryService, resourceService, cfg)
+		discoveryService, resourceService, stores.CIBA, cfg)
 	oauth2AuthzService, err := oauth2authz.Initialize(mux, actorProvider, resourceService,
-		jwtService, flowExecService, parService, cfg)
+		jwtService, flowExecService, parService,
+		stores.AuthzCode, stores.AuthzRequest, stores.AuthzTransactioner, cfg)
 	if err != nil {
 		return err
 	}

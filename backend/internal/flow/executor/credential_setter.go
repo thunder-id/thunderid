@@ -31,7 +31,7 @@ import (
 // credentialSetter allows users to set their credentials for an existing user account.
 type credentialSetter struct {
 	core.ExecutorInterface
-	entityProvider entityprovider.EntityProviderInterface
+	entityProvider entityprovider.EntityResolverInterface
 	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
 	logger         *log.Logger
 }
@@ -39,7 +39,7 @@ type credentialSetter struct {
 // newCredentialSetter creates a new instance of the credential setter executor.
 func newCredentialSetter(
 	flowFactory core.FlowFactoryInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	entityProvider entityprovider.EntityResolverInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *credentialSetter {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CredentialSetter"))

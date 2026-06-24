@@ -29,7 +29,12 @@ import (
 )
 
 // ActorProviderInterface resolves inbound actors and exposes their OAuth and membership data.
+// It also embeds entityprovider.EntityResolverInterface so an actor provider can satisfy the
+// narrow entity-resolution contract that flow executors depend on — letting an embedding
+// application supply a single actor provider for both actor and entity resolution.
 type ActorProviderInterface interface {
+	entityprovider.EntityResolverInterface
+
 	GetOAuthClientByClientID(
 		ctx context.Context, clientID string,
 	) (*inboundmodel.OAuthClient, *serviceerror.ServiceError)

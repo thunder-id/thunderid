@@ -27,10 +27,10 @@ import (
 	"strings"
 	"time"
 
+	authn "github.com/thunder-id/thunderid/internal/authn/config"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/consent"
 	"github.com/thunder-id/thunderid/internal/resource"
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -63,15 +63,17 @@ type consentEnforcerService struct {
 	consentService consent.ConsentServiceInterface
 	jwtService     jwt.JWTServiceInterface
 	logger         *log.Logger
+	cfg            authn.Config
 }
 
 // newConsentEnforcerService creates a new instance of consentEnforcerService.
 func newConsentEnforcerService(consentSvc consent.ConsentServiceInterface,
-	jwtSvc jwt.JWTServiceInterface) ConsentEnforcerServiceInterface {
+	jwtSvc jwt.JWTServiceInterface, cfg authn.Config) ConsentEnforcerServiceInterface {
 	return &consentEnforcerService{
 		consentService: consentSvc,
 		jwtService:     jwtSvc,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentEnforcerService")),
+		cfg:            cfg,
 	}
 }
 
@@ -327,7 +329,7 @@ func (s *consentEnforcerService) createConsentSessionToken(
 		return "", err
 	}
 
-	issuer := config.GetServerRuntime().Config.JWT.Issuer
+	issuer := s.cfg.JWTConfig.Issuer
 	claims := map[string]interface{}{
 		consentSessionClaimKey: json.RawMessage(sessionJSON),
 	}
@@ -346,7 +348,7 @@ func (s *consentEnforcerService) createConsentSessionToken(
 // verifyAndDecodeConsentSession verifies the JWT consent session token and decodes the session data.
 func (s *consentEnforcerService) verifyAndDecodeConsentSession(
 	ctx context.Context, sessionToken string) (*consentSessionData, error) {
-	issuer := config.GetServerRuntime().Config.JWT.Issuer
+	issuer := s.cfg.JWTConfig.Issuer
 
 	if svcErr := s.jwtService.VerifyJWT(ctx, sessionToken, consentSessionTokenAudience, issuer); svcErr != nil {
 		return nil, errors.New("consent session token verification failed: " + svcErr.Error.DefaultValue)

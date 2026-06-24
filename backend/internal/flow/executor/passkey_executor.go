@@ -73,7 +73,7 @@ type passkeyAuthExecutor struct {
 	identifyingExecutorInterface
 	passkeyService passkey.PasskeyServiceInterface
 	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
-	entityProvider entityprovider.EntityProviderInterface
+	entityProvider entityprovider.EntityResolverInterface
 	logger         *log.Logger
 }
 
@@ -85,7 +85,7 @@ func newPasskeyAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	passkeyService passkey.PasskeyServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	entityProvider entityprovider.EntityResolverInterface,
 ) *passkeyAuthExecutor {
 	defaultInputs := []common.Input{
 		{

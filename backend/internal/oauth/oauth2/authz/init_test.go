@@ -97,7 +97,7 @@ func (suite *InitTestSuite) TestInitialize() {
 
 	service, err := Initialize(
 		mux, actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider), suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil, testhelpers.OAuthConfig(),
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil, nil, testhelpers.OAuthConfig(),
 	)
 
 	assert.NoError(suite.T(), err)
@@ -110,7 +110,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 
 	_, err := Initialize(
 		mux, actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider), suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil, testhelpers.OAuthConfig(),
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil, nil, testhelpers.OAuthConfig(),
 	)
 	assert.NoError(suite.T(), err)
 
@@ -125,7 +125,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSConfiguration() {
 
 	_, err := Initialize(
 		mux, actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider), suite.mockResourceService,
-		suite.mockJWTService, suite.mockFlowExecService, nil, testhelpers.OAuthConfig(),
+		suite.mockJWTService, suite.mockFlowExecService, nil, nil, nil, nil, testhelpers.OAuthConfig(),
 	)
 	assert.NoError(suite.T(), err)
 

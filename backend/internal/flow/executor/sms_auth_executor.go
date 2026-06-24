@@ -47,7 +47,7 @@ var mobileNumberInput = common.Input{
 type smsOTPAuthExecutor struct {
 	core.ExecutorInterface
 	identifyingExecutorInterface
-	entityProvider entityprovider.EntityProviderInterface
+	entityProvider entityprovider.EntityResolverInterface
 	otpService     otp.OTPAuthnServiceInterface
 	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
 	logger         *log.Logger
@@ -61,7 +61,7 @@ func newSMSOTPAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	otpService otp.OTPAuthnServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	entityProvider entityprovider.EntityResolverInterface,
 ) *smsOTPAuthExecutor {
 	defaultInputs := []common.Input{
 		{

@@ -40,6 +40,36 @@ func (a AuthUser) IsAuthenticated() bool {
 		(a.attributes != nil || a.attributeToken != nil)
 }
 
+// NewAuthUser constructs an AuthUser from already-resolved authentication state. It is intended
+// for adapters that bridge an external authentication source (for example an embedding
+// application's host provider) into AuthnProviderManagerInterface, so they can populate the
+// otherwise-unexported fields without a JSON round-trip.
+func NewAuthUser(
+	entityReference *authnprovidercm.EntityReference,
+	entityReferenceToken any,
+	attributes *authnprovidercm.AttributesResponse,
+	attributeToken any,
+) AuthUser {
+	return AuthUser{
+		entityReferenceToken: entityReferenceToken,
+		entityReference:      entityReference,
+		attributeToken:       attributeToken,
+		attributes:           attributes,
+	}
+}
+
+// EntityReference returns the resolved entity reference, if one has been set.
+func (a AuthUser) EntityReference() *authnprovidercm.EntityReference { return a.entityReference }
+
+// EntityReferenceToken returns the opaque per-provider entity-reference token, if one has been set.
+func (a AuthUser) EntityReferenceToken() any { return a.entityReferenceToken }
+
+// Attributes returns the resolved attributes, if they have been set.
+func (a AuthUser) Attributes() *authnprovidercm.AttributesResponse { return a.attributes }
+
+// AttributeToken returns the opaque per-provider attribute token, if one has been set.
+func (a AuthUser) AttributeToken() any { return a.attributeToken }
+
 // authUserJSON is the internal proxy used for JSON serialization of AuthUser.
 type authUserJSON struct {
 	EntityReferenceToken any                                 `json:"entityReferenceToken"`

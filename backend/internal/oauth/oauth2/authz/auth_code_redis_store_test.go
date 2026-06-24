@@ -135,7 +135,7 @@ func (suite *RedisAuthorizationCodeStoreTestSuite) TestGetAuthorizationCode_NotF
 
 	result, err := suite.store.GetAuthorizationCode(suite.ctx, redisTestAuthCode)
 	suite.Error(err)
-	suite.Equal(errAuthorizationCodeNotFound, err)
+	suite.Equal(ErrAuthorizationCodeNotFound, err)
 	suite.Nil(result)
 }
 

@@ -107,7 +107,7 @@ func (s *ServiceTestSuite) newValidParams() map[string]string {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_Success() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).Return("test-uri", nil)
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
@@ -122,7 +122,7 @@ func (s *ServiceTestSuite) TestHandlePAR_Success() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_RejectsRequestURIInBody() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
@@ -136,7 +136,7 @@ func (s *ServiceTestSuite) TestHandlePAR_RejectsRequestURIInBody() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_MissingResponseType() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
@@ -149,7 +149,7 @@ func (s *ServiceTestSuite) TestHandlePAR_MissingResponseType() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_InvalidRedirectURI() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
@@ -162,7 +162,7 @@ func (s *ServiceTestSuite) TestHandlePAR_InvalidRedirectURI() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_UnauthorizedGrantType() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	app.GrantTypes = []oauth2const.GrantType{oauth2const.GrantTypeClientCredentials}
@@ -175,7 +175,7 @@ func (s *ServiceTestSuite) TestHandlePAR_UnauthorizedGrantType() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_UnsupportedResponseType() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
@@ -188,7 +188,7 @@ func (s *ServiceTestSuite) TestHandlePAR_UnsupportedResponseType() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_PKCERequired() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	app.PKCERequired = true
@@ -202,7 +202,7 @@ func (s *ServiceTestSuite) TestHandlePAR_PKCERequired() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_StoreError() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).Return("", errors.New("store error"))
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
@@ -215,7 +215,7 @@ func (s *ServiceTestSuite) TestHandlePAR_StoreError() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_PromptNone_LoginRequired() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
@@ -229,7 +229,7 @@ func (s *ServiceTestSuite) TestHandlePAR_PromptNone_LoginRequired() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_PromptInvalid() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
@@ -242,7 +242,7 @@ func (s *ServiceTestSuite) TestHandlePAR_PromptInvalid() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_PromptLogin_Success() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).Return("test-uri", nil)
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
@@ -256,7 +256,7 @@ func (s *ServiceTestSuite) TestHandlePAR_PromptLogin_Success() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_ResourceWithFragment() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
@@ -269,7 +269,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ResourceWithFragment() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_ResourceMissingScheme() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
@@ -282,7 +282,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ResourceMissingScheme() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_ValidResource_Success() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).Return("test-uri", nil)
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
@@ -296,7 +296,7 @@ func (s *ServiceTestSuite) TestHandlePAR_ValidResource_Success() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_UnregisteredResource_InvalidTarget() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
 	rsMock.On("GetResourceServerByIdentifier", mock.Anything, "https://unknown.example.com").
 		Return((*resource.ResourceServer)(nil), &serviceerror.ServiceError{
@@ -315,7 +315,7 @@ func (s *ServiceTestSuite) TestHandlePAR_UnregisteredResource_InvalidTarget() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_ResourceResolutionServerError() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	rsMock := resourcemock.NewResourceServiceInterfaceMock(s.T())
 	rsMock.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return((*resource.ResourceServer)(nil), &serviceerror.ServiceError{
@@ -334,10 +334,10 @@ func (s *ServiceTestSuite) TestHandlePAR_ResourceResolutionServerError() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_ScopesDownscopedAgainstResourceServers() {
-	store := newParStoreInterfaceMock(s.T())
-	var captured pushedAuthorizationRequest
+	store := NewPARStoreInterfaceMock(s.T())
+	var captured PushedAuthorizationRequest
 	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(_ context.Context, req pushedAuthorizationRequest, _ int64) {
+		Run(func(_ context.Context, req PushedAuthorizationRequest, _ int64) {
 			captured = req
 		}).Return("test-uri", nil)
 
@@ -366,10 +366,10 @@ func (s *ServiceTestSuite) TestHandlePAR_ScopesDownscopedAgainstResourceServers(
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_AcrValuesPropagated() {
-	store := newParStoreInterfaceMock(s.T())
-	var captured pushedAuthorizationRequest
+	store := NewPARStoreInterfaceMock(s.T())
+	var captured PushedAuthorizationRequest
 	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(_ context.Context, req pushedAuthorizationRequest, _ int64) {
+		Run(func(_ context.Context, req PushedAuthorizationRequest, _ int64) {
 			captured = req
 		}).Return("test-uri", nil)
 
@@ -388,10 +388,10 @@ func (s *ServiceTestSuite) TestHandlePAR_AcrValuesPropagated() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_DPoPHeaderJkt_PersistedOnRequest() {
-	var captured pushedAuthorizationRequest
-	store := newParStoreInterfaceMock(s.T())
+	var captured PushedAuthorizationRequest
+	store := NewPARStoreInterfaceMock(s.T())
 	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(_ context.Context, req pushedAuthorizationRequest, _ int64) {
+		Run(func(_ context.Context, req PushedAuthorizationRequest, _ int64) {
 			captured = req
 		}).Return("test-uri", nil)
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
@@ -406,10 +406,10 @@ func (s *ServiceTestSuite) TestHandlePAR_DPoPHeaderJkt_PersistedOnRequest() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_DPoPJktParam_PersistedWhenNoHeader() {
-	var captured pushedAuthorizationRequest
-	store := newParStoreInterfaceMock(s.T())
+	var captured PushedAuthorizationRequest
+	store := NewPARStoreInterfaceMock(s.T())
 	store.EXPECT().Store(mock.Anything, mock.Anything, mock.Anything).
-		Run(func(_ context.Context, req pushedAuthorizationRequest, _ int64) {
+		Run(func(_ context.Context, req PushedAuthorizationRequest, _ int64) {
 			captured = req
 		}).Return("test-uri", nil)
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
@@ -425,7 +425,7 @@ func (s *ServiceTestSuite) TestHandlePAR_DPoPJktParam_PersistedWhenNoHeader() {
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_DPoPJktParam_HeaderMismatch_Rejected() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
@@ -438,7 +438,7 @@ func (s *ServiceTestSuite) TestHandlePAR_DPoPJktParam_HeaderMismatch_Rejected() 
 }
 
 func (s *ServiceTestSuite) TestHandlePAR_NonceTooLong() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 	app := s.newTestApp()
 	params := s.newValidParams()
@@ -451,7 +451,7 @@ func (s *ServiceTestSuite) TestHandlePAR_NonceTooLong() {
 }
 
 func (s *ServiceTestSuite) TestResolvePAR_Success() {
-	storedRequest := pushedAuthorizationRequest{
+	storedRequest := PushedAuthorizationRequest{
 		ClientID: "test-client",
 		OAuthParameters: model.OAuthParameters{
 			ClientID:     "test-client",
@@ -459,7 +459,7 @@ func (s *ServiceTestSuite) TestResolvePAR_Success() {
 			ResponseType: "code",
 		},
 	}
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	store.EXPECT().Consume(mock.Anything, mock.Anything).Return(storedRequest, true, nil)
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 
@@ -473,7 +473,7 @@ func (s *ServiceTestSuite) TestResolvePAR_Success() {
 }
 
 func (s *ServiceTestSuite) TestResolvePAR_InvalidURIFormat() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 
 	result, err := svc.ResolvePushedAuthorizationRequest(s.ctx, "invalid-uri", "test-client")
@@ -483,8 +483,8 @@ func (s *ServiceTestSuite) TestResolvePAR_InvalidURIFormat() {
 }
 
 func (s *ServiceTestSuite) TestResolvePAR_NotFound() {
-	store := newParStoreInterfaceMock(s.T())
-	store.EXPECT().Consume(mock.Anything, mock.Anything).Return(pushedAuthorizationRequest{}, false, nil)
+	store := NewPARStoreInterfaceMock(s.T())
+	store.EXPECT().Consume(mock.Anything, mock.Anything).Return(PushedAuthorizationRequest{}, false, nil)
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 
 	result, err := svc.ResolvePushedAuthorizationRequest(
@@ -495,13 +495,13 @@ func (s *ServiceTestSuite) TestResolvePAR_NotFound() {
 }
 
 func (s *ServiceTestSuite) TestResolvePAR_ClientIDMismatch() {
-	storedRequest := pushedAuthorizationRequest{
+	storedRequest := PushedAuthorizationRequest{
 		ClientID: "client-a",
 		OAuthParameters: model.OAuthParameters{
 			ClientID: "client-a",
 		},
 	}
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	store.EXPECT().Consume(mock.Anything, mock.Anything).Return(storedRequest, true, nil)
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 
@@ -513,9 +513,9 @@ func (s *ServiceTestSuite) TestResolvePAR_ClientIDMismatch() {
 }
 
 func (s *ServiceTestSuite) TestResolvePAR_ConsumeError() {
-	store := newParStoreInterfaceMock(s.T())
+	store := NewPARStoreInterfaceMock(s.T())
 	store.EXPECT().Consume(mock.Anything, mock.Anything).
-		Return(pushedAuthorizationRequest{}, false, errors.New("cache error"))
+		Return(PushedAuthorizationRequest{}, false, errors.New("cache error"))
 	svc := newPARService(store, s.newPermissiveResourceMock(), s.testCfg)
 
 	result, err := svc.ResolvePushedAuthorizationRequest(

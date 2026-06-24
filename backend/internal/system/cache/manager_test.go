@@ -104,7 +104,7 @@ func (suite *CacheManagerTestSuite) TestInitializeWithCacheConfig() {
 			cacheConfig: config.CacheConfig{
 				Disabled: false,
 				Type:     "redis",
-				Redis: config.RedisConfig{
+				Redis: config.RedisDataSource{
 					Address:        "127.0.0.1:1",
 					DialTimeoutMS:  100,
 					ReadTimeoutMS:  100,

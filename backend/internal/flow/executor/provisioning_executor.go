@@ -45,7 +45,7 @@ type entityRef struct {
 type provisioningExecutor struct {
 	core.ExecutorInterface
 	identifyingExecutorInterface
-	entityProvider        entityprovider.EntityProviderInterface
+	entityProvider        entityprovider.EntityResolverInterface
 	groupService          group.GroupServiceInterface
 	roleService           role.RoleServiceInterface
 	roleAssignmentService role.RoleAssignmentServiceInterface
@@ -63,7 +63,7 @@ func newProvisioningExecutor(
 	groupService group.GroupServiceInterface,
 	roleService role.RoleServiceInterface,
 	roleAssignmentService role.RoleAssignmentServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	entityProvider entityprovider.EntityResolverInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *provisioningExecutor {

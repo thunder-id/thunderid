@@ -34,7 +34,7 @@ import (
 type AttributeCacheServiceTestSuite struct {
 	suite.Suite
 	service   AttributeCacheServiceInterface
-	mockStore *attributeCacheStoreInterfaceMock
+	mockStore *AttributeCacheStoreInterfaceMock
 	ctx       context.Context
 	testCache AttributeCache
 }
@@ -44,7 +44,7 @@ func TestAttributeCacheServiceSuite(t *testing.T) {
 }
 
 func (suite *AttributeCacheServiceTestSuite) SetupTest() {
-	suite.mockStore = newAttributeCacheStoreInterfaceMock(suite.T())
+	suite.mockStore = NewAttributeCacheStoreInterfaceMock(suite.T())
 	suite.service = newAttributeCacheService(suite.mockStore)
 	suite.ctx = context.Background()
 

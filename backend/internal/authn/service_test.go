@@ -30,6 +30,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/authn/assert"
 	"github.com/thunder-id/thunderid/internal/authn/common"
+	authnconfig "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
@@ -2225,6 +2226,7 @@ func (suite *AuthenticationServiceTestSuite) TestNewAuthenticationService() {
 		suite.mockGoogleService,
 		suite.mockGithubService,
 		suite.mockPasskeyService,
+		authnconfig.FromServerRuntime(),
 	)
 	suite.NotNil(svc)
 }

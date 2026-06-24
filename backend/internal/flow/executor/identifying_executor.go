@@ -46,7 +46,7 @@ type identifyingExecutorInterface interface {
 // identifyingExecutor implements the ExecutorInterface for identifying users based on provided attributes.
 type identifyingExecutor struct {
 	core.ExecutorInterface
-	entityProvider entityprovider.EntityProviderInterface
+	entityProvider entityprovider.EntityResolverInterface
 	logger         *log.Logger
 }
 
@@ -58,7 +58,7 @@ func newIdentifyingExecutor(
 	name string,
 	defaultInputs, prerequisites []common.Input,
 	flowFactory core.FlowFactoryInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	entityProvider entityprovider.EntityResolverInterface,
 ) *identifyingExecutor {
 	if name == "" {
 		name = ExecutorNameIdentifying

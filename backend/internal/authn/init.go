@@ -25,6 +25,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/authn/assert"
 	"github.com/thunder-id/thunderid/internal/authn/common"
+	authn "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/authn/github"
 	"github.com/thunder-id/thunderid/internal/authn/google"
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
@@ -54,6 +55,7 @@ func Initialize(
 	oidcSvc oidc.OIDCAuthnServiceInterface,
 	googleSvc google.GoogleOIDCAuthnServiceInterface,
 	githubSvc github.GithubOAuthAuthnServiceInterface,
+	cfg authn.Config,
 ) AuthenticationServiceInterface {
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
 		Name:    common.AuthenticatorCredentials,
@@ -104,6 +106,7 @@ func Initialize(
 		googleSvc,
 		githubSvc,
 		passkeySvc,
+		cfg,
 	)
 
 	authnHandler := newAuthenticationHandler(authnService)

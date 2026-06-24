@@ -30,32 +30,19 @@ import (
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 )
 
-// attributeCacheStoreInterface defines the interface for the attribute cache store.
-type attributeCacheStoreInterface interface {
-	// CreateAttributeCache creates a new attribute cache entry in the store.
-	CreateAttributeCache(ctx context.Context, cache AttributeCache) error
-
-	// GetAttributeCache retrieves an attribute cache entry by ID from the store.
-	GetAttributeCache(ctx context.Context, id string) (AttributeCache, error)
-
-	// ExtendAttributeCacheTTL extends the TTL of an attribute cache entry in the store.
-	ExtendAttributeCacheTTL(ctx context.Context, id string, ttlSeconds int) error
-
-	// DeleteAttributeCache deletes an attribute cache entry by ID from the store.
-	DeleteAttributeCache(ctx context.Context, id string) error
-}
-
 // attributeCacheStore is the SQL implementation of attributeCacheStoreInterface.
 type attributeCacheStore struct {
 	dbProvider   dbprovider.DBProviderInterface
 	deploymentID string
+	storeConfig  config.DatabaseConfig
 }
 
 // newAttributeCacheStore creates a new instance of attributeCacheStore.
-func newAttributeCacheStore() attributeCacheStoreInterface {
+func newAttributeCacheStore(deploymentID string, cfg config.DatabaseConfig) AttributeCacheStoreInterface {
 	return &attributeCacheStore{
 		dbProvider:   dbprovider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		deploymentID: deploymentID,
+		storeConfig:  cfg,
 	}
 }
 

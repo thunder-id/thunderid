@@ -6,6 +6,7 @@ package actorprovidermock
 
 import (
 	"context"
+	"encoding/json"
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
@@ -38,6 +39,76 @@ type ActorProviderInterfaceMock_Expecter struct {
 
 func (_m *ActorProviderInterfaceMock) EXPECT() *ActorProviderInterfaceMock_Expecter {
 	return &ActorProviderInterfaceMock_Expecter{mock: &_m.Mock}
+}
+
+// CreateEntity provides a mock function for the type ActorProviderInterfaceMock
+func (_mock *ActorProviderInterfaceMock) CreateEntity(entity *entityprovider.Entity, systemCredentials json.RawMessage) (*entityprovider.Entity, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(entity, systemCredentials)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateEntity")
+	}
+
+	var r0 *entityprovider.Entity
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(*entityprovider.Entity, json.RawMessage) (*entityprovider.Entity, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(entity, systemCredentials)
+	}
+	if returnFunc, ok := ret.Get(0).(func(*entityprovider.Entity, json.RawMessage) *entityprovider.Entity); ok {
+		r0 = returnFunc(entity, systemCredentials)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entityprovider.Entity)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(*entityprovider.Entity, json.RawMessage) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(entity, systemCredentials)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderInterfaceMock_CreateEntity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateEntity'
+type ActorProviderInterfaceMock_CreateEntity_Call struct {
+	*mock.Call
+}
+
+// CreateEntity is a helper method to define mock.On call
+//   - entity *entityprovider.Entity
+//   - systemCredentials json.RawMessage
+func (_e *ActorProviderInterfaceMock_Expecter) CreateEntity(entity interface{}, systemCredentials interface{}) *ActorProviderInterfaceMock_CreateEntity_Call {
+	return &ActorProviderInterfaceMock_CreateEntity_Call{Call: _e.mock.On("CreateEntity", entity, systemCredentials)}
+}
+
+func (_c *ActorProviderInterfaceMock_CreateEntity_Call) Run(run func(entity *entityprovider.Entity, systemCredentials json.RawMessage)) *ActorProviderInterfaceMock_CreateEntity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 *entityprovider.Entity
+		if args[0] != nil {
+			arg0 = args[0].(*entityprovider.Entity)
+		}
+		var arg1 json.RawMessage
+		if args[1] != nil {
+			arg1 = args[1].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_CreateEntity_Call) Return(entity1 *entityprovider.Entity, entityProviderError *entityprovider.EntityProviderError) *ActorProviderInterfaceMock_CreateEntity_Call {
+	_c.Call.Return(entity1, entityProviderError)
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_CreateEntity_Call) RunAndReturn(run func(entity *entityprovider.Entity, systemCredentials json.RawMessage) (*entityprovider.Entity, *entityprovider.EntityProviderError)) *ActorProviderInterfaceMock_CreateEntity_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // GetActor provides a mock function for the type ActorProviderInterfaceMock
@@ -164,6 +235,70 @@ func (_c *ActorProviderInterfaceMock_GetActorGroups_Call) Return(entityGroups []
 }
 
 func (_c *ActorProviderInterfaceMock_GetActorGroups_Call) RunAndReturn(run func(actorID string) ([]entityprovider.EntityGroup, *entityprovider.EntityProviderError)) *ActorProviderInterfaceMock_GetActorGroups_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetEntity provides a mock function for the type ActorProviderInterfaceMock
+func (_mock *ActorProviderInterfaceMock) GetEntity(entityID string) (*entityprovider.Entity, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEntity")
+	}
+
+	var r0 *entityprovider.Entity
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(string) (*entityprovider.Entity, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) *entityprovider.Entity); ok {
+		r0 = returnFunc(entityID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entityprovider.Entity)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(entityID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderInterfaceMock_GetEntity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEntity'
+type ActorProviderInterfaceMock_GetEntity_Call struct {
+	*mock.Call
+}
+
+// GetEntity is a helper method to define mock.On call
+//   - entityID string
+func (_e *ActorProviderInterfaceMock_Expecter) GetEntity(entityID interface{}) *ActorProviderInterfaceMock_GetEntity_Call {
+	return &ActorProviderInterfaceMock_GetEntity_Call{Call: _e.mock.On("GetEntity", entityID)}
+}
+
+func (_c *ActorProviderInterfaceMock_GetEntity_Call) Run(run func(entityID string)) *ActorProviderInterfaceMock_GetEntity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_GetEntity_Call) Return(entity *entityprovider.Entity, entityProviderError *entityprovider.EntityProviderError) *ActorProviderInterfaceMock_GetEntity_Call {
+	_c.Call.Return(entity, entityProviderError)
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_GetEntity_Call) RunAndReturn(run func(entityID string) (*entityprovider.Entity, *entityprovider.EntityProviderError)) *ActorProviderInterfaceMock_GetEntity_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -374,6 +509,316 @@ func (_c *ActorProviderInterfaceMock_GetOAuthProfileByID_Call) Return(oAuthProfi
 }
 
 func (_c *ActorProviderInterfaceMock_GetOAuthProfileByID_Call) RunAndReturn(run func(ctx context.Context, id string) (*model.OAuthProfile, *serviceerror.ServiceError)) *ActorProviderInterfaceMock_GetOAuthProfileByID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetTransitiveEntityGroups provides a mock function for the type ActorProviderInterfaceMock
+func (_mock *ActorProviderInterfaceMock) GetTransitiveEntityGroups(entityID string) ([]entityprovider.EntityGroup, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetTransitiveEntityGroups")
+	}
+
+	var r0 []entityprovider.EntityGroup
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(string) ([]entityprovider.EntityGroup, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(entityID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(string) []entityprovider.EntityGroup); ok {
+		r0 = returnFunc(entityID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]entityprovider.EntityGroup)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(string) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(entityID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderInterfaceMock_GetTransitiveEntityGroups_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetTransitiveEntityGroups'
+type ActorProviderInterfaceMock_GetTransitiveEntityGroups_Call struct {
+	*mock.Call
+}
+
+// GetTransitiveEntityGroups is a helper method to define mock.On call
+//   - entityID string
+func (_e *ActorProviderInterfaceMock_Expecter) GetTransitiveEntityGroups(entityID interface{}) *ActorProviderInterfaceMock_GetTransitiveEntityGroups_Call {
+	return &ActorProviderInterfaceMock_GetTransitiveEntityGroups_Call{Call: _e.mock.On("GetTransitiveEntityGroups", entityID)}
+}
+
+func (_c *ActorProviderInterfaceMock_GetTransitiveEntityGroups_Call) Run(run func(entityID string)) *ActorProviderInterfaceMock_GetTransitiveEntityGroups_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_GetTransitiveEntityGroups_Call) Return(entityGroups []entityprovider.EntityGroup, entityProviderError *entityprovider.EntityProviderError) *ActorProviderInterfaceMock_GetTransitiveEntityGroups_Call {
+	_c.Call.Return(entityGroups, entityProviderError)
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_GetTransitiveEntityGroups_Call) RunAndReturn(run func(entityID string) ([]entityprovider.EntityGroup, *entityprovider.EntityProviderError)) *ActorProviderInterfaceMock_GetTransitiveEntityGroups_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IdentifyEntity provides a mock function for the type ActorProviderInterfaceMock
+func (_mock *ActorProviderInterfaceMock) IdentifyEntity(filters map[string]interface{}) (*string, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IdentifyEntity")
+	}
+
+	var r0 *string
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(map[string]interface{}) (*string, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(map[string]interface{}) *string); ok {
+		r0 = returnFunc(filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(map[string]interface{}) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(filters)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderInterfaceMock_IdentifyEntity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IdentifyEntity'
+type ActorProviderInterfaceMock_IdentifyEntity_Call struct {
+	*mock.Call
+}
+
+// IdentifyEntity is a helper method to define mock.On call
+//   - filters map[string]interface{}
+func (_e *ActorProviderInterfaceMock_Expecter) IdentifyEntity(filters interface{}) *ActorProviderInterfaceMock_IdentifyEntity_Call {
+	return &ActorProviderInterfaceMock_IdentifyEntity_Call{Call: _e.mock.On("IdentifyEntity", filters)}
+}
+
+func (_c *ActorProviderInterfaceMock_IdentifyEntity_Call) Run(run func(filters map[string]interface{})) *ActorProviderInterfaceMock_IdentifyEntity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 map[string]interface{}
+		if args[0] != nil {
+			arg0 = args[0].(map[string]interface{})
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_IdentifyEntity_Call) Return(s *string, entityProviderError *entityprovider.EntityProviderError) *ActorProviderInterfaceMock_IdentifyEntity_Call {
+	_c.Call.Return(s, entityProviderError)
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_IdentifyEntity_Call) RunAndReturn(run func(filters map[string]interface{}) (*string, *entityprovider.EntityProviderError)) *ActorProviderInterfaceMock_IdentifyEntity_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SearchEntities provides a mock function for the type ActorProviderInterfaceMock
+func (_mock *ActorProviderInterfaceMock) SearchEntities(filters map[string]interface{}) ([]*entityprovider.Entity, *entityprovider.EntityProviderError) {
+	ret := _mock.Called(filters)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SearchEntities")
+	}
+
+	var r0 []*entityprovider.Entity
+	var r1 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(map[string]interface{}) ([]*entityprovider.Entity, *entityprovider.EntityProviderError)); ok {
+		return returnFunc(filters)
+	}
+	if returnFunc, ok := ret.Get(0).(func(map[string]interface{}) []*entityprovider.Entity); ok {
+		r0 = returnFunc(filters)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*entityprovider.Entity)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(map[string]interface{}) *entityprovider.EntityProviderError); ok {
+		r1 = returnFunc(filters)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0, r1
+}
+
+// ActorProviderInterfaceMock_SearchEntities_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SearchEntities'
+type ActorProviderInterfaceMock_SearchEntities_Call struct {
+	*mock.Call
+}
+
+// SearchEntities is a helper method to define mock.On call
+//   - filters map[string]interface{}
+func (_e *ActorProviderInterfaceMock_Expecter) SearchEntities(filters interface{}) *ActorProviderInterfaceMock_SearchEntities_Call {
+	return &ActorProviderInterfaceMock_SearchEntities_Call{Call: _e.mock.On("SearchEntities", filters)}
+}
+
+func (_c *ActorProviderInterfaceMock_SearchEntities_Call) Run(run func(filters map[string]interface{})) *ActorProviderInterfaceMock_SearchEntities_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 map[string]interface{}
+		if args[0] != nil {
+			arg0 = args[0].(map[string]interface{})
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_SearchEntities_Call) Return(entitys []*entityprovider.Entity, entityProviderError *entityprovider.EntityProviderError) *ActorProviderInterfaceMock_SearchEntities_Call {
+	_c.Call.Return(entitys, entityProviderError)
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_SearchEntities_Call) RunAndReturn(run func(filters map[string]interface{}) ([]*entityprovider.Entity, *entityprovider.EntityProviderError)) *ActorProviderInterfaceMock_SearchEntities_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateAttributes provides a mock function for the type ActorProviderInterfaceMock
+func (_mock *ActorProviderInterfaceMock) UpdateAttributes(entityID string, attributes json.RawMessage) *entityprovider.EntityProviderError {
+	ret := _mock.Called(entityID, attributes)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateAttributes")
+	}
+
+	var r0 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(string, json.RawMessage) *entityprovider.EntityProviderError); ok {
+		r0 = returnFunc(entityID, attributes)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0
+}
+
+// ActorProviderInterfaceMock_UpdateAttributes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateAttributes'
+type ActorProviderInterfaceMock_UpdateAttributes_Call struct {
+	*mock.Call
+}
+
+// UpdateAttributes is a helper method to define mock.On call
+//   - entityID string
+//   - attributes json.RawMessage
+func (_e *ActorProviderInterfaceMock_Expecter) UpdateAttributes(entityID interface{}, attributes interface{}) *ActorProviderInterfaceMock_UpdateAttributes_Call {
+	return &ActorProviderInterfaceMock_UpdateAttributes_Call{Call: _e.mock.On("UpdateAttributes", entityID, attributes)}
+}
+
+func (_c *ActorProviderInterfaceMock_UpdateAttributes_Call) Run(run func(entityID string, attributes json.RawMessage)) *ActorProviderInterfaceMock_UpdateAttributes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 json.RawMessage
+		if args[1] != nil {
+			arg1 = args[1].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_UpdateAttributes_Call) Return(entityProviderError *entityprovider.EntityProviderError) *ActorProviderInterfaceMock_UpdateAttributes_Call {
+	_c.Call.Return(entityProviderError)
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_UpdateAttributes_Call) RunAndReturn(run func(entityID string, attributes json.RawMessage) *entityprovider.EntityProviderError) *ActorProviderInterfaceMock_UpdateAttributes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateCredentials provides a mock function for the type ActorProviderInterfaceMock
+func (_mock *ActorProviderInterfaceMock) UpdateCredentials(entityID string, credentials json.RawMessage) *entityprovider.EntityProviderError {
+	ret := _mock.Called(entityID, credentials)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateCredentials")
+	}
+
+	var r0 *entityprovider.EntityProviderError
+	if returnFunc, ok := ret.Get(0).(func(string, json.RawMessage) *entityprovider.EntityProviderError); ok {
+		r0 = returnFunc(entityID, credentials)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*entityprovider.EntityProviderError)
+		}
+	}
+	return r0
+}
+
+// ActorProviderInterfaceMock_UpdateCredentials_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateCredentials'
+type ActorProviderInterfaceMock_UpdateCredentials_Call struct {
+	*mock.Call
+}
+
+// UpdateCredentials is a helper method to define mock.On call
+//   - entityID string
+//   - credentials json.RawMessage
+func (_e *ActorProviderInterfaceMock_Expecter) UpdateCredentials(entityID interface{}, credentials interface{}) *ActorProviderInterfaceMock_UpdateCredentials_Call {
+	return &ActorProviderInterfaceMock_UpdateCredentials_Call{Call: _e.mock.On("UpdateCredentials", entityID, credentials)}
+}
+
+func (_c *ActorProviderInterfaceMock_UpdateCredentials_Call) Run(run func(entityID string, credentials json.RawMessage)) *ActorProviderInterfaceMock_UpdateCredentials_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 string
+		if args[0] != nil {
+			arg0 = args[0].(string)
+		}
+		var arg1 json.RawMessage
+		if args[1] != nil {
+			arg1 = args[1].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_UpdateCredentials_Call) Return(entityProviderError *entityprovider.EntityProviderError) *ActorProviderInterfaceMock_UpdateCredentials_Call {
+	_c.Call.Return(entityProviderError)
+	return _c
+}
+
+func (_c *ActorProviderInterfaceMock_UpdateCredentials_Call) RunAndReturn(run func(entityID string, credentials json.RawMessage) *entityprovider.EntityProviderError) *ActorProviderInterfaceMock_UpdateCredentials_Call {
 	_c.Call.Return(run)
 	return _c
 }

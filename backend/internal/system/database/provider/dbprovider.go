@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/database/dbtypes"
 	"github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
@@ -138,7 +139,7 @@ func (d *dbProvider) GetUserDBTransactioner() (transaction.Transactioner, error)
 func (d *dbProvider) GetRuntimeDBTransactioner() (transaction.Transactioner, error) {
 	// When the runtime store is Redis, a no-op transactioner is returned since Redis does
 	// not support SQL-style transactions.
-	if config.GetServerRuntime().Config.Database.Runtime.Type == DataSourceTypeRedis {
+	if config.GetServerRuntime().Config.Database.Runtime.Type == dbtypes.DataSourceTypeRedis {
 		return transaction.NewNoOpTransactioner(), nil
 	}
 	return d.getTransactioner(d.GetRuntimeDBClient, dbNameRuntime)
@@ -170,7 +171,7 @@ func (d *dbProvider) initializeAllClients() {
 	}
 
 	runtimeDBConfig := config.GetServerRuntime().Config.Database.Runtime
-	if runtimeDBConfig.Type != DataSourceTypeRedis {
+	if runtimeDBConfig.Type != dbtypes.DataSourceTypeRedis {
 		err = d.initializeClient(&d.runtimeClient, runtimeDBConfig, dbNameRuntime)
 		if err != nil {
 			logger.Error(ctx, "Failed to initialize runtime database client", log.Error(err))
@@ -196,7 +197,7 @@ func (d *dbProvider) getOrInitClient(
 		return nil, fmt.Errorf("database type is not configured")
 	}
 	// Redis runtime stores bypass the SQL client entirely
-	if dataSource.Type == DataSourceTypeRedis {
+	if dataSource.Type == dbtypes.DataSourceTypeRedis {
 		return nil, fmt.Errorf("runtime database is configured as Redis; use RedisProvider instead")
 	}
 
@@ -320,13 +321,7 @@ func (d *dbProvider) Close() error {
 	runtimeErr := d.closeClient(&d.runtimeClient, &d.runtimeMutex, "runtime")
 	userErr := d.closeClient(&d.userClient, &d.userMutex, "user")
 
-	// Close the Redis runtime provider if it was initialized.
-	var redisErr error
-	if redisInstance != nil {
-		redisErr = redisInstance.Close()
-	}
-
-	return errors.Join(configErr, runtimeErr, userErr, redisErr)
+	return errors.Join(configErr, runtimeErr, userErr)
 }
 
 // closeClient is a helper to close a DB client with locking.

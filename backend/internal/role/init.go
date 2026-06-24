@@ -70,6 +70,22 @@ func Initialize(
 	return roleService, assignmentService, exporter, nil
 }
 
+// InitializeDeclarativeReadOnly builds a read-only role service from declarative file resources
+// without opening a database connection. entityService and groupService are not required; only
+// GetAuthorizedPermissions and GetUserRoles are supported.
+func InitializeDeclarativeReadOnly(
+	ouService oupkg.OrganizationUnitServiceInterface,
+	resourceService resourcepkg.ResourceServiceInterface,
+) (RoleServiceInterface, error) {
+	fileStoreInterface, transactioner := newFileBasedStore()
+	fileStore := fileStoreInterface.(*fileBasedStore)
+	svc := newRoleService(fileStoreInterface, nil, nil, ouService, resourceService, transactioner)
+	if err := loadDeclarativeResources(fileStore, nil, svc); err != nil {
+		return nil, err
+	}
+	return svc, nil
+}
+
 // Store Selection (based on role.store configuration):
 //
 // 1. MUTABLE mode (store: "mutable"):

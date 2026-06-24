@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/authn/common"
+	authn "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
@@ -52,17 +53,20 @@ type magicLinkAuthnService struct {
 	jwtService     jwt.JWTServiceInterface
 	entityProvider entityprovider.EntityProviderInterface
 	logger         *log.Logger
+	cfg            authn.Config
 }
 
 // newMagicLinkAuthnService creates a new instance of magicLinkAuthnService with the provided dependencies.
 func newMagicLinkAuthnService(
 	jwtSvc jwt.JWTServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
+	cfg authn.Config,
 ) MagicLinkAuthnServiceInterface {
 	service := &magicLinkAuthnService{
 		jwtService:     jwtSvc,
 		entityProvider: entityProvider,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "MagicLinkAuthnService")),
+		cfg:            cfg,
 	}
 	common.RegisterAuthenticator(service.getMetadata())
 
@@ -82,7 +86,7 @@ func (s *magicLinkAuthnService) GenerateMagicLink(ctx context.Context,
 		return "", &ErrorTokenGenerationFailed
 	}
 
-	issuer := config.GetServerRuntime().Config.JWT.Issuer
+	issuer := s.cfg.JWTConfig.Issuer
 	expiry := int64(DefaultExpirySeconds)
 	if expirySeconds > 0 {
 		expiry = expirySeconds
@@ -150,7 +154,7 @@ func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
 
 // verifyToken checks the validity of the provided JWT token and returns service errors for invalid or expired tokens.
 func (s *magicLinkAuthnService) verifyToken(ctx context.Context, token string) *serviceerror.ServiceError {
-	issuer := config.GetServerRuntime().Config.JWT.Issuer
+	issuer := s.cfg.JWTConfig.Issuer
 	verifyErr := s.jwtService.VerifyJWT(ctx, token, tokenAudience, issuer)
 	if verifyErr != nil {
 		if verifyErr.Code == jwt.ErrorTokenExpired.Code {

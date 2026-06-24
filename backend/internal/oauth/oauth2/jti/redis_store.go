@@ -25,7 +25,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/database/redisstore"
 )
 
 // redisClient is the minimal Redis API needed by redisStore.
@@ -40,8 +40,8 @@ type redisStore struct {
 	deploymentID string
 }
 
-// newRedisStore builds a Redis-backed JTI store from the given provider.
-func newRedisStore(p provider.RedisProviderInterface, deploymentID string) JTIStoreInterface {
+// NewRedisStore builds a Redis-backed JTI store from the given provider.
+func NewRedisStore(p redisstore.RedisProviderInterface, deploymentID string) JTIStoreInterface {
 	return &redisStore{
 		client:       p.GetRedisClient(),
 		keyPrefix:    p.GetKeyPrefix(),

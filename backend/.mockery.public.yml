@@ -28,7 +28,15 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: providermock
       filename: "{{.InterfaceName}}_mock.go"
-  
+
+  github.com/thunder-id/thunderid/internal/system/database/redisstore:
+    config:
+      all: true
+      dir: tests/mocks/database/providermock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: providermock
+      filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/system/database/model:
     config:
       all: true

@@ -43,13 +43,15 @@ type certificateStoreInterface interface {
 type certificateStore struct {
 	dbProvider   dbprovider.DBProviderInterface
 	deploymentID string
+	cfg          config.DatabaseConfig
 }
 
 // NewCertificateStore creates a new instance of CertificateStore.
-func newCertificateStore() certificateStoreInterface {
+func newCertificateStore(deploymentID string, cfg config.DatabaseConfig) certificateStoreInterface {
 	return &certificateStore{
 		dbProvider:   dbprovider.GetDBProvider(),
-		deploymentID: config.GetServerRuntime().Config.Server.Identifier,
+		deploymentID: deploymentID,
+		cfg:          cfg,
 	}
 }
 

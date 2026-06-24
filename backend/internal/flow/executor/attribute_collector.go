@@ -40,7 +40,7 @@ const (
 // attributeCollector is an executor that collects user attributes and updates the user profile.
 type attributeCollector struct {
 	core.ExecutorInterface
-	entityProvider entityprovider.EntityProviderInterface
+	entityProvider entityprovider.EntityResolverInterface
 	authnProvider  authnprovidermgr.AuthnProviderManagerInterface
 	logger         *log.Logger
 }
@@ -50,7 +50,7 @@ var _ core.ExecutorInterface = (*attributeCollector)(nil)
 // newAttributeCollector creates a new instance of AttributeCollector.
 func newAttributeCollector(
 	flowFactory core.FlowFactoryInterface,
-	entityProvider entityprovider.EntityProviderInterface,
+	entityProvider entityprovider.EntityResolverInterface,
 	authnProvider authnprovidermgr.AuthnProviderManagerInterface,
 ) *attributeCollector {
 	prerequisites := []common.Input{

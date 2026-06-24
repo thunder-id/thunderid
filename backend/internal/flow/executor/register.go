@@ -137,7 +137,7 @@ type ExecutorDependencies struct {
 	GroupService          group.GroupServiceInterface
 	RoleService           role.RoleServiceInterface
 	RoleAssignmentService role.RoleAssignmentServiceInterface
-	EntityProvider        entityprovider.EntityProviderInterface
+	EntityProvider        entityprovider.EntityResolverInterface
 	AttributeCacheSvc     attributecache.AttributeCacheServiceInterface
 	EmailClient           email.EmailClientInterface
 	TemplateService       template.TemplateServiceInterface

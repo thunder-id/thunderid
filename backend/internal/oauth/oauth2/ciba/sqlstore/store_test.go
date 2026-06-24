@@ -1,0 +1,429 @@
+/*
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+ *
+ * WSO2 LLC. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package sqlstore
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+)
+
+const testDeploymentID = "test-deployment"
+
+type CIBARequestStoreTestSuite struct {
+	suite.Suite
+	mockDBProvider *providermock.DBProviderInterfaceMock
+	mockDBClient   *providermock.DBClientInterfaceMock
+	store          *cibaRequestStore
+}
+
+func TestCIBARequestStoreTestSuite(t *testing.T) {
+	suite.Run(t, new(CIBARequestStoreTestSuite))
+}
+
+func (suite *CIBARequestStoreTestSuite) SetupTest() {
+	testConfig := &config.Config{
+		Database: config.DatabaseConfig{
+			Runtime: config.DataSource{
+				Type:   "sqlite",
+				SQLite: config.SQLiteDataSource{Path: ":memory:"},
+			},
+		},
+	}
+	_ = config.InitializeServerRuntime("test", testConfig)
+
+	suite.mockDBProvider = &providermock.DBProviderInterfaceMock{}
+	suite.mockDBClient = &providermock.DBClientInterfaceMock{}
+	suite.store = &cibaRequestStore{
+		dbProvider:   suite.mockDBProvider,
+		deploymentID: testDeploymentID,
+	}
+}
+
+func (suite *CIBARequestStoreTestSuite) TearDownTest() {
+	config.ResetServerRuntime()
+}
+
+func (suite *CIBARequestStoreTestSuite) sampleRequest() *ciba.CIBAAuthRequest {
+	return &ciba.CIBAAuthRequest{
+		AuthReqID:      "auth-req-1",
+		ClientID:       "client-1",
+		StandardScopes: "openid profile",
+		State:          ciba.CIBAStatePending,
+		ExpiryTime:     time.Now().Add(2 * time.Minute),
+	}
+}
+
+func (suite *CIBARequestStoreTestSuite) TestNewCIBARequestStore() {
+	store := NewStore("test-deployment")
+	assert.NotNil(suite.T(), store)
+	assert.Implements(suite.T(), (*ciba.CIBARequestStoreInterface)(nil), store)
+}
+
+func (suite *CIBARequestStoreTestSuite) TestAdd_Success() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertCIBAAuthRequest,
+		"auth-req-1", "client-1", "openid profile", string(ciba.CIBAStatePending),
+		mock.AnythingOfType("time.Time"), testDeploymentID).Return(int64(1), nil)
+
+	err := suite.store.Add(context.Background(), suite.sampleRequest())
+	assert.NoError(suite.T(), err)
+
+	suite.mockDBProvider.AssertExpectations(suite.T())
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestAdd_DBClientError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+
+	err := suite.store.Add(context.Background(), suite.sampleRequest())
+	assert.Error(suite.T(), err)
+
+	suite.mockDBProvider.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestAdd_ExecuteError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryInsertCIBAAuthRequest,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).Return(int64(0), errors.New("execute error"))
+
+	err := suite.store.Add(context.Background(), suite.sampleRequest())
+	assert.Error(suite.T(), err)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestGetByID_Success() {
+	expiry := time.Now().Add(2 * time.Minute)
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
+		"auth-req-1", testDeploymentID).Return([]map[string]interface{}{
+		{
+			dbColumnAuthReqID:        "auth-req-1",
+			dbColumnClientID:         "client-1",
+			dbColumnUserID:           "user-1",
+			dbColumnStandardScopes:   "openid profile",
+			dbColumnState:            string(ciba.CIBAStateAuthenticated),
+			dbColumnAttributeCacheID: "cache-1",
+			dbColumnCompletedACR:     "urn:acr:pwd",
+			dbColumnAuthTime:         expiry.Format("2006-01-02 15:04:05.999999999"),
+			dbColumnLastPolledAt:     nil,
+			dbColumnExpiryTime:       expiry.Format("2006-01-02 15:04:05.999999999"),
+		},
+	}, nil)
+
+	record, err := suite.store.GetByID(context.Background(), "auth-req-1")
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "auth-req-1", record.AuthReqID)
+	assert.Equal(suite.T(), "client-1", record.ClientID)
+	assert.Equal(suite.T(), "user-1", record.UserID)
+	assert.Equal(suite.T(), ciba.CIBAStateAuthenticated, record.State)
+	assert.Equal(suite.T(), "cache-1", record.AttributeCacheID)
+	assert.Equal(suite.T(), "urn:acr:pwd", record.CompletedACR)
+	assert.True(suite.T(), record.LastPolledAt.IsZero())
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestGetByID_EmptyID() {
+	record, err := suite.store.GetByID(context.Background(), "")
+	assert.ErrorIs(suite.T(), err, ciba.ErrCIBARequestNotFound)
+	assert.Nil(suite.T(), record)
+}
+
+func (suite *CIBARequestStoreTestSuite) TestGetByID_NotFound() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
+		"missing", testDeploymentID).Return([]map[string]interface{}{}, nil)
+
+	record, err := suite.store.GetByID(context.Background(), "missing")
+	assert.ErrorIs(suite.T(), err, ciba.ErrCIBARequestNotFound)
+	assert.Nil(suite.T(), record)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestGetByID_QueryError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
+		"auth-req-1", testDeploymentID).Return(nil, errors.New("query error"))
+
+	record, err := suite.store.GetByID(context.Background(), "auth-req-1")
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), record)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestMarkAuthenticated_Success() {
+	authTime := time.Now()
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryMarkCIBAAuthRequestAuthenticated,
+		string(ciba.CIBAStateAuthenticated), "user-1", "openid customer:update", "cache-1", "urn:acr:pwd",
+		authTime.UTC(), "auth-req-1", string(ciba.CIBAStatePending), testDeploymentID).Return(int64(1), nil)
+
+	err := suite.store.MarkAuthenticated(context.Background(),
+		"auth-req-1", "user-1", "openid customer:update", "cache-1", "urn:acr:pwd", authTime)
+	assert.NoError(suite.T(), err)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestMarkAuthenticated_DBClientError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+
+	err := suite.store.MarkAuthenticated(context.Background(),
+		"auth-req-1", "user-1", "openid", "cache-1", "acr", time.Now())
+	assert.Error(suite.T(), err)
+
+	suite.mockDBProvider.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestMarkAuthenticated_ExecuteError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryMarkCIBAAuthRequestAuthenticated,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("execute error"))
+
+	err := suite.store.MarkAuthenticated(context.Background(),
+		"auth-req-1", "user-1", "openid", "cache-1", "acr", time.Now())
+	assert.Error(suite.T(), err)
+}
+
+func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_DBClientError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+
+	consumed, err := suite.store.MarkConsumed(context.Background(), "auth-req-1")
+	assert.Error(suite.T(), err)
+	assert.False(suite.T(), consumed)
+
+	suite.mockDBProvider.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_ExecuteError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryConsumeCIBAAuthRequest,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("execute error"))
+
+	consumed, err := suite.store.MarkConsumed(context.Background(), "auth-req-1")
+	assert.Error(suite.T(), err)
+	assert.False(suite.T(), consumed)
+}
+
+func (suite *CIBARequestStoreTestSuite) TestUpdateLastPolled_DBClientError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+
+	err := suite.store.UpdateLastPolled(context.Background(), "auth-req-1", time.Now())
+	assert.Error(suite.T(), err)
+
+	suite.mockDBProvider.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestUpdateLastPolled_ExecuteError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateCIBALastPolled,
+		mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("execute error"))
+
+	err := suite.store.UpdateLastPolled(context.Background(), "auth-req-1", time.Now())
+	assert.Error(suite.T(), err)
+}
+
+func (suite *CIBARequestStoreTestSuite) TestUpdateState_ExecuteError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateCIBAAuthRequestState,
+		mock.Anything, mock.Anything, mock.Anything).Return(int64(0), errors.New("execute error"))
+
+	err := suite.store.UpdateState(context.Background(), "auth-req-1", ciba.CIBAStateExpired)
+	assert.Error(suite.T(), err)
+}
+
+func (suite *CIBARequestStoreTestSuite) TestGetByID_DBClientError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+
+	record, err := suite.store.GetByID(context.Background(), "auth-req-1")
+	assert.Error(suite.T(), err)
+	assert.Nil(suite.T(), record)
+
+	suite.mockDBProvider.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_Success() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryConsumeCIBAAuthRequest,
+		string(ciba.CIBAStateConsumed), "auth-req-1", string(ciba.CIBAStateAuthenticated), testDeploymentID).
+		Return(int64(1), nil)
+
+	consumed, err := suite.store.MarkConsumed(context.Background(), "auth-req-1")
+	assert.NoError(suite.T(), err)
+	assert.True(suite.T(), consumed)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestMarkConsumed_NoRowsAffected() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryConsumeCIBAAuthRequest,
+		string(ciba.CIBAStateConsumed), "auth-req-1", string(ciba.CIBAStateAuthenticated), testDeploymentID).
+		Return(int64(0), nil)
+
+	consumed, err := suite.store.MarkConsumed(context.Background(), "auth-req-1")
+	assert.NoError(suite.T(), err)
+	assert.False(suite.T(), consumed)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestUpdateLastPolled_Success() {
+	polledAt := time.Now()
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateCIBALastPolled,
+		polledAt.UTC(), "auth-req-1", testDeploymentID).Return(int64(1), nil)
+
+	err := suite.store.UpdateLastPolled(context.Background(), "auth-req-1", polledAt)
+	assert.NoError(suite.T(), err)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestUpdateState_Success() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateCIBAAuthRequestState,
+		string(ciba.CIBAStateExpired), "auth-req-1", testDeploymentID).Return(int64(1), nil)
+
+	err := suite.store.UpdateState(context.Background(), "auth-req-1", ciba.CIBAStateExpired)
+	assert.NoError(suite.T(), err)
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestUpdateState_DBClientError() {
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(nil, errors.New("db client error"))
+
+	err := suite.store.UpdateState(context.Background(), "auth-req-1", ciba.CIBAStateExpired)
+	assert.Error(suite.T(), err)
+
+	suite.mockDBProvider.AssertExpectations(suite.T())
+}
+
+func (suite *CIBARequestStoreTestSuite) TestBuildCIBAAuthRequestFromRow_MissingExpiry() {
+	_, err := buildCIBAAuthRequestFromRow(map[string]interface{}{
+		dbColumnAuthReqID: "auth-req-1",
+	})
+	assert.Error(suite.T(), err)
+}
+
+func (suite *CIBARequestStoreTestSuite) TestStringFromRow() {
+	assert.Equal(suite.T(), "value", stringFromRow("value"))
+	assert.Equal(suite.T(), "bytes", stringFromRow([]byte("bytes")))
+	assert.Equal(suite.T(), "", stringFromRow(123))
+	assert.Equal(suite.T(), "", stringFromRow(nil))
+}
+
+func (suite *CIBARequestStoreTestSuite) TestParseOptionalTimeField() {
+	_, ok := parseOptionalTimeField(nil)
+	assert.False(suite.T(), ok)
+
+	now := time.Now()
+	parsed, ok := parseOptionalTimeField(now)
+	assert.True(suite.T(), ok)
+	assert.True(suite.T(), now.Equal(parsed))
+
+	_, ok = parseOptionalTimeField(12345)
+	assert.False(suite.T(), ok)
+}
+
+// TestParseTimeField_UTCNormalization asserts that a time string with a non-UTC offset is parsed by
+// treating the wall-clock portion as UTC, matching the UTC-normalized write side.
+func (suite *CIBARequestStoreTestSuite) TestParseTimeField_UTCNormalization() {
+	loc := time.FixedZone("IST", 5*3600+30*60)
+	original := time.Date(2026, 6, 2, 21, 57, 49, 157215000, loc)
+	expected := time.Date(2026, 6, 2, 21, 57, 49, 157215000, time.UTC)
+
+	parsed, err := sysutils.ParseDBTimeField(original.String(), "expiry_time")
+	assert.NoError(suite.T(), err)
+	assert.True(suite.T(), expected.Equal(parsed),
+		"expected wall-clock treated as UTC: %s, got %s", expected, parsed)
+}
+
+// TestParseTimeField_ISO8601Format asserts that an ISO-8601 time string parses correctly.
+func (suite *CIBARequestStoreTestSuite) TestParseTimeField_ISO8601Format() {
+	original := time.Date(2026, 6, 2, 21, 57, 49, 0, time.UTC)
+	parsed, err := sysutils.ParseDBTimeField(original.Format("2006-01-02T15:04:05Z07:00"), "expiry_time")
+	assert.NoError(suite.T(), err)
+	assert.True(suite.T(), original.Equal(parsed))
+}
+
+func (suite *CIBARequestStoreTestSuite) TestParseTimeField_UnexpectedType() {
+	_, err := sysutils.ParseDBTimeField(12345, "expiry_time")
+	assert.Error(suite.T(), err)
+}
+
+// TestParseTimeField_ZonelessTreatedAsUTC asserts that a zoneless time string is interpreted as
+// UTC, matching the UTC-normalized write side.
+func (suite *CIBARequestStoreTestSuite) TestParseTimeField_ZonelessTreatedAsUTC() {
+	original := time.Date(2026, 6, 2, 21, 57, 49, 157215000, time.UTC)
+
+	parsed, err := sysutils.ParseDBTimeField(original.Format("2006-01-02 15:04:05.999999999"), "expiry_time")
+	assert.NoError(suite.T(), err)
+	assert.True(suite.T(), original.Equal(parsed),
+		"expected %s to equal %s (same instant)", original, parsed)
+}
+
+// TestGetByID_UTCStoredTimestampRoundTrip exercises the full read path with UTC-normalised timestamps
+// (matching what the write side stores), asserting the request is not treated as expired.
+func (suite *CIBARequestStoreTestSuite) TestGetByID_UTCStoredTimestampRoundTrip() {
+	expiry := time.Now().UTC().Add(2 * time.Minute)
+	lastPolled := time.Now().UTC().Add(-30 * time.Second)
+	authTime := time.Now().UTC().Add(-1 * time.Minute)
+
+	suite.mockDBProvider.On("GetRuntimeDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetCIBAAuthRequest,
+		"auth-req-1", testDeploymentID).Return([]map[string]interface{}{
+		{
+			dbColumnAuthReqID:      "auth-req-1",
+			dbColumnClientID:       "client-1",
+			dbColumnUserID:         "user-1",
+			dbColumnStandardScopes: "openid",
+			dbColumnState:          string(ciba.CIBAStatePending),
+			dbColumnAuthTime:       authTime.String(),
+			dbColumnLastPolledAt:   lastPolled.String(),
+			dbColumnExpiryTime:     expiry.String(),
+		},
+	}, nil)
+
+	record, err := suite.store.GetByID(context.Background(), "auth-req-1")
+	assert.NoError(suite.T(), err)
+	assert.True(suite.T(), expiry.Equal(record.ExpiryTime))
+	assert.True(suite.T(), lastPolled.Equal(record.LastPolledAt))
+	assert.Equal(suite.T(), authTime.Unix(), record.AuthTime.Unix())
+	assert.True(suite.T(), record.ExpiryTime.After(time.Now()), "valid request must not read as expired")
+
+	suite.mockDBClient.AssertExpectations(suite.T())
+}

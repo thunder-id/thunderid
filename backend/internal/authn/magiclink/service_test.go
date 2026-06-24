@@ -30,6 +30,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/authn/common"
+	authn "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
@@ -113,7 +114,7 @@ func (suite *MagicLinkServiceTestSuite) TearDownSuite() {
 func (suite *MagicLinkServiceTestSuite) SetupTest() {
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockUserService = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-	suite.service = newMagicLinkAuthnService(suite.mockJWTService, suite.mockUserService)
+	suite.service = newMagicLinkAuthnService(suite.mockJWTService, suite.mockUserService, authn.FromServerRuntime())
 }
 
 func (suite *MagicLinkServiceTestSuite) TestGenerateMagicLinkSuccess() {

@@ -31,6 +31,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authn "github.com/thunder-id/thunderid/internal/authn/config"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
@@ -124,7 +125,8 @@ func (suite *SessionStoreTestSuite) TestNewSessionStore() {
 		suite.T().Fatalf("Failed to initialize server runtime: %v", err)
 	}
 
-	store := newSessionStore()
+	authnCfg := authn.FromServerRuntime()
+	store := newSessionStore(authnCfg.DeploymentID, authnCfg.StoreConfig)
 
 	suite.NotNil(store)
 	suite.IsType(&sessionStore{}, store)
