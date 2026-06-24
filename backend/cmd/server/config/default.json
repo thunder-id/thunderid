@@ -233,16 +233,6 @@
   "translation": {
     "store": "composite"
   },
-  "authn_provider": {
-    "type": "default",
-    "rest": {
-      "base_url": "",
-      "timeout": 10,
-      "security": {
-        "api_key": ""
-      }
-    }
-  },
   "consent": {
     "enabled": false,
     "base_url": "",

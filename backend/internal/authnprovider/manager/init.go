@@ -19,6 +19,10 @@
 package manager
 
 import (
+	"context"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
@@ -26,15 +30,37 @@ import (
 	"github.com/thunder-id/thunderid/internal/authnprovider/provider"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/openid4vp"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // InitializeAuthnProviderManager initializes and returns an AuthnProviderManagerInterface.
+// Bad configuration (missing provider, mapping references an unregistered provider,
+// REST provider missing base_url, etc.) is fatal at startup, mirroring the pattern
+// used by other init functions in this package.
 func InitializeAuthnProviderManager(entitySvc entity.EntityServiceInterface,
 	passkeySvc passkey.PasskeyServiceInterface, otpSvc otp.OTPAuthnServiceInterface,
 	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
 	openid4vpSvc openid4vp.OpenID4VPServiceInterface,
-	federatedAuths map[providers.IDPType]authncommon.FederatedAuthenticator) providers.AuthnProviderManagerInterface {
-	p := provider.InitializeAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, openid4vpSvc, federatedAuths)
-	return newAuthnProviderManager(p)
+	federatedAuths map[providers.IDPType]authncommon.FederatedAuthenticator,
+) providers.AuthnProviderManagerInterface {
+	deps := provider.AuthnProviderDependencies{
+		EntitySvc:        entitySvc,
+		PasskeyService:   passkeySvc,
+		OTPService:       otpSvc,
+		MagicLinkService: magicLinkSvc,
+		OpenID4VPService: openid4vpSvc,
+		FederatedAuths:   federatedAuths,
+	}
+	registered, err := provider.InitializeAuthnProviders(deps)
+	if err != nil {
+		// Provider initialization runs during application startup, outside any request.
+		log.GetLogger().Fatal(context.Background(), "Failed to initialize authn providers", log.Error(err))
+	}
+	credMap := config.GetServerRuntime().Config.AuthnProvider.CredentialMapping
+	mgr, err := newAuthnProviderManager(registered, credMap)
+	if err != nil {
+		log.GetLogger().Fatal(context.Background(), "Failed to initialize authn provider manager", log.Error(err))
+	}
+	return mgr
 }

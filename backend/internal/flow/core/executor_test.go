@@ -242,7 +242,7 @@ func (s *ExecutorTestSuite) TestHasRequiredInputs() {
 }
 
 func (s *ExecutorTestSuite) newAuthenticatedAuthUser() providers.AuthUser {
-	raw := `{"entityReferenceToken":"tok","entityReference":{"entityId":"user-123","entityCategory":"","entityType":"","ouId":""},"attributeToken":"atok","attributes":{"attributes":{"email":{"value":"test@example.com"}}}}` //nolint:lll
+	raw := `{"default":{"entityReferenceToken":"tok","entityReference":{"entityId":"user-123","entityCategory":"","entityType":"","ouId":""},"attributeToken":"atok","attributes":{"attributes":{"email":{"value":"test@example.com"}}}}}` //nolint:lll
 	var authUser providers.AuthUser
 	err := json.Unmarshal([]byte(raw), &authUser)
 	s.Require().NoError(err)

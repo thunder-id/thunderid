@@ -685,14 +685,17 @@ Controls notification delivery behaviour, including OTP generation parameters.
 
 ## Authentication Provider Configuration
 
-External authentication provider settings.
+Authentication providers are registered in code. These settings override the
+defaults for built-in providers and route specific credential types between
+providers.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `authn_provider.type` | `default` | Provider type (`default` or `rest`) |
-| `authn_provider.rest.base_url` | `""` | Base URL for REST authentication provider |
-| `authn_provider.rest.timeout` | `10` | Request timeout in seconds |
-| `authn_provider.rest.security.api_key` | `""` | API key for REST provider authentication |
+| `authn_provider.credential_mapping` | `{}` | Overlay on the built-in credential-to-provider map. Keys are credential identifiers (e.g. `password`, `passkey`, `otp`, `federated`, `magiclink`, `openid4vp`, `clientSecret`, `provisionedEntityID`); values are provider names from the catalog (`default`, `rest`). |
+| `authn_provider.properties.rest.enabled` | `false` | Set to `true` to register the REST authentication provider. When `false` (or absent), the rest of the `rest.*` properties are ignored — useful for staging config ahead of rollout. |
+| `authn_provider.properties.rest.base_url` | `""` | Base URL for the REST authentication provider. Required when `rest.enabled` is `true`. |
+| `authn_provider.properties.rest.timeout` | `10` | REST request timeout in seconds. |
+| `authn_provider.properties.rest.security.api_key` | `""` | API key sent with REST provider requests. |
 
 ## CORS Configuration
 

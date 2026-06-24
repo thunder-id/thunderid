@@ -23,6 +23,7 @@ package providers
 
 import (
 	"encoding/json"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -417,98 +418,83 @@ type GetAttributesMetadata struct {
 	RuntimeMetadata map[string]string      `json:"runtimeMetadata,omitempty"`
 }
 
-// AuthUser accumulates per-provider authentication state produced during flow execution.
-// All fields are unexported; use the manager methods to interact with this type.
-type AuthUser struct {
-	entityReferenceToken any
-	entityReference      *EntityReference
-	attributeToken       any
-	attributes           *AttributesResponse
-}
-
-// IsAuthenticated reports whether this AuthUser has been populated by a successful
-// authentication.
-func (a AuthUser) IsAuthenticated() bool {
-	return (a.entityReference != nil || a.entityReferenceToken != nil) &&
-		(a.attributes != nil || a.attributeToken != nil)
-}
-
-// EntityReferenceToken returns the opaque entity-reference token, if any.
-func (a AuthUser) EntityReferenceToken() any {
-	return a.entityReferenceToken
-}
-
-// EntityReference returns the resolved entity reference, if any.
-func (a AuthUser) EntityReference() *EntityReference {
-	return a.entityReference
-}
-
-// AttributeToken returns the opaque attribute token, if any.
-func (a AuthUser) AttributeToken() any {
-	return a.attributeToken
-}
-
-// Attributes returns the resolved attributes, if any.
-func (a AuthUser) Attributes() *AttributesResponse {
-	return a.attributes
-}
-
-// SetEntityReferenceToken stores an entity-reference token and clears any resolved reference.
-func (a *AuthUser) SetEntityReferenceToken(token any) {
-	a.entityReferenceToken = token
-	a.entityReference = nil
-}
-
-// SetEntityReference stores a resolved entity reference and clears any token.
-func (a *AuthUser) SetEntityReference(ref *EntityReference) {
-	a.entityReference = ref
-	a.entityReferenceToken = nil
-}
-
-// SetAttributeToken stores an attribute token and clears any resolved attributes.
-func (a *AuthUser) SetAttributeToken(token any) {
-	a.attributeToken = token
-	a.attributes = nil
-}
-
-// SetAttributes stores resolved attributes and clears any attribute token.
-func (a *AuthUser) SetAttributes(attrs *AttributesResponse) {
-	a.attributes = attrs
-	a.attributeToken = nil
-}
-
-// authUserJSON is the internal proxy used for JSON serialization of AuthUser.
-type authUserJSON struct {
+// AuthState is the per-provider authentication state held inside an AuthUser.
+// EntityReferenceToken and EntityReference are mutually exclusive (one is nil
+// while the other carries the value); same for AttributeToken and Attributes.
+type AuthState struct {
 	EntityReferenceToken any                 `json:"entityReferenceToken"`
 	EntityReference      *EntityReference    `json:"entityReference,omitempty"`
 	AttributeToken       any                 `json:"attributeToken"`
 	Attributes           *AttributesResponse `json:"attributes,omitempty"`
 }
 
-// MarshalJSON implements json.Marshaler.
-func (a *AuthUser) MarshalJSON() ([]byte, error) {
-	proxy := authUserJSON{
-		EntityReferenceToken: a.entityReferenceToken,
-		EntityReference:      a.entityReference,
-		AttributeToken:       a.attributeToken,
-		Attributes:           a.attributes,
-	}
-
-	return json.Marshal(proxy)
+// AuthUser accumulates per-provider authentication state produced during flow execution.
+// State is keyed by provider name; the meaning of each key is policy owned by the
+// authn provider manager.
+type AuthUser struct {
+	state map[string]AuthState
 }
 
-// UnmarshalJSON implements json.Unmarshaler.
+// IsAuthenticated reports whether every per-provider state held by this AuthUser
+// has both an entity-reference side and an attribute side populated. Returns false
+// when no state has been recorded.
+func (a AuthUser) IsAuthenticated() bool {
+	if len(a.state) == 0 {
+		return false
+	}
+	for _, s := range a.state {
+		if (s.EntityReference == nil && s.EntityReferenceToken == nil) ||
+			(s.Attributes == nil && s.AttributeToken == nil) {
+			return false
+		}
+	}
+	return true
+}
+
+// ProviderNames returns the sorted list of provider names that have recorded state.
+func (a AuthUser) ProviderNames() []string {
+	if len(a.state) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(a.state))
+	for name := range a.state {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// StateFor returns the authentication state recorded for the named provider.
+// The second return value reports whether the named provider has any state.
+func (a AuthUser) StateFor(name string) (AuthState, bool) {
+	s, ok := a.state[name]
+	return s, ok
+}
+
+// SetStateFor records (or replaces) the authentication state for the named provider.
+func (a *AuthUser) SetStateFor(name string, s AuthState) {
+	if a.state == nil {
+		a.state = make(map[string]AuthState)
+	}
+	a.state[name] = s
+}
+
+// MarshalJSON implements json.Marshaler. AuthUser is serialized as a per-provider
+// envelope: a map of provider name to AuthState. A zero AuthUser marshals to `{}`.
+func (a *AuthUser) MarshalJSON() ([]byte, error) {
+	if a.state == nil {
+		return []byte("{}"), nil
+	}
+	return json.Marshal(a.state)
+}
+
+// UnmarshalJSON implements json.Unmarshaler. Expects the per-provider envelope shape.
 func (a *AuthUser) UnmarshalJSON(b []byte) error {
-	var proxy authUserJSON
-	if err := json.Unmarshal(b, &proxy); err != nil {
+	var state map[string]AuthState
+	if err := json.Unmarshal(b, &state); err != nil {
 		return err
 	}
-
-	a.entityReferenceToken = proxy.EntityReferenceToken
-	a.entityReference = proxy.EntityReference
-	a.attributeToken = proxy.AttributeToken
-	a.attributes = proxy.Attributes
-
+	a.state = state
 	return nil
 }
 
