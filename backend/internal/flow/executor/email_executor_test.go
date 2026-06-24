@@ -525,63 +525,52 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilTemplateService() {
 	suite.Nil(resp)
 }
 
-func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ClientError() {
-	ctx := &core.NodeContext{
-		ExecutionID:  "test-execution-id",
-		ExecutorMode: ExecutorModeSend,
-		NodeInputs: []common.Input{
-			{Identifier: "email", Type: common.InputTypeEmail, Required: true},
-		},
-		UserInputs: map[string]string{
-			"email": "user@example.com",
-		},
-		RuntimeData: map[string]string{
-			common.RuntimeKeyInviteLink: "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc",
-		},
-		NodeProperties: map[string]interface{}{
-			"senderId":      "test-sender-id",
-			"emailTemplate": "USER_INVITE",
-		},
-	}
-
-	suite.mockTemplateService.On("Render",
-		ctx.Context,
-		template.ScenarioUserInvite,
-		template.TemplateTypeEmail,
-		template.TemplateData{
-			common.RuntimeKeyInviteLink: "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc",
-		},
-	).Return(&template.RenderedTemplate{
-		Subject: "You're Invited to Register",
-		Body:    "<html><body>Complete Registration</body></html>",
-		IsHTML:  true,
-	}, nil)
-
-	expectedEmail := notifcm.EmailData{
-		To:      []string{"user@example.com"},
-		Subject: "You're Invited to Register",
-		Body:    "<html><body>Complete Registration</body></html>",
-		IsHTML:  true,
-	}
-	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, mock.Anything, expectedEmail).Return(
-		&serviceerror.ServiceError{Type: serviceerror.ClientErrorType, ErrorDescription: i18ncore.I18nMessage{DefaultValue: "client error"}},
-	)
-
-	resp, err := suite.executor.Execute(ctx)
-
-	suite.Error(err)
-	suite.Contains(err.Error(), "Email send failed: client error")
-	suite.Nil(resp)
-}
-
-func (suite *EmailExecutorTestSuite) TestExecute_SendMode_KnownSMTPErrors() {
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EmailSendErrors() {
 	cases := []struct {
 		name    string
 		sendErr *serviceerror.ServiceError
+		errStr  string
 	}{
-		{"SMTPConnectionError", &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, ErrorDescription: i18ncore.I18nMessage{DefaultValue: "smtp connection error"}}},
-		{"SMTPAuthError", &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, ErrorDescription: i18ncore.I18nMessage{DefaultValue: "smtp auth error"}}},
-		{"EmailSendFailedError", &serviceerror.ServiceError{Type: serviceerror.ServerErrorType, ErrorDescription: i18ncore.I18nMessage{DefaultValue: "send failed"}}},
+		{
+			name: "ClientError",
+			sendErr: &serviceerror.ServiceError{
+				Type:             serviceerror.ClientErrorType,
+				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "client error"},
+			},
+			errStr: "Email send failed: client error",
+		},
+		{
+			name: "SMTPConnectionError",
+			sendErr: &serviceerror.ServiceError{
+				Type:             serviceerror.ServerErrorType,
+				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "smtp connection error"},
+			},
+			errStr: "Email send failed: smtp connection error",
+		},
+		{
+			name: "SMTPAuthError",
+			sendErr: &serviceerror.ServiceError{
+				Type:             serviceerror.ServerErrorType,
+				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "smtp auth error"},
+			},
+			errStr: "Email send failed: smtp auth error",
+		},
+		{
+			name: "EmailSendFailedError",
+			sendErr: &serviceerror.ServiceError{
+				Type:             serviceerror.ServerErrorType,
+				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "send failed"},
+			},
+			errStr: "Email send failed: send failed",
+		},
+		{
+			name: "UnexpectedError",
+			sendErr: &serviceerror.ServiceError{
+				Type:             serviceerror.ServerErrorType,
+				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "unexpected internal error"},
+			},
+			errStr: "Email send failed: unexpected internal error",
+		},
 	}
 
 	for _, tc := range cases {
@@ -630,59 +619,10 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_KnownSMTPErrors() {
 			resp, err := suite.executor.Execute(ctx)
 
 			suite.Error(err)
-			suite.Contains(err.Error(), "Email send failed:")
+			suite.Contains(err.Error(), tc.errStr)
 			suite.Nil(resp)
 		})
 	}
-}
-
-func (suite *EmailExecutorTestSuite) TestExecute_SendMode_UnexpectedError() {
-	ctx := &core.NodeContext{
-		ExecutionID:  "test-execution-id",
-		ExecutorMode: ExecutorModeSend,
-		NodeInputs: []common.Input{
-			{Identifier: "email", Type: common.InputTypeEmail, Required: true},
-		},
-		UserInputs: map[string]string{
-			"email": "user@example.com",
-		},
-		RuntimeData: map[string]string{
-			common.RuntimeKeyInviteLink: "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc",
-		},
-		NodeProperties: map[string]interface{}{
-			"senderId":      "test-sender-id",
-			"emailTemplate": "USER_INVITE",
-		},
-	}
-
-	suite.mockTemplateService.On("Render",
-		ctx.Context,
-		template.ScenarioUserInvite,
-		template.TemplateTypeEmail,
-		template.TemplateData{
-			common.RuntimeKeyInviteLink: "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc",
-		},
-	).Return(&template.RenderedTemplate{
-		Subject: "You're Invited to Register",
-		Body:    "<html><body>Complete Registration</body></html>",
-		IsHTML:  true,
-	}, nil)
-
-	expectedEmail := notifcm.EmailData{
-		To:      []string{"user@example.com"},
-		Subject: "You're Invited to Register",
-		Body:    "<html><body>Complete Registration</body></html>",
-		IsHTML:  true,
-	}
-	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, mock.Anything, expectedEmail).Return(
-		&serviceerror.ServiceError{Type: serviceerror.ServerErrorType, ErrorDescription: i18ncore.I18nMessage{DefaultValue: "unexpected internal error"}},
-	)
-
-	resp, err := suite.executor.Execute(ctx)
-
-	suite.Error(err)
-	suite.Contains(err.Error(), "Email send failed: unexpected internal error")
-	suite.Nil(resp)
 }
 
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilEmailClient_ReturnsFailure() {
@@ -786,9 +726,10 @@ func (suite *EmailExecutorTestSuite) assertExecuteSendSuccess(ctx *core.NodeCont
 	}, nil)
 
 	var sentEmail notifcm.EmailData
-	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-		sentEmail = args.Get(2).(notifcm.EmailData)
-	}).Return(nil)
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			sentEmail = args.Get(2).(notifcm.EmailData)
+		}).Return(nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -1208,9 +1149,10 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_MissingEmailInputConfi
 		IsHTML:  false,
 	}, nil)
 
-	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, mock.Anything, mock.MatchedBy(func(d notifcm.EmailData) bool {
-		return len(d.To) == 1 && d.To[0] == "user@example.com"
-	})).Return(nil)
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(d notifcm.EmailData) bool {
+			return len(d.To) == 1 && d.To[0] == "user@example.com"
+		})).Return(nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -1252,9 +1194,10 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ApplicationNameInTempl
 		IsHTML:  false,
 	}, nil)
 
-	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, mock.Anything, mock.MatchedBy(func(d notifcm.EmailData) bool {
-		return len(d.To) == 1 && d.To[0] == "user@example.com"
-	})).Return(nil)
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, mock.Anything,
+		mock.MatchedBy(func(d notifcm.EmailData) bool {
+			return len(d.To) == 1 && d.To[0] == "user@example.com"
+		})).Return(nil)
 
 	resp, err := suite.executor.Execute(ctx)
 
