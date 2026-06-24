@@ -278,6 +278,14 @@ packages:
       pkgname: inboundclient
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/serverconfig:
+    config:
+      all: true
+      dir: internal/serverconfig
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: serverconfig
+      filename: "{{.InterfaceName}}_mock_test.go"
+
   github.com/thunder-id/thunderid/internal/actorprovider:
     config:
       all: true

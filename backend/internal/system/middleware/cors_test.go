@@ -62,6 +62,10 @@ func (suite *CORSMiddlewareTestSuite) SetupTest() {
 - https://test.com
 - regex: ^https://[a-z0-9-]+\.staging\.example\.com$
 `)
+	// Install an empty runtime (dynamic) matcher by default so the dynamic path
+	// contributes nothing unless a test overrides it. Re-installed before every
+	// test, this keeps the cors package global deterministic across tests.
+	cors.InitializeDynamicMatcher(func() ([]byte, bool) { return nil, false })
 }
 
 func (suite *CORSMiddlewareTestSuite) TearDownTest() {
@@ -496,4 +500,61 @@ func (suite *CORSMiddlewareTestSuite) TestWithCORS_HotReloadMatcherTakesEffect()
 	req3, w3 := newGetRequest("https://other.com")
 	wrapped(w3, req3)
 	assert.Equal(suite.T(), "https://other.com", w3.Header().Get("Access-Control-Allow-Origin"))
+}
+
+// --- Union with the runtime (dynamic) matcher. ---------------------------
+
+func (suite *CORSMiddlewareTestSuite) TestWithCORS_GlobalAllowShortCircuitsDynamic() {
+	// example.com is allowed by the global (deployment.yaml) matcher, so the
+	// dynamic matcher must never be consulted on the allow path.
+	cors.InitializeDynamicMatcher(func() ([]byte, bool) {
+		suite.T().Error("dynamic matcher consulted even though the global matcher allowed the origin")
+		return nil, false
+	})
+	_, wrapped := WithCORS("GET /test", noopHandler, fullOpts)
+
+	req, w := newGetRequest("https://example.com")
+	wrapped(w, req)
+
+	assert.Equal(suite.T(), "https://example.com", w.Header().Get("Access-Control-Allow-Origin"))
+}
+
+func (suite *CORSMiddlewareTestSuite) TestWithCORS_GlobalDenyDynamicAllow() {
+	// An origin not in deployment.yaml is allowed by the runtime config.
+	cors.InitializeDynamicMatcher(func() ([]byte, bool) {
+		return []byte(`["https://runtime.example"]`), true
+	})
+	_, wrapped := WithCORS("GET /test", noopHandler, fullOpts)
+
+	req, w := newGetRequest("https://runtime.example")
+	wrapped(w, req)
+
+	assert.Equal(suite.T(), "https://runtime.example", w.Header().Get("Access-Control-Allow-Origin"))
+	assert.Equal(suite.T(), "Origin", w.Header().Get("Vary"))
+}
+
+func (suite *CORSMiddlewareTestSuite) TestWithCORS_NeitherGlobalNorDynamicMatches() {
+	cors.InitializeDynamicMatcher(func() ([]byte, bool) {
+		return []byte(`["https://runtime.example"]`), true
+	})
+	_, wrapped := WithCORS("GET /test", noopHandler, fullOpts)
+
+	req, w := newGetRequest("https://unknown.example")
+	wrapped(w, req)
+
+	assert.Empty(suite.T(), w.Header().Get("Access-Control-Allow-Origin"))
+	assert.Equal(suite.T(), "Origin", w.Header().Get("Vary"))
+}
+
+func (suite *CORSMiddlewareTestSuite) TestWithCORS_DynamicRegexAllow() {
+	cors.InitializeDynamicMatcher(func() ([]byte, bool) {
+		return []byte(`[{"regex":"^https://[a-z0-9-]+\\.runtime\\.example$"}]`), true
+	})
+	_, wrapped := WithCORS("GET /test", noopHandler, fullOpts)
+
+	req, w := newGetRequest("https://tenant-7.runtime.example")
+	wrapped(w, req)
+
+	assert.Equal(suite.T(), "https://tenant-7.runtime.example",
+		w.Header().Get("Access-Control-Allow-Origin"))
 }

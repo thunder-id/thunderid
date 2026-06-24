@@ -1,0 +1,323 @@
+openapi: 3.0.3
+
+info:
+  title: Server Configuration API
+  version: "1.0"
+  description: |
+    API to manage server-wide configuration that is mutable at runtime without a restart. Each
+    configuration section is stored under a well-known name. The first section is `cors`, which
+    augments the allowed CORS origins configured in `deployment.yaml` (the effective set is the
+    union of both).
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: management
+    description: Manage server-wide configuration (admin)
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /server-config:
+    get:
+      tags:
+        - management
+      summary: Get server configuration
+      description: |
+        Returns the current server-wide configuration. Sections that have not been set are returned
+        with their empty default (for example, an empty array for cors).
+      operationId: getServerConfig
+      responses:
+        "200":
+          description: Current server configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerConfigResponse'
+              example:
+                cors:
+                  - "https://app.example.com"
+                  - regex: '^https://[a-z0-9-]+\.example\.com$'
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.auth.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.auth.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+    put:
+      tags:
+        - management
+      summary: Update server configuration
+      description: |
+        Merges the provided configuration sections into the current configuration. Each provided
+        section is validated before any write; if any section is invalid the whole request is
+        rejected and nothing is changed. A section is cleared by setting it to an empty value.
+        Returns the updated configuration.
+      operationId: updateServerConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServerConfigRequest'
+            example:
+              cors:
+                - "https://app.example.com"
+                - regex: '^https://[a-z0-9-]+\.example\.com$'
+      responses:
+        "200":
+          description: Updated server configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerConfigResponse'
+              example:
+                cors:
+                  - "https://app.example.com"
+                  - regex: '^https://[a-z0-9-]+\.example\.com$'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-config-value:
+                  summary: A configuration section's value is invalid
+                  value:
+                    code: "SCF-1003"
+                    message:
+                      key: "error.serverconfigservice.invalid_config_value"
+                      defaultValue: "Invalid server configuration value"
+                    description:
+                      key: "error.serverconfigservice.invalid_config_value_description"
+                      defaultValue: "The provided server configuration value is invalid"
+                invalid-request-format:
+                  summary: The request body is malformed
+                  value:
+                    code: "SCF-1004"
+                    message:
+                      key: "error.serverconfigservice.invalid_request_format"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.serverconfigservice.invalid_request_format_description"
+                      defaultValue: "The request body is malformed or contains invalid data"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.auth.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.auth.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /server-config/{name}:
+    get:
+      tags:
+        - management
+      summary: Get a server configuration section
+      description: |
+        Returns a single server-wide configuration section by name. A supported section that has
+        not been set is returned with its empty default (for example, an empty array for cors).
+      operationId: getServerConfigByName
+      parameters:
+        - name: name
+          in: path
+          required: true
+          description: The configuration section name.
+          schema:
+            type: string
+            enum:
+              - cors
+      responses:
+        "200":
+          description: The requested server configuration section
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerConfigResponse'
+              example:
+                cors:
+                  - "https://app.example.com"
+                  - regex: '^https://[a-z0-9-]+\.example\.com$'
+        "400":
+          description: Unsupported configuration name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SCF-1001"
+                message:
+                  key: "error.serverconfigservice.unsupported_config_name"
+                  defaultValue: "Unsupported configuration name"
+                description:
+                  key: "error.serverconfigservice.unsupported_config_name_description"
+                  defaultValue: "The requested server configuration name is not supported"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.auth.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.auth.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: /oauth2/authorize
+          tokenUrl: /oauth2/token
+          scopes:
+            system: Access to system management APIs
+        clientCredentials:
+          tokenUrl: /oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  schemas:
+    CORSOriginEntries:
+      type: array
+      maxItems: 200
+      description: |
+        Allowed CORS origins. Each entry is either a literal origin string (or the special value
+        `null`) or a regex object. These are added to the origins configured in `deployment.yaml`.
+      items:
+        oneOf:
+          - type: string
+            description: A literal allowed origin, or the special value `null`.
+            example: "https://app.example.com"
+          - type: object
+            required:
+              - regex
+            properties:
+              regex:
+                type: string
+                description: An RE2 regular expression matched against the request `Origin` header.
+            example:
+              regex: '^https://[a-z0-9-]+\.example\.com$'
+
+    ServerConfigRequest:
+      type: object
+      description: |
+        Server configuration sections to set. Only the provided sections are updated; unknown keys
+        are ignored.
+      properties:
+        cors:
+          $ref: '#/components/schemas/CORSOriginEntries'
+
+    ServerConfigResponse:
+      type: object
+      description: |
+        The current server configuration. Sections that have not been set are returned with their
+        empty default (for example, an empty array for cors).
+      properties:
+        cors:
+          $ref: '#/components/schemas/CORSOriginEntries'
+
+    I18nMessage:
+      type: object
+      description: Internationalized message with translation key and default value.
+      required:
+        - key
+        - defaultValue
+      properties:
+        key:
+          type: string
+          description: Translation key for fetching localized message.
+          example: error.serverconfigservice.invalid_config_value
+        defaultValue:
+          type: string
+          description: Default message in English (fallback).
+          example: Invalid server configuration value
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: "Error code. Codes follow the SCF-XXXX convention."
+          example: "SCF-1003"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'

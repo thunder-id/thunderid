@@ -320,3 +320,13 @@ CREATE TABLE "TRANSLATION" (
 
 -- Index for efficient language and namespace combination lookups
 CREATE INDEX idx_translation_lang_namespace ON "TRANSLATION" (DEPLOYMENT_ID, LANGUAGE_CODE, NAMESPACE);
+
+-- Table to store server-wide configuration
+CREATE TABLE "SERVER_CONFIG" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    NAME          VARCHAR(255) NOT NULL,
+    VALUE         TEXT         NOT NULL,
+    CREATED_AT    TEXT         DEFAULT (datetime('now')),
+    UPDATED_AT    TEXT         DEFAULT (datetime('now')),
+    PRIMARY KEY (DEPLOYMENT_ID, NAME)
+);

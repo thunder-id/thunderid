@@ -69,8 +69,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	dbprovider "github.com/thunder-id/thunderid/internal/system/database/provider"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -134,6 +136,16 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 	// Add to exporters list (must be done after initializing list)
 	exporters = append(exporters, i18nExporter)
+
+	// Initialize the server-wide configuration service and wire dynamic CORS as its first consumer:
+	// register the CORS value validator and install the memoized runtime matcher in the cors package.
+	// The cors package owns validation/compilation; only the config read below knows serverconfig.
+	serverConfigService := serverconfig.Initialize(mux, cacheManager)
+	serverConfigService.RegisterValidator(serverconfig.ConfigNameCORS, cors.OriginValidator{})
+	cors.InitializeDynamicMatcher(func() ([]byte, bool) {
+		raw, svcErr := serverConfigService.GetConfig(ctx, serverconfig.ConfigNameCORS)
+		return raw, svcErr == nil
+	})
 
 	ouAuthzService, err := sysauthz.Initialize()
 	if err != nil {

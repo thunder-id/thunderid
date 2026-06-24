@@ -118,6 +118,10 @@ if ($DbType -eq "postgres") {
 $footer = @"
 
 
+cors:
+  allowed_origins:
+    - "https://static.example.com"
+
 flow:
   max_version_history: 3
 

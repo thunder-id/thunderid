@@ -72,8 +72,9 @@ func WithCORS(pattern string, handler http.HandlerFunc, opts CORSOptions) (strin
 //   - Vary: Origin is appended whenever the request carries an Origin header,
 //     including on the deny path, so a shared cache cannot serve a response
 //     produced for one origin to a different origin.
-//   - The matcher is read once per request from the cors package singleton
-//     installed at boot; no regex compilation runs on the hot path.
+//   - Origins are matched against the union of the boot-time global matcher
+//     (deployment.yaml) and the runtime dynamic matcher; no regex compilation
+//     runs on the hot path.
 //   - Allow-Methods, Allow-Headers, and Max-Age are preflight-only response
 //     headers per the Fetch spec; we emit them only on OPTIONS requests that
 //     also carry Access-Control-Request-Method.
@@ -96,11 +97,6 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 	// deny) so caches key the response by Origin.
 	w.Header().Add("Vary", "Origin")
 
-	matcher := cors.GetMatcher()
-	if matcher == nil {
-		return
-	}
-
 	parsed, err := cors.ParseOrigin(requestOrigin)
 	if err != nil {
 		logger().Debug(r.Context(), "CORS origin rejected by parser",
@@ -108,7 +104,7 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 		return
 	}
 
-	allow, echo := matcher.Match(parsed)
+	allow, echo := matchOrigin(parsed)
 	if !allow {
 		logger().Debug(r.Context(), "CORS origin rejected by matcher",
 			log.String("origin", requestOrigin))
@@ -136,6 +132,23 @@ func applyCORSHeaders(w http.ResponseWriter, r *http.Request, opts CORSOptions) 
 	if opts.MaxAge > 0 {
 		w.Header().Set("Access-Control-Max-Age", strconv.Itoa(opts.MaxAge))
 	}
+}
+
+// matchOrigin evaluates the parsed origin against the global matcher (deployment.yaml)
+// and then the runtime dynamic matcher, returning the echo origin on the first hit. Both
+// lookups are nil-safe, so an absent matcher simply does not contribute to the union.
+func matchOrigin(parsed cors.ParseResult) (allow bool, echo string) {
+	if matcher := cors.GetMatcher(); matcher != nil {
+		if allow, echo = matcher.Match(parsed); allow {
+			return true, echo
+		}
+	}
+	if dynamicMatcher := cors.GetDynamicMatcher(); dynamicMatcher != nil {
+		if allow, echo = dynamicMatcher.Match(parsed); allow {
+			return true, echo
+		}
+	}
+	return false, ""
 }
 
 // isPreflight reports whether r is a CORS preflight request. A preflight is

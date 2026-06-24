@@ -93,6 +93,10 @@ fi
 cat >> tests/integration/resources/deployment.yaml <<EOF
 
 
+cors:
+  allowed_origins:
+    - "https://static.example.com"
+
 flow:
   max_version_history: 3
 
