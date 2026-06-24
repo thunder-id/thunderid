@@ -328,6 +328,7 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.authorization_code.validity_period` | `600` | Authorization code validity period in seconds (10 minutes) |
 | `oauth.dcr.insecure` | `false` | If `true`, allows insecure dynamic client registration (development only) |
 | `oauth.allow_wildcard_redirect_uri` | `false` | If `true`, allows wildcard patterns in registered redirect URIs: `*` and `**` in the path component, and `*` in the host component (label-internal, alphanumeric only). When `false`, only exact redirect URI matching is performed and registering a wildcard URI returns a `400 Bad Request` error. |
+| `oauth.audience_resolution` | `explicit` | Controls how the access token `aud` claim is populated when the client does not send a `resource` parameter ([RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707)). **`explicit`** (default): `aud` is set only from the `resource` parameter; without it, `aud` defaults to the client ID. **`implicit`**: scopes are reverse-mapped to registered resource servers and their identifiers are included in `aud` (convenience mode, not recommended for security-sensitive deployments). |
 
 :::note
 Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](/docs/next/guides/guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.

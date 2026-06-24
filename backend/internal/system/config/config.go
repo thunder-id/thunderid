@@ -282,7 +282,8 @@ type OAuthConfig struct {
 	CIBA              CIBAConfig              `yaml:"ciba" json:"ciba"`
 	// AllowWildcardRedirectURI enables wildcard pattern matching for redirect URIs.
 	// When false (default), only exact redirect URI matching is performed.
-	AllowWildcardRedirectURI bool `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`
+	AllowWildcardRedirectURI bool   `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`
+	AudienceResolution       string `yaml:"audience_resolution" json:"audience_resolution"`
 }
 
 // NotificationConfig holds the notification configuration details.

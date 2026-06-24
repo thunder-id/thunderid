@@ -28,6 +28,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
@@ -42,7 +43,20 @@ func TestResourceIndicatorsTestSuite(t *testing.T) {
 }
 
 func (suite *ResourceIndicatorsTestSuite) SetupTest() {
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{})
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
+}
+
+func (suite *ResourceIndicatorsTestSuite) TearDownTest() {
+	config.ResetServerRuntime()
+}
+
+func (suite *ResourceIndicatorsTestSuite) initConfigWithAudienceResolution(mode string) {
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		OAuth: config.OAuthConfig{AudienceResolution: mode},
+	})
 }
 
 // ValidateResourceURIs tests
@@ -123,10 +137,11 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveResourceServers_StoreFailur
 	assert.Equal(suite.T(), "Failed to resolve resource server", err.ErrorDescription)
 }
 
-// ComposeAudiences §4 fallback-only clientID tests
+// ComposeAudiences §4 fallback-only clientID tests (implicit mode preserves original behavior)
 
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_RSContributes_NoClientID() {
 	// When at least one RS contributes, clientID must NOT appear in aud.
+	suite.initConfigWithAudienceResolution("implicit")
 	rs := &resource.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
 	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
 		"client123", []*resource.ResourceServer{rs}, []string{"read"})
@@ -137,6 +152,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_RSContributes_NoC
 
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_NoRS_FallbackToClientID() {
 	// When no RS contributes (explicit empty resolvedRSes), aud falls back to clientID.
+	suite.initConfigWithAudienceResolution("implicit")
 	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
 		"client123", []*resource.ResourceServer{}, []string{})
 
@@ -146,6 +162,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_NoRS_FallbackToCl
 
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_NilResolvedRSes_NoScopes_FallbackToClientID() {
 	// resolvedRSes==nil, no scopes → implicit discovery skipped → fallback to clientID.
+	suite.initConfigWithAudienceResolution("implicit")
 	suite.mockResourceService.On("FindResourceServersByPermissions", mock.Anything, mock.Anything).
 		Return([]resource.ResourceServer{}, nil).Maybe()
 
@@ -158,6 +175,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_NilResolvedRSes_N
 
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery_RSFound() {
 	// resolvedRSes==nil with scopes → implicit discovery returns RS → aud contains RS only, no clientID.
+	suite.initConfigWithAudienceResolution("implicit")
 	suite.mockResourceService.On("FindResourceServersByPermissions", mock.Anything, []string{"read"}).
 		Return([]resource.ResourceServer{
 			{ID: "rs01", Identifier: "https://rs01.example.com"},
@@ -172,6 +190,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery
 
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery_NoRSFound_FallbackToClientID() {
 	// resolvedRSes==nil with scopes → implicit discovery returns nothing → fallback to clientID.
+	suite.initConfigWithAudienceResolution("implicit")
 	suite.mockResourceService.On("FindResourceServersByPermissions", mock.Anything, []string{"openid"}).
 		Return([]resource.ResourceServer{}, nil)
 
@@ -204,6 +223,7 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_MultipleRS_Dedupe
 
 func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery_ServiceError() {
 	// FindResourceServersByPermissions failure returns server error.
+	suite.initConfigWithAudienceResolution("implicit")
 	svcErr := &serviceerror.ServiceError{Code: "internal_error"}
 	suite.mockResourceService.On("FindResourceServersByPermissions", mock.Anything, []string{"read"}).
 		Return(nil, svcErr)
@@ -214,6 +234,53 @@ func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_ImplicitDiscovery
 	assert.Nil(suite.T(), auds)
 	assert.NotNil(suite.T(), err)
 	assert.Equal(suite.T(), constants.ErrorServerError, err.Error)
+}
+
+// ComposeAudiences — explicit mode tests
+
+func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_Explicit_WithResolvedRSes() {
+	// Explicit mode with resolvedRSes should still use RS identifiers (same as implicit).
+	suite.initConfigWithAudienceResolution("explicit")
+	rs := &resource.ResourceServer{ID: "rs01", Identifier: "https://rs01.example.com"}
+	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
+		"client123", []*resource.ResourceServer{rs}, []string{"read"})
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), []string{"https://rs01.example.com"}, auds)
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_Explicit_NoRSes_ScopesPresent_FallbackToClientID() {
+	// Explicit mode with no resolvedRSes but scopes present should NOT do reverse-lookup,
+	// should fall back to clientID.
+	suite.initConfigWithAudienceResolution("explicit")
+	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
+		"client123", nil, []string{"read", "write"})
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), []string{"client123"}, auds)
+	suite.mockResourceService.AssertNotCalled(suite.T(), "FindResourceServersByPermissions",
+		mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_Explicit_NoRSes_NoScopes_FallbackToClientID() {
+	// Explicit mode with no resolvedRSes and no scopes should fall back to clientID.
+	suite.initConfigWithAudienceResolution("explicit")
+	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
+		"client123", nil, []string{})
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), []string{"client123"}, auds)
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestComposeAudiences_EmptyString_BehavesLikeExplicit() {
+	// Empty string (default) should behave like "explicit" — no reverse-lookup.
+	auds, err := ComposeAudiences(context.Background(), suite.mockResourceService,
+		"client123", nil, []string{"read"})
+
+	assert.Nil(suite.T(), err)
+	assert.Equal(suite.T(), []string{"client123"}, auds)
+	suite.mockResourceService.AssertNotCalled(suite.T(), "FindResourceServersByPermissions",
+		mock.Anything, mock.Anything)
 }
 
 // ContributingAudiences tests

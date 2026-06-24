@@ -615,6 +615,12 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 	// identifier rather than the clientID fallback.
 	const rsIdentifier = "https://rs01.example.com"
 
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		OAuth: config.OAuthConfig{AudienceResolution: "implicit"},
+	})
+	suite.T().Cleanup(config.ResetServerRuntime)
+
 	mockTokenBuilder := tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	mockAuthzService := authzmock.NewAuthorizationServiceInterfaceMock(suite.T())
 	mockResourceService := resourcemock.NewResourceServiceInterfaceMock(suite.T())
@@ -676,6 +682,12 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 	// When the granted scope maps to two registered RSes, both identifiers appear in aud (sorted).
 	const rsIdentifier1 = "https://rs01.example.com"
 	const rsIdentifier2 = "https://rs02.example.com"
+
+	config.ResetServerRuntime()
+	_ = config.InitializeServerRuntime("", &config.Config{
+		OAuth: config.OAuthConfig{AudienceResolution: "implicit"},
+	})
+	suite.T().Cleanup(config.ResetServerRuntime)
 
 	mockTokenBuilder := tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	mockAuthzService := authzmock.NewAuthorizationServiceInterfaceMock(suite.T())
