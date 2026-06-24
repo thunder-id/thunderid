@@ -28,6 +28,16 @@ interface STSIntegrationDiagramProps {
   gatewayBgColor?: string;
 }
 
+interface PDPIntegrationDiagramProps {
+  gatewayName?: string;
+  /** Optional SVG content rendered inside the gateway box (logo paths, etc.). */
+  gatewayLogo?: React.ReactNode;
+  /** Optional brand background colour for the gateway box (e.g. '#041c36'). */
+  gatewayBgColor?: string;
+  /** Whether to show the Envoy-specific AuthZEN flow. */
+  showEnvoyFlow?: boolean;
+}
+
 export function STSIntegrationDiagram({gatewayName, gatewayLogo = undefined, gatewayBgColor = undefined}: STSIntegrationDiagramProps) {
   const {siteConfig} = useDocusaurusContext();
   const productName =
@@ -142,6 +152,269 @@ export function STSIntegrationDiagram({gatewayName, gatewayLogo = undefined, gat
   );
 }
 
+export function PDPIntegrationDiagram({
+  gatewayName = 'API Gateway',
+  gatewayLogo = undefined,
+  gatewayBgColor = undefined,
+  showEnvoyFlow = false,
+}: PDPIntegrationDiagramProps) {
+  const {siteConfig} = useDocusaurusContext();
+  const productName =
+    (siteConfig.customFields?.product as DocusaurusProductConfig | undefined)
+      ?.project.name ?? siteConfig.title;
+
+  if (!showEnvoyFlow) {
+    return (
+      <div className="sts-diagram">
+        <svg
+          className="sts-diagram__svg"
+          viewBox="20 50 1000 310"
+          xmlns="http://www.w3.org/2000/svg"
+          role="img"
+          aria-label={`${gatewayName} and ${productName} AuthZEN PDP integration flow`}
+        >
+          <defs>
+            <marker
+              id="pdp-direct-arrow"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto"
+            >
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+            </marker>
+          </defs>
+
+          {/* Application */}
+          <g className="sts-diagram__app" transform="translate(40,80)">
+            <rect width="180" height="64" rx="10" />
+            <text x="90" y="38" textAnchor="middle" className="sts-diagram__box-title">
+              Application
+            </text>
+          </g>
+
+          {/* API Gateway */}
+          <g className="sts-diagram__gateway" transform="translate(420,80)">
+            <rect
+              width="180"
+              height="64"
+              rx="10"
+              style={gatewayBgColor ? {fill: gatewayBgColor, stroke: gatewayBgColor} : undefined}
+            />
+            {gatewayLogo ?? (
+              <text x="90" y="38" textAnchor="middle" className="sts-diagram__box-title">
+                {gatewayName}
+              </text>
+            )}
+          </g>
+
+          {/* Protected Resource Server */}
+          <g className="sts-diagram__backend" transform="translate(780,80)">
+            <rect width="220" height="64" rx="10" />
+            <text x="110" y="30" textAnchor="middle" className="sts-diagram__box-title">
+              Protected
+            </text>
+            <text x="110" y="46" textAnchor="middle" className="sts-diagram__box-title">
+              Resource Server
+            </text>
+          </g>
+
+          {/* ThunderID AuthZEN PDP */}
+          <g className="sts-diagram__idp" transform="translate(380,210)">
+            <rect width="260" height="135" rx="10" />
+            <g transform="translate(112,28) scale(0.174)">
+              <path d="M55.4763 26.4391L58.8866 0H0V26.4391H55.4763Z" className="sts-diagram__idp-logo-dark" />
+              <path d="M39.8438 147.407L49.5455 72.2839H4.9909e-05V256.743H60.5602L80.048 147.407H39.8438Z" className="sts-diagram__idp-logo-accent" />
+              <path d="M192.42 59.361C182.782 40.2307 168.929 25.5705 150.903 15.3381C145.501 12.2662 139.761 9.6605 133.703 7.5208L115.401 103.702H159.757L76.2987 256.743H83.3735C109.449 256.743 131.69 251.574 150.14 241.236C168.569 230.897 182.634 216.131 192.356 196.959C202.058 177.765 206.909 154.8 206.909 128.043C206.909 101.286 202.079 78.5123 192.441 59.3821L192.42 59.361Z" className="sts-diagram__idp-logo-accent" />
+            </g>
+            <text x="130" y="96" textAnchor="middle" className="sts-diagram__box-title sts-diagram__idp-name">
+              {productName}
+            </text>
+            <text x="130" y="114" textAnchor="middle" className="sts-diagram__box-sub">
+              AuthZEN PDP
+            </text>
+          </g>
+
+          {/* Edges */}
+          <g className="sts-diagram__edges">
+            {/* ① Application → API Gateway */}
+            <line x1="220" y1="104" x2="419" y2="104" markerEnd="url(#pdp-direct-arrow)" />
+            <text x="320" y="92" textAnchor="middle" className="sts-diagram__edge-label">
+              <tspan className="sts-diagram__edge-num">①</tspan> API request + Bearer token
+            </text>
+
+            {/* ② API Gateway → ThunderID: AuthZEN evaluation request */}
+            <line x1="490" y1="144" x2="490" y2="209" markerEnd="url(#pdp-direct-arrow)" />
+            <text x="476" y="182" textAnchor="end" className="sts-diagram__edge-label">
+              <tspan className="sts-diagram__edge-num">②</tspan> AuthZEN request
+            </text>
+
+            {/* ③ ThunderID → API Gateway: allow/deny decision */}
+            <line x1="550" y1="210" x2="550" y2="145" markerEnd="url(#pdp-direct-arrow)" />
+            <text x="564" y="182" className="sts-diagram__edge-label">
+              <tspan className="sts-diagram__edge-num">③</tspan> Allow / deny
+            </text>
+
+            {/* ④ API Gateway → Protected Resource Server */}
+            <line x1="600" y1="104" x2="779" y2="104" markerEnd="url(#pdp-direct-arrow)" />
+            <text x="690" y="92" textAnchor="middle" className="sts-diagram__edge-label">
+              <tspan className="sts-diagram__edge-num">④</tspan> Forward if allowed
+            </text>
+
+            {/* ⑤ API Gateway → Application: reject denied request */}
+            <line x1="420" y1="132" x2="221" y2="132" markerEnd="url(#pdp-direct-arrow)" />
+            <text x="320" y="154" textAnchor="middle" className="sts-diagram__edge-label">
+              <tspan className="sts-diagram__edge-num">⑤</tspan> 403 if denied
+            </text>
+          </g>
+        </svg>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sts-diagram">
+      <svg
+        className="sts-diagram__svg"
+        viewBox="0 0 1020 530"
+        xmlns="http://www.w3.org/2000/svg"
+        role="img"
+        aria-label={`${gatewayName} and ${productName} AuthZEN PDP integration flow`}
+      >
+        <defs>
+          <marker
+            id="pdp-arrow"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto"
+          >
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+          </marker>
+        </defs>
+
+        {/* Application */}
+        <g className="sts-diagram__app" transform="translate(70,30)">
+          <rect width="260" height="64" rx="10" />
+          <text x="130" y="38" textAnchor="middle" className="sts-diagram__box-title">
+            Application
+          </text>
+        </g>
+
+        {/* ThunderID AuthZEN PDP */}
+        <g className="sts-diagram__idp" transform="translate(700,180)">
+          <rect width="260" height="160" rx="10" />
+          <g transform="translate(112,38) scale(0.174)">
+            <path d="M55.4763 26.4391L58.8866 0H0V26.4391H55.4763Z" className="sts-diagram__idp-logo-dark" />
+            <path d="M39.8438 147.407L49.5455 72.2839H4.9909e-05V256.743H60.5602L80.048 147.407H39.8438Z" className="sts-diagram__idp-logo-accent" />
+            <path d="M192.42 59.361C182.782 40.2307 168.929 25.5705 150.903 15.3381C145.501 12.2662 139.761 9.6605 133.703 7.5208L115.401 103.702H159.757L76.2987 256.743H83.3735C109.449 256.743 131.69 251.574 150.14 241.236C168.569 230.897 182.634 216.131 192.356 196.959C202.058 177.765 206.909 154.8 206.909 128.043C206.909 101.286 202.079 78.5123 192.441 59.3821L192.42 59.361Z" className="sts-diagram__idp-logo-accent" />
+          </g>
+          <text x="130" y="106" textAnchor="middle" className="sts-diagram__box-title sts-diagram__idp-name">
+            {productName}
+          </text>
+          <text x="130" y="124" textAnchor="middle" className="sts-diagram__box-sub">
+            AuthZEN PDP
+          </text>
+        </g>
+
+        {/* API Gateway */}
+        <g className="sts-diagram__gateway" transform="translate(70,180)">
+          <rect
+            width="260"
+            height="160"
+            rx="10"
+            style={gatewayBgColor ? {fill: gatewayBgColor, stroke: gatewayBgColor} : undefined}
+          />
+          {gatewayLogo ? (
+            <g transform="translate(10,48)">{gatewayLogo}</g>
+          ) : (
+            <text x="130" y="86" textAnchor="middle" className="sts-diagram__box-title">
+              {gatewayName}
+            </text>
+          )}
+        </g>
+
+        {/* Protected Resource Server */}
+        <g className="sts-diagram__backend" transform="translate(70,440)">
+          <rect width="260" height="64" rx="10" />
+          <text x="130" y="30" textAnchor="middle" className="sts-diagram__box-title">
+            Protected
+          </text>
+          <text x="130" y="48" textAnchor="middle" className="sts-diagram__box-title">
+            Resource Server
+          </text>
+        </g>
+
+        {/* Edges */}
+        <g className="sts-diagram__edges">
+          {/* ① Application → API Gateway */}
+          <line x1="170" y1="94" x2="170" y2="179" markerEnd="url(#pdp-arrow)" />
+          <text x="158" y="130" textAnchor="end" className="sts-diagram__edge-label">
+            <tspan className="sts-diagram__edge-num">①</tspan> API request
+          </text>
+          <text x="158" y="146" textAnchor="end" className="sts-diagram__edge-label">
+            + Bearer token
+          </text>
+
+          {/* ② Envoy → ThunderID: optional service-token request */}
+          <line x1="330" y1="200" x2="699" y2="200" markerEnd="url(#pdp-arrow)" />
+          <text x="515" y="190" textAnchor="middle" className="sts-diagram__edge-label">
+            <tspan className="sts-diagram__edge-num">②</tspan> Request service token
+          </text>
+
+          {/* ③ ThunderID → Envoy: issue service token */}
+          <line x1="700" y1="240" x2="331" y2="240" markerEnd="url(#pdp-arrow)" />
+          <text x="515" y="230" textAnchor="middle" className="sts-diagram__edge-label">
+            <tspan className="sts-diagram__edge-num">③</tspan> Issue service token
+          </text>
+
+          {/* ④ Envoy → ThunderID: AuthZEN evaluation */}
+          <line x1="330" y1="280" x2="699" y2="280" markerEnd="url(#pdp-arrow)" />
+          <text x="515" y="270" textAnchor="middle" className="sts-diagram__edge-label">
+            <tspan className="sts-diagram__edge-num">④</tspan> AuthZEN request + service token
+          </text>
+
+          {/* ⑤ ThunderID → Envoy: allow/deny decision */}
+          <line x1="700" y1="320" x2="331" y2="320" markerEnd="url(#pdp-arrow)" />
+          <text x="515" y="310" textAnchor="middle" className="sts-diagram__edge-label">
+            <tspan className="sts-diagram__edge-num">⑤</tspan> Allow / deny
+          </text>
+
+          {/* ⑥ Envoy → Protected Resource Server */}
+          <line x1="200" y1="340" x2="200" y2="439" markerEnd="url(#pdp-arrow)" />
+          <text x="188" y="390" textAnchor="end" className="sts-diagram__edge-label">
+            <tspan className="sts-diagram__edge-num">⑥</tspan> Forward
+          </text>
+          <text x="188" y="406" textAnchor="end" className="sts-diagram__edge-label">
+            if allowed
+          </text>
+
+          {/* ⑦ Envoy → Application: reject denied request */}
+          <line x1="230" y1="180" x2="230" y2="95" markerEnd="url(#pdp-arrow)" />
+          <text x="242" y="140" className="sts-diagram__edge-label">
+            <tspan className="sts-diagram__edge-num">⑦</tspan> 403 if denied
+          </text>
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+export function EnvoyPDPIntegrationDiagram() {
+  return (
+    <PDPIntegrationDiagram
+      gatewayName="Envoy"
+      gatewayLogo={<EnvoyLogo color="#fff" />}
+      gatewayBgColor="#1a0a2e"
+      showEnvoyFlow
+    />
+  );
+}
+
 /**
  * KrakenD logo (icon + wordmark) pre-sized for the 240×64 gateway box.
  * Pass as the `gatewayLogo` prop to GatewayIntegrationDiagram.
@@ -182,17 +455,22 @@ export function KongLogo({color = undefined}: {color?: string}) {
   );
 }
 
-export function EnvoyLogo({color = undefined}: {color?: string}) {
+export function EnvoyLogo({color = undefined, compact = false}: {color?: string; compact?: boolean}) {
   const textStyle = color ? {fill: color} : undefined;
+  const iconTransform = compact
+    ? 'translate(48,14) scale(0.1082) translate(4.21,-49.54)'
+    : 'translate(72,14) scale(0.1082) translate(4.21,-49.54)';
+  const textX = compact ? 104 : 128;
+
   return (
     <>
       {/* Icon: viewBox "-4.21 49.54 439.92 332.67", scaled to 36px tall */}
-      <g transform="translate(72,14) scale(0.1082) translate(4.21,-49.54)">
+      <g transform={iconTransform}>
         <path fill="#b31aab" d="M109.8 210.6l.6 25.4 26.8 16.6-.6-25.4zm65.4 105.8l-.6-24.9-23.5-14.6c-.3-.2-.7-.5-1-.7l.6 25 24.5 15.2zM91.5 350l-61.3-38-1.5-63.7 30.1-13-.6-25.5-48 20.7c-3.7 1.6-5.9 5-5.8 8.9l1.8 76.5c.1 3.9 2.5 7.8 6.3 10.2L86 371.7c3.4 2.1 7.6 2.7 11 1.6.4-.1.7-.2 1-.4l45.1-19.4-24.5-15.2L91.5 350z" />
         <path fill="#d163ce" d="M289.6 209.1c-.1-4.6-2.9-9.1-7.3-11.9L193 141.9l-2.8 1.2.6 26.8 70.7 43.8 1.7 71.6 27 16.7 1.5-.6-2.1-92.3zM182.7 334.8l-82.9-51.4-2-86.3 37.8-16.3-.7-29.7-58.7 25.3c-4.3 1.9-6.9 5.8-6.8 10.4L71.7 288c.1 4.6 2.9 9.1 7.3 11.8l97.2 60.3c4 2.5 8.8 3.1 12.9 1.9.4-.1.8-.3 1.2-.5l57.4-24.7-28.6-17.7-36.4 15.7z" />
         <path fill="#e13eaf" d="M415.9 138.3L291.3 61c-4.6-2.8-10.1-3.6-14.8-2.1-.5.1-.9.3-1.4.5l-121.6 52.4c-4.9 2.1-7.9 6.6-7.8 11.9l3.1 129.6c.1 5.3 3.3 10.4 8.4 13.5L281.8 344c4.6 2.8 10.1 3.6 14.7 2.1.5-.1.9-.3 1.4-.5l121.6-52.4c4.9-2.1 7.9-6.7 7.8-11.9l-3-129.6c-.1-5.1-3.3-10.3-8.4-13.4zM289.3 315.2L181 248.1l-2.7-112.7 105.6-45.5L392.2 157l2.7 112.7-105.6 45.5z" />
       </g>
-      <text x="128" y="38" className="sts-diagram__box-title" style={textStyle}>Envoy</text>
+      <text x={textX} y="38" className="sts-diagram__box-title" style={textStyle}>Envoy</text>
     </>
   );
 }
