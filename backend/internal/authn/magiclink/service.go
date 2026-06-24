@@ -130,9 +130,16 @@ func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
 		return nil, svcErr
 	}
 
-	subject, svcErr := s.extractSubject(ctx, token)
-	if svcErr != nil {
-		return nil, svcErr
+	payload, decodeErr := jwt.DecodeJWTPayload(token)
+	if decodeErr != nil {
+		s.logger.Debug(ctx, "Failed to decode magic link token payload", log.Error(decodeErr))
+		return nil, &ErrorInvalidToken
+	}
+
+	subject := utils.ConvertInterfaceValueToString(payload["sub"])
+	if subject == "" {
+		s.logger.Debug(ctx, "Subject claim not found or invalid")
+		return nil, &ErrorMalformedTokenClaims
 	}
 
 	subjectAttribute = strings.TrimSpace(subjectAttribute)
@@ -143,12 +150,15 @@ func (s *magicLinkAuthnService) Authenticate(ctx context.Context,
 	s.logger.Debug(ctx, "Magic link authentication successful", log.String("subjectAttribute", subject))
 
 	return &common.AuthnResult{
-		Token:               map[string]interface{}{subjectAttribute: subject},
-		AuthenticatedClaims: map[string]interface{}{subjectAttribute: subject},
+		Token: map[string]interface{}{subjectAttribute: subject},
+		AuthenticatedClaims: map[string]interface{}{
+			subjectAttribute:     subject,
+			ClaimKeyTokenPayload: payload,
+		},
 	}, nil
 }
 
-// verifyToken checks the validity of the provided JWT token and returns service errors for invalid or expired tokens.
+// verifyToken verifies the magic link token
 func (s *magicLinkAuthnService) verifyToken(ctx context.Context, token string) *serviceerror.ServiceError {
 	issuer := config.GetServerRuntime().Config.JWT.Issuer
 	verifyErr := s.jwtService.VerifyJWT(ctx, token, tokenAudience, issuer)
@@ -160,24 +170,6 @@ func (s *magicLinkAuthnService) verifyToken(ctx context.Context, token string) *
 		return &ErrorInvalidToken
 	}
 	return nil
-}
-
-// extractSubject retrieves the subject claim from the JWT token payload and returns it as a string.
-// along with any service errors encountered during decoding or extraction.
-func (s *magicLinkAuthnService) extractSubject(ctx context.Context, token string) (string, *serviceerror.ServiceError) {
-	payload, decodeErr := jwt.DecodeJWTPayload(token)
-	if decodeErr != nil {
-		s.logger.Debug(ctx, "Failed to decode magic link token payload", log.Error(decodeErr))
-		return "", &ErrorInvalidToken
-	}
-
-	subject := utils.ConvertInterfaceValueToString(payload["sub"])
-	if subject == "" {
-		s.logger.Debug(ctx, "Subject claim not found or invalid")
-		return "", &ErrorMalformedTokenClaims
-	}
-
-	return subject, nil
 }
 
 // buildMagicLinkURL constructs a magic link URL by appending query parameters to a base URL or default configuration.

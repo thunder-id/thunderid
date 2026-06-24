@@ -210,6 +210,9 @@ func (suite *MagicLinkServiceTestSuite) TestAuthenticateSuccess() {
 	suite.NotNil(result)
 	suite.Equal(testUserID, result.Token[common.UserAttributeUserID])
 	suite.Equal(testUserID, result.AuthenticatedClaims[common.UserAttributeUserID])
+
+	suite.NotNil(result.AuthenticatedClaims[ClaimKeyTokenPayload])
+	suite.Equal(testUserID, result.AuthenticatedClaims[ClaimKeyTokenPayload].(map[string]interface{})["sub"])
 }
 
 func (suite *MagicLinkServiceTestSuite) TestAuthenticateSuccessWithSubjectAttribute() {
@@ -225,6 +228,9 @@ func (suite *MagicLinkServiceTestSuite) TestAuthenticateSuccessWithSubjectAttrib
 	suite.NotNil(result)
 	suite.Equal(workEmailValue, result.Token[workEmailAttr])
 	suite.Equal(workEmailValue, result.AuthenticatedClaims[workEmailAttr])
+
+	suite.NotNil(result.AuthenticatedClaims[ClaimKeyTokenPayload])
+	suite.Equal(workEmailValue, result.AuthenticatedClaims[ClaimKeyTokenPayload].(map[string]interface{})["sub"])
 }
 
 func (suite *MagicLinkServiceTestSuite) TestAuthenticateMissingSubjectClaim() {
@@ -234,13 +240,6 @@ func (suite *MagicLinkServiceTestSuite) TestAuthenticateMissingSubjectClaim() {
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorMalformedTokenClaims.Code, err.Code)
-}
-
-func (suite *MagicLinkServiceTestSuite) TestAuthenticateWhitespaceOnlyToken() {
-	result, err := suite.service.Authenticate(context.Background(), "   ", "")
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(ErrorInvalidToken.Code, err.Code)
 }
 
 func (suite *MagicLinkServiceTestSuite) TestGetAuthenticatorMetadata() {

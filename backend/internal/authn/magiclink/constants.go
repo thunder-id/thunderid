@@ -24,4 +24,7 @@ const (
 
 	// tokenAudience is the audience claim for magic link tokens.
 	tokenAudience = "magiclink-svc"
+
+	// ClaimKeyTokenPayload is the key used to pass the magic link token payload in AuthenticatedClaims.
+	ClaimKeyTokenPayload = "magic_link_token_payload"
 )

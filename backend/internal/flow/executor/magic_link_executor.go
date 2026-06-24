@@ -29,7 +29,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
-	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -339,49 +338,47 @@ func (m *magicLinkExecutor) executeVerify(ctx *core.NodeContext) (*common.Execut
 		return execResp, fmt.Errorf("failed to verify magic link: %s", svcErr.ErrorDescription.DefaultValue)
 	}
 	for key, value := range authenticatedClaims {
+		if key == magiclink.ClaimKeyTokenPayload {
+			continue
+		}
 		execResp.RuntimeData[key] = utils.ConvertInterfaceValueToString(value)
 	}
 
-	tokenJTI, execErr := m.validateFlowClaims(ctx, token, logger)
-	if execErr != nil {
+	tokenClaims, ok := authenticatedClaims[magiclink.ClaimKeyTokenPayload].(map[string]interface{})
+	if !ok {
+		logger.Debug(ctx.Context, "Magic link token claims not found or invalid type")
 		execResp.Status = common.ExecFailure
-		execResp.Error = execErr
+		execResp.Error = &ErrInvalidMagicLinkToken
 		return execResp, nil
 	}
-	execResp.RuntimeData[common.RuntimeKeyMagicLinkUsedJti] = tokenJTI
+
+	executionIDClaim := utils.ConvertInterfaceValueToString(tokenClaims["executionId"])
+	if executionIDClaim == "" || executionIDClaim != ctx.ExecutionID {
+		logger.Debug(ctx.Context, "Magic link token executionId mismatch")
+		execResp.Status = common.ExecFailure
+		execResp.Error = &ErrInvalidMagicLinkToken
+		return execResp, nil
+	}
+
+	jtiClaim := utils.ConvertInterfaceValueToString(tokenClaims["jti"])
+	if jtiClaim == "" {
+		execResp.Status = common.ExecFailure
+		execResp.Error = &ErrInvalidMagicLinkToken
+		return execResp, nil
+	}
+	if usedJti, exists := ctx.RuntimeData[common.RuntimeKeyMagicLinkUsedJti]; exists && usedJti == jtiClaim {
+		logger.Debug(ctx.Context, "Magic link token has already been used", log.String("jti", jtiClaim))
+		execResp.Status = common.ExecFailure
+		execResp.Error = &ErrInvalidMagicLinkToken
+		return execResp, nil
+	}
+
+	logger.Debug(ctx.Context, "Magic link token validated successfully")
+	execResp.RuntimeData[common.RuntimeKeyMagicLinkUsedJti] = jtiClaim
 
 	execResp.Status = common.ExecComplete
 	logger.Debug(ctx.Context, "Magic link verify completed successfully")
 	return execResp, nil
-}
-
-// validateFlowClaims checks executionId and JTI claims in the magic link JWT token.
-// These are flow-specific concerns and not part of the auth provider contract.
-func (m *magicLinkExecutor) validateFlowClaims(ctx *core.NodeContext,
-	token string, logger *log.Logger) (string, *serviceerror.ServiceError) {
-	payload, decodeErr := jwt.DecodeJWTPayload(token)
-	if decodeErr != nil {
-		logger.Debug(ctx.Context, "Failed to decode magic link token", log.Error(decodeErr))
-		return "", &ErrInvalidMagicLinkToken
-	}
-
-	executionIDClaim := utils.ConvertInterfaceValueToString(payload["executionId"])
-	if executionIDClaim == "" || executionIDClaim != ctx.ExecutionID {
-		logger.Debug(ctx.Context, "Magic link token executionId mismatch")
-		return "", &ErrInvalidMagicLinkToken
-	}
-
-	jtiClaim := utils.ConvertInterfaceValueToString(payload["jti"])
-	if jtiClaim == "" {
-		return "", &ErrInvalidMagicLinkToken
-	}
-	if usedJti, exists := ctx.RuntimeData[common.RuntimeKeyMagicLinkUsedJti]; exists && usedJti == jtiClaim {
-		logger.Debug(ctx.Context, "Magic link token has already been used", log.String("jti", jtiClaim))
-		return "", &ErrInvalidMagicLinkToken
-	}
-
-	logger.Debug(ctx.Context, "Magic link token validated successfully")
-	return jtiClaim, nil
 }
 
 // resolveDestinationAttribute infers the destination attribute from the first configured node input.
