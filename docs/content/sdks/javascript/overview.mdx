@@ -88,7 +88,18 @@ await auth.initialize({
 
 Standalone functions for driving authentication flows step-by-step without browser redirects.
 
-#### V2 Flows (Recommended)
+:::warning Browser SPAs: use the redirect-based sign-in flow
+Initiating a **sign-in** flow directly from a **browser SPA** via `POST /flow/execute` (passing
+`applicationId` and `flowType`) is **not supported** — it throws at runtime in a browser.
+
+Browser SPAs must use the redirect-based OAuth2 `authorization_code` + PKCE flow instead — see
+[Register an application](/docs/next/guides/getting-started/register-an-application) and the
+[Browser SDK overview](/docs/next/sdks/browser/overview). Calling these functions to *continue* a
+flow with an `executionId` (as the hosted sign-in pages do) and initiating the flow from server-side
+(confidential client) code are unaffected.
+:::
+
+#### V2 Flows
 - **[Sign-In Flow](/docs/next/sdks/javascript/apis/flows/embedded-sign-in-flow-v2)** — `executeEmbeddedSignInFlowV2`
 - **[Sign-Up Flow](/docs/next/sdks/javascript/apis/flows/embedded-sign-up-flow-v2)** — `executeEmbeddedSignUpFlowV2`
 - **[Recovery Flow](/docs/next/sdks/javascript/apis/flows/embedded-recovery-flow-v2)** — `executeEmbeddedRecoveryFlowV2`
