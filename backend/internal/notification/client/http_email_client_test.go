@@ -122,10 +122,10 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_JSON_Success() {
 	customClient.config.url = server.URL
 
 	data := common.EmailData{
-		Recipient: "user@example.com",
-		Subject:   "Test Subject",
-		Body:      "Test Body",
-		IsHTML:    false,
+		To:      []string{"user@example.com"},
+		Subject: "Test Subject",
+		Body:    "Test Body",
+		IsHTML:  false,
 	}
 
 	err := client.(EmailClientInterface).Send(context.Background(), data)
@@ -154,10 +154,10 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_FORM_Success() {
 	customClient.config.url = server.URL
 
 	data := common.EmailData{
-		Recipient: "user@example.com",
-		Subject:   "Test Subject",
-		Body:      "Test Body",
-		IsHTML:    true,
+		To:      []string{"user@example.com"},
+		Subject: "Test Subject",
+		Body:    "Test Body",
+		IsHTML:  true,
 	}
 
 	err := client.(EmailClientInterface).Send(context.Background(), data)
@@ -183,9 +183,9 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_Error() {
 	customClient.config.url = server.URL
 
 	data := common.EmailData{
-		Recipient: "user@example.com",
-		Subject:   "Test",
-		Body:      "Test",
+		To:      []string{"user@example.com"},
+		Subject: "Test",
+		Body:    "Test",
 	}
 
 	err := client.(EmailClientInterface).Send(context.Background(), data)
@@ -203,9 +203,9 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_NetworkError() {
 	customClient.config.url = "http://invalid-custom-url.local:99999"
 
 	data := common.EmailData{
-		Recipient: "user@example.com",
-		Subject:   "Test",
-		Body:      "Test",
+		To:      []string{"user@example.com"},
+		Subject: "Test",
+		Body:    "Test",
 	}
 
 	err := client.(EmailClientInterface).Send(context.Background(), data)
@@ -226,9 +226,9 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_UnsupportedContentType() {
 	client, _ := newHTTPEmailClient(context.Background(), sender)
 
 	data := common.EmailData{
-		Recipient: "user@example.com",
-		Subject:   "Test",
-		Body:      "Test",
+		To:      []string{"user@example.com"},
+		Subject: "Test",
+		Body:    "Test",
 	}
 
 	err := client.(EmailClientInterface).Send(context.Background(), data)

@@ -140,9 +140,9 @@ func (suite *SMTPEmailClientTestSuite) TestSend_EmptyRecipient() {
 	suite.NoError(err)
 
 	emailData := common.EmailData{
-		Recipient: "",
-		Subject:   "Test",
-		Body:      "Test Body",
+		To:      []string{""},
+		Subject: "Test",
+		Body:    "Test Body",
 	}
 
 	err = client.Send(context.Background(), emailData)
@@ -168,12 +168,96 @@ func (suite *SMTPEmailClientTestSuite) TestSend_InvalidSubject() {
 	suite.NoError(err)
 
 	emailData := common.EmailData{
-		Recipient: "user@example.com",
-		Subject:   "Test\r\nInjected-Header: bad",
-		Body:      "Test Body",
+		To:      []string{"test@example.com"},
+		Subject: "Test\r\nInjected-Header: bad",
+		Body:    "Test Body",
 	}
 
 	err = client.Send(context.Background(), emailData)
 	suite.Error(err)
 	suite.Contains(err.Error(), "subject contains invalid characters")
+}
+
+func (suite *SMTPEmailClientTestSuite) TestBuildMessage_RecipientCombinations() {
+	client := &SMTPEmailClient{
+		config: smtpConfig{
+			from: "sender@example.com",
+		},
+	}
+
+	testCases := []struct {
+		name        string
+		emailData   common.EmailData
+		expected    []string
+		notExpected []string
+	}{
+		{
+			name: "Only TO",
+			emailData: common.EmailData{
+				To:      []string{"to1@example.com", "to2@example.com"},
+				Subject: "Test",
+				Body:    "Body",
+			},
+			expected: []string{
+				"To: to1@example.com, to2@example.com\r\n",
+				"From: sender@example.com\r\n",
+			},
+			notExpected: []string{"Cc:", "Bcc:"},
+		},
+		{
+			name: "TO and CC",
+			emailData: common.EmailData{
+				To:      []string{"to1@example.com"},
+				CC:      []string{"cc1@example.com", "cc2@example.com"},
+				Subject: "Test",
+				Body:    "Body",
+			},
+			expected: []string{
+				"To: to1@example.com\r\n",
+				"Cc: cc1@example.com, cc2@example.com\r\n",
+			},
+			notExpected: []string{"Bcc:"},
+		},
+		{
+			name: "TO and BCC",
+			emailData: common.EmailData{
+				To:      []string{"to1@example.com"},
+				BCC:     []string{"bcc1@example.com"},
+				Subject: "Test",
+				Body:    "Body",
+			},
+			expected: []string{
+				"To: to1@example.com\r\n",
+			},
+			notExpected: []string{"Cc:", "Bcc:"},
+		},
+		{
+			name: "TO, CC, and BCC",
+			emailData: common.EmailData{
+				To:      []string{"to1@example.com"},
+				CC:      []string{"cc1@example.com"},
+				BCC:     []string{"bcc1@example.com", "bcc2@example.com"},
+				Subject: "Test",
+				Body:    "Body",
+			},
+			expected: []string{
+				"To: to1@example.com\r\n",
+				"Cc: cc1@example.com\r\n",
+			},
+			notExpected: []string{"Bcc:"},
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			msg := client.buildMessage(tc.emailData)
+
+			for _, exp := range tc.expected {
+				suite.Contains(msg, exp)
+			}
+			for _, nexp := range tc.notExpected {
+				suite.NotContains(msg, nexp)
+			}
+		})
+	}
 }

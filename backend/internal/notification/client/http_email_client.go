@@ -70,17 +70,19 @@ func (c *HTTPEmailClient) GetName() string {
 // Send dispatches an email notification via the custom webhook.
 func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpEmailClientLoggerComponentName))
-	logger.Debug(ctx, "Sending Email via HTTP client", log.MaskedString("to", data.Recipient))
+	logger.Debug(ctx, "Sending Email via HTTP client", log.MaskedString("to", strings.Join(data.To, ",")))
 
 	var req *http.Request
 	var err error
 
 	if strings.ToUpper(c.config.contentType) == "JSON" {
 		payload := map[string]interface{}{
-			"recipient": data.Recipient,
-			"subject":   data.Subject,
-			"body":      data.Body,
-			"is_html":   data.IsHTML,
+			"to":      data.To,
+			"cc":      data.CC,
+			"bcc":     data.BCC,
+			"subject": data.Subject,
+			"body":    data.Body,
+			"is_html": data.IsHTML,
 		}
 		jsonBytes, marshalErr := json.Marshal(payload)
 		if marshalErr != nil {
@@ -94,7 +96,13 @@ func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJSON)
 	} else if strings.ToUpper(c.config.contentType) == "FORM" {
 		formData := url.Values{}
-		formData.Add("recipient", data.Recipient)
+		formData.Add("to", strings.Join(data.To, ","))
+		if len(data.CC) > 0 {
+			formData.Add("cc", strings.Join(data.CC, ","))
+		}
+		if len(data.BCC) > 0 {
+			formData.Add("bcc", strings.Join(data.BCC, ","))
+		}
 		formData.Add("subject", data.Subject)
 		formData.Add("body", data.Body)
 		if data.IsHTML {

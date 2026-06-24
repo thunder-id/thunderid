@@ -120,8 +120,7 @@ func (c *SMTPEmailClient) GetName() string {
 func (c *SMTPEmailClient) Send(ctx context.Context, emailData common.EmailData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, smtpLoggerComponentName))
 
-	recipient := strings.TrimSpace(emailData.Recipient)
-	if recipient == "" {
+	if len(emailData.To) == 0 || len(strings.TrimSpace(emailData.To[0])) == 0 {
 		return errors.New("recipient address cannot be empty")
 	}
 
@@ -133,9 +132,13 @@ func (c *SMTPEmailClient) Send(ctx context.Context, emailData common.EmailData) 
 
 	serverAddress := fmt.Sprintf("%s:%d", c.config.host, c.config.port)
 
-	message := c.buildMessage(emailData, recipient)
+	message := c.buildMessage(emailData)
 
-	if err := c.sendViaSMTP(ctx, serverAddress, []string{recipient}, message); err != nil {
+	allRecipients := append([]string{}, emailData.To...)
+	allRecipients = append(allRecipients, emailData.CC...)
+	allRecipients = append(allRecipients, emailData.BCC...)
+
+	if err := c.sendViaSMTP(ctx, serverAddress, allRecipients, message); err != nil {
 		return err
 	}
 
@@ -144,12 +147,14 @@ func (c *SMTPEmailClient) Send(ctx context.Context, emailData common.EmailData) 
 }
 
 // buildMessage constructs the raw email message string with headers and body.
-func (c *SMTPEmailClient) buildMessage(emailData common.EmailData, recipient string) string {
+func (c *SMTPEmailClient) buildMessage(emailData common.EmailData) string {
 	var builder strings.Builder
 
 	builder.WriteString(fmt.Sprintf("From: %s\r\n", c.config.from))
-	builder.WriteString(fmt.Sprintf("To: %s\r\n", recipient))
-	// TODO: Support CC and BCC recipients in the future.
+	builder.WriteString(fmt.Sprintf("To: %s\r\n", strings.Join(emailData.To, ", ")))
+	if len(emailData.CC) > 0 {
+		builder.WriteString(fmt.Sprintf("Cc: %s\r\n", strings.Join(emailData.CC, ", ")))
+	}
 	builder.WriteString(fmt.Sprintf("Subject: %s\r\n", mime.QEncoding.Encode("utf-8", emailData.Subject)))
 	builder.WriteString("MIME-Version: 1.0\r\n")
 
