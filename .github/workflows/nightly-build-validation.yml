@@ -63,6 +63,62 @@ jobs:
             echo "Docs build artifacts verified successfully."
           fi
 
+  validate-docs-external-links:
+    name: 🔗 Validate Documentation External Links
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: 🔗 Check External Links
+        id: lychee
+        uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2
+        with:
+          args: >-
+            --verbose
+            --no-progress
+            --accept 200,204,206,429
+            --exclude-loopback
+            --exclude-mail
+            './README.md'
+            './docs/content/**/*.md'
+            './docs/content/**/*.mdx'
+          fail: false
+          failIfEmpty: false
+          output: lychee-report.md
+
+      - name: 📝 Report Broken External Links
+        if: steps.lychee.outputs.exit_code != '0'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.existsSync('lychee-report.md')
+              ? fs.readFileSync('lychee-report.md', 'utf8')
+              : 'Lychee reported broken links, but no report file was generated.';
+            const title = '🔗 Documentation external link check failed';
+            const search = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${title}"`,
+              per_page: 1
+            });
+            const body = `## Documentation external link check failed\n\nThe scheduled link check found broken external links in the documentation.\n\n**Workflow run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n**Commit:** ${context.sha}\n\n### Lychee report\n\n${report}`;
+
+            if (search.data.total_count === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: search.data.items[0].number,
+                body
+              });
+            }
+
   validate-sample-packaging-linux:
     name: 📦 Validate Linux & Windows Sample Packaging
     runs-on: ubuntu-latest
