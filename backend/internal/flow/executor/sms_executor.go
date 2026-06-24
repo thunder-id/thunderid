@@ -125,11 +125,11 @@ func (e *smsExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, 
 	}
 	scenario := template.ScenarioType(tmplStr)
 
-	templateData := template.TemplateData{
-		"appName":        ctx.Application.Name,
-		"inviteLink":     ctx.RuntimeData[common.RuntimeKeyInviteLink],
-		"bindingMessage": ctx.RuntimeData[common.RuntimeKeyBindingMessage],
+	templateData := template.TemplateData{}
+	for k, v := range ctx.RuntimeData {
+		templateData[k] = v
 	}
+	templateData["appName"] = ctx.Application.Name
 
 	rendered, svcErr := e.templateService.Render(ctx.Context, scenario, template.TemplateTypeSMS, templateData)
 	if svcErr != nil {

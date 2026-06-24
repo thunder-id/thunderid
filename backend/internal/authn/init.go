@@ -64,6 +64,10 @@ func Initialize(
 		Factors: []common.AuthenticationFactor{common.FactorPossession},
 	})
 	common.RegisterAuthenticator(common.AuthenticatorMeta{
+		Name:    common.AuthenticatorOTP,
+		Factors: []common.AuthenticationFactor{common.FactorPossession},
+	})
+	common.RegisterAuthenticator(common.AuthenticatorMeta{
 		Name:    common.AuthenticatorPasskey,
 		Factors: []common.AuthenticationFactor{common.FactorPossession, common.FactorInherence},
 	})

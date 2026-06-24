@@ -26,7 +26,7 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/entityprovider"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/notification"
 	notifcommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
@@ -47,21 +47,20 @@ var supportedChannels = []notifcommon.ChannelType{notifcommon.ChannelTypeSMS}
 type OTPAuthnServiceInterface interface {
 	SendOTP(ctx context.Context, senderID string, channel notifcommon.ChannelType,
 		recipient string) (string, *serviceerror.ServiceError)
+	GenerateOTP(ctx context.Context, recipient, recipientAttr string) (
+		sessionToken string, otpValue string, svcErr *serviceerror.ServiceError)
 	Authenticate(ctx context.Context, sessionToken, otp string) (*common.AuthnResult, *serviceerror.ServiceError)
 }
 
 // otpAuthnService is the default implementation of OTPAuthnServiceInterface.
 type otpAuthnService struct {
-	otpService     notification.OTPServiceInterface
-	entityProvider entityprovider.EntityProviderInterface
+	otpService notification.OTPServiceInterface
 }
 
 // newOTPAuthnService creates a new instance of OTPAuthnService.
-func newOTPAuthnService(otpSvc notification.OTPServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface) OTPAuthnServiceInterface {
+func newOTPAuthnService(otpSvc notification.OTPServiceInterface) OTPAuthnServiceInterface {
 	return &otpAuthnService{
-		otpService:     otpSvc,
-		entityProvider: entityProvider,
+		otpService: otpSvc,
 	}
 }
 
@@ -88,6 +87,34 @@ func (s *otpAuthnService) SendOTP(ctx context.Context, senderID string, channel 
 
 	logger.Debug(ctx, "OTP sent successfully, session token generated")
 	return result.SessionToken, nil
+}
+
+// GenerateOTP generates an OTP and session token for the recipient without delivering it.
+// recipientAttr identifies which attribute the recipient value represents (e.g. "userID",
+// "mobileNumber"). Use authnprovidercm.UserAttributeUserID for authentication flows and
+// the actual attribute name (e.g. common.AttributeMobileNumber) for registration flows.
+func (s *otpAuthnService) GenerateOTP(ctx context.Context,
+	recipient, recipientAttr string) (string, string, *serviceerror.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
+	logger.Debug(ctx, "Generating OTP without delivery", log.MaskedString("recipient", recipient))
+
+	if strings.TrimSpace(recipient) == "" {
+		return "", "", &ErrorInvalidRecipient
+	}
+	if recipientAttr == "" {
+		recipientAttr = authnprovidercm.UserAttributeUserID
+	}
+
+	result, svcErr := s.otpService.GenerateOTP(ctx, notifcommon.GenerateOTPDTO{
+		Recipient:     recipient,
+		RecipientAttr: recipientAttr,
+	})
+	if svcErr != nil {
+		return "", "", s.handleOTPServiceError(ctx, svcErr, false, logger)
+	}
+
+	logger.Debug(ctx, "OTP generated successfully")
+	return result.SessionToken, result.OTPValue, nil
 }
 
 // Authenticate verifies the provided OTP against the session token and returns the authenticated user.
@@ -175,8 +202,13 @@ func (s *otpAuthnService) handleVerifyOTPResponse(ctx context.Context, result *n
 		return nil, &serviceerror.InternalServerError
 	}
 
+	recipientAttr := result.RecipientAttr
+	if recipientAttr == "" {
+		recipientAttr = userAttributeMobileNumber
+	}
+
 	return &common.AuthnResult{
-		Token:               map[string]interface{}{userAttributeMobileNumber: result.Recipient},
-		AuthenticatedClaims: map[string]interface{}{userAttributeMobileNumber: result.Recipient},
+		Token:               map[string]interface{}{recipientAttr: result.Recipient},
+		AuthenticatedClaims: map[string]interface{}{recipientAttr: result.Recipient},
 	}, nil
 }

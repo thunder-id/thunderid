@@ -42,6 +42,8 @@ type OTPServiceInterface interface {
 	SendOTP(ctx context.Context, request common.SendOTPDTO) (*common.SendOTPResultDTO, *serviceerror.ServiceError)
 	VerifyOTP(ctx context.Context, request common.VerifyOTPDTO) (
 		*common.VerifyOTPResultDTO, *serviceerror.ServiceError)
+	GenerateOTP(ctx context.Context, request common.GenerateOTPDTO) (
+		*common.GenerateOTPResultDTO, *serviceerror.ServiceError)
 }
 
 // otpService implements the OTPServiceInterface.
@@ -109,13 +111,19 @@ func (s *otpService) SendOTP(
 		return nil, &ErrorUnsupportedChannel
 	}
 
+	recipientAttr := otpDTO.RecipientAttr
+	if recipientAttr == "" {
+		recipientAttr = "mobileNumber"
+	}
+
 	// Create session token
 	sessionData := common.OTPSessionData{
-		Recipient:  otpDTO.Recipient,
-		Channel:    otpDTO.Channel,
-		SenderID:   otpDTO.SenderID,
-		OTPValue:   cryptolib.GenerateThumbprintFromString(otp.Value),
-		ExpiryTime: otp.ExpiryTimeInMillis,
+		Recipient:     otpDTO.Recipient,
+		RecipientAttr: recipientAttr,
+		Channel:       otpDTO.Channel,
+		SenderID:      otpDTO.SenderID,
+		OTPValue:      cryptolib.GenerateThumbprintFromString(otp.Value),
+		ExpiryTime:    otp.ExpiryTimeInMillis,
 	}
 
 	sessionToken, err := s.createSessionToken(ctx, sessionData)
@@ -151,8 +159,9 @@ func (s *otpService) VerifyOTP(
 	if currentTime > sessionData.ExpiryTime {
 		logger.Debug(ctx, "OTP has expired")
 		return &common.VerifyOTPResultDTO{
-			Status:    common.OTPVerifyStatusInvalid,
-			Recipient: sessionData.Recipient,
+			Status:        common.OTPVerifyStatusInvalid,
+			Recipient:     sessionData.Recipient,
+			RecipientAttr: sessionData.RecipientAttr,
 		}, nil
 	}
 
@@ -161,14 +170,53 @@ func (s *otpService) VerifyOTP(
 	if providedOTPHash != sessionData.OTPValue {
 		logger.Debug(ctx, "Invalid OTP provided")
 		return &common.VerifyOTPResultDTO{
-			Status:    common.OTPVerifyStatusInvalid,
-			Recipient: sessionData.Recipient,
+			Status:        common.OTPVerifyStatusInvalid,
+			Recipient:     sessionData.Recipient,
+			RecipientAttr: sessionData.RecipientAttr,
 		}, nil
 	}
 
 	return &common.VerifyOTPResultDTO{
-		Status:    common.OTPVerifyStatusVerified,
-		Recipient: sessionData.Recipient,
+		Status:        common.OTPVerifyStatusVerified,
+		Recipient:     sessionData.Recipient,
+		RecipientAttr: sessionData.RecipientAttr,
+	}, nil
+}
+
+// GenerateOTP generates an OTP and session token without sending it.
+func (s *otpService) GenerateOTP(
+	ctx context.Context, request common.GenerateOTPDTO) (*common.GenerateOTPResultDTO, *serviceerror.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OTPService"))
+	logger.Debug(ctx, "Generating OTP without delivery", log.MaskedString("recipient", request.Recipient))
+
+	if request.Recipient == "" {
+		return nil, &ErrorInvalidRecipient
+	}
+
+	otp, err := s.generateOTP()
+	if err != nil {
+		logger.Error(ctx, "Failed to generate OTP", log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+
+	sessionData := common.OTPSessionData{
+		Recipient:     request.Recipient,
+		RecipientAttr: request.RecipientAttr,
+		OTPValue:      cryptolib.GenerateThumbprintFromString(otp.Value),
+		ExpiryTime:    otp.ExpiryTimeInMillis,
+	}
+
+	sessionToken, err := s.createSessionToken(ctx, sessionData)
+	if err != nil {
+		logger.Error(ctx, "Failed to create session token", log.Error(err))
+		return nil, &serviceerror.InternalServerError
+	}
+
+	logger.Debug(ctx, "OTP generated successfully", log.MaskedString("recipient", request.Recipient))
+
+	return &common.GenerateOTPResultDTO{
+		SessionToken: sessionToken,
+		OTPValue:     otp.Value,
 	}, nil
 }
 
