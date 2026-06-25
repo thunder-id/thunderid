@@ -44,6 +44,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authz"
 	"github.com/thunder-id/thunderid/internal/authzen"
 	"github.com/thunder-id/thunderid/internal/cert"
+	"github.com/thunder-id/thunderid/internal/connection"
 	"github.com/thunder-id/thunderid/internal/consent"
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	"github.com/thunder-id/thunderid/internal/design/resolve"
@@ -239,6 +240,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		logger.Fatal(ctx, "Failed to initialize IDPService", log.Error(err))
 	}
 	exporters = append(exporters, idpExporter)
+
+	// Register the /connections API as a thin layer over the identity-provider service.
+	connection.Initialize(mux, idpService)
 
 	templateService, err := template.Initialize()
 	if err != nil {
