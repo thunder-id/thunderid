@@ -237,6 +237,34 @@ func (suite *ClientFactoryTestSuite) TestGetClient_InvalidProvider() {
 	suite.Equal(ErrorInvalidProvider.Code, err.Code)
 }
 
+func (suite *ClientFactoryTestSuite) TestGetClient_InvalidProvider_Message() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test Sender",
+		Type:     common.NotificationSenderTypeMessage,
+		Provider: "invalid-provider",
+	}
+
+	client, err := suite.factory.GetClient(context.Background(), sender)
+
+	suite.Nil(client)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidProvider.Code, err.Code)
+}
+
+func (suite *ClientFactoryTestSuite) TestGetClient_InvalidProvider_Email() {
+	sender := common.NotificationSenderDTO{
+		Name:     "Test Sender",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: "invalid-provider",
+	}
+
+	client, err := suite.factory.GetClient(context.Background(), sender)
+
+	suite.Nil(client)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidProvider.Code, err.Code)
+}
+
 func createTestProperty(name, value string, isSecret bool) cmodels.Property {
 	prop, _ := cmodels.NewProperty(name, value, isSecret)
 	return *prop

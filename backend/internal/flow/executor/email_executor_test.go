@@ -1205,3 +1205,65 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ApplicationNameInTempl
 	suite.NotNil(resp)
 	suite.Equal(common.ExecComplete, resp.Status)
 }
+
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_MissingSenderId() {
+	ctx := &core.NodeContext{
+		ExecutionID:  "test-execution-id",
+		FlowType:     common.FlowTypeUserOnboarding,
+		ExecutorMode: ExecutorModeSend,
+		NodeInputs: []common.Input{
+			{Identifier: "email", Type: common.InputTypeEmail, Required: true},
+		},
+		UserInputs: map[string]string{
+			"email": "user@example.com",
+		},
+		NodeProperties: map[string]interface{}{
+			"emailTemplate": "USER_INVITE",
+		},
+	}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Error(err)
+	suite.Contains(err.Error(), "senderId is not configured in node properties")
+	suite.Nil(resp)
+}
+
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_UserOnboarding_ClientError() {
+	ctx := &core.NodeContext{
+		ExecutionID:  "test-execution-id",
+		FlowType:     common.FlowTypeUserOnboarding,
+		ExecutorMode: ExecutorModeSend,
+		NodeInputs: []common.Input{
+			{Identifier: "email", Type: common.InputTypeEmail, Required: true},
+		},
+		UserInputs: map[string]string{
+			"email": "user@example.com",
+		},
+		NodeProperties: map[string]interface{}{
+			"senderId":      "test-sender-id",
+			"emailTemplate": "USER_INVITE",
+		},
+	}
+
+	suite.mockTemplateService.On("Render",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	).Return(&template.RenderedTemplate{
+		Subject: "Test App Invite",
+		Body:    "Welcome to Test App",
+		IsHTML:  false,
+	}, nil)
+
+	suite.mockNotifSenderSvc.On("SendEmail", mock.Anything, mock.Anything, mock.Anything).
+		Return(&serviceerror.ServiceError{Type: serviceerror.ClientErrorType})
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.NotNil(resp)
+	suite.Equal(common.ExecFailure, resp.Status)
+	suite.Equal(&ErrEmailProviderNotConfigured, resp.Error)
+}

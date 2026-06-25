@@ -671,3 +671,76 @@ func (suite *MessageHandlerTestSuite) TestGetSenderResponseFromDTO_EmptyProperti
 	suite.NoError(err)
 	suite.Len(response.Properties, 0)
 }
+
+func (suite *MessageHandlerTestSuite) TestHandleSenderListRequest_TypeMismatch() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
+
+	sender1 := common.NotificationSenderDTO{
+		ID:         "id1",
+		Name:       "s1",
+		Type:       common.NotificationSenderTypeEmail,
+		Provider:   common.MessageProviderTypeSMTP,
+		Properties: []cmodels.Property{createTestProperty("k", "v", false)},
+	}
+	m.On("ListSenders", mock.Anything).Return([]common.NotificationSenderDTO{sender1}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/senders", nil)
+	rr := httptest.NewRecorder()
+
+	handler.HandleSenderListRequest(rr, req)
+
+	suite.Equal(http.StatusOK, rr.Code)
+
+	var res []common.NotificationSenderResponse
+	suite.NoError(json.Unmarshal(rr.Body.Bytes(), &res))
+	suite.Len(res, 0)
+}
+
+func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest_TypeMismatch() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
+
+	dto := &common.NotificationSenderDTO{ID: "s-1", Name: "ns",
+		Type: common.NotificationSenderTypeEmail, Provider: common.MessageProviderTypeSMTP,
+		Properties: []cmodels.Property{createTestProperty("k", "v", false)}}
+
+	m.On("GetSender", mock.Anything, "s-1").Return(dto, nil).Once()
+	reqGet := httptest.NewRequest(http.MethodGet, "/senders/s-1", nil)
+	reqGet.SetPathValue("id", "s-1")
+	rrGet := httptest.NewRecorder()
+	handler.HandleSenderGetRequest(rrGet, reqGet)
+	suite.Equal(http.StatusNotFound, rrGet.Code)
+}
+
+func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest_TypeMismatch() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
+
+	updateReq := common.NotificationSenderRequest{Name: "Updated", Provider: "twilio"}
+	body, _ := json.Marshal(updateReq)
+
+	getDTO := &common.NotificationSenderDTO{ID: "s-1", Type: common.NotificationSenderTypeEmail}
+	m.On("GetSender", mock.Anything, "s-1").Return(getDTO, nil).Once()
+
+	reqUpd := httptest.NewRequest(http.MethodPut, "/senders/s-1", bytes.NewBuffer(body))
+	reqUpd.SetPathValue("id", "s-1")
+	reqUpd.Header.Set("Content-Type", "application/json")
+	rrUpd := httptest.NewRecorder()
+	handler.HandleSenderUpdateRequest(rrUpd, reqUpd)
+	suite.Equal(http.StatusNotFound, rrUpd.Code)
+}
+
+func (suite *MessageHandlerTestSuite) TestHandleSenderDeleteRequest_TypeMismatch() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
+
+	dto := &common.NotificationSenderDTO{ID: "s-1", Type: common.NotificationSenderTypeEmail}
+	m.On("GetSender", mock.Anything, "s-1").Return(dto, nil).Once()
+
+	reqDel := httptest.NewRequest(http.MethodDelete, "/senders/s-1", nil)
+	reqDel.SetPathValue("id", "s-1")
+	rrDel := httptest.NewRecorder()
+	handler.HandleSenderDeleteRequest(rrDel, reqDel)
+	suite.Equal(http.StatusNotFound, rrDel.Code)
+}

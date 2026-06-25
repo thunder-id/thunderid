@@ -731,3 +731,28 @@ func (suite *OTPServiceTestSuite) TestVerifyAndDecode_Success() {
 	suite.NotNil(sessionData)
 	suite.Equal("+15559876543", sessionData.Recipient)
 }
+
+func (suite *OTPServiceTestSuite) TestSendOTP_ClientNotMessageClient() {
+	req := common.SendOTPDTO{
+		Recipient: "+15559876543",
+		SenderID:  "sender-123",
+		Channel:   "sms",
+	}
+
+	sender := suite.getValidSender()
+	suite.mockSenderService.On("GetSender", mock.Anything, "sender-123").Return(sender, nil).Once()
+
+	suite.mockTemplateService.On("Render", mock.Anything, template.ScenarioOTP,
+		template.TemplateTypeSMS, mock.Anything).
+		Return(&template.RenderedTemplate{Body: "Your code is: 123456. Expires in 2 minutes."}, nil).Once()
+
+	mm := clientmock.NewEmailClientInterfaceMock(suite.T())
+	cp := clientmock.NewClientFactoryInterfaceMock(suite.T())
+	cp.EXPECT().GetClient(mock.Anything, mock.Anything).Return(mm, nil).Once()
+	suite.service.clientFactory = cp
+
+	res, err := suite.service.SendOTP(context.Background(), req)
+	suite.Nil(res)
+	suite.NotNil(err)
+	suite.Equal(ErrorRequestedSenderIsNotOfExpectedType.Code, err.Code)
+}
