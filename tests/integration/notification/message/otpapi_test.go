@@ -126,7 +126,6 @@ func (ts *OTPAPITestSuite) SetupSuite() {
 	ts.testSenderID = senderID
 	ts.T().Logf("Created test message notification sender with ID: %s", senderID)
 
-	ts.testAppID, err = createTestApp()
 }
 
 // TearDownSuite cleans up after the test suite
