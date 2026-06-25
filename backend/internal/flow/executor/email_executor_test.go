@@ -537,7 +537,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EmailSendErrors() {
 				Type:             serviceerror.ClientErrorType,
 				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "client error"},
 			},
-			errStr: "Email send failed: client error",
+			errStr: "email send failed: client error",
 		},
 		{
 			name: "SMTPConnectionError",
@@ -545,7 +545,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EmailSendErrors() {
 				Type:             serviceerror.ServerErrorType,
 				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "smtp connection error"},
 			},
-			errStr: "Email send failed: smtp connection error",
+			errStr: "email send failed: smtp connection error",
 		},
 		{
 			name: "SMTPAuthError",
@@ -553,7 +553,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EmailSendErrors() {
 				Type:             serviceerror.ServerErrorType,
 				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "smtp auth error"},
 			},
-			errStr: "Email send failed: smtp auth error",
+			errStr: "email send failed: smtp auth error",
 		},
 		{
 			name: "EmailSendFailedError",
@@ -561,7 +561,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EmailSendErrors() {
 				Type:             serviceerror.ServerErrorType,
 				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "send failed"},
 			},
-			errStr: "Email send failed: send failed",
+			errStr: "email send failed: send failed",
 		},
 		{
 			name: "UnexpectedError",
@@ -569,7 +569,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_EmailSendErrors() {
 				Type:             serviceerror.ServerErrorType,
 				ErrorDescription: i18ncore.I18nMessage{DefaultValue: "unexpected internal error"},
 			},
-			errStr: "Email send failed: unexpected internal error",
+			errStr: "email send failed: unexpected internal error",
 		},
 	}
 

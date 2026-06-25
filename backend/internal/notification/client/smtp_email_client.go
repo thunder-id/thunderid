@@ -124,8 +124,20 @@ func (c *SMTPEmailClient) Send(ctx context.Context, emailData common.EmailData) 
 		return errors.New("recipient address cannot be empty")
 	}
 
+	for _, addressList := range [][]string{emailData.To, emailData.CC, emailData.BCC} {
+		for _, address := range addressList {
+			if strings.ContainsAny(address, "\r\n") {
+				return errors.New("recipient address contains invalid characters")
+			}
+		}
+	}
+
 	if strings.ContainsAny(emailData.Subject, "\r\n") {
 		return errors.New("subject contains invalid characters")
+	}
+
+	if strings.ContainsAny(c.config.from, "\r\n") {
+		return errors.New("from address contains invalid characters")
 	}
 
 	logger.Debug(ctx, "Sending email via SMTP", log.MaskedString("from", c.config.from))

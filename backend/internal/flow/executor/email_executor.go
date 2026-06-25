@@ -152,7 +152,7 @@ func (e *emailExecutor) executeSend(ctx *core.NodeContext) (*common.ExecutorResp
 			execResp.Error = &ErrEmailProviderNotConfigured
 			return execResp, nil
 		}
-		return nil, fmt.Errorf("Email send failed: %s", notifSvcErr.ErrorDescription)
+		return nil, fmt.Errorf("email send failed: %s", notifSvcErr.ErrorDescription.DefaultValue)
 	}
 
 	logger.Debug(ctx.Context, "Email sent successfully", log.MaskedString("recipient", recipient))

@@ -178,6 +178,41 @@ func (suite *SMTPEmailClientTestSuite) TestSend_InvalidSubject() {
 	suite.Contains(err.Error(), "subject contains invalid characters")
 }
 
+func (suite *SMTPEmailClientTestSuite) TestSend_InvalidRecipient() {
+	props := []cmodels.Property{
+		createTestProperty(common.SMTPPropKeyHost, "smtp.example.com", false),
+		createTestProperty(common.SMTPPropKeyPort, "587", false),
+		createTestProperty(common.SMTPPropKeyFromAddress, "no-reply@example.com", false),
+	}
+
+	sender := common.NotificationSenderDTO{
+		Name:       "Test SMTP",
+		Provider:   common.MessageProviderTypeSMTP,
+		Type:       common.NotificationSenderTypeEmail,
+		Properties: props,
+	}
+
+	client, err := newSMTPEmailClient(context.Background(), sender)
+	suite.NoError(err)
+
+	emailData := common.EmailData{
+		To:      []string{"test@example.com\r\nBcc: evil@example.com"},
+		Subject: "Test",
+		Body:    "Test Body",
+	}
+
+	err = client.Send(context.Background(), emailData)
+	suite.Error(err)
+	suite.Contains(err.Error(), "recipient address contains invalid characters")
+
+	// Test CC
+	emailData.To = []string{"test@example.com"}
+	emailData.CC = []string{"cc@example.com\r\nBcc: evil@example.com"}
+	err = client.Send(context.Background(), emailData)
+	suite.Error(err)
+	suite.Contains(err.Error(), "recipient address contains invalid characters")
+}
+
 func (suite *SMTPEmailClientTestSuite) TestBuildMessage_RecipientCombinations() {
 	client := &SMTPEmailClient{
 		config: smtpConfig{

@@ -46,7 +46,7 @@ type HTTPEmailClient struct {
 }
 
 // newHTTPEmailClient creates a new instance of HTTPEmailClient.
-func newHTTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO) (NotificationClientInterface, error) {
+func newHTTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO) (EmailClientInterface, error) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpEmailClientLoggerComponentName))
 
 	client := &HTTPEmailClient{}
@@ -75,7 +75,7 @@ func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error
 	var req *http.Request
 	var err error
 
-	if strings.ToUpper(c.config.contentType) == "JSON" {
+	if c.config.contentType == "JSON" {
 		payload := map[string]interface{}{
 			"to":      data.To,
 			"cc":      data.CC,
@@ -94,7 +94,7 @@ func (c *HTTPEmailClient) Send(ctx context.Context, data common.EmailData) error
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJSON)
-	} else if strings.ToUpper(c.config.contentType) == "FORM" {
+	} else if c.config.contentType == "FORM" {
 		formData := url.Values{}
 		formData.Add("to", strings.Join(data.To, ","))
 		if len(data.CC) > 0 {

@@ -128,7 +128,7 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_JSON_Success() {
 		IsHTML:  false,
 	}
 
-	err := client.(EmailClientInterface).Send(context.Background(), data)
+	err := client.Send(context.Background(), data)
 
 	suite.NoError(err)
 }
@@ -160,7 +160,7 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_FORM_Success() {
 		IsHTML:  true,
 	}
 
-	err := client.(EmailClientInterface).Send(context.Background(), data)
+	err := client.Send(context.Background(), data)
 
 	suite.NoError(err)
 }
@@ -188,7 +188,7 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_Error() {
 		Body:    "Test",
 	}
 
-	err := client.(EmailClientInterface).Send(context.Background(), data)
+	err := client.Send(context.Background(), data)
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "status: 400")
@@ -208,7 +208,7 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_NetworkError() {
 		Body:    "Test",
 	}
 
-	err := client.(EmailClientInterface).Send(context.Background(), data)
+	err := client.Send(context.Background(), data)
 
 	suite.Error(err)
 }
@@ -231,7 +231,7 @@ func (suite *HTTPEmailClientTestSuite) TestSendEmail_UnsupportedContentType() {
 		Body:    "Test",
 	}
 
-	err := client.(EmailClientInterface).Send(context.Background(), data)
+	err := client.Send(context.Background(), data)
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "unsupported content type")

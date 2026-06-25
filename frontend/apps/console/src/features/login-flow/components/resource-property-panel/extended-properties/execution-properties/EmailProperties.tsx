@@ -56,7 +56,7 @@ function EmailProperties({resource, onChange}: CommonResourcePropertiesPropsInte
       </div>
 
       <div>
-        <FormLabel htmlFor="email-sender-select">{t('flows:core.executions.smsOtp.sender.label')}</FormLabel>
+        <FormLabel htmlFor="email-sender-select">{t('flows:core.executions.email.sender.label')}</FormLabel>
         <Select
           id="email-sender-select"
           value={isSenderPlaceholder ? '' : emailSenderId}
@@ -66,7 +66,7 @@ function EmailProperties({resource, onChange}: CommonResourcePropertiesPropsInte
           disabled={isLoadingSenders || !hasSenders}
         >
           <MenuItem value="" disabled>
-            {isLoadingSenders ? t('common:status.loading') : t('flows:core.executions.smsOtp.sender.placeholder')}
+            {isLoadingSenders ? t('common:status.loading') : t('flows:core.executions.email.sender.placeholder')}
           </MenuItem>
           {notificationSenders?.map((sender) => (
             <MenuItem key={sender.id} value={sender.id}>
@@ -77,7 +77,7 @@ function EmailProperties({resource, onChange}: CommonResourcePropertiesPropsInte
       </div>
 
       {!isLoadingSenders && !hasSenders && (
-        <Alert severity="warning">{t('flows:core.executions.smsOtp.sender.noSenders')}</Alert>
+        <Alert severity="warning">{t('flows:core.executions.email.sender.noSenders')}</Alert>
       )}
     </Stack>
   );

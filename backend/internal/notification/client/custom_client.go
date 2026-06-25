@@ -89,13 +89,13 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) err
 	var req *http.Request
 	var err error
 
-	if strings.ToUpper(c.config.contentType) == "JSON" {
+	if c.config.contentType == "JSON" {
 		req, err = http.NewRequest(c.config.httpMethod, c.config.url, bytes.NewBufferString(data.Body))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJSON)
-	} else if strings.ToUpper(c.config.contentType) == "FORM" {
+	} else if c.config.contentType == "FORM" {
 		formData := url.Values{}
 		lines := strings.Split(data.Body, "\n")
 		for _, line := range lines {
