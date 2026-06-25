@@ -262,6 +262,253 @@ var (
 			DefaultValue: "Flow ID already exists",
 		},
 	}
+	// ErrorMissingStartNode is the error returned when the flow has no START node.
+	ErrorMissingStartNode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.missing_start_node",
+			DefaultValue: "Missing start node",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.missing_start_node_description",
+			DefaultValue: "Flow definition must have exactly one START node",
+		},
+	}
+	// ErrorMissingEndNode is the error returned when the flow has no END node.
+	ErrorMissingEndNode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1021",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.missing_end_node",
+			DefaultValue: "Missing end node",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.missing_end_node_description",
+			DefaultValue: "Flow definition must have exactly one END node",
+		},
+	}
+	// ErrorDuplicateStartNode is the error returned when the flow has multiple START nodes.
+	ErrorDuplicateStartNode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.duplicate_start_node",
+			DefaultValue: "Duplicate start node",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.duplicate_start_node_description",
+			DefaultValue: "Flow definition must have exactly one START node, found multiple",
+		},
+	}
+	// ErrorDuplicateEndNode is the error returned when the flow has multiple END nodes.
+	ErrorDuplicateEndNode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.duplicate_end_node",
+			DefaultValue: "Duplicate end node",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.duplicate_end_node_description",
+			DefaultValue: "Flow definition must have exactly one END node, found multiple",
+		},
+	}
+	// ErrorDuplicateNodeID is the error returned when duplicate node IDs are found.
+	ErrorDuplicateNodeID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1024",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.duplicate_node_id",
+			DefaultValue: "Duplicate node ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.duplicate_node_id_description",
+			DefaultValue: "Flow definition contains duplicate node IDs",
+		},
+	}
+	// ErrorInvalidNodeType is the error returned when a node has an invalid type.
+	ErrorInvalidNodeType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_node_type",
+			DefaultValue: "Invalid node type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_node_type_description",
+			DefaultValue: "Node has an invalid type",
+		},
+	}
+	// ErrorInvalidNodeReference is the error returned when a node references a non-existent node.
+	ErrorInvalidNodeReference = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_node_reference",
+			DefaultValue: "Invalid node reference",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_node_reference_description",
+			DefaultValue: "Node references a non-existent node",
+		},
+	}
+	// ErrorOrphanedNode is the error returned when a node is not reachable from the START node.
+	ErrorOrphanedNode = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.orphaned_node",
+			DefaultValue: "Orphaned node",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.orphaned_node_description",
+			DefaultValue: "Node is not reachable from the START node",
+		},
+	}
+	// ErrorNoTermination is the error returned when the flow has cycles that prevent reaching the END node.
+	ErrorNoTermination = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.no_termination",
+			DefaultValue: "No termination path",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.no_termination_description",
+			DefaultValue: "Flow has cycles that prevent reaching the END node",
+		},
+	}
+	// ErrorTaskNodeMissingExecutor is the error returned when a TASK_EXECUTION node has no executor.
+	ErrorTaskNodeMissingExecutor = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.task_node_missing_executor",
+			DefaultValue: "Missing executor",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.task_node_missing_executor_description",
+			DefaultValue: "TASK_EXECUTION node must have an executor",
+		},
+	}
+	// ErrorTaskNodeMissingOnSuccess is the error returned when a TASK_EXECUTION node has no onSuccess.
+	ErrorTaskNodeMissingOnSuccess = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.task_node_missing_on_success",
+			DefaultValue: "Missing onSuccess",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.task_node_missing_on_success_description",
+			DefaultValue: "TASK_EXECUTION node must have onSuccess",
+		},
+	}
+	// ErrorTaskNodeInvalidFailureTarget is the error returned when onFailure does not point to a PROMPT node.
+	ErrorTaskNodeInvalidFailureTarget = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.task_node_invalid_failure_target",
+			DefaultValue: "Invalid onFailure target",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.task_node_invalid_failure_target_description",
+			DefaultValue: "onFailure must point to a PROMPT node",
+		},
+	}
+	// ErrorTaskNodeInvalidIncompleteTarget is the error returned when onIncomplete does not point to a PROMPT node.
+	ErrorTaskNodeInvalidIncompleteTarget = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.task_node_invalid_incomplete_target",
+			DefaultValue: "Invalid onIncomplete target",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.task_node_invalid_incomplete_target_description",
+			DefaultValue: "onIncomplete must point to a PROMPT node",
+		},
+	}
+	// ErrorPromptNodeInvalidConfig is the error returned when a PROMPT node has invalid configuration.
+	ErrorPromptNodeInvalidConfig = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1033",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.prompt_node_invalid_config",
+			DefaultValue: "Invalid prompt node configuration",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.prompt_node_invalid_config_description",
+			DefaultValue: "PROMPT node must have either prompts or next, not both or neither",
+		},
+	}
+	// ErrorPromptMissingAction is the error returned when a prompt is missing an action.
+	ErrorPromptMissingAction = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1034",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.prompt_missing_action",
+			DefaultValue: "Missing prompt action",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.prompt_missing_action_description",
+			DefaultValue: "Prompt must have an action with nextNode",
+		},
+	}
+	// ErrorInvalidInputType is the error returned when an input has an invalid type.
+	ErrorInvalidInputType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1035",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_input_type",
+			DefaultValue: "Invalid input type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_input_type_description",
+			DefaultValue: "Input has an invalid type",
+		},
+	}
+	// ErrorInvalidValidationRule is the error returned when a validation rule is invalid.
+	ErrorInvalidValidationRule = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1036",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_validation_rule",
+			DefaultValue: "Invalid validation rule",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_validation_rule_description",
+			DefaultValue: "Input has an invalid validation rule",
+		},
+	}
+	// ErrorExecutorNotRegistered is the error returned when an executor is not registered.
+	ErrorExecutorNotRegistered = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1037",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.executor_not_registered",
+			DefaultValue: "Executor not registered",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.executor_not_registered_description",
+			DefaultValue: "Executor is not registered",
+		},
+	}
+	// ErrorInterceptorInvalidApplyTo is the error returned when interceptor applyTo references a non-existent node.
+	ErrorInterceptorInvalidApplyTo = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1038",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.interceptor_invalid_apply_to",
+			DefaultValue: "Invalid interceptor applyTo",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.interceptor_invalid_apply_to_description",
+			DefaultValue: "Interceptor applyTo references a non-existent node",
+		},
+	}
 )
 
 // Internal errors

@@ -24,12 +24,15 @@ nodes:
       name: IdentifyingExecutor
       mode: identify
     onSuccess: generate_recovery_token
-    onFailure: end
+    onFailure: recovery_status
   - id: generate_recovery_token
     type: TASK_EXECUTION
     executor:
       name: InviteExecutor
       mode: generate
-    onSuccess: end
+    onSuccess: recovery_status
+  - id: recovery_status
+    type: PROMPT
+    next: end
   - id: end
     type: END

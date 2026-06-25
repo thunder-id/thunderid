@@ -108,7 +108,7 @@ var (
 							{
 								"ref":        "input_004",
 								"identifier": "mobile_number",
-								"type":       "string",
+								"type":       "PHONE_INPUT",
 								"required":   true,
 							},
 						},
@@ -140,7 +140,7 @@ var (
 							{
 								"ref":        "input_005",
 								"identifier": "otp",
-								"type":       "number",
+								"type":       "OTP_INPUT",
 								"required":   true,
 							},
 						},

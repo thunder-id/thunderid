@@ -673,9 +673,9 @@ func (suite *CompositeModeSuite) TestFlowCreate() {
 					{
 						"inputs": []map[string]interface{}{
 							{"identifier": "username", "type": "TEXT_INPUT", "required": true},
-							{"identifier": "password", "type": "PASSWORD", "required": true},
+							{"identifier": "password", "type": "PASSWORD_INPUT", "required": true},
 						},
-						"onSuccess": "end",
+						"action": map[string]interface{}{"ref": "action_001", "nextNode": "end"},
 					},
 				},
 			},
@@ -1096,9 +1096,9 @@ func (suite *CompositeModeSuite) TestFlowDeclarativeUpdateReject() {
 					{
 						"inputs": []map[string]interface{}{
 							{"identifier": "username", "type": "TEXT_INPUT", "required": true},
-							{"identifier": "password", "type": "PASSWORD", "required": true},
+							{"identifier": "password", "type": "PASSWORD_INPUT", "required": true},
 						},
-						"onSuccess": "end",
+						"action": map[string]interface{}{"ref": "action_001", "nextNode": "end"},
 					},
 				},
 			},

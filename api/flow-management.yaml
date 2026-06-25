@@ -148,14 +148,257 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "FLM-1001"
-                message:
-                  key: "error.flowmgtservice.invalid_request_format"
-                  defaultValue: "Invalid request format"
-                description:
-                  key: "error.flowmgtservice.invalid_request_format_description"
-                  defaultValue: "The request body is malformed or contains invalid data"
+              examples:
+                invalid-request-format:
+                  summary: "FLM-1001 — Malformed request body"
+                  value:
+                    code: "FLM-1001"
+                    message:
+                      key: "error.flowmgtservice.invalid_request_format"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.flowmgtservice.invalid_request_format_description"
+                      defaultValue: "The request body is malformed or contains invalid data"
+                invalid-flow-type:
+                  summary: "FLM-1004 — Unrecognised flow type"
+                  value:
+                    code: "FLM-1004"
+                    message:
+                      key: "error.flowmgtservice.invalid_flow_type"
+                      defaultValue: "Invalid flow type"
+                    description:
+                      key: "error.flowmgtservice.invalid_flow_type_description"
+                      defaultValue: "The specified flow type is invalid"
+                invalid-flow-data:
+                  summary: "FLM-1005 — Flow definition violates structural constraints"
+                  value:
+                    code: "FLM-1005"
+                    message:
+                      key: "error.flowmgtservice.invalid_flow_data"
+                      defaultValue: "Invalid flow data"
+                    description:
+                      key: "error.flowmgtservice.invalid_flow_data_description"
+                      defaultValue: "The flow definition contains invalid data"
+                missing-flow-handle:
+                  summary: "FLM-1010 — Handle not provided"
+                  value:
+                    code: "FLM-1010"
+                    message:
+                      key: "error.flowmgtservice.invalid_flow_handle"
+                      defaultValue: "Invalid flow handle"
+                    description:
+                      key: "error.flowmgtservice.invalid_flow_handle_description"
+                      defaultValue: "The flow handle must be provided"
+                missing-flow-name:
+                  summary: "FLM-1011 — Name not provided"
+                  value:
+                    code: "FLM-1011"
+                    message:
+                      key: "error.flowmgtservice.invalid_flow_name"
+                      defaultValue: "Invalid flow name"
+                    description:
+                      key: "error.flowmgtservice.invalid_flow_name_description"
+                      defaultValue: "The flow name must be provided"
+                invalid-handle-format:
+                  summary: "FLM-1015 — Handle contains invalid characters"
+                  value:
+                    code: "FLM-1015"
+                    message:
+                      key: "error.flowmgtservice.invalid_flow_handle_format"
+                      defaultValue: "Invalid flow handle format"
+                    description:
+                      key: "error.flowmgtservice.invalid_flow_handle_format_description"
+                      defaultValue: "The flow handle must be lowercase, alphanumeric, and can only contain underscores or dashes"
+                missing-start-node:
+                  summary: "FLM-1020 — No START node present"
+                  value:
+                    code: "FLM-1020"
+                    message:
+                      key: "error.flowmgtservice.missing_start_node"
+                      defaultValue: "Missing start node"
+                    description:
+                      key: "error.flowmgtservice.missing_start_node_description"
+                      defaultValue: "Flow definition must have exactly one START node"
+                missing-end-node:
+                  summary: "FLM-1021 — No END node present"
+                  value:
+                    code: "FLM-1021"
+                    message:
+                      key: "error.flowmgtservice.missing_end_node"
+                      defaultValue: "Missing end node"
+                    description:
+                      key: "error.flowmgtservice.missing_end_node_description"
+                      defaultValue: "Flow definition must have exactly one END node"
+                duplicate-start-node:
+                  summary: "FLM-1022 — Multiple START nodes"
+                  value:
+                    code: "FLM-1022"
+                    message:
+                      key: "error.flowmgtservice.duplicate_start_node"
+                      defaultValue: "Duplicate start node"
+                    description:
+                      key: "error.flowmgtservice.duplicate_start_node_description"
+                      defaultValue: "Flow definition must have exactly one START node, found multiple"
+                duplicate-end-node:
+                  summary: "FLM-1023 — Multiple END nodes"
+                  value:
+                    code: "FLM-1023"
+                    message:
+                      key: "error.flowmgtservice.duplicate_end_node"
+                      defaultValue: "Duplicate end node"
+                    description:
+                      key: "error.flowmgtservice.duplicate_end_node_description"
+                      defaultValue: "Flow definition must have exactly one END node, found multiple"
+                duplicate-node-id:
+                  summary: "FLM-1024 — Two or more nodes share the same ID"
+                  value:
+                    code: "FLM-1024"
+                    message:
+                      key: "error.flowmgtservice.duplicate_node_id"
+                      defaultValue: "Duplicate node ID"
+                    description:
+                      key: "error.flowmgtservice.duplicate_node_id_description"
+                      defaultValue: "Flow definition contains duplicate node IDs"
+                invalid-node-type:
+                  summary: "FLM-1025 — Node has an unrecognised type"
+                  value:
+                    code: "FLM-1025"
+                    message:
+                      key: "error.flowmgtservice.invalid_node_type"
+                      defaultValue: "Invalid node type"
+                    description:
+                      key: "error.flowmgtservice.invalid_node_type_description"
+                      defaultValue: "Node has an invalid type"
+                invalid-node-reference:
+                  summary: "FLM-1026 — Node references a non-existent node ID"
+                  value:
+                    code: "FLM-1026"
+                    message:
+                      key: "error.flowmgtservice.invalid_node_reference"
+                      defaultValue: "Invalid node reference"
+                    description:
+                      key: "error.flowmgtservice.invalid_node_reference_description"
+                      defaultValue: "Node references a non-existent node"
+                orphaned-node:
+                  summary: "FLM-1027 — Node is not reachable from START"
+                  value:
+                    code: "FLM-1027"
+                    message:
+                      key: "error.flowmgtservice.orphaned_node"
+                      defaultValue: "Orphaned node"
+                    description:
+                      key: "error.flowmgtservice.orphaned_node_description"
+                      defaultValue: "Node is not reachable from the START node"
+                no-termination:
+                  summary: "FLM-1028 — Node has no path to END"
+                  value:
+                    code: "FLM-1028"
+                    message:
+                      key: "error.flowmgtservice.no_termination"
+                      defaultValue: "No termination path"
+                    description:
+                      key: "error.flowmgtservice.no_termination_description"
+                      defaultValue: "Flow has cycles that prevent reaching the END node"
+                task-node-missing-executor:
+                  summary: "FLM-1029 — TASK_EXECUTION node has no executor"
+                  value:
+                    code: "FLM-1029"
+                    message:
+                      key: "error.flowmgtservice.task_node_missing_executor"
+                      defaultValue: "Missing executor"
+                    description:
+                      key: "error.flowmgtservice.task_node_missing_executor_description"
+                      defaultValue: "TASK_EXECUTION node must have an executor"
+                task-node-missing-on-success:
+                  summary: "FLM-1030 — TASK_EXECUTION node has no onSuccess"
+                  value:
+                    code: "FLM-1030"
+                    message:
+                      key: "error.flowmgtservice.task_node_missing_on_success"
+                      defaultValue: "Missing onSuccess"
+                    description:
+                      key: "error.flowmgtservice.task_node_missing_on_success_description"
+                      defaultValue: "TASK_EXECUTION node must have onSuccess"
+                task-node-invalid-failure-target:
+                  summary: "FLM-1031 — onFailure does not point to a PROMPT node"
+                  value:
+                    code: "FLM-1031"
+                    message:
+                      key: "error.flowmgtservice.task_node_invalid_failure_target"
+                      defaultValue: "Invalid onFailure target"
+                    description:
+                      key: "error.flowmgtservice.task_node_invalid_failure_target_description"
+                      defaultValue: "onFailure must point to a PROMPT node"
+                task-node-invalid-incomplete-target:
+                  summary: "FLM-1032 — onIncomplete does not point to a PROMPT node"
+                  value:
+                    code: "FLM-1032"
+                    message:
+                      key: "error.flowmgtservice.task_node_invalid_incomplete_target"
+                      defaultValue: "Invalid onIncomplete target"
+                    description:
+                      key: "error.flowmgtservice.task_node_invalid_incomplete_target_description"
+                      defaultValue: "onIncomplete must point to a PROMPT node"
+                prompt-node-invalid-config:
+                  summary: "FLM-1033 — PROMPT node has neither prompts nor next, or both"
+                  value:
+                    code: "FLM-1033"
+                    message:
+                      key: "error.flowmgtservice.prompt_node_invalid_config"
+                      defaultValue: "Invalid prompt node configuration"
+                    description:
+                      key: "error.flowmgtservice.prompt_node_invalid_config_description"
+                      defaultValue: "PROMPT node must have either prompts or next, not both or neither"
+                prompt-missing-action:
+                  summary: "FLM-1034 — Prompt group is missing action.nextNode"
+                  value:
+                    code: "FLM-1034"
+                    message:
+                      key: "error.flowmgtservice.prompt_missing_action"
+                      defaultValue: "Missing prompt action"
+                    description:
+                      key: "error.flowmgtservice.prompt_missing_action_description"
+                      defaultValue: "Prompt must have an action with nextNode"
+                invalid-input-type:
+                  summary: "FLM-1035 — Input has an unrecognised type"
+                  value:
+                    code: "FLM-1035"
+                    message:
+                      key: "error.flowmgtservice.invalid_input_type"
+                      defaultValue: "Invalid input type"
+                    description:
+                      key: "error.flowmgtservice.invalid_input_type_description"
+                      defaultValue: "Input has an invalid type"
+                invalid-validation-rule:
+                  summary: "FLM-1036 — Input validation rule is invalid"
+                  value:
+                    code: "FLM-1036"
+                    message:
+                      key: "error.flowmgtservice.invalid_validation_rule"
+                      defaultValue: "Invalid validation rule"
+                    description:
+                      key: "error.flowmgtservice.invalid_validation_rule_description"
+                      defaultValue: "Input has an invalid validation rule"
+                executor-not-registered:
+                  summary: "FLM-1037 — Executor name is not registered"
+                  value:
+                    code: "FLM-1037"
+                    message:
+                      key: "error.flowmgtservice.executor_not_registered"
+                      defaultValue: "Executor not registered"
+                    description:
+                      key: "error.flowmgtservice.executor_not_registered_description"
+                      defaultValue: "Executor is not registered"
+                interceptor-invalid-apply-to:
+                  summary: "FLM-1038 — Interceptor applyTo references a non-existent node"
+                  value:
+                    code: "FLM-1038"
+                    message:
+                      key: "error.flowmgtservice.interceptor_invalid_apply_to"
+                      defaultValue: "Invalid interceptor applyTo"
+                    description:
+                      key: "error.flowmgtservice.interceptor_invalid_apply_to_description"
+                      defaultValue: "Interceptor applyTo references a non-existent node"
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -240,19 +483,292 @@ paths:
               schema:
                 $ref: '#/components/schemas/FlowDefinitionResponse'
         '400':
-          description: Invalid flow definition
+          description: Invalid flow definition or update not permitted
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "FLM-1001"
-                message:
-                  key: "error.flowmgtservice.invalid_request_format"
-                  defaultValue: "Invalid request format"
-                description:
-                  key: "error.flowmgtservice.invalid_request_format_description"
-                  defaultValue: "The request body is malformed or contains invalid data"
+              examples:
+                cannot-update-flow-type:
+                  summary: "FLM-1012 — Flow type cannot be changed after creation"
+                  value:
+                    code: "FLM-1012"
+                    message:
+                      key: "error.flowmgtservice.cannot_update_flow_type"
+                      defaultValue: "Invalid update request"
+                    description:
+                      key: "error.flowmgtservice.cannot_update_flow_type_description"
+                      defaultValue: "The flow type cannot be changed once created"
+                handle-update-not-allowed:
+                  summary: "FLM-1014 — Flow handle is immutable after creation"
+                  value:
+                    code: "FLM-1014"
+                    message:
+                      key: "error.flowmgtservice.handle_update_not_allowed"
+                      defaultValue: "Invalid update request"
+                    description:
+                      key: "error.flowmgtservice.handle_update_not_allowed_description"
+                      defaultValue: "The flow handle cannot be modified after creation"
+                immutable-flow:
+                  summary: "FLM-1017 — Declarative flow cannot be modified"
+                  value:
+                    code: "FLM-1017"
+                    message:
+                      key: "error.flowmgtservice.flow_is_immutable"
+                      defaultValue: "Flow is immutable"
+                    description:
+                      key: "error.flowmgtservice.flow_is_immutable_description"
+                      defaultValue: "Declarative flows cannot be modified or deleted"
+                invalid-request-format:
+                  summary: "FLM-1001 — Malformed request body"
+                  value:
+                    code: "FLM-1001"
+                    message:
+                      key: "error.flowmgtservice.invalid_request_format"
+                      defaultValue: "Invalid request format"
+                    description:
+                      key: "error.flowmgtservice.invalid_request_format_description"
+                      defaultValue: "The request body is malformed or contains invalid data"
+                invalid-flow-type:
+                  summary: "FLM-1004 — Unrecognised flow type"
+                  value:
+                    code: "FLM-1004"
+                    message:
+                      key: "error.flowmgtservice.invalid_flow_type"
+                      defaultValue: "Invalid flow type"
+                    description:
+                      key: "error.flowmgtservice.invalid_flow_type_description"
+                      defaultValue: "The specified flow type is invalid"
+                invalid-flow-data:
+                  summary: "FLM-1005 — Flow definition violates structural constraints"
+                  value:
+                    code: "FLM-1005"
+                    message:
+                      key: "error.flowmgtservice.invalid_flow_data"
+                      defaultValue: "Invalid flow data"
+                    description:
+                      key: "error.flowmgtservice.invalid_flow_data_description"
+                      defaultValue: "The flow definition contains invalid data"
+                missing-flow-handle:
+                  summary: "FLM-1010 — Handle not provided"
+                  value:
+                    code: "FLM-1010"
+                    message:
+                      key: "error.flowmgtservice.invalid_flow_handle"
+                      defaultValue: "Invalid flow handle"
+                    description:
+                      key: "error.flowmgtservice.invalid_flow_handle_description"
+                      defaultValue: "The flow handle must be provided"
+                missing-flow-name:
+                  summary: "FLM-1011 — Name not provided"
+                  value:
+                    code: "FLM-1011"
+                    message:
+                      key: "error.flowmgtservice.invalid_flow_name"
+                      defaultValue: "Invalid flow name"
+                    description:
+                      key: "error.flowmgtservice.invalid_flow_name_description"
+                      defaultValue: "The flow name must be provided"
+                invalid-handle-format:
+                  summary: "FLM-1015 — Handle contains invalid characters"
+                  value:
+                    code: "FLM-1015"
+                    message:
+                      key: "error.flowmgtservice.invalid_flow_handle_format"
+                      defaultValue: "Invalid flow handle format"
+                    description:
+                      key: "error.flowmgtservice.invalid_flow_handle_format_description"
+                      defaultValue: "The flow handle must be lowercase, alphanumeric, and can only contain underscores or dashes"
+                missing-start-node:
+                  summary: "FLM-1020 — No START node present"
+                  value:
+                    code: "FLM-1020"
+                    message:
+                      key: "error.flowmgtservice.missing_start_node"
+                      defaultValue: "Missing start node"
+                    description:
+                      key: "error.flowmgtservice.missing_start_node_description"
+                      defaultValue: "Flow definition must have exactly one START node"
+                missing-end-node:
+                  summary: "FLM-1021 — No END node present"
+                  value:
+                    code: "FLM-1021"
+                    message:
+                      key: "error.flowmgtservice.missing_end_node"
+                      defaultValue: "Missing end node"
+                    description:
+                      key: "error.flowmgtservice.missing_end_node_description"
+                      defaultValue: "Flow definition must have exactly one END node"
+                duplicate-start-node:
+                  summary: "FLM-1022 — Multiple START nodes"
+                  value:
+                    code: "FLM-1022"
+                    message:
+                      key: "error.flowmgtservice.duplicate_start_node"
+                      defaultValue: "Duplicate start node"
+                    description:
+                      key: "error.flowmgtservice.duplicate_start_node_description"
+                      defaultValue: "Flow definition must have exactly one START node, found multiple"
+                duplicate-end-node:
+                  summary: "FLM-1023 — Multiple END nodes"
+                  value:
+                    code: "FLM-1023"
+                    message:
+                      key: "error.flowmgtservice.duplicate_end_node"
+                      defaultValue: "Duplicate end node"
+                    description:
+                      key: "error.flowmgtservice.duplicate_end_node_description"
+                      defaultValue: "Flow definition must have exactly one END node, found multiple"
+                duplicate-node-id:
+                  summary: "FLM-1024 — Two or more nodes share the same ID"
+                  value:
+                    code: "FLM-1024"
+                    message:
+                      key: "error.flowmgtservice.duplicate_node_id"
+                      defaultValue: "Duplicate node ID"
+                    description:
+                      key: "error.flowmgtservice.duplicate_node_id_description"
+                      defaultValue: "Flow definition contains duplicate node IDs"
+                invalid-node-type:
+                  summary: "FLM-1025 — Node has an unrecognised type"
+                  value:
+                    code: "FLM-1025"
+                    message:
+                      key: "error.flowmgtservice.invalid_node_type"
+                      defaultValue: "Invalid node type"
+                    description:
+                      key: "error.flowmgtservice.invalid_node_type_description"
+                      defaultValue: "Node has an invalid type"
+                invalid-node-reference:
+                  summary: "FLM-1026 — Node references a non-existent node ID"
+                  value:
+                    code: "FLM-1026"
+                    message:
+                      key: "error.flowmgtservice.invalid_node_reference"
+                      defaultValue: "Invalid node reference"
+                    description:
+                      key: "error.flowmgtservice.invalid_node_reference_description"
+                      defaultValue: "Node references a non-existent node"
+                orphaned-node:
+                  summary: "FLM-1027 — Node is not reachable from START"
+                  value:
+                    code: "FLM-1027"
+                    message:
+                      key: "error.flowmgtservice.orphaned_node"
+                      defaultValue: "Orphaned node"
+                    description:
+                      key: "error.flowmgtservice.orphaned_node_description"
+                      defaultValue: "Node is not reachable from the START node"
+                no-termination:
+                  summary: "FLM-1028 — Node has no path to END"
+                  value:
+                    code: "FLM-1028"
+                    message:
+                      key: "error.flowmgtservice.no_termination"
+                      defaultValue: "No termination path"
+                    description:
+                      key: "error.flowmgtservice.no_termination_description"
+                      defaultValue: "Flow has cycles that prevent reaching the END node"
+                task-node-missing-executor:
+                  summary: "FLM-1029 — TASK_EXECUTION node has no executor"
+                  value:
+                    code: "FLM-1029"
+                    message:
+                      key: "error.flowmgtservice.task_node_missing_executor"
+                      defaultValue: "Missing executor"
+                    description:
+                      key: "error.flowmgtservice.task_node_missing_executor_description"
+                      defaultValue: "TASK_EXECUTION node must have an executor"
+                task-node-missing-on-success:
+                  summary: "FLM-1030 — TASK_EXECUTION node has no onSuccess"
+                  value:
+                    code: "FLM-1030"
+                    message:
+                      key: "error.flowmgtservice.task_node_missing_on_success"
+                      defaultValue: "Missing onSuccess"
+                    description:
+                      key: "error.flowmgtservice.task_node_missing_on_success_description"
+                      defaultValue: "TASK_EXECUTION node must have onSuccess"
+                task-node-invalid-failure-target:
+                  summary: "FLM-1031 — onFailure does not point to a PROMPT node"
+                  value:
+                    code: "FLM-1031"
+                    message:
+                      key: "error.flowmgtservice.task_node_invalid_failure_target"
+                      defaultValue: "Invalid onFailure target"
+                    description:
+                      key: "error.flowmgtservice.task_node_invalid_failure_target_description"
+                      defaultValue: "onFailure must point to a PROMPT node"
+                task-node-invalid-incomplete-target:
+                  summary: "FLM-1032 — onIncomplete does not point to a PROMPT node"
+                  value:
+                    code: "FLM-1032"
+                    message:
+                      key: "error.flowmgtservice.task_node_invalid_incomplete_target"
+                      defaultValue: "Invalid onIncomplete target"
+                    description:
+                      key: "error.flowmgtservice.task_node_invalid_incomplete_target_description"
+                      defaultValue: "onIncomplete must point to a PROMPT node"
+                prompt-node-invalid-config:
+                  summary: "FLM-1033 — PROMPT node has neither prompts nor next, or both"
+                  value:
+                    code: "FLM-1033"
+                    message:
+                      key: "error.flowmgtservice.prompt_node_invalid_config"
+                      defaultValue: "Invalid prompt node configuration"
+                    description:
+                      key: "error.flowmgtservice.prompt_node_invalid_config_description"
+                      defaultValue: "PROMPT node must have either prompts or next, not both or neither"
+                prompt-missing-action:
+                  summary: "FLM-1034 — Prompt group is missing action.nextNode"
+                  value:
+                    code: "FLM-1034"
+                    message:
+                      key: "error.flowmgtservice.prompt_missing_action"
+                      defaultValue: "Missing prompt action"
+                    description:
+                      key: "error.flowmgtservice.prompt_missing_action_description"
+                      defaultValue: "Prompt must have an action with nextNode"
+                invalid-input-type:
+                  summary: "FLM-1035 — Input has an unrecognised type"
+                  value:
+                    code: "FLM-1035"
+                    message:
+                      key: "error.flowmgtservice.invalid_input_type"
+                      defaultValue: "Invalid input type"
+                    description:
+                      key: "error.flowmgtservice.invalid_input_type_description"
+                      defaultValue: "Input has an invalid type"
+                invalid-validation-rule:
+                  summary: "FLM-1036 — Input validation rule is invalid"
+                  value:
+                    code: "FLM-1036"
+                    message:
+                      key: "error.flowmgtservice.invalid_validation_rule"
+                      defaultValue: "Invalid validation rule"
+                    description:
+                      key: "error.flowmgtservice.invalid_validation_rule_description"
+                      defaultValue: "Input has an invalid validation rule"
+                executor-not-registered:
+                  summary: "FLM-1037 — Executor name is not registered"
+                  value:
+                    code: "FLM-1037"
+                    message:
+                      key: "error.flowmgtservice.executor_not_registered"
+                      defaultValue: "Executor not registered"
+                    description:
+                      key: "error.flowmgtservice.executor_not_registered_description"
+                      defaultValue: "Executor is not registered"
+                interceptor-invalid-apply-to:
+                  summary: "FLM-1038 — Interceptor applyTo references a non-existent node"
+                  value:
+                    code: "FLM-1038"
+                    message:
+                      key: "error.flowmgtservice.interceptor_invalid_apply_to"
+                      defaultValue: "Invalid interceptor applyTo"
+                    description:
+                      key: "error.flowmgtservice.interceptor_invalid_apply_to_description"
+                      defaultValue: "Interceptor applyTo references a non-existent node"
         '404':
           description: Flow not found
           content:

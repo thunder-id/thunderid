@@ -351,6 +351,12 @@ const (
 	InputTypeHidden = "HIDDEN"
 	// InputTypeSelect represents a select (dropdown) input type.
 	InputTypeSelect = "SELECT"
+	// InputTypeOUSelect represents an organization unit selection input type.
+	InputTypeOUSelect = "OU_SELECT"
+	// InputTypeNumber represents a numeric input type.
+	InputTypeNumber = "NUMBER_INPUT"
+	// InputTypeDate represents a date input type.
+	InputTypeDate = "DATE_INPUT"
 
 	// TODO: Add support for other sensitive input types:
 	// - Passkey credential fields (credentialId, clientDataJSON, authenticatorData, signature, userHandle)
@@ -427,3 +433,10 @@ const (
 	// FlowStatusError indicates that there was an error during the flow execution.
 	FlowStatusError FlowStatus = "ERROR"
 )
+
+// ValidValidationRuleTypes is the set of valid validation rule type strings.
+var ValidValidationRuleTypes = map[string]bool{
+	string(ValidationTypeRegex):     true,
+	string(ValidationTypeMinLength): true,
+	string(ValidationTypeMaxLength): true,
+}

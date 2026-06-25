@@ -59,7 +59,7 @@ var (
 							{
 								"ref":        "input_001",
 								"identifier": "mobile_number",
-								"type":       "string",
+								"type":       "PHONE_INPUT",
 								"required":   true,
 							},
 						},
@@ -91,7 +91,7 @@ var (
 							{
 								"ref":        "input_002",
 								"identifier": "otp",
-								"type":       "string",
+								"type":       "OTP_INPUT",
 								"required":   true,
 							},
 						},
@@ -149,13 +149,13 @@ var (
 							{
 								"ref":        "input_001",
 								"identifier": "username",
-								"type":       "string",
+								"type":       "TEXT_INPUT",
 								"required":   true,
 							},
 							{
 								"ref":        "input_002",
 								"identifier": "password",
-								"type":       "string",
+								"type":       "PASSWORD_INPUT",
 								"required":   true,
 							},
 						},
@@ -195,7 +195,7 @@ var (
 							{
 								"ref":        "input_003",
 								"identifier": "otp",
-								"type":       "string",
+								"type":       "OTP_INPUT",
 								"required":   true,
 							},
 						},
@@ -253,13 +253,13 @@ var (
 							{
 								"ref":        "input_001",
 								"identifier": "username",
-								"type":       "string",
+								"type":       "TEXT_INPUT",
 								"required":   true,
 							},
 							{
 								"ref":        "input_002",
 								"identifier": "password",
-								"type":       "string",
+								"type":       "PASSWORD_INPUT",
 								"required":   true,
 							},
 						},
