@@ -81,7 +81,7 @@ describe('ConfigureExperience', () => {
       expect(embeddedRadio).toBeChecked();
     });
 
-    it('should hide the embedded approach when allowEmbeddedApproach is false', () => {
+    it('should replace the approach selection with a redirect-only hint when allowEmbeddedApproach is false', () => {
       render(
         <ConfigureExperience
           selectedApproach={ApplicationCreateFlowSignInApproach.INBUILT}
@@ -90,9 +90,12 @@ describe('ConfigureExperience', () => {
         />,
       );
 
-      expect(screen.getByText('applications:onboarding.configure.approach.inbuilt.title')).toBeInTheDocument();
+      expect(
+        screen.getByText('applications:onboarding.configure.experience.approach.redirectOnlyHint'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText('applications:onboarding.configure.approach.inbuilt.title')).not.toBeInTheDocument();
       expect(screen.queryByText('applications:onboarding.configure.approach.native.title')).not.toBeInTheDocument();
-      expect(screen.getAllByRole('radio')).toHaveLength(1);
+      expect(screen.queryAllByRole('radio')).toHaveLength(0);
     });
 
     it('should reset to INBUILT when embedded is selected but not allowed', () => {

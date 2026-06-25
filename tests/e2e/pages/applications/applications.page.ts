@@ -50,6 +50,7 @@ export class ApplicationsPage extends BasePage {
   readonly configureDetailsStep: Locator;
   readonly inbuiltExperienceCard: Locator;
   readonly embeddedExperienceCard: Locator;
+  readonly redirectOnlyExperienceHint: Locator;
   readonly showClientSecretStep: Locator;
   readonly clientSecretValue: Locator;
   readonly clientSecretContinue: Locator;
@@ -99,6 +100,7 @@ export class ApplicationsPage extends BasePage {
     this.configureDetailsStep = page.locator('[data-testid="application-configure-details"]');
     this.inbuiltExperienceCard = page.locator('div:has(input[value="INBUILT"])');
     this.embeddedExperienceCard = page.locator('div:has(input[value="EMBEDDED"])');
+    this.redirectOnlyExperienceHint = page.locator('[data-testid="application-experience-redirect-hint"]');
     this.showClientSecretStep = page.locator('[data-testid="application-show-client-secret"]');
     this.clientSecretValue = page.locator('[data-testid="application-client-secret-value"]');
     this.clientSecretContinue = page.locator('[data-testid="application-client-secret-continue"]');
