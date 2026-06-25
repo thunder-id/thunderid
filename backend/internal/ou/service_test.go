@@ -230,6 +230,21 @@ func (suite *OrganizationUnitServiceTestSuite) newServiceWithResolvers(
 	}
 }
 
+func (suite *OrganizationUnitServiceTestSuite) newServiceWithRoleResolver(
+	store *organizationUnitStoreInterfaceMock,
+	authzService *sysauthzmock.SystemAuthorizationServiceInterfaceMock,
+	roleResolver OURoleResolver,
+) *organizationUnitService {
+	mtx := new(mockTransactioner)
+	mtx.On("Transact", mock.Anything, mock.Anything).Return(nil).Maybe()
+	return &organizationUnitService{
+		ouStore:       store,
+		authzService:  authzService,
+		transactioner: mtx,
+		roleResolver:  roleResolver,
+	}
+}
+
 type mockTransactioner struct {
 	mock.Mock
 }
@@ -2231,6 +2246,157 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			return svc.GetOrganizationUnitGroupsByPath(context.Background(), path, limit, offset)
 		},
 	)
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRoles() {
+	testCases := []struct {
+		name          string
+		limit         int
+		offset        int
+		storeSetup    func(*organizationUnitStoreInterfaceMock)
+		resolverSetup func(*OURoleResolverMock)
+		nilResolver   bool
+		wantErr       *serviceerror.ServiceError
+		assert        func(*RoleListResponse)
+	}{
+		{
+			name:    "invalid pagination",
+			limit:   0,
+			wantErr: &ErrorInvalidLimit,
+		},
+		{
+			name:        "nil role resolver",
+			limit:       5,
+			nilResolver: true,
+			wantErr:     &serviceerror.InternalServerError,
+		},
+		{
+			name:  "list error",
+			limit: 5,
+			storeSetup: func(store *organizationUnitStoreInterfaceMock) {
+				store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").
+					Return(true, nil).Once()
+			},
+			resolverSetup: func(rr *OURoleResolverMock) {
+				rr.On("GetRoleListByOUID", mock.Anything, "ou-1", 5, 0).
+					Return([]Role(nil), errors.New("boom")).Once()
+			},
+			wantErr: &serviceerror.InternalServerError,
+		},
+		{
+			name:  "success",
+			limit: 5,
+			storeSetup: func(store *organizationUnitStoreInterfaceMock) {
+				store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").
+					Return(true, nil).Once()
+			},
+			resolverSetup: func(rr *OURoleResolverMock) {
+				rr.On("GetRoleListByOUID", mock.Anything, "ou-1", 5, 0).
+					Return([]Role{{ID: "r1", Name: "Admin"}}, nil).Once()
+				rr.On("GetRoleCountByOUID", mock.Anything, "ou-1").
+					Return(1, nil).Once()
+			},
+			assert: func(resp *RoleListResponse) {
+				suite.Require().Equal(1, resp.TotalResults)
+				suite.Require().Equal("Admin", resp.Roles[0].Name)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		suite.Run(tc.name, func() {
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			if tc.storeSetup != nil {
+				tc.storeSetup(store)
+			}
+
+			var roleRes OURoleResolver
+			if !tc.nilResolver {
+				mock := new(OURoleResolverMock)
+				if tc.resolverSetup != nil {
+					tc.resolverSetup(mock)
+				}
+				roleRes = mock
+			}
+
+			service := suite.newServiceWithRoleResolver(store, newAllowAllAuthz(suite.T()), roleRes)
+			resp, err := service.GetOrganizationUnitRoles(context.Background(), "ou-1", tc.limit, tc.offset)
+
+			if tc.wantErr != nil {
+				suite.Require().Nil(resp)
+				suite.Require().Equal(*tc.wantErr, *err)
+				if tc.wantErr == &ErrorInvalidLimit {
+					store.AssertNumberOfCalls(suite.T(), "IsOrganizationUnitExists", 0)
+				}
+				return
+			}
+
+			suite.Require().Nil(err)
+			if tc.assert != nil {
+				tc.assert(resp)
+			}
+		})
+	}
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRolesByPath() {
+	suite.Run("invalid path", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+		resp, err := service.GetOrganizationUnitRolesByPath(context.Background(), "   ", 5, 0)
+		suite.Require().Nil(resp)
+		suite.Require().Equal(ErrorInvalidHandlePath, *err)
+	})
+
+	suite.Run("not found", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).
+			Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).Once()
+
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		resp, err := service.GetOrganizationUnitRolesByPath(context.Background(), "root", 5, 0)
+		suite.Require().Nil(resp)
+		suite.Require().Equal(ErrorOrganizationUnitNotFound, *err)
+	})
+
+	suite.Run("store error", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).
+			Return(OrganizationUnit{}, errors.New("db connection failed")).Once()
+
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		resp, err := service.GetOrganizationUnitRolesByPath(context.Background(), "root", 5, 0)
+		suite.Require().Nil(resp)
+		suite.Require().Equal(serviceerror.InternalServerError, *err)
+	})
+
+	suite.Run("success", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).
+			Return(OrganizationUnit{ID: "ou-1"}, nil).Once()
+		store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").
+			Return(true, nil).Once()
+
+		roleRes := new(OURoleResolverMock)
+		roleRes.On("GetRoleListByOUID", mock.Anything, "ou-1", 5, 0).
+			Return([]Role{}, nil).Once()
+		roleRes.On("GetRoleCountByOUID", mock.Anything, "ou-1").
+			Return(0, nil).Once()
+
+		service := suite.newServiceWithRoleResolver(store, newAllowAllAuthz(suite.T()), roleRes)
+		resp, err := service.GetOrganizationUnitRolesByPath(context.Background(), "root", 5, 0)
+		suite.Require().Nil(err)
+		suite.Require().NotNil(resp)
+	})
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_BuildRoleListResponse_InvalidType() {
+	resp, err := buildRoleListResponse("/organization-units", 123, 10, 5, 0)
+	suite.Nil(resp)
+	suite.NotNil(err)
+	suite.Equal(serviceerror.InternalServerError, *err)
 }
 
 func TestOUService_ValidateAndProcessHandlePath(t *testing.T) {

@@ -213,22 +213,25 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 	exporters = append(exporters, groupExporter)
 
-	// Two-phase initialization: inject user/group resolvers into OU service.
-	ouService.SetOUUserResolver(ouUserResolver)
-	ouService.SetOUGroupResolver(ouGroupResolver)
-
 	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, consentService)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize Resource Service", log.Error(err))
 	}
 	exporters = append(exporters, resourceExporter)
-	roleService, roleAssignmentService, roleExporter, err := role.Initialize(
+
+	roleService, roleAssignmentService, ouRoleResolver, roleExporter, err := role.Initialize(
 		mux, entityService, groupService, ouService, resourceService, entityTypeService,
 	)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize RoleService", log.Error(err))
 	}
 	exporters = append(exporters, roleExporter)
+
+	// Two-phase initialization: inject user/group/role resolvers into OU service.
+	ouService.SetOUUserResolver(ouUserResolver)
+	ouService.SetOUGroupResolver(ouGroupResolver)
+	ouService.SetOURoleResolver(ouRoleResolver)
+
 	authZService := authz.Initialize(roleService)
 	authzen.Initialize(mux, authZService, entityProvider, resourceService)
 

@@ -177,6 +177,8 @@ func registerRoutes(mux *http.ServeMux, ouHandler *organizationUnitHandler) {
 					ouHandler.HandleOUUsersListRequest(w, r)
 				case "groups":
 					ouHandler.HandleOUGroupsListRequest(w, r)
+				case "roles":
+					ouHandler.HandleOURolesListRequest(w, r)
 				default:
 					http.NotFound(w, r)
 				}
@@ -204,6 +206,7 @@ func registerRoutes(mux *http.ServeMux, ouHandler *organizationUnitHandler) {
 				"/ous":    ouHandler.HandleOUChildrenListByPathRequest,
 				"/users":  ouHandler.HandleOUUsersListByPathRequest,
 				"/groups": ouHandler.HandleOUGroupsListByPathRequest,
+				"/roles":  ouHandler.HandleOURolesListByPathRequest,
 			}
 
 			for suffix, handlerFunc := range handlers {

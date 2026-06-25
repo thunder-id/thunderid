@@ -148,6 +148,19 @@ var (
 		Query: `SELECT COUNT(*) as total FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $3 AND DEPLOYMENT_ID = $2`,
 	}
+
+	// queryGetRoleListByOUID retrieves a list of roles belonging to an organization unit with pagination.
+	queryGetRoleListByOUID = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-23",
+		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "ROLE" ` +
+			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC LIMIT $2 OFFSET $3`,
+	}
+
+	// queryGetRoleListCountByOUID retrieves the total count of roles belonging to an organization unit.
+	queryGetRoleListCountByOUID = dbmodel.DBQuery{
+		ID:    "RLQ-ROLE_MGT-24",
+		Query: `SELECT COUNT(*) as total FROM "ROLE" WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
 )
 
 // buildAuthorizedPermissionsQuery constructs a database-specific query to retrieve authorized permissions

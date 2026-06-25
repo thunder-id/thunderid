@@ -75,6 +75,54 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleList_Pagination() {
 	suite.Len(roles, 2)
 }
 
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListCountByOUID_Deduplicates() {
+	dbRoles := []Role{{ID: "role1"}, {ID: "role2"}}
+	fileRoles := []Role{{ID: "role2"}, {ID: "role3"}}
+
+	suite.mockDBStore.On("GetRoleListCountByOUID", mock.Anything, "ou-1").Return(2, nil)
+	suite.mockFileStore.On("GetRoleListCountByOUID", mock.Anything, "ou-1").Return(2, nil)
+	suite.mockDBStore.On("GetRoleListByOUID", mock.Anything, "ou-1", 2, 0).Return(dbRoles, nil)
+	suite.mockFileStore.On("GetRoleListByOUID", mock.Anything, "ou-1", 2, 0).Return(fileRoles, nil)
+
+	count, err := suite.store.GetRoleListCountByOUID(context.Background(), "ou-1")
+
+	suite.NoError(err)
+	suite.Equal(3, count)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListByOUID_Pagination() {
+	dbRoles := []Role{{ID: "role1"}, {ID: "role2"}}
+	fileRoles := []Role{{ID: "role2"}, {ID: "role3"}}
+
+	suite.mockDBStore.On("GetRoleListCountByOUID", mock.Anything, "ou-1").Return(2, nil)
+	suite.mockFileStore.On("GetRoleListCountByOUID", mock.Anything, "ou-1").Return(2, nil)
+	suite.mockDBStore.On("GetRoleListByOUID", mock.Anything, "ou-1", 2, 0).Return(dbRoles, nil)
+	suite.mockFileStore.On("GetRoleListByOUID", mock.Anything, "ou-1", 2, 0).Return(fileRoles, nil)
+
+	roles, err := suite.store.GetRoleListByOUID(context.Background(), "ou-1", 2, 1)
+
+	suite.NoError(err)
+	suite.Len(roles, 2)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListCountByOUID_DBStoreError() {
+	suite.mockDBStore.On("GetRoleListCountByOUID", mock.Anything, "ou-1").Return(0, errors.New("db error"))
+
+	count, err := suite.store.GetRoleListCountByOUID(context.Background(), "ou-1")
+
+	suite.Error(err)
+	suite.Equal(0, count)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListByOUID_DBStoreError() {
+	suite.mockDBStore.On("GetRoleListCountByOUID", mock.Anything, "ou-1").Return(0, errors.New("db error"))
+
+	roles, err := suite.store.GetRoleListByOUID(context.Background(), "ou-1", 5, 0)
+
+	suite.Error(err)
+	suite.Nil(roles)
+}
+
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_Deduplicates() {
 	dbAssignments := []RoleAssignment{
 		{ID: "user1", Type: assigneeTypeEntity},

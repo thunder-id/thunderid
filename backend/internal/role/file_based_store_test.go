@@ -82,6 +82,64 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListCountAndList() {
 	suite.Len(pagedRoles, 1)
 }
 
+func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListCountByOUIDAndListByOUID() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID:   "role1",
+		Name: "Admin",
+		OUID: "ou1",
+	})
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID:   "role2",
+		Name: "Viewer",
+		OUID: "ou1",
+	})
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID:   "role3",
+		Name: "OtherOUAdmin",
+		OUID: "ou2",
+	})
+
+	count, err := suite.store.GetRoleListCountByOUID(context.Background(), "ou1")
+
+	suite.NoError(err)
+	suite.Equal(2, count)
+
+	roles, err := suite.store.GetRoleListByOUID(context.Background(), "ou1", 10, 0)
+
+	suite.NoError(err)
+	suite.Len(roles, 2)
+	roleIDs := map[string]bool{}
+	for _, role := range roles {
+		roleIDs[role.ID] = true
+		suite.Equal("ou1", role.OUID)
+	}
+	suite.True(roleIDs["role1"])
+	suite.True(roleIDs["role2"])
+
+	pagedRoles, err := suite.store.GetRoleListByOUID(context.Background(), "ou1", 1, 1)
+
+	suite.NoError(err)
+	suite.Len(pagedRoles, 1)
+
+	otherOUCount, err := suite.store.GetRoleListCountByOUID(context.Background(), "ou2")
+
+	suite.NoError(err)
+	suite.Equal(1, otherOUCount)
+}
+
+func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListByOUID_NoMatches() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID:   "role1",
+		Name: "Admin",
+		OUID: "ou1",
+	})
+
+	roles, err := suite.store.GetRoleListByOUID(context.Background(), "nonexistent-ou", 10, 0)
+
+	suite.NoError(err)
+	suite.Empty(roles)
+}
+
 func (suite *RoleFileBasedStoreTestSuite) TestGetRoleAndExistence() {
 	suite.seedRole(RoleWithPermissionsAndAssignments{
 		ID:          "role1",

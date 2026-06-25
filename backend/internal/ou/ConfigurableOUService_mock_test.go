@@ -853,6 +853,170 @@ func (_c *ConfigurableOUServiceMock_GetOrganizationUnitList_Call) RunAndReturn(r
 	return _c
 }
 
+// GetOrganizationUnitRoles provides a mock function for the type ConfigurableOUServiceMock
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitRoles(ctx context.Context, id string, limit int, offset int) (*RoleListResponse, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, id, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOrganizationUnitRoles")
+	}
+
+	var r0 *RoleListResponse
+	var r1 *serviceerror.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*RoleListResponse, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, id, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *RoleListResponse); ok {
+		r0 = returnFunc(ctx, id, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*RoleListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, id, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableOUServiceMock_GetOrganizationUnitRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrganizationUnitRoles'
+type ConfigurableOUServiceMock_GetOrganizationUnitRoles_Call struct {
+	*mock.Call
+}
+
+// GetOrganizationUnitRoles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - limit int
+//   - offset int
+func (_e *ConfigurableOUServiceMock_Expecter) GetOrganizationUnitRoles(ctx interface{}, id interface{}, limit interface{}, offset interface{}) *ConfigurableOUServiceMock_GetOrganizationUnitRoles_Call {
+	return &ConfigurableOUServiceMock_GetOrganizationUnitRoles_Call{Call: _e.mock.On("GetOrganizationUnitRoles", ctx, id, limit, offset)}
+}
+
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitRoles_Call) Run(run func(ctx context.Context, id string, limit int, offset int)) *ConfigurableOUServiceMock_GetOrganizationUnitRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitRoles_Call) Return(roleListResponse *RoleListResponse, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitRoles_Call {
+	_c.Call.Return(roleListResponse, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitRoles_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int) (*RoleListResponse, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitRoles_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetOrganizationUnitRolesByPath provides a mock function for the type ConfigurableOUServiceMock
+func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitRolesByPath(ctx context.Context, handlePath string, limit int, offset int) (*RoleListResponse, *serviceerror.ServiceError) {
+	ret := _mock.Called(ctx, handlePath, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetOrganizationUnitRolesByPath")
+	}
+
+	var r0 *RoleListResponse
+	var r1 *serviceerror.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*RoleListResponse, *serviceerror.ServiceError)); ok {
+		return returnFunc(ctx, handlePath, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *RoleListResponse); ok {
+		r0 = returnFunc(ctx, handlePath, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*RoleListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *serviceerror.ServiceError); ok {
+		r1 = returnFunc(ctx, handlePath, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*serviceerror.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableOUServiceMock_GetOrganizationUnitRolesByPath_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetOrganizationUnitRolesByPath'
+type ConfigurableOUServiceMock_GetOrganizationUnitRolesByPath_Call struct {
+	*mock.Call
+}
+
+// GetOrganizationUnitRolesByPath is a helper method to define mock.On call
+//   - ctx context.Context
+//   - handlePath string
+//   - limit int
+//   - offset int
+func (_e *ConfigurableOUServiceMock_Expecter) GetOrganizationUnitRolesByPath(ctx interface{}, handlePath interface{}, limit interface{}, offset interface{}) *ConfigurableOUServiceMock_GetOrganizationUnitRolesByPath_Call {
+	return &ConfigurableOUServiceMock_GetOrganizationUnitRolesByPath_Call{Call: _e.mock.On("GetOrganizationUnitRolesByPath", ctx, handlePath, limit, offset)}
+}
+
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitRolesByPath_Call) Run(run func(ctx context.Context, handlePath string, limit int, offset int)) *ConfigurableOUServiceMock_GetOrganizationUnitRolesByPath_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitRolesByPath_Call) Return(roleListResponse *RoleListResponse, serviceError *serviceerror.ServiceError) *ConfigurableOUServiceMock_GetOrganizationUnitRolesByPath_Call {
+	_c.Call.Return(roleListResponse, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_GetOrganizationUnitRolesByPath_Call) RunAndReturn(run func(ctx context.Context, handlePath string, limit int, offset int) (*RoleListResponse, *serviceerror.ServiceError)) *ConfigurableOUServiceMock_GetOrganizationUnitRolesByPath_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetOrganizationUnitUsers provides a mock function for the type ConfigurableOUServiceMock
 func (_mock *ConfigurableOUServiceMock) GetOrganizationUnitUsers(ctx context.Context, id string, limit int, offset int, includeDisplay bool) (*UserListResponse, *serviceerror.ServiceError) {
 	ret := _mock.Called(ctx, id, limit, offset, includeDisplay)
@@ -1264,6 +1428,46 @@ func (_c *ConfigurableOUServiceMock_SetOUGroupResolver_Call) Return() *Configura
 }
 
 func (_c *ConfigurableOUServiceMock_SetOUGroupResolver_Call) RunAndReturn(run func(resolver OUGroupResolver)) *ConfigurableOUServiceMock_SetOUGroupResolver_Call {
+	_c.Run(run)
+	return _c
+}
+
+// SetOURoleResolver provides a mock function for the type ConfigurableOUServiceMock
+func (_mock *ConfigurableOUServiceMock) SetOURoleResolver(resolver OURoleResolver) {
+	_mock.Called(resolver)
+	return
+}
+
+// ConfigurableOUServiceMock_SetOURoleResolver_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetOURoleResolver'
+type ConfigurableOUServiceMock_SetOURoleResolver_Call struct {
+	*mock.Call
+}
+
+// SetOURoleResolver is a helper method to define mock.On call
+//   - resolver OURoleResolver
+func (_e *ConfigurableOUServiceMock_Expecter) SetOURoleResolver(resolver interface{}) *ConfigurableOUServiceMock_SetOURoleResolver_Call {
+	return &ConfigurableOUServiceMock_SetOURoleResolver_Call{Call: _e.mock.On("SetOURoleResolver", resolver)}
+}
+
+func (_c *ConfigurableOUServiceMock_SetOURoleResolver_Call) Run(run func(resolver OURoleResolver)) *ConfigurableOUServiceMock_SetOURoleResolver_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 OURoleResolver
+		if args[0] != nil {
+			arg0 = args[0].(OURoleResolver)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_SetOURoleResolver_Call) Return() *ConfigurableOUServiceMock_SetOURoleResolver_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *ConfigurableOUServiceMock_SetOURoleResolver_Call) RunAndReturn(run func(resolver OURoleResolver)) *ConfigurableOUServiceMock_SetOURoleResolver_Call {
 	_c.Run(run)
 	return _c
 }

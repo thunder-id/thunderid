@@ -670,6 +670,87 @@ paths:
         "500":
           description: Internal server error
 
+  /organization-units/{id}/roles:
+    get:
+      tags:
+        - Organization Units
+      summary: List roles in organization unit
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: List of roles in the organization unit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleListResponse'
+              example:
+                totalResults: 3
+                startIndex: 1
+                count: 2
+                roles:
+                  - id: "d4b1e6b0-9c3a-4f8a-9a3e-2f6a3b1c4d5e"
+                    name: "OU Admin"
+                    description: "Administers this organization unit"
+                    isReadOnly: false
+                  - id: "f1a2b3c4-5d6e-4f7a-8b9c-0d1e2f3a4b5c"
+                    name: "Viewer"
+                    description: "Read-only access to this organization unit"
+                    isReadOnly: true
+                links:
+                  - href: "organization-units/afc77cfd-620b-4cf0-a31c-7377b0ea8902/roles?offset=2&limit=2"
+                    rel: "next"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-limit:
+                  summary: Invalid limit parameter
+                  value:
+                    code: "OU-1010"
+                    message:
+                      key: "error.ouservice.invalid_limit_parameter"
+                      defaultValue: "Invalid limit parameter"
+                    description:
+                      key: "error.ouservice.invalid_limit_parameter_description"
+                      defaultValue: "The limit parameter must be a positive integer"
+                invalid-offset:
+                  summary: Invalid offset parameter
+                  value:
+                    code: "OU-1011"
+                    message:
+                      key: "error.ouservice.invalid_offset_parameter"
+                      defaultValue: "Invalid offset parameter"
+                    description:
+                      key: "error.ouservice.invalid_offset_parameter_description"
+                      defaultValue: "The offset parameter must be a non-negative integer"
+        "404":
+          description: Organization unit not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "OU-1003"
+                message:
+                  key: "error.ouservice.organization_unit_not_found"
+                  defaultValue: "Organization unit not found"
+                description:
+                  key: "error.ouservice.organization_unit_not_found_description"
+                  defaultValue: "The organization unit with the specified id does not exist"
+        "500":
+          description: Internal server error
+
   /organization-units/tree/{path}:
     get:
       tags:
@@ -1177,6 +1258,94 @@ paths:
         "500":
           description: Internal server error
 
+  /organization-units/tree/{path}/roles:
+    get:
+      tags:
+        - organization-units-by-path
+      summary: List roles in organization unit by handle path
+      parameters:
+        - in: path
+          name: path
+          required: true
+          schema:
+            type: string
+          style: simple
+          explode: false
+          description: |
+            Hierarchical path of organization unit handles separated by forward slashes.
+            Examples:
+            - `engineering` - Lists roles in the "engineering" OU
+            - `engineering/frontend` - Lists roles in "engineering/frontend"
+          example: "engineering/frontend"
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: List of roles in the organization unit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleListResponse'
+              example:
+                totalResults: 3
+                startIndex: 1
+                count: 2
+                roles:
+                  - id: "d4b1e6b0-9c3a-4f8a-9a3e-2f6a3b1c4d5e"
+                    name: "OU Admin"
+                    description: "Administers this organization unit"
+                    isReadOnly: false
+                  - id: "f1a2b3c4-5d6e-4f7a-8b9c-0d1e2f3a4b5c"
+                    name: "Viewer"
+                    description: "Read-only access to this organization unit"
+                    isReadOnly: true
+                links:
+                  - href: "organization-units/tree/engineering/frontend/roles?offset=2&limit=2"
+                    rel: "next"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-limit:
+                  summary: Invalid limit parameter
+                  value:
+                    code: "OU-1010"
+                    message:
+                      key: "error.ouservice.invalid_limit_parameter"
+                      defaultValue: "Invalid limit parameter"
+                    description:
+                      key: "error.ouservice.invalid_limit_parameter_description"
+                      defaultValue: "The limit parameter must be a positive integer"
+                invalid-offset:
+                  summary: Invalid offset parameter
+                  value:
+                    code: "OU-1011"
+                    message:
+                      key: "error.ouservice.invalid_offset_parameter"
+                      defaultValue: "Invalid offset parameter"
+                    description:
+                      key: "error.ouservice.invalid_offset_parameter_description"
+                      defaultValue: "The offset parameter must be a non-negative integer"
+        "404":
+          description: Organization unit not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "OU-1003"
+                message:
+                  key: "error.ouservice.organization_unit_not_found"
+                  defaultValue: "Organization unit not found"
+                description:
+                  key: "error.ouservice.organization_unit_not_found_description"
+                  defaultValue: "The organization unit with the specified id does not exist"
+        "500":
+          description: Internal server error
+
 components:
   securitySchemes:
     OAuth2:
@@ -1362,6 +1531,21 @@ components:
         name:
           type: string
 
+    Role:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        isReadOnly:
+          type: boolean
+          description: "Whether the role is declarative (read-only) or mutable."
+
     Link:
       type: object
       properties:
@@ -1535,6 +1719,30 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Group'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
+    RoleListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          description: "Number of results that match the listing operation."
+          example: 3
+        startIndex:
+          type: integer
+          description: "Index of the first element of the page, which will be equal to offset + 1."
+          example: 1
+        count:
+          type: integer
+          description: "Number of elements in the returned page."
+          example: 2
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
         links:
           type: array
           items:

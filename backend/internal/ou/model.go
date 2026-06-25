@@ -137,3 +137,27 @@ type GroupListResponse struct {
 	Groups       []Group      `json:"groups"`
 	Links        []utils.Link `json:"links"`
 }
+
+// Role represents a role with basic information for OU endpoints.
+type Role struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	IsReadOnly  bool   `json:"isReadOnly"`
+}
+
+// RoleListResponse represents the response for listing roles in an organization unit.
+type RoleListResponse struct {
+	TotalResults int          `json:"totalResults"`
+	StartIndex   int          `json:"startIndex"`
+	Count        int          `json:"count"`
+	Roles        []Role       `json:"roles"`
+	Links        []utils.Link `json:"links"`
+}
+
+// OURoleResolver provides access to role data for an organization unit
+// without requiring direct import of the role package.
+type OURoleResolver interface {
+	GetRoleCountByOUID(ctx context.Context, ouID string) (int, error)
+	GetRoleListByOUID(ctx context.Context, ouID string, limit, offset int) ([]Role, error)
+}
