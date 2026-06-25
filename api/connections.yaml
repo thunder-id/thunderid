@@ -1,0 +1,497 @@
+openapi: 3.0.3
+
+info:
+  title: Connections API
+  description: >-
+    Configure the external services ThunderID connects to. This is a thin layer over the
+    identity-provider service: each connection type has a strict, vendor-specific schema and
+    is delegated to the underlying provider, so a configured connection is a real identity
+    provider. Multiple instances per type are supported.
+  version: "1.0"
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: "localhost"
+      port:
+        default: "8090"
+
+tags:
+  - name: Connections
+    description: Discover available connection types and configure their instances.
+
+security:
+  - OAuth2: [system]
+
+paths:
+  /connections:
+    get:
+      tags: [Connections]
+      summary: List available connection types
+      description: Returns every connection type with its configured status and instance count.
+      responses:
+        "200":
+          description: The available connection types
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionListResponse'
+              example:
+                connections:
+                  - type: "google"
+                    configured: true
+                    instanceCount: 1
+                  - type: "github"
+                    configured: false
+                    instanceCount: 0
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/google:
+    get:
+      tags: [Connections]
+      summary: List configured Google connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create a Google connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoogleConnectionRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoogleConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/google/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get a Google connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoogleConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update a Google connection
+      description: Omit clientSecret to keep the stored value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoogleConnectionRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoogleConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete a Google connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/github:
+    get:
+      tags: [Connections]
+      summary: List configured GitHub connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create a GitHub connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GitHubConnectionRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitHubConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/github/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get a GitHub connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitHubConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update a GitHub connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GitHubConnectionRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GitHubConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete a GitHub connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+  /connections/oidc:
+    get:
+      tags: [Connections]
+      summary: List configured OIDC connections
+      responses:
+        "200": { $ref: '#/components/responses/InstanceList' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    post:
+      tags: [Connections]
+      summary: Create an OIDC connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OIDCConnectionRequest' }
+      responses:
+        "201":
+          description: Connection created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OIDCConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+  /connections/oidc/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConnectionID' }
+    get:
+      tags: [Connections]
+      summary: Get an OIDC connection
+      responses:
+        "200":
+          description: Connection details (secrets masked)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OIDCConnectionResponse' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    put:
+      tags: [Connections]
+      summary: Update an OIDC connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OIDCConnectionRequest' }
+      responses:
+        "200":
+          description: Connection updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OIDCConnectionResponse' }
+        "400": { $ref: '#/components/responses/BadRequest' }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { $ref: '#/components/responses/Conflict' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Connections]
+      summary: Delete an OIDC connection
+      responses:
+        "204": { description: Connection deleted }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "500": { $ref: '#/components/responses/InternalServerError' }
+
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://localhost:8090/oauth2/authorize
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+        clientCredentials:
+          tokenUrl: https://localhost:8090/oauth2/token
+          scopes:
+            system: Access to system management APIs
+
+  parameters:
+    ConnectionID:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    InstanceList:
+      description: Configured connection instances
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/ConnectionInstanceSummary'
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Connection not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: A connection with the same name already exists
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalServerError:
+      description: Internal server error
+
+  schemas:
+    ConnectionListResponse:
+      type: object
+      required: [connections]
+      properties:
+        connections:
+          type: array
+          items: { $ref: '#/components/schemas/ConnectionTypeSummary' }
+
+    ConnectionTypeSummary:
+      type: object
+      required: [type, configured, instanceCount]
+      properties:
+        type:
+          type: string
+          enum: [google, github, oidc]
+          example: "google"
+        configured:
+          type: boolean
+          example: true
+        instanceCount:
+          type: integer
+          example: 1
+
+    ConnectionInstanceSummary:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: "My Google" }
+        description: { type: string }
+
+    GoogleConnectionRequest:
+      type: object
+      required: [name, clientId, redirectUri]
+      properties:
+        name: { type: string, example: "My Google" }
+        description: { type: string }
+        clientId: { type: string }
+        clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update; required when creating." }
+        redirectUri: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prompt: { type: string }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+    GoogleConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "google" }
+        clientId: { type: string }
+        clientSecret: { type: string, description: "Masked as \"******\".", example: "******" }
+        redirectUri: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prompt: { type: string }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+
+    GitHubConnectionRequest:
+      type: object
+      required: [name, clientId, redirectUri]
+      properties:
+        name: { type: string, example: "My GitHub" }
+        description: { type: string }
+        clientId: { type: string }
+        clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update; required when creating." }
+        redirectUri: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prompt: { type: string }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+    GitHubConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "github" }
+        clientId: { type: string }
+        clientSecret: { type: string, example: "******" }
+        redirectUri: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prompt: { type: string }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+
+    OIDCConnectionRequest:
+      type: object
+      required: [name, clientId, redirectUri, authorizationEndpoint, tokenEndpoint]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        clientId: { type: string }
+        clientSecret: { type: string, description: "Write-only. Omit to keep the stored value on update; required when creating." }
+        redirectUri: { type: string }
+        authorizationEndpoint: { type: string }
+        tokenEndpoint: { type: string }
+        userInfoEndpoint: { type: string }
+        jwksEndpoint: { type: string }
+        logoutEndpoint: { type: string }
+        issuer: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prompt: { type: string }
+        tokenExchangeEnabled: { type: boolean }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+    OIDCConnectionResponse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, example: "oidc" }
+        clientId: { type: string }
+        clientSecret: { type: string, example: "******" }
+        redirectUri: { type: string }
+        authorizationEndpoint: { type: string }
+        tokenEndpoint: { type: string }
+        userInfoEndpoint: { type: string }
+        jwksEndpoint: { type: string }
+        logoutEndpoint: { type: string }
+        issuer: { type: string }
+        scopes: { type: array, items: { type: string } }
+        prompt: { type: string }
+        tokenExchangeEnabled: { type: boolean }
+        attributeConfiguration: { $ref: '#/components/schemas/AttributeConfiguration' }
+
+    AttributeConfiguration:
+      type: object
+      description: External-to-local attribute mapping configuration for the connection.
+      required:
+        - userTypeResolution
+      properties:
+        userTypeResolution:
+          $ref: '#/components/schemas/UserTypeResolution'
+        userTypeAttributeMappings:
+          type: array
+          description: Per-user-type attribute mapping profiles.
+          items:
+            $ref: '#/components/schemas/UserTypeAttributeMapping'
+
+    UserTypeResolution:
+      type: object
+      description: Resolves which local user type an incoming federated identity maps to.
+      required:
+        - default
+      properties:
+        default:
+          type: string
+          description: Default local user type for federated just-in-time provisioning.
+          example: "Person"
+
+    UserTypeAttributeMapping:
+      type: object
+      required:
+        - userType
+      description: Attribute mapping profile for a single local user type.
+      properties:
+        userType:
+          type: string
+          description: Local user type this profile applies to.
+          example: "Person"
+        attributes:
+          type: array
+          description: External-to-local attribute mappings for this user type.
+          items:
+            $ref: '#/components/schemas/AttributeMapping'
+
+    AttributeMapping:
+      type: object
+      required:
+        - externalAttribute
+        - localAttribute
+      description: Maps a single external IDP attribute to a local user attribute.
+      properties:
+        externalAttribute:
+          type: string
+          description: >
+            External claim name emitted by the IDP. May be a dot-notation path into a nested
+            claim (e.g. "address.email"). A literal name containing dots is matched first.
+          example: "given_name"
+        localAttribute:
+          type: string
+          description: Target local attribute name. Must exist in the user type's schema.
+          example: "firstName"
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: "IDP-1001"
+        message:
+          $ref: '#/components/schemas/I18nMessage'
+        description:
+          $ref: '#/components/schemas/I18nMessage'
+
+    I18nMessage:
+      type: object
+      required: [key, defaultValue]
+      properties:
+        key: { type: string }
+        defaultValue: { type: string }
