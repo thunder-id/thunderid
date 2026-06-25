@@ -703,6 +703,8 @@ var defaultMessages = map[string]string{
 	"error.import.templateResolutionFailed": "Template resolution failed",
 	"error.import.templateResolutionFailed.description": "Failed to resolve one or more template variables in YAML content",
 	"error.import.unsupportedResourceType": "unsupported resource type for declarative file management",
+	"error.interceptor.captcha_invalid": "Invalid captcha",
+	"error.interceptor.captcha_invalid_description": "The captcha token could not be verified",
 	"error.interceptor.challenge_token_invalid": "Invalid challenge token",
 	"error.interceptor.challenge_token_invalid_description": "The challenge token is missing or invalid",
 	"error.interceptor.failed": "Interceptor validation failed",
