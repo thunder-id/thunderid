@@ -1685,6 +1685,8 @@ const translations = {
     'onboarding.configure.approach.native.title': 'Embedded sign-in/sign-up components in your app',
     'onboarding.configure.approach.native.description':
       'Users will sign in or sign up through your app using the UI components or APIs provided by {{product}}. You can customize and brand the flows using the designer or through code.',
+    'onboarding.configure.experience.approach.redirectOnlyHint':
+      'This application uses redirect-based sign-in. Users are redirected to the hosted sign-in and sign-up pages provided by {{product}}, which you can customize using the Flow Designer.',
     'onboarding.configure.stack.title': 'Choose a template',
     'onboarding.configure.stack.subtitle': 'Select the template that best matches your application.',
     'onboarding.configure.stack.categoriesLabel': 'Categories',

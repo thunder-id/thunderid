@@ -29,6 +29,12 @@ const mockCreateApplication = vi.fn();
 const mockNavigate = vi.fn();
 let mockPathname = '/';
 
+const MOCK_DEFAULT_USER_TYPES = [
+  {name: 'customer', displayName: 'Customer'},
+  {name: 'employee', displayName: 'Employee'},
+];
+let mockUserTypes: {name: string; displayName: string}[] | undefined = MOCK_DEFAULT_USER_TYPES;
+
 // Mock logger
 vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({
@@ -74,10 +80,7 @@ vi.mock('../../api/useCreateApplication', () => ({
 vi.mock('@thunderid/configure-user-types', () => ({
   useGetUserTypes: () => ({
     data: {
-      types: [
-        {name: 'customer', displayName: 'Customer'},
-        {name: 'employee', displayName: 'Employee'},
-      ],
+      types: mockUserTypes,
     },
     isLoading: false,
     error: null,
@@ -425,6 +428,7 @@ describe('ApplicationCreatePage', () => {
 
     window.history.replaceState({}, '', '/');
     mockPathname = '/';
+    mockUserTypes = MOCK_DEFAULT_USER_TYPES;
 
     vi.clearAllMocks();
     mockNavigate.mockResolvedValue(undefined);
@@ -931,6 +935,58 @@ describe('ApplicationCreatePage', () => {
       await goToExperienceStep();
 
       expect(screen.getByTestId('allow-embedded-approach')).toHaveTextContent('false');
+    });
+
+    it('should skip the Sign-In Experience step for browser SPAs with a single user type', async () => {
+      mockUserTypes = [{name: 'customer', displayName: 'Customer'}];
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-browser-platform'));
+
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
+      });
+      // OPTIONS → CONFIGURE (EXPERIENCE step is skipped, nothing to configure there)
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('application-configure-experience')).not.toBeInTheDocument();
+    });
+
+    it('should keep the Sign-In Experience step for browser SPAs while user types are unresolved', async () => {
+      // Simulate the user types query not having resolved yet — the step must not be skipped early.
+      mockUserTypes = undefined;
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-browser-platform'));
+
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → DESIGN
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      // DESIGN → OPTIONS
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
+      });
+      // OPTIONS → EXPERIENCE (still shown because the user type count is unknown)
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-experience')).toBeInTheDocument();
+      });
     });
   });
 

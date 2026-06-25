@@ -193,17 +193,30 @@ export default function ApplicationCreatePage(): JSX.Element {
     );
   }, [selectedTemplateConfig, integrations, signInApproach, selectedAuthFlow]);
 
+  // The Sign-In Experience step is only worth showing when it offers a real choice: either the
+  // sign-in approach (available only when the embedded option is allowed) or a user-type selection
+  // (shown only when there are 2+ user types). For redirect-only templates (public-client SPAs)
+  // with fewer than two user types there is nothing to configure, so the step is skipped entirely.
+  const showExperienceStep = useMemo((): boolean => {
+    if (!isBrowserSpaTemplate) return true;
+    // Until user types resolve, keep the step visible so user-type selection is never skipped
+    // prematurely; only collapse it once we know there are fewer than two types to choose from.
+    const userTypes = userTypesData?.types;
+    return !userTypes || userTypes.length >= 2;
+  }, [isBrowserSpaTemplate, userTypesData]);
+
   const visibleSteps = useMemo((): ApplicationCreateFlowStep[] => {
     return creationFlow.steps.filter((step) => {
       if (step === ApplicationCreateFlowStep.ORGANIZATION_UNIT) return hasMultipleOUs;
       if (step === ApplicationCreateFlowStep.CONFIGURE) return needsConfigure;
+      if (step === ApplicationCreateFlowStep.EXPERIENCE) return showExperienceStep;
       // COMPLETE step is dynamic — only shown when an app with a client secret is created.
       // It's filtered out of visibleSteps here and is only set explicitly via setCurrentStep
       // when the creation succeeds with a client secret.
       if (step === ApplicationCreateFlowStep.COMPLETE) return false;
       return true;
     });
-  }, [creationFlow, hasMultipleOUs, needsConfigure]);
+  }, [creationFlow, hasMultipleOUs, needsConfigure, showExperienceStep]);
 
   const handleClose = (): void => {
     void navigate(isWelcomeFlow ? '/home' : '/applications');

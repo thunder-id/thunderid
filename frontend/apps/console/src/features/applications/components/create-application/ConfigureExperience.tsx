@@ -19,6 +19,7 @@
 import type {UserTypeListItem} from '@thunderid/configure-user-types';
 import {useConfig} from '@thunderid/contexts';
 import {
+  Alert,
   Box,
   Typography,
   Stack,
@@ -189,65 +190,81 @@ export default function ConfigureExperience({
         </Typography>
       </Stack>
 
-      <Stack direction="column" spacing={2} sx={{mt: 2}}>
-        <Stack direction="column" spacing={1}>
-          <Typography variant="h6">{t('applications:onboarding.configure.experience.approach.title')}</Typography>
-          <Typography variant="body2" color="text.disabled" gutterBottom>
-            {t('applications:onboarding.configure.experience.approach.subtitle')}
-          </Typography>
-        </Stack>
-        <RadioGroup value={selectedApproach} onChange={handleApproachChange}>
-          <Stack direction="column" spacing={2}>
-            {/* Hosted Pages Option */}
-            <Card variant="outlined" onClick={() => onApproachChange(ApplicationCreateFlowSignInApproach.INBUILT)}>
-              <CardActionArea
-                sx={{
-                  height: '100%',
-                  cursor: 'pointer',
-                  border: 1,
-                  borderColor:
-                    selectedApproach === ApplicationCreateFlowSignInApproach.INBUILT ? 'primary.main' : 'divider',
-                  transition: 'all 0.2s ease-in-out',
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    bgcolor:
-                      selectedApproach === ApplicationCreateFlowSignInApproach.INBUILT
-                        ? 'action.selected'
-                        : 'action.hover',
-                  },
-                }}
-              >
-                <CardContent>
-                  <Stack direction="row" spacing={2} alignItems="flex-start">
-                    <FormControlLabel
-                      value={ApplicationCreateFlowSignInApproach.INBUILT}
-                      control={<Radio />}
-                      label=""
-                      sx={{m: 0}}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                    <Box sx={{flex: 1}}>
-                      <Stack direction="row" spacing={1} alignItems="center" sx={{mb: 1}}>
-                        <ExternalLink size={20} />
-                        <Typography variant="h6">
-                          {t('applications:onboarding.configure.approach.inbuilt.title', {
+      {/*
+        Only offer the approach selection when the embedded option is available. For redirect-only
+        templates (public-client SPAs) there is no choice to make, so the single-option radio is
+        replaced by a non-blocking hint that the application uses redirect-based sign-in.
+      */}
+      {!allowEmbeddedApproach ? (
+        <Alert
+          severity="info"
+          icon={<ExternalLink size={20} />}
+          sx={{mt: 2}}
+          data-testid="application-experience-redirect-hint"
+        >
+          {t('applications:onboarding.configure.experience.approach.redirectOnlyHint', {
+            product: productName,
+          })}
+        </Alert>
+      ) : (
+        <Stack direction="column" spacing={2} sx={{mt: 2}}>
+          <Stack direction="column" spacing={1}>
+            <Typography variant="h6">{t('applications:onboarding.configure.experience.approach.title')}</Typography>
+            <Typography variant="body2" color="text.disabled" gutterBottom>
+              {t('applications:onboarding.configure.experience.approach.subtitle')}
+            </Typography>
+          </Stack>
+          <RadioGroup value={selectedApproach} onChange={handleApproachChange}>
+            <Stack direction="column" spacing={2}>
+              {/* Hosted Pages Option */}
+              <Card variant="outlined" onClick={() => onApproachChange(ApplicationCreateFlowSignInApproach.INBUILT)}>
+                <CardActionArea
+                  sx={{
+                    height: '100%',
+                    cursor: 'pointer',
+                    border: 1,
+                    borderColor:
+                      selectedApproach === ApplicationCreateFlowSignInApproach.INBUILT ? 'primary.main' : 'divider',
+                    transition: 'all 0.2s ease-in-out',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      bgcolor:
+                        selectedApproach === ApplicationCreateFlowSignInApproach.INBUILT
+                          ? 'action.selected'
+                          : 'action.hover',
+                    },
+                  }}
+                >
+                  <CardContent>
+                    <Stack direction="row" spacing={2} alignItems="flex-start">
+                      <FormControlLabel
+                        value={ApplicationCreateFlowSignInApproach.INBUILT}
+                        control={<Radio />}
+                        label=""
+                        sx={{m: 0}}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <Box sx={{flex: 1}}>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{mb: 1}}>
+                          <ExternalLink size={20} />
+                          <Typography variant="h6">
+                            {t('applications:onboarding.configure.approach.inbuilt.title', {
+                              product: productName,
+                            })}
+                          </Typography>
+                        </Stack>
+                        <Typography variant="body2" color="text.secondary">
+                          {t('applications:onboarding.configure.approach.inbuilt.description', {
                             product: productName,
                           })}
                         </Typography>
-                      </Stack>
-                      <Typography variant="body2" color="text.secondary">
-                        {t('applications:onboarding.configure.approach.inbuilt.description', {
-                          product: productName,
-                        })}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </CardActionArea>
-            </Card>
+                      </Box>
+                    </Stack>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
 
-            {/* Native/Custom UI Option - hidden for public-client SPAs which must use redirect-based flows */}
-            {allowEmbeddedApproach && (
+              {/* Native/Custom UI Option */}
               <Card variant="outlined" onClick={() => onApproachChange(ApplicationCreateFlowSignInApproach.EMBEDDED)}>
                 <CardActionArea
                   sx={{
@@ -294,10 +311,10 @@ export default function ConfigureExperience({
                   </CardContent>
                 </CardActionArea>
               </Card>
-            )}
-          </Stack>
-        </RadioGroup>
-      </Stack>
+            </Stack>
+          </RadioGroup>
+        </Stack>
+      )}
 
       {/* User Type Selection - Only show if there are 2 or more user types */}
       {showUserTypes && onUserTypesChange && (
