@@ -24,9 +24,15 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 )
 
+type providerName string
+
 // AuthUser accumulates per-provider authentication state produced during flow execution.
 // All fields are unexported; use the manager methods to interact with this type.
 type AuthUser struct {
+	state map[providerName]authState
+}
+
+type authState struct {
 	entityReferenceToken any
 	entityReference      *authnprovidercm.EntityReference
 	attributeToken       any
@@ -36,12 +42,21 @@ type AuthUser struct {
 // IsAuthenticated reports whether this AuthUser has been populated by a successful
 // authentication.
 func (a AuthUser) IsAuthenticated() bool {
-	return (a.entityReference != nil || a.entityReferenceToken != nil) &&
-		(a.attributes != nil || a.attributeToken != nil)
+	if len(a.state) == 0 {
+		return false
+	}
+
+	for _, state := range a.state {
+		if (state.entityReference == nil && state.entityReferenceToken == nil) ||
+			(state.attributes == nil && state.attributeToken == nil) {
+			return false
+		}
+	}
+	return true
 }
 
-// authUserJSON is the internal proxy used for JSON serialization of AuthUser.
-type authUserJSON struct {
+// authStateJSON is the internal proxy used for JSON serialization of authState.
+type authStateJSON struct {
 	EntityReferenceToken any                                 `json:"entityReferenceToken"`
 	EntityReference      *authnprovidercm.EntityReference    `json:"entityReference,omitempty"`
 	AttributeToken       any                                 `json:"attributeToken"`
@@ -50,11 +65,14 @@ type authUserJSON struct {
 
 // MarshalJSON implements json.Marshaler.
 func (a *AuthUser) MarshalJSON() ([]byte, error) {
-	proxy := authUserJSON{
-		EntityReferenceToken: a.entityReferenceToken,
-		EntityReference:      a.entityReference,
-		AttributeToken:       a.attributeToken,
-		Attributes:           a.attributes,
+	proxy := make(map[providerName]authStateJSON, len(a.state))
+	for name, state := range a.state {
+		proxy[name] = authStateJSON{
+			EntityReferenceToken: state.entityReferenceToken,
+			EntityReference:      state.entityReference,
+			AttributeToken:       state.attributeToken,
+			Attributes:           state.attributes,
+		}
 	}
 
 	return json.Marshal(proxy)
@@ -62,15 +80,20 @@ func (a *AuthUser) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements json.Unmarshaler.
 func (a *AuthUser) UnmarshalJSON(b []byte) error {
-	var proxy authUserJSON
+	var proxy map[providerName]authStateJSON
 	if err := json.Unmarshal(b, &proxy); err != nil {
 		return err
 	}
 
-	a.entityReferenceToken = proxy.EntityReferenceToken
-	a.entityReference = proxy.EntityReference
-	a.attributeToken = proxy.AttributeToken
-	a.attributes = proxy.Attributes
+	a.state = make(map[providerName]authState, len(proxy))
+	for name, p := range proxy {
+		a.state[name] = authState{
+			entityReferenceToken: p.EntityReferenceToken,
+			entityReference:      p.EntityReference,
+			attributeToken:       p.AttributeToken,
+			attributes:           p.Attributes,
+		}
+	}
 
 	return nil
 }

@@ -37,17 +37,21 @@ func TestModelTestSuite(t *testing.T) {
 
 func (s *ModelTestSuite) TestAuthUserMarshalUnmarshal() {
 	authUser := AuthUser{
-		entityReferenceToken: map[string]interface{}{"userID": "user-123"},
-		entityReference: &authnprovidercm.EntityReference{
-			EntityID:       "user-123",
-			EntityCategory: "person",
-			EntityType:     "customer",
-			OUID:           "ou-456",
-		},
-		attributeToken: "secret-token",
-		attributes: &authnprovidercm.AttributesResponse{
-			Attributes: map[string]*authnprovidercm.AttributeResponse{
-				"email": {Value: "test@example.com"},
+		state: map[providerName]authState{
+			"default": {
+				entityReferenceToken: map[string]interface{}{"userID": "user-123"},
+				entityReference: &authnprovidercm.EntityReference{
+					EntityID:       "user-123",
+					EntityCategory: "person",
+					EntityType:     "customer",
+					OUID:           "ou-456",
+				},
+				attributeToken: "secret-token",
+				attributes: &authnprovidercm.AttributesResponse{
+					Attributes: map[string]*authnprovidercm.AttributeResponse{
+						"email": {Value: "test@example.com"},
+					},
+				},
 			},
 		},
 	}
@@ -59,16 +63,55 @@ func (s *ModelTestSuite) TestAuthUserMarshalUnmarshal() {
 	err = json.Unmarshal(data, &restored)
 	s.NoError(err)
 
-	s.NotNil(restored.entityReferenceToken)
-	s.NotNil(restored.entityReference)
-	s.Equal("user-123", restored.entityReference.EntityID)
-	s.Equal("person", restored.entityReference.EntityCategory)
-	s.Equal("customer", restored.entityReference.EntityType)
-	s.Equal("ou-456", restored.entityReference.OUID)
+	s.Len(restored.state, 1)
+	restoredState, ok := restored.state["default"]
+	s.True(ok)
 
-	s.Equal("secret-token", restored.attributeToken)
-	s.NotNil(restored.attributes)
-	s.Equal("test@example.com", restored.attributes.Attributes["email"].Value)
+	s.NotNil(restoredState.entityReferenceToken)
+	s.NotNil(restoredState.entityReference)
+	s.Equal("user-123", restoredState.entityReference.EntityID)
+	s.Equal("person", restoredState.entityReference.EntityCategory)
+	s.Equal("customer", restoredState.entityReference.EntityType)
+	s.Equal("ou-456", restoredState.entityReference.OUID)
+
+	s.Equal("secret-token", restoredState.attributeToken)
+	s.NotNil(restoredState.attributes)
+	s.Equal("test@example.com", restoredState.attributes.Attributes["email"].Value)
+}
+
+func (s *ModelTestSuite) TestAuthUserMarshalUnmarshal_MultipleProviders() {
+	authUser := AuthUser{
+		state: map[providerName]authState{
+			"provider-a": {
+				entityReference: &authnprovidercm.EntityReference{EntityID: "user-a"},
+				attributes:      &authnprovidercm.AttributesResponse{},
+			},
+			"provider-b": {
+				entityReferenceToken: map[string]interface{}{"userID": "user-b"},
+				attributeToken:       "tok-b",
+			},
+		},
+	}
+
+	data, err := json.Marshal(&authUser)
+	s.NoError(err)
+
+	var restored AuthUser
+	err = json.Unmarshal(data, &restored)
+	s.NoError(err)
+
+	s.Len(restored.state, 2)
+
+	stateA, ok := restored.state["provider-a"]
+	s.True(ok)
+	s.NotNil(stateA.entityReference)
+	s.Equal("user-a", stateA.entityReference.EntityID)
+	s.NotNil(stateA.attributes)
+
+	stateB, ok := restored.state["provider-b"]
+	s.True(ok)
+	s.NotNil(stateB.entityReferenceToken)
+	s.Equal("tok-b", stateB.attributeToken)
 }
 
 func (s *ModelTestSuite) TestAuthUserIsAuthenticated_ZeroValue() {
@@ -81,32 +124,84 @@ func (s *ModelTestSuite) TestAuthUserIsAuthenticated_EmptyAuthUser() {
 	s.False(a.IsAuthenticated())
 }
 
+func (s *ModelTestSuite) TestAuthUserIsAuthenticated_EmptyStateMap() {
+	a := AuthUser{state: map[providerName]authState{}}
+	s.False(a.IsAuthenticated())
+}
+
 func (s *ModelTestSuite) TestAuthUserIsAuthenticated_WithEntityRefTokenAndAttrToken() {
 	a := AuthUser{
-		entityReferenceToken: map[string]interface{}{"userID": "user-123"},
-		attributeToken:       "tok",
+		state: map[providerName]authState{
+			"default": {
+				entityReferenceToken: map[string]interface{}{"userID": "user-123"},
+				attributeToken:       "tok",
+			},
+		},
 	}
 	s.True(a.IsAuthenticated())
 }
 
 func (s *ModelTestSuite) TestAuthUserIsAuthenticated_WithEntityRefAndAttributes() {
 	a := AuthUser{
-		entityReference: &authnprovidercm.EntityReference{EntityID: "user-123"},
-		attributes:      &authnprovidercm.AttributesResponse{},
+		state: map[providerName]authState{
+			"default": {
+				entityReference: &authnprovidercm.EntityReference{EntityID: "user-123"},
+				attributes:      &authnprovidercm.AttributesResponse{},
+			},
+		},
 	}
 	s.True(a.IsAuthenticated())
 }
 
 func (s *ModelTestSuite) TestAuthUserIsAuthenticated_OnlyEntityRef() {
 	a := AuthUser{
-		entityReference: &authnprovidercm.EntityReference{EntityID: "user-123"},
+		state: map[providerName]authState{
+			"default": {
+				entityReference: &authnprovidercm.EntityReference{EntityID: "user-123"},
+			},
+		},
 	}
 	s.False(a.IsAuthenticated())
 }
 
 func (s *ModelTestSuite) TestAuthUserIsAuthenticated_OnlyAttributes() {
 	a := AuthUser{
-		attributes: &authnprovidercm.AttributesResponse{},
+		state: map[providerName]authState{
+			"default": {
+				attributes: &authnprovidercm.AttributesResponse{},
+			},
+		},
+	}
+	s.False(a.IsAuthenticated())
+}
+
+func (s *ModelTestSuite) TestAuthUserIsAuthenticated_AllProvidersValid() {
+	a := AuthUser{
+		state: map[providerName]authState{
+			"provider-a": {
+				entityReference: &authnprovidercm.EntityReference{EntityID: "user-123"},
+				attributes:      &authnprovidercm.AttributesResponse{},
+			},
+			"provider-b": {
+				entityReferenceToken: map[string]interface{}{"userID": "user-123"},
+				attributeToken:       "tok",
+			},
+		},
+	}
+	s.True(a.IsAuthenticated())
+}
+
+func (s *ModelTestSuite) TestAuthUserIsAuthenticated_OneProviderInvalid() {
+	a := AuthUser{
+		state: map[providerName]authState{
+			"provider-a": {
+				entityReference: &authnprovidercm.EntityReference{EntityID: "user-123"},
+				attributes:      &authnprovidercm.AttributesResponse{},
+			},
+			"provider-b": {
+				entityReference: &authnprovidercm.EntityReference{EntityID: "user-123"},
+			},
+		},
 	}
 	s.False(a.IsAuthenticated())
 }
@@ -121,8 +216,5 @@ func (s *ModelTestSuite) TestAuthUserMarshalEmpty() {
 	var restored AuthUser
 	err = json.Unmarshal(data, &restored)
 	s.NoError(err)
-	s.Nil(restored.entityReferenceToken)
-	s.Nil(restored.entityReference)
-	s.Nil(restored.attributeToken)
-	s.Nil(restored.attributes)
+	s.Empty(restored.state)
 }

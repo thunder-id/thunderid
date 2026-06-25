@@ -45,7 +45,7 @@ func TestUtilsTestSuite(t *testing.T) {
 // by unmarshaling JSON with both entityReferenceToken and attributeToken set.
 func newAuthenticatedAuthUser() authnprovidermgr.AuthUser {
 	var authUser authnprovidermgr.AuthUser
-	data := `{"entityReferenceToken":"token","attributeToken":"token"}`
+	data := `{"default":{"entityReferenceToken":"token","attributeToken":"token"}}`
 	_ = json.Unmarshal([]byte(data), &authUser)
 	return authUser
 }

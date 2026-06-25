@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/authnprovider/provider"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/i18n/core"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/providermock"
@@ -42,23 +43,36 @@ func TestManagerTestSuite(t *testing.T) {
 
 func (s *ManagerTestSuite) SetupTest() {
 	s.mockProvider = providermock.NewAuthnProviderInterfaceMock(s.T())
-	s.mgr = newAuthnProviderManager(s.mockProvider)
+	mgr, err := newAuthnProviderManager(
+		map[string]provider.AuthnProviderInterface{string(defaultProviderName): s.mockProvider},
+		nil,
+	)
+	s.Require().NoError(err)
+	s.mgr = mgr
 }
 
 // --- helpers to build authenticated AuthUser instances ---
 
 func authenticatedAuthUserWithTokens(entityRefToken any, attrToken any) AuthUser {
 	return AuthUser{
-		entityReferenceToken: entityRefToken,
-		attributeToken:       attrToken,
+		state: map[providerName]authState{
+			defaultProviderName: {
+				entityReferenceToken: entityRefToken,
+				attributeToken:       attrToken,
+			},
+		},
 	}
 }
 
 func authenticatedAuthUserWithResolved(entityRef *authnprovidercm.EntityReference,
 	attrs *authnprovidercm.AttributesResponse) AuthUser {
 	return AuthUser{
-		entityReference: entityRef,
-		attributes:      attrs,
+		state: map[providerName]authState{
+			defaultProviderName: {
+				entityReference: entityRef,
+				attributes:      attrs,
+			},
+		},
 	}
 }
 
@@ -86,10 +100,11 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Success_WithTokens() {
 	s.Nil(svcErr)
 	s.Equal(runtimeAttrs, rtAttrs)
 	s.True(returnedAuthUser.IsAuthenticated())
-	s.Equal(entityRefToken, returnedAuthUser.entityReferenceToken)
-	s.Nil(returnedAuthUser.entityReference)
-	s.Equal(attrToken, returnedAuthUser.attributeToken)
-	s.Nil(returnedAuthUser.attributes)
+	st := returnedAuthUser.state[defaultProviderName]
+	s.Equal(entityRefToken, st.entityReferenceToken)
+	s.Nil(st.entityReference)
+	s.Equal(attrToken, st.attributeToken)
+	s.Nil(st.attributes)
 }
 
 func (s *ManagerTestSuite) TestAuthenticateUser_Success_WithResolvedValues() {
@@ -118,10 +133,43 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Success_WithResolvedValues() {
 	s.Nil(svcErr)
 	s.Nil(rtAttrs)
 	s.True(returnedAuthUser.IsAuthenticated())
-	s.Nil(returnedAuthUser.entityReferenceToken)
-	s.Equal(entityRef, returnedAuthUser.entityReference)
-	s.Nil(returnedAuthUser.attributeToken)
-	s.Equal(attrs, returnedAuthUser.attributes)
+	st := returnedAuthUser.state[defaultProviderName]
+	s.Nil(st.entityReferenceToken)
+	s.Equal(entityRef, st.entityReference)
+	s.Nil(st.attributeToken)
+	s.Equal(attrs, st.attributes)
+}
+
+func (s *ManagerTestSuite) TestAuthenticateUser_EmptyCredentials() {
+	identifiers := map[string]interface{}{"username": "alice"}
+
+	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, map[string]interface{}{},
+		nil, nil, AuthUser{})
+
+	s.NotNil(svcErr)
+	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
+	s.mockProvider.AssertNotCalled(s.T(), "Authenticate")
+}
+
+func (s *ManagerTestSuite) TestAuthenticateUser_NilCredentials() {
+	identifiers := map[string]interface{}{"username": "alice"}
+
+	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, nil, nil, nil, AuthUser{})
+
+	s.NotNil(svcErr)
+	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
+	s.mockProvider.AssertNotCalled(s.T(), "Authenticate")
+}
+
+func (s *ManagerTestSuite) TestAuthenticateUser_UnknownCredentialKey() {
+	identifiers := map[string]interface{}{"username": "alice"}
+	credentials := map[string]interface{}{"unknownCred": "value"}
+
+	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials, nil, nil, AuthUser{})
+
+	s.NotNil(svcErr)
+	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
+	s.mockProvider.AssertNotCalled(s.T(), "Authenticate")
 }
 
 func (s *ManagerTestSuite) TestAuthenticateUser_MissingEntityAndAttributes() {
@@ -289,7 +337,8 @@ func (s *ManagerTestSuite) TestAuthenticateUser_ReAuth() {
 	au2, _, _ := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials, nil, meta, au1)
 
 	s.True(au2.IsAuthenticated())
-	s.Equal("tok-second", au2.attributeToken, "second call must overwrite attribute token")
+	s.Equal("tok-second", au2.state[defaultProviderName].attributeToken,
+		"second call must overwrite attribute token")
 }
 
 // --- Disambiguation (sub in credentials) tests ---
@@ -299,8 +348,12 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_Success() {
 	credentials := map[string]interface{}{"sub": "ext-sub-1"}
 
 	authUser := AuthUser{
-		entityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
-		attributeToken:       "some-token",
+		state: map[providerName]authState{
+			defaultProviderName: {
+				entityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
+				attributeToken:       "some-token",
+			},
+		},
 	}
 
 	returnedAuthUser, rtAttrs, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials,
@@ -308,10 +361,11 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_Success() {
 
 	s.Nil(svcErr)
 	s.Nil(rtAttrs)
-	s.Equal(map[string]interface{}{"userID": "user-123"}, returnedAuthUser.entityReferenceToken)
-	s.Equal(map[string]interface{}{"userID": "user-123"}, returnedAuthUser.attributeToken)
-	s.Nil(returnedAuthUser.entityReference)
-	s.Nil(returnedAuthUser.attributes)
+	st := returnedAuthUser.state[defaultProviderName]
+	s.Equal(map[string]interface{}{"userID": "user-123"}, st.entityReferenceToken)
+	s.Equal(map[string]interface{}{"userID": "user-123"}, st.attributeToken)
+	s.Nil(st.entityReference)
+	s.Nil(st.attributes)
 }
 
 func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_EmptySub() {
@@ -345,8 +399,12 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NotAuthenticated(
 func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NilEntityRefToken() {
 	credentials := map[string]interface{}{"sub": "ext-sub-1"}
 	authUser := AuthUser{
-		entityReference: &authnprovidercm.EntityReference{EntityID: "user-1"},
-		attributes:      &authnprovidercm.AttributesResponse{},
+		state: map[providerName]authState{
+			defaultProviderName: {
+				entityReference: &authnprovidercm.EntityReference{EntityID: "user-1"},
+				attributes:      &authnprovidercm.AttributesResponse{},
+			},
+		},
 	}
 
 	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, authUser)
@@ -358,8 +416,12 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NilEntityRefToken
 func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NonMapEntityRefToken() {
 	credentials := map[string]interface{}{"sub": "ext-sub-1"}
 	authUser := AuthUser{
-		entityReferenceToken: "not-a-map",
-		attributeToken:       "tok",
+		state: map[providerName]authState{
+			defaultProviderName: {
+				entityReferenceToken: "not-a-map",
+				attributeToken:       "tok",
+			},
+		},
 	}
 
 	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, authUser)
@@ -371,8 +433,12 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NonMapEntityRefTo
 func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_MissingSubInEntityRefToken() {
 	credentials := map[string]interface{}{"sub": "ext-sub-1"}
 	authUser := AuthUser{
-		entityReferenceToken: map[string]interface{}{"other": "value"},
-		attributeToken:       "tok",
+		state: map[providerName]authState{
+			defaultProviderName: {
+				entityReferenceToken: map[string]interface{}{"other": "value"},
+				attributeToken:       "tok",
+			},
+		},
 	}
 
 	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, authUser)
@@ -384,8 +450,12 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_MissingSubInEntit
 func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_SubMismatch() {
 	credentials := map[string]interface{}{"sub": "ext-sub-1"}
 	authUser := AuthUser{
-		entityReferenceToken: map[string]interface{}{"sub": "ext-sub-different"},
-		attributeToken:       "tok",
+		state: map[providerName]authState{
+			defaultProviderName: {
+				entityReferenceToken: map[string]interface{}{"sub": "ext-sub-different"},
+				attributeToken:       "tok",
+			},
+		},
 	}
 
 	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, authUser)
@@ -398,8 +468,12 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_MissingUserID() {
 	identifiers := map[string]interface{}{}
 	credentials := map[string]interface{}{"sub": "ext-sub-1"}
 	authUser := AuthUser{
-		entityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
-		attributeToken:       "tok",
+		state: map[providerName]authState{
+			defaultProviderName: {
+				entityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
+				attributeToken:       "tok",
+			},
+		},
 	}
 
 	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials, nil, nil, authUser)
@@ -412,8 +486,12 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NonStringUserID()
 	identifiers := map[string]interface{}{"userID": 12345}
 	credentials := map[string]interface{}{"sub": "ext-sub-1"}
 	authUser := AuthUser{
-		entityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
-		attributeToken:       "tok",
+		state: map[providerName]authState{
+			defaultProviderName: {
+				entityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
+				attributeToken:       "tok",
+			},
+		},
 	}
 
 	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials, nil, nil, authUser)
@@ -426,8 +504,12 @@ func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_EmptyUserID() {
 	identifiers := map[string]interface{}{"userID": ""}
 	credentials := map[string]interface{}{"sub": "ext-sub-1"}
 	authUser := AuthUser{
-		entityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
-		attributeToken:       "tok",
+		state: map[providerName]authState{
+			defaultProviderName: {
+				entityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
+				attributeToken:       "tok",
+			},
+		},
 	}
 
 	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials, nil, nil, authUser)
@@ -471,8 +553,9 @@ func (s *ManagerTestSuite) TestGetEntityReference_FetchFromProvider() {
 	retAuthUser, retRef, svcErr := s.mgr.GetEntityReference(context.Background(), authUser)
 	s.Nil(svcErr)
 	s.Equal(entityRef, retRef)
-	s.Equal(entityRef, retAuthUser.entityReference)
-	s.Nil(retAuthUser.entityReferenceToken)
+	st := retAuthUser.state[defaultProviderName]
+	s.Equal(entityRef, st.entityReference)
+	s.Nil(st.entityReferenceToken)
 }
 
 func (s *ManagerTestSuite) TestGetEntityReference_ServerError() {
@@ -553,29 +636,15 @@ func (s *ManagerTestSuite) TestGetUserAvailableAttributes_EmptyAuthUser() {
 	s.Equal(serviceerror.InternalServerError.Code, svcErr.Code)
 }
 
-func (s *ManagerTestSuite) TestGetUserAvailableAttributes_WithData() {
-	expectedAttrs := &authnprovidercm.AttributesResponse{
-		Attributes: map[string]*authnprovidercm.AttributeResponse{
-			"email": {Value: "a@b.com"},
-		},
-	}
-	authUser := authenticatedAuthUserWithResolved(
-		&authnprovidercm.EntityReference{EntityID: "user-1"},
-		expectedAttrs,
-	)
-
-	attrs, svcErr := s.mgr.GetUserAvailableAttributes(context.Background(), authUser)
-	s.Nil(svcErr)
-	s.Equal(expectedAttrs, attrs)
-	s.mockProvider.AssertNotCalled(s.T(), "GetAttributes")
-}
-
 func (s *ManagerTestSuite) TestGetUserAvailableAttributes_NilAttributes() {
 	authUser := authenticatedAuthUserWithTokens("ref-tok", "attr-tok")
 
 	attrs, svcErr := s.mgr.GetUserAvailableAttributes(context.Background(), authUser)
 	s.Nil(svcErr)
-	s.Nil(attrs)
+	s.NotNil(attrs)
+	s.Empty(attrs.Attributes)
+	s.Empty(attrs.Verifications)
+	s.mockProvider.AssertNotCalled(s.T(), "GetAttributes")
 }
 
 // --- GetUserAttributes tests ---
@@ -598,10 +667,10 @@ func (s *ManagerTestSuite) TestGetUserAttributes_CacheHit() {
 		expectedAttrs,
 	)
 
-	retAuthUser, attrs, svcErr := s.mgr.GetUserAttributes(context.Background(), nil, nil, authUser)
+	_, attrs, svcErr := s.mgr.GetUserAttributes(context.Background(), nil, nil, authUser)
 	s.Nil(svcErr)
-	s.Equal(expectedAttrs, attrs)
-	s.Equal(authUser, retAuthUser)
+	s.NotNil(attrs)
+	s.Equal(expectedAttrs.Attributes, attrs.Attributes)
 	s.mockProvider.AssertNotCalled(s.T(), "GetAttributes")
 }
 
@@ -668,7 +737,306 @@ func (s *ManagerTestSuite) TestGetUserAttributes_CacheMiss() {
 
 	retAuthUser, attrs, svcErr := s.mgr.GetUserAttributes(context.Background(), requestedAttrs, nil, authUser)
 	s.Nil(svcErr)
-	s.Equal(fetchedAttrs, attrs)
-	s.Equal(fetchedAttrs, retAuthUser.attributes)
-	s.Nil(retAuthUser.attributeToken)
+	s.NotNil(attrs)
+	s.Equal(fetchedAttrs.Attributes, attrs.Attributes)
+	st := retAuthUser.state[defaultProviderName]
+	s.Equal(fetchedAttrs, st.attributes)
+	s.Nil(st.attributeToken)
+}
+
+func (s *ManagerTestSuite) TestGetUserAvailableAttributes_WithData() {
+	expectedAttrs := &authnprovidercm.AttributesResponse{
+		Attributes: map[string]*authnprovidercm.AttributeResponse{
+			"email": {Value: "a@b.com"},
+		},
+	}
+	authUser := authenticatedAuthUserWithResolved(
+		&authnprovidercm.EntityReference{EntityID: "user-1"},
+		expectedAttrs,
+	)
+
+	attrs, svcErr := s.mgr.GetUserAvailableAttributes(context.Background(), authUser)
+	s.Nil(svcErr)
+	s.NotNil(attrs)
+	s.Equal(expectedAttrs.Attributes, attrs.Attributes)
+	s.mockProvider.AssertNotCalled(s.T(), "GetAttributes")
+}
+
+// --- Constructor tests ---
+
+func TestNewAuthnProviderManager_NoProviders(t *testing.T) {
+	_, err := newAuthnProviderManager(map[string]provider.AuthnProviderInterface{}, nil)
+	if err == nil {
+		t.Fatalf("expected error when no providers are registered")
+	}
+}
+
+func TestNewAuthnProviderManager_NilProvider(t *testing.T) {
+	_, err := newAuthnProviderManager(
+		map[string]provider.AuthnProviderInterface{"default": nil},
+		nil,
+	)
+	if err == nil {
+		t.Fatalf("expected error when a provider is nil")
+	}
+}
+
+func TestNewAuthnProviderManager_UnknownTargetInDefaultMapping(t *testing.T) {
+	// Default mapping points the 8 known credential keys at "default"; if "default"
+	// is not registered, construction must fail fast.
+	mock := providermock.NewAuthnProviderInterfaceMock(t)
+	_, err := newAuthnProviderManager(
+		map[string]provider.AuthnProviderInterface{"acme": mock},
+		nil,
+	)
+	if err == nil {
+		t.Fatalf("expected error when default mapping references an unregistered provider")
+	}
+}
+
+func TestNewAuthnProviderManager_OverlayUnregisteredTarget(t *testing.T) {
+	mock := providermock.NewAuthnProviderInterfaceMock(t)
+	_, err := newAuthnProviderManager(
+		map[string]provider.AuthnProviderInterface{"default": mock},
+		map[string]string{"password": "ghost"},
+	)
+	if err == nil {
+		t.Fatalf("expected error when overlay references an unregistered provider")
+	}
+}
+
+func TestNewAuthnProviderManager_OverlayRoutesPerProvider(t *testing.T) {
+	defaultMock := providermock.NewAuthnProviderInterfaceMock(t)
+	acmeMock := providermock.NewAuthnProviderInterfaceMock(t)
+
+	identifiers := map[string]interface{}{"username": "alice"}
+	credentials := map[string]interface{}{"password": "secret"}
+
+	// With the overlay, "password" routes to acme — not default.
+	acmeMock.On("Authenticate", context.Background(), identifiers, credentials,
+		(*authnprovidercm.AuthnMetadata)(nil)).
+		Return(&authnprovidercm.AuthnResult{
+			EntityReferenceToken: map[string]interface{}{"userID": "user-1"},
+			AttributeToken:       map[string]interface{}{"token": "tok"},
+		}, (*serviceerror.ServiceError)(nil))
+
+	mgr, err := newAuthnProviderManager(
+		map[string]provider.AuthnProviderInterface{
+			"default": defaultMock,
+			"acme":    acmeMock,
+		},
+		map[string]string{"password": "acme"},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	authUser, _, svcErr := mgr.AuthenticateUser(context.Background(), identifiers, credentials,
+		nil, nil, AuthUser{})
+	if svcErr != nil {
+		t.Fatalf("unexpected service error: %v", svcErr)
+	}
+	if _, ok := authUser.state[providerName("acme")]; !ok {
+		t.Fatalf("expected acme provider to record state in AuthUser")
+	}
+	defaultMock.AssertNotCalled(t, "Authenticate")
+}
+
+func (s *ManagerTestSuite) TestAuthenticateUser_MultipleCredentialKeys() {
+	identifiers := map[string]interface{}{"username": "alice"}
+	// Two known credential keys; the sorted-first key ("otp") wins.
+	credentials := map[string]interface{}{"password": "secret", "otp": "123456"}
+	meta := &authnprovidercm.AuthnMetadata{}
+
+	s.mockProvider.On("Authenticate", context.Background(), identifiers, credentials, meta).
+		Return(&authnprovidercm.AuthnResult{
+			EntityReferenceToken: map[string]interface{}{"userID": "user-1"},
+			AttributeToken:       "tok",
+		}, (*serviceerror.ServiceError)(nil))
+
+	authUser, _, svcErr := s.mgr.AuthenticateUser(context.Background(), identifiers, credentials,
+		nil, meta, AuthUser{})
+
+	s.Nil(svcErr)
+	s.True(authUser.IsAuthenticated())
+}
+
+func (s *ManagerTestSuite) TestAuthenticateUser_Disambiguation_NoDefaultProviderState() {
+	credentials := map[string]interface{}{"sub": "ext-sub-1"}
+	// Authenticated, but only under a non-default provider.
+	authUser := AuthUser{
+		state: map[providerName]authState{
+			providerName("acme"): {
+				entityReferenceToken: map[string]interface{}{"sub": "ext-sub-1"},
+				attributeToken:       "tok",
+			},
+		},
+	}
+
+	_, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, credentials, nil, nil, authUser)
+
+	s.NotNil(svcErr)
+	s.Equal(ErrorAuthenticationFailed.Code, svcErr.Code)
+}
+
+func TestGetEntityReference_StateForUnregisteredProvider(t *testing.T) {
+	mockProvider := providermock.NewAuthnProviderInterfaceMock(t)
+	mgr, err := newAuthnProviderManager(
+		map[string]provider.AuthnProviderInterface{string(defaultProviderName): mockProvider},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// authUser has state under "ghost" which is not registered in the manager.
+	authUser := AuthUser{
+		state: map[providerName]authState{
+			providerName("ghost"): {
+				entityReferenceToken: map[string]interface{}{"userID": "user-1"},
+				attributeToken:       "tok",
+			},
+		},
+	}
+
+	_, _, svcErr := mgr.GetEntityReference(context.Background(), authUser)
+	if svcErr == nil {
+		t.Fatalf("expected service error for state referencing unregistered provider")
+	}
+	if svcErr.Code != serviceerror.InternalServerError.Code {
+		t.Fatalf("expected InternalServerError, got %v", svcErr.Code)
+	}
+}
+
+func TestGetEntityReference_MultipleProvidersMismatch(t *testing.T) {
+	defaultMock := providermock.NewAuthnProviderInterfaceMock(t)
+	acmeMock := providermock.NewAuthnProviderInterfaceMock(t)
+
+	defaultMock.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"id": "default-tok"}).
+		Return(&authnprovidercm.EntityReference{EntityID: "user-1", EntityType: "default", OUID: "ou-1"},
+			(*serviceerror.ServiceError)(nil))
+	acmeMock.On("GetEntityReference", context.Background(),
+		map[string]interface{}{"id": "acme-tok"}).
+		Return(&authnprovidercm.EntityReference{EntityID: "user-2", EntityType: "default", OUID: "ou-1"},
+			(*serviceerror.ServiceError)(nil))
+
+	mgr, err := newAuthnProviderManager(
+		map[string]provider.AuthnProviderInterface{
+			"default": defaultMock,
+			"acme":    acmeMock,
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	authUser := AuthUser{
+		state: map[providerName]authState{
+			providerName("default"): {
+				entityReferenceToken: map[string]interface{}{"id": "default-tok"},
+				attributeToken:       "a",
+			},
+			providerName("acme"): {
+				entityReferenceToken: map[string]interface{}{"id": "acme-tok"},
+				attributeToken:       "a",
+			},
+		},
+	}
+
+	_, _, svcErr := mgr.GetEntityReference(context.Background(), authUser)
+	if svcErr == nil {
+		t.Fatalf("expected service error when providers return different entity references")
+	}
+	if svcErr.Code != serviceerror.InternalServerError.Code {
+		t.Fatalf("expected InternalServerError, got %v", svcErr.Code)
+	}
+}
+
+func TestGetUserAttributes_StateForUnregisteredProvider(t *testing.T) {
+	mockProvider := providermock.NewAuthnProviderInterfaceMock(t)
+	mgr, err := newAuthnProviderManager(
+		map[string]provider.AuthnProviderInterface{string(defaultProviderName): mockProvider},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	authUser := AuthUser{
+		state: map[providerName]authState{
+			providerName("ghost"): {
+				entityReferenceToken: map[string]interface{}{"userID": "user-1"},
+				attributeToken:       "tok",
+			},
+		},
+	}
+
+	_, _, svcErr := mgr.GetUserAttributes(context.Background(), nil, nil, authUser)
+	if svcErr == nil {
+		t.Fatalf("expected service error for state referencing unregistered provider")
+	}
+	if svcErr.Code != serviceerror.InternalServerError.Code {
+		t.Fatalf("expected InternalServerError, got %v", svcErr.Code)
+	}
+}
+
+func TestIsEntityRefsEqual(t *testing.T) {
+	ref := func(id, etype, ou, cat string) *authnprovidercm.EntityReference {
+		return &authnprovidercm.EntityReference{
+			EntityID: id, EntityType: etype, OUID: ou, EntityCategory: cat,
+		}
+	}
+
+	cases := []struct {
+		name string
+		a, b *authnprovidercm.EntityReference
+		want bool
+	}{
+		{"both nil", nil, nil, true},
+		{"left nil", nil, ref("1", "t", "o", "c"), false},
+		{"right nil", ref("1", "t", "o", "c"), nil, false},
+		{"equal", ref("1", "t", "o", "c"), ref("1", "t", "o", "c"), true},
+		{"category ignored", ref("1", "t", "o", "c1"), ref("1", "t", "o", "c2"), true},
+		{"entityID differs", ref("1", "t", "o", "c"), ref("2", "t", "o", "c"), false},
+		{"entityType differs", ref("1", "t1", "o", "c"), ref("1", "t2", "o", "c"), false},
+		{"OUID differs", ref("1", "t", "o1", "c"), ref("1", "t", "o2", "c"), false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isEntityRefsEqual(tc.a, tc.b); got != tc.want {
+				t.Errorf("isEntityRefsEqual(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMergeAttributes_NilSrc(t *testing.T) {
+	dst := newAttributesResponse()
+	dst.Attributes["existing"] = &authnprovidercm.AttributeResponse{Value: "v"}
+	mergeAttributes(dst, nil)
+	if len(dst.Attributes) != 1 || dst.Attributes["existing"].Value != "v" {
+		t.Fatalf("expected dst to be unchanged when src is nil")
+	}
+}
+
+func TestMergeAttributes_WithVerifications(t *testing.T) {
+	dst := newAttributesResponse()
+	src := &authnprovidercm.AttributesResponse{
+		Attributes: map[string]*authnprovidercm.AttributeResponse{
+			"email": {Value: "a@b.com"},
+		},
+		Verifications: map[string]*authnprovidercm.VerificationResponse{
+			"email": {},
+		},
+	}
+	mergeAttributes(dst, src)
+	if _, ok := dst.Attributes["email"]; !ok {
+		t.Fatalf("expected merged attribute")
+	}
+	if _, ok := dst.Verifications["email"]; !ok {
+		t.Fatalf("expected merged verification")
+	}
 }

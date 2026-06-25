@@ -753,10 +753,10 @@ func (s *StoreTestSuite) TestGetFlowContext_WithAvailableAttributes() {
 
 func (s *StoreTestSuite) TestEngineContextRoundTrip_WithAuthUser() {
 	var authUser managerpkg.AuthUser
-	jsonStr := `{"entityReferenceToken":null,` +
+	jsonStr := `{"default":{"entityReferenceToken":null,` +
 		`"entityReference":{"entityId":"au-user-1","entityCategory":"user",` +
 		`"entityType":"person","ouId":"ou-1"},` +
-		`"attributeToken":null,"attributes":{"attributes":{}}}`
+		`"attributeToken":null,"attributes":{"attributes":{}}}}`
 	err := json.Unmarshal([]byte(jsonStr), &authUser)
 	s.NoError(err)
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())

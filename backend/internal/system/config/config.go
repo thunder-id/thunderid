@@ -635,9 +635,18 @@ type OpenID4VCIConfig struct {
 }
 
 // AuthnProviderConfig holds the authentication provider configuration details.
+// Providers are registered in code via the catalog in
+// backend/internal/authnprovider/provider/register.go. This struct only carries the
+// optional runtime overrides: per-provider config bags and the credential-to-provider
+// routing overlay.
 type AuthnProviderConfig struct {
-	Type string     `yaml:"type" json:"type"`
-	Rest RestConfig `yaml:"rest" json:"rest"`
+	// CredentialMapping overlays the built-in default credential-to-provider mapping.
+	// Keys are credential identifiers (e.g. "password", "passkey"); values are
+	// provider names from the catalog.
+	CredentialMapping map[string]string `yaml:"credential_mapping" json:"credential_mapping"`
+	// Properties is a per-provider config bag keyed by the catalog name
+	// (e.g. {"rest": {"base_url": "...", "timeout": 10}}).
+	Properties map[string]map[string]interface{} `yaml:"properties" json:"properties"`
 }
 
 // UserProviderConfig holds the user provider configuration details.
@@ -648,18 +657,6 @@ type UserProviderConfig struct {
 // EntityProviderConfig holds the entity provider configuration details.
 type EntityProviderConfig struct {
 	Type string `yaml:"type" json:"type"`
-}
-
-// RestConfig holds the REST authentication provider configuration details.
-type RestConfig struct {
-	BaseURL  string             `yaml:"base_url" json:"base_url"`
-	Timeout  int                `yaml:"timeout" json:"timeout"`
-	Security RestSecurityConfig `yaml:"security" json:"security"`
-}
-
-// RestSecurityConfig holds the REST authentication provider security configuration details.
-type RestSecurityConfig struct {
-	APIKey string `yaml:"api_key" json:"api_key"`
 }
 
 // EmailConfig holds the email configuration details.

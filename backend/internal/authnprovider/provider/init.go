@@ -19,64 +19,29 @@
 package provider
 
 import (
-	"context"
-	"time"
+	"fmt"
 
-	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
-	"github.com/thunder-id/thunderid/internal/authn/magiclink"
-	"github.com/thunder-id/thunderid/internal/authn/otp"
-	"github.com/thunder-id/thunderid/internal/authn/passkey"
-	"github.com/thunder-id/thunderid/internal/entity"
-	"github.com/thunder-id/thunderid/internal/idp"
-	"github.com/thunder-id/thunderid/internal/openid4vp"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	systemhttp "github.com/thunder-id/thunderid/internal/system/http"
-	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
-// InitializeAuthnProvider initializes the authentication provider.
-func InitializeAuthnProvider(
-	entitySvc entity.EntityServiceInterface,
-	passkeySvc passkey.PasskeyServiceInterface,
-	otpSvc otp.OTPAuthnServiceInterface,
-	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
-	openid4vpSvc openid4vp.OpenID4VPServiceInterface,
-	federatedAuths map[idp.IDPType]authncommon.FederatedAuthenticator,
-) AuthnProviderInterface {
-	authnProviderConfig := config.GetServerRuntime().Config.AuthnProvider
-	switch authnProviderConfig.Type {
-	case "rest":
-		return initializeRestAuthnProvider()
-	default:
-		return initializeDefaultAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, openid4vpSvc, federatedAuths)
-	}
-}
+// InitializeAuthnProviders constructs every authn provider listed in the catalog
+// and returns the resulting map keyed by provider name. Per-provider runtime
+// config is pulled from config.AuthnProviderConfig.Properties.
+func InitializeAuthnProviders(deps AuthnProviderDependencies) (map[string]AuthnProviderInterface, error) {
+	catalog := newBuiltInAuthnProviderRegistrars()
+	properties := config.GetServerRuntime().Config.AuthnProvider.Properties
 
-// initializeDefaultAuthnProvider initializes the default authentication provider.
-func initializeDefaultAuthnProvider(
-	entitySvc entity.EntityServiceInterface,
-	passkeySvc passkey.PasskeyServiceInterface,
-	otpSvc otp.OTPAuthnServiceInterface,
-	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
-	openid4vpSvc openid4vp.OpenID4VPServiceInterface,
-	federatedAuths map[idp.IDPType]authncommon.FederatedAuthenticator,
-) AuthnProviderInterface {
-	return newDefaultAuthnProvider(entitySvc, passkeySvc, otpSvc, magicLinkSvc, openid4vpSvc, federatedAuths)
-}
-
-// initializeRestAuthnProvider initializes the REST authentication provider.
-func initializeRestAuthnProvider() AuthnProviderInterface {
-	authnProviderConfig := config.GetServerRuntime().Config.AuthnProvider
-	baseURL := authnProviderConfig.Rest.BaseURL
-	apiKey := authnProviderConfig.Rest.Security.APIKey
-	timeout := time.Duration(authnProviderConfig.Rest.Timeout) * time.Second
-	if baseURL == "" {
-		// Provider initialization runs during application startup, outside any request.
-		log.GetLogger().Fatal(context.Background(), "AuthnProvider Rest BaseURL is required but found empty")
+	providers := make(map[string]AuthnProviderInterface, len(catalog))
+	for name, registrar := range catalog {
+		p, err := registrar(properties[name], deps)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize authn provider %q: %w", name, err)
+		}
+		// nil with no error => registrar opted out (provider not enabled in this deployment).
+		if p == nil {
+			continue
+		}
+		providers[name] = p
 	}
-	if timeout == 0 {
-		timeout = 10 * time.Second
-	}
-	httpClient := systemhttp.NewHTTPClientWithTimeout(timeout)
-	return newRestAuthnProvider(baseURL, apiKey, httpClient)
+	return providers, nil
 }

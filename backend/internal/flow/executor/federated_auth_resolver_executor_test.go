@@ -49,7 +49,7 @@ func TestFederatedAuthResolverSuite(t *testing.T) {
 
 func newFederatedAuthResolverAuthenticatedUser() authnprovidermgr.AuthUser {
 	var authUser authnprovidermgr.AuthUser
-	_ = authUser.UnmarshalJSON([]byte(`{"entityReferenceToken":"tok","attributeToken":"tok"}`))
+	_ = authUser.UnmarshalJSON([]byte(`{"default":{"entityReferenceToken":"tok","attributeToken":"tok"}}`))
 	return authUser
 }
 
