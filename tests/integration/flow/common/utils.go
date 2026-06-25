@@ -326,8 +326,8 @@ func UpdateAppConfig(appID, authFlowID, registrationFlowID string) error {
 	return nil
 }
 
-// CreateNotificationSender creates a custom notification sender with a specified URL and name
-func CreateNotificationSender(senderURL, senderName string) (string, error) {
+// CreateMessageNotificationSender creates a custom message notification sender with a specified URL and name
+func CreateMessageNotificationSender(senderURL, senderName string) (string, error) {
 	senderRequest := map[string]interface{}{
 		"name":        senderName,
 		"description": "Custom SMS sender for integration tests",
@@ -390,8 +390,8 @@ func CreateNotificationSender(senderURL, senderName string) (string, error) {
 	return senderID, nil
 }
 
-// DeleteNotificationSender deletes a notification sender
-func DeleteNotificationSender(senderID string) error {
+// DeleteMessageNotificationSender deletes a message notification sender
+func DeleteMessageNotificationSender(senderID string) error {
 	client := testutils.GetHTTPClient()
 
 	req, err := http.NewRequest("DELETE", testServerURL+"/notification-senders/message/"+senderID, nil)

@@ -111,7 +111,8 @@ function LoginFlowBuilder() {
 
   // Auto-assign connections for executor nodes with placeholder IDP/sender IDs
   const {data: identityProviders} = useIdentityProviders();
-  const {data: notificationSenders} = useNotificationSenders();
+  const {data: messageSenders} = useNotificationSenders();
+  const {data: emailSenders} = useNotificationSenders('email');
   const hasAutoAssignedRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -119,8 +120,8 @@ function LoginFlowBuilder() {
       return;
     }
 
-    // Wait until both data sources are available
-    if (!identityProviders || !notificationSenders) {
+    // Wait until all data sources are available
+    if (!identityProviders || !messageSenders || !emailSenders) {
       return;
     }
 
@@ -138,9 +139,9 @@ function LoginFlowBuilder() {
           (stepData?.properties as Record<string, string> | undefined) ?? {};
 
         // Handle SMS executors - auto-assign senderId
-        if (SMS_EXECUTORS.has(executorName) && notificationSenders) {
+        if (SMS_EXECUTORS.has(executorName) && messageSenders) {
           if (currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') {
-            if (notificationSenders.length === 1) {
+            if (messageSenders.length === 1) {
               changed = true;
               return {
                 ...node,
@@ -148,7 +149,27 @@ function LoginFlowBuilder() {
                   ...node.data,
                   properties: {
                     ...((stepData?.properties as Record<string, unknown>) ?? {}),
-                    senderId: notificationSenders[0].id,
+                    senderId: messageSenders[0].id,
+                  },
+                },
+              };
+            }
+          }
+          return node;
+        }
+
+        // Handle Email executors - auto-assign senderId
+        if (executorName === ExecutionTypes.EmailExecutor && emailSenders) {
+          if (currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') {
+            if (emailSenders.length === 1) {
+              changed = true;
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  properties: {
+                    ...((stepData?.properties as Record<string, unknown>) ?? {}),
+                    senderId: emailSenders[0].id,
                   },
                 },
               };
@@ -183,7 +204,7 @@ function LoginFlowBuilder() {
 
       return currentNodes;
     });
-  }, [identityProviders, notificationSenders, nodes.length, setNodes]);
+  }, [identityProviders, messageSenders, emailSenders, nodes.length, setNodes]);
 
   // Element addition hook
   const {handleAddElementToView, handleAddElementToForm} = useElementAddition({

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -31,15 +31,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 )
 
-type CustomClientTestSuite struct {
+type HTTPEmailClientTestSuite struct {
 	suite.Suite
 }
 
-func TestCustomClientTestSuite(t *testing.T) {
-	suite.Run(t, new(CustomClientTestSuite))
+func TestHTTPEmailClientTestSuite(t *testing.T) {
+	suite.Run(t, new(HTTPEmailClientTestSuite))
 }
 
-func (suite *CustomClientTestSuite) SetupSuite() {
+func (suite *HTTPEmailClientTestSuite) SetupSuite() {
 	testConfig := &config.Config{
 		Crypto: config.CryptoConfig{
 			Encryption: config.EncryptionConfig{
@@ -53,12 +53,13 @@ func (suite *CustomClientTestSuite) SetupSuite() {
 	}
 }
 
-func (suite *CustomClientTestSuite) getValidCustomSenderJSON() common.NotificationSenderDTO {
+func (suite *HTTPEmailClientTestSuite) getValidCustomSenderJSON() common.NotificationSenderDTO {
 	return common.NotificationSenderDTO{
-		Name:     "Test Custom",
-		Provider: common.MessageProviderTypeCustom,
+		Name:     "Test HTTP Email",
+		Provider: common.MessageProviderTypeHTTP,
+		Type:     common.NotificationSenderTypeEmail,
 		Properties: []cmodels.Property{
-			createProperty("url", "https://api.example.com/sms", false),
+			createProperty("url", "https://api.example.com/email", false),
 			createProperty("http_method", "POST", false),
 			createProperty("content_type", "JSON", false),
 			createProperty("http_headers", "Authorization:Bearer token,X-Api-Key:key123", false),
@@ -66,40 +67,41 @@ func (suite *CustomClientTestSuite) getValidCustomSenderJSON() common.Notificati
 	}
 }
 
-func (suite *CustomClientTestSuite) getValidCustomSenderFORM() common.NotificationSenderDTO {
+func (suite *HTTPEmailClientTestSuite) getValidCustomSenderFORM() common.NotificationSenderDTO {
 	return common.NotificationSenderDTO{
-		Name:     "Test Custom Form",
+		Name:     "Test HTTP Email Form",
 		Provider: common.MessageProviderTypeCustom,
+		Type:     common.NotificationSenderTypeEmail,
 		Properties: []cmodels.Property{
-			createProperty("url", "https://api.example.com/sms", false),
+			createProperty("url", "https://api.example.com/email", false),
 			createProperty("http_method", "POST", false),
 			createProperty("content_type", "FORM", false),
 		},
 	}
 }
 
-func (suite *CustomClientTestSuite) TestNewCustomClient_Success() {
+func (suite *HTTPEmailClientTestSuite) TestNewHTTPEmailClient_Success() {
 	sender := suite.getValidCustomSenderJSON()
 
-	client, err := newCustomClient(context.Background(), sender)
+	client, err := newHTTPEmailClient(context.Background(), sender)
 
 	suite.NoError(err)
 	suite.NotNil(client)
-	suite.Equal("Test Custom", client.GetName())
+	suite.Equal("Test HTTP Email", client.GetName())
 }
 
-func (suite *CustomClientTestSuite) TestGetName() {
+func (suite *HTTPEmailClientTestSuite) TestGetName() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newHTTPEmailClient(context.Background(), sender)
 
 	name := client.GetName()
 
-	suite.Equal("Test Custom", name)
+	suite.Equal("Test HTTP Email", name)
 }
 
-func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
+func (suite *HTTPEmailClientTestSuite) TestSendEmail_JSON_Success() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newHTTPEmailClient(context.Background(), sender)
 
 	// Create a test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -116,22 +118,24 @@ func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
 	defer server.Close()
 
 	// Replace the URL with test server URL
-	customClient := client.(*CustomClient)
+	customClient := client.(*HTTPEmailClient)
 	customClient.config.url = server.URL
 
-	data := common.MessageData{
-		Recipient: "+15559876543",
-		Body:      `{"message":"Test message"}`,
+	data := common.EmailData{
+		To:      []string{"user@example.com"},
+		Subject: "Test Subject",
+		Body:    "Test Body",
+		IsHTML:  false,
 	}
 
-	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), data)
 
 	suite.NoError(err)
 }
 
-func (suite *CustomClientTestSuite) TestSendSMS_FORM_Success() {
+func (suite *HTTPEmailClientTestSuite) TestSendEmail_FORM_Success() {
 	sender := suite.getValidCustomSenderFORM()
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newHTTPEmailClient(context.Background(), sender)
 
 	// Create a test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -146,22 +150,24 @@ func (suite *CustomClientTestSuite) TestSendSMS_FORM_Success() {
 	defer server.Close()
 
 	// Replace the URL with test server URL
-	customClient := client.(*CustomClient)
+	customClient := client.(*HTTPEmailClient)
 	customClient.config.url = server.URL
 
-	data := common.MessageData{
-		Recipient: "+15559876543",
-		Body:      "to=+15559876543\nmessage=Test message",
+	data := common.EmailData{
+		To:      []string{"user@example.com"},
+		Subject: "Test Subject",
+		Body:    "Test Body",
+		IsHTML:  true,
 	}
 
-	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), data)
 
 	suite.NoError(err)
 }
 
-func (suite *CustomClientTestSuite) TestSendSMS_Error() {
+func (suite *HTTPEmailClientTestSuite) TestSendEmail_Error() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newHTTPEmailClient(context.Background(), sender)
 
 	// Create a test server that returns an error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -173,85 +179,88 @@ func (suite *CustomClientTestSuite) TestSendSMS_Error() {
 	defer server.Close()
 
 	// Replace the URL with test server URL
-	customClient := client.(*CustomClient)
+	customClient := client.(*HTTPEmailClient)
 	customClient.config.url = server.URL
 
-	data := common.MessageData{
-		Recipient: "+15559876543",
-		Body:      `{"message":"Test"}`,
+	data := common.EmailData{
+		To:      []string{"user@example.com"},
+		Subject: "Test",
+		Body:    "Test",
 	}
 
-	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), data)
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "status: 400")
 }
 
-func (suite *CustomClientTestSuite) TestSendSMS_NetworkError() {
+func (suite *HTTPEmailClientTestSuite) TestSendEmail_NetworkError() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newHTTPEmailClient(context.Background(), sender)
 
 	// Use an invalid URL to force a network error
-	customClient := client.(*CustomClient)
+	customClient := client.(*HTTPEmailClient)
 	customClient.config.url = "http://invalid-custom-url.local:99999"
 
-	data := common.MessageData{
-		Recipient: "+15559876543",
-		Body:      `{"message":"Test"}`,
+	data := common.EmailData{
+		To:      []string{"user@example.com"},
+		Subject: "Test",
+		Body:    "Test",
 	}
 
-	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), data)
 
 	suite.Error(err)
 }
 
-func (suite *CustomClientTestSuite) TestSendSMS_UnsupportedContentType() {
+func (suite *HTTPEmailClientTestSuite) TestSendEmail_UnsupportedContentType() {
 	sender := common.NotificationSenderDTO{
-		Name:     "Test Custom",
+		Name:     "Test HTTP Email",
 		Provider: common.MessageProviderTypeCustom,
 		Properties: []cmodels.Property{
-			createProperty("url", "https://api.example.com/sms", false),
+			createProperty("url", "https://api.example.com/email", false),
 			createProperty("http_method", "POST", false),
 			createProperty("content_type", "XML", false),
 		},
 	}
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newHTTPEmailClient(context.Background(), sender)
 
-	data := common.MessageData{
-		Recipient: "+15559876543",
-		Body:      `<message>Test</message>`,
+	data := common.EmailData{
+		To:      []string{"user@example.com"},
+		Subject: "Test",
+		Body:    "Test",
 	}
 
-	err := client.(MessageClientInterface).Send(context.Background(), common.ChannelTypeSMS, data)
+	err := client.Send(context.Background(), data)
 
 	suite.Error(err)
 	suite.Contains(err.Error(), "unsupported content type")
 }
 
-func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
+func (suite *HTTPEmailClientTestSuite) TestNewHTTPEmailClient_WithUnknownProperty() {
 	sender := suite.getValidCustomSenderJSON()
 	sender.Properties = append(sender.Properties, createProperty("unknown_prop", "value", false))
 
-	client, err := newCustomClient(context.Background(), sender)
+	client, err := newHTTPEmailClient(context.Background(), sender)
 
 	// Should succeed and just log a warning for unknown property
 	suite.NoError(err)
 	suite.NotNil(client)
 }
 
-func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidHeaders() {
+func (suite *HTTPEmailClientTestSuite) TestNewHTTPEmailClient_InvalidHeaders() {
 	sender := common.NotificationSenderDTO{
-		Name:     "Test Custom",
+		Name:     "Test HTTP Email",
 		Provider: common.MessageProviderTypeCustom,
 		Properties: []cmodels.Property{
-			createProperty("url", "https://api.example.com/sms", false),
+			createProperty("url", "https://api.example.com/email", false),
 			createProperty("http_method", "POST", false),
 			createProperty("content_type", "JSON", false),
 			createProperty("http_headers", "InvalidHeaderFormat", false),
 		},
 	}
 
-	client, err := newCustomClient(context.Background(), sender)
+	client, err := newHTTPEmailClient(context.Background(), sender)
 
 	suite.Error(err)
 	suite.Nil(client)

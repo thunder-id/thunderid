@@ -44,13 +44,27 @@ func (p *clientFactory) GetClient(ctx context.Context, sender common.Notificatio
 	NotificationClientInterface, *serviceerror.ServiceError) {
 	var _client NotificationClientInterface
 	var err error
-	switch sender.Provider {
-	case common.MessageProviderTypeVonage:
-		_client, err = newVonageClient(ctx, sender)
-	case common.MessageProviderTypeTwilio:
-		_client, err = newTwilioClient(ctx, sender)
-	case common.MessageProviderTypeCustom:
-		_client, err = newCustomClient(ctx, sender)
+	switch sender.Type {
+	case common.NotificationSenderTypeMessage:
+		switch sender.Provider {
+		case common.MessageProviderTypeVonage:
+			_client, err = newVonageClient(ctx, sender)
+		case common.MessageProviderTypeTwilio:
+			_client, err = newTwilioClient(ctx, sender)
+		case common.MessageProviderTypeCustom:
+			_client, err = newCustomClient(ctx, sender)
+		default:
+			return nil, &ErrorInvalidProvider
+		}
+	case common.NotificationSenderTypeEmail:
+		switch sender.Provider {
+		case common.MessageProviderTypeHTTP:
+			_client, err = newHTTPEmailClient(ctx, sender)
+		case common.MessageProviderTypeSMTP:
+			_client, err = newSMTPEmailClient(ctx, sender)
+		default:
+			return nil, &ErrorInvalidProvider
+		}
 	default:
 		return nil, &ErrorInvalidProvider
 	}

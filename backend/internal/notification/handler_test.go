@@ -62,12 +62,22 @@ func (suite *MessageHandlerTestSuite) SetupSuite() {
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderListRequest() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
-	sender1 := common.NotificationSenderDTO{ID: "id1", Name: "s1", Provider: common.MessageProviderTypeTwilio,
-		Properties: []cmodels.Property{createTestProperty("k", "v", false)}}
-	sender2 := common.NotificationSenderDTO{ID: "id2", Name: "s2", Provider: common.MessageProviderTypeVonage,
-		Properties: []cmodels.Property{createTestProperty("k2", "v2", false)}}
+	sender1 := common.NotificationSenderDTO{
+		ID:         "id1",
+		Name:       "s1",
+		Type:       common.NotificationSenderTypeMessage,
+		Provider:   common.MessageProviderTypeTwilio,
+		Properties: []cmodels.Property{createTestProperty("k", "v", false)},
+	}
+	sender2 := common.NotificationSenderDTO{
+		ID:         "id2",
+		Name:       "s2",
+		Type:       common.NotificationSenderTypeMessage,
+		Provider:   common.MessageProviderTypeVonage,
+		Properties: []cmodels.Property{createTestProperty("k2", "v2", false)},
+	}
 
 	m.On("ListSenders", mock.Anything).Return([]common.NotificationSenderDTO{sender1, sender2}, nil).Once()
 
@@ -85,7 +95,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderListRequest() {
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderListRequest_ServiceError() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	m.On("ListSenders", mock.Anything).Return(nil, &serviceerror.InternalServerError).Once()
 
@@ -99,7 +109,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderListRequest_ServiceError()
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderCreateRequest() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	reqBody := common.NotificationSenderRequest{
 		Name:       "New Sender",
@@ -109,7 +119,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderCreateRequest() {
 	bodyBytes, _ := json.Marshal(reqBody)
 
 	created := common.NotificationSenderDTO{ID: "created-id", Name: "New Sender",
-		Provider:   common.MessageProviderTypeTwilio,
+		Type: common.NotificationSenderTypeMessage, Provider: common.MessageProviderTypeTwilio,
 		Properties: []cmodels.Property{createTestProperty("k", "v", false)}}
 
 	m.On("CreateSender", mock.Anything, mock.Anything).Return(&created, nil).Once()
@@ -127,7 +137,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderCreateRequest() {
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderCreateRequest_Duplicate() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	reqBody := common.NotificationSenderRequest{
 		Name: "New Sender", Provider: "twilio"}
@@ -143,10 +153,10 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderCreateRequest_Duplicate() 
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	dto := &common.NotificationSenderDTO{ID: "s-1", Name: "ns",
-		Provider:   common.MessageProviderTypeTwilio,
+		Type: common.NotificationSenderTypeMessage, Provider: common.MessageProviderTypeTwilio,
 		Properties: []cmodels.Property{createTestProperty("k", "v", false)}}
 
 	m.On("GetSender", mock.Anything, "s-1").Return(dto, nil).Once()
@@ -163,7 +173,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest() {
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest_NotFound() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	m.On("GetSender", mock.Anything, "missing").Return(nil, nil).Once()
 	reqGet2 := httptest.NewRequest(http.MethodGet, "/senders/missing", nil)
@@ -175,13 +185,20 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest_NotFound() {
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	updateReq := common.NotificationSenderRequest{Name: "Updated",
 		Provider: "twilio", Properties: []cmodels.PropertyDTO{}}
 	body, _ := json.Marshal(updateReq)
-	updatedDTO := common.NotificationSenderDTO{ID: "s-1", Name: "Updated",
-		Provider: common.MessageProviderTypeTwilio, Properties: []cmodels.Property{}}
+	updatedDTO := common.NotificationSenderDTO{
+		ID:         "s-1",
+		Name:       "Updated",
+		Type:       common.NotificationSenderTypeMessage,
+		Provider:   common.MessageProviderTypeTwilio,
+		Properties: []cmodels.Property{},
+	}
+	getDTO := &common.NotificationSenderDTO{ID: "s-1", Type: common.NotificationSenderTypeMessage}
+	m.On("GetSender", mock.Anything, "s-1").Return(getDTO, nil).Once()
 	m.On("UpdateSender", mock.Anything, "s-1", mock.Anything).Return(&updatedDTO, nil).Once()
 	reqUpd := httptest.NewRequest(http.MethodPut, "/senders/s-1", bytes.NewBuffer(body))
 	reqUpd.SetPathValue("id", "s-1")
@@ -196,8 +213,10 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest() {
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderDeleteRequest() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
+	dto := &common.NotificationSenderDTO{ID: "s-1", Type: common.NotificationSenderTypeMessage}
+	m.On("GetSender", mock.Anything, "s-1").Return(dto, nil).Once()
 	m.On("DeleteSender", mock.Anything, "s-1").Return(nil).Once()
 	reqDel := httptest.NewRequest(http.MethodDelete, "/senders/s-1", nil)
 	reqDel.SetPathValue("id", "s-1")
@@ -208,7 +227,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderDeleteRequest() {
 
 func (suite *MessageHandlerTestSuite) TestHandleOTPSendRequest() {
 	mOtp := NewOTPServiceInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(nil, mOtp)
+	handler := newNotificationSenderHandler(nil, mOtp, common.NotificationSenderTypeMessage)
 
 	sendReq := common.SendOTPRequest{Recipient: "+123", SenderID: "s-1", Channel: "sms"}
 	body, _ := json.Marshal(sendReq)
@@ -224,7 +243,7 @@ func (suite *MessageHandlerTestSuite) TestHandleOTPSendRequest() {
 
 func (suite *MessageHandlerTestSuite) TestHandleOTPVerifyRequest() {
 	mOtp := NewOTPServiceInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(nil, mOtp)
+	handler := newNotificationSenderHandler(nil, mOtp, common.NotificationSenderTypeMessage)
 
 	verifyReq := common.VerifyOTPRequest{SessionToken: "tok-1", OTPCode: "1234"}
 	vbody, _ := json.Marshal(verifyReq)
@@ -241,7 +260,7 @@ func (suite *MessageHandlerTestSuite) TestHandleOTPVerifyRequest() {
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderCreateRequest_InvalidJSON() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	req := httptest.NewRequest(http.MethodPost, "/senders", bytes.NewBufferString("invalid"))
 	req.Header.Set("Content-Type", "application/json")
@@ -252,7 +271,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderCreateRequest_InvalidJSON(
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderCreateRequest_InvalidProvider() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	validBody := common.NotificationSenderRequest{Name: "s", Provider: "twilio"}
 	bb, _ := json.Marshal(validBody)
@@ -266,7 +285,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderCreateRequest_InvalidProvi
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest_ServiceError() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	m.On("GetSender", mock.Anything, "err").Return(nil, &serviceerror.InternalServerError).Once()
 	req := httptest.NewRequest(http.MethodGet, "/senders/err", nil)
@@ -277,7 +296,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest_ServiceError() 
 }
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest_InvalidJSON() {
-	handler := newMessageNotificationSenderHandler(nil, nil)
+	handler := newNotificationSenderHandler(nil, nil, common.NotificationSenderTypeMessage)
 
 	req2 := httptest.NewRequest(http.MethodPut, "/senders/s1", bytes.NewBufferString("invalid"))
 	req2.SetPathValue("id", "s1")
@@ -289,11 +308,11 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest_InvalidJSON(
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest_SenderNotFound() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	upd := common.NotificationSenderRequest{Name: "u", Provider: "twilio"}
 	b, _ := json.Marshal(upd)
-	m.On("UpdateSender", mock.Anything, "s1", mock.Anything).Return(nil, &ErrorSenderNotFound).Once()
+	m.On("GetSender", mock.Anything, "s1").Return(nil, &ErrorSenderNotFound).Once()
 	req3 := httptest.NewRequest(http.MethodPut, "/senders/s1", bytes.NewBuffer(b))
 	req3.SetPathValue("id", "s1")
 	req3.Header.Set("Content-Type", "application/json")
@@ -303,7 +322,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest_SenderNotFou
 }
 
 func (suite *MessageHandlerTestSuite) TestHandleOTPSendRequest_InvalidJSON() {
-	handler := newMessageNotificationSenderHandler(nil, nil)
+	handler := newNotificationSenderHandler(nil, nil, common.NotificationSenderTypeMessage)
 	req := httptest.NewRequest(http.MethodPost, "/otp/send", bytes.NewBufferString("invalid"))
 	rr := httptest.NewRecorder()
 	handler.HandleOTPSendRequest(rr, req)
@@ -312,7 +331,7 @@ func (suite *MessageHandlerTestSuite) TestHandleOTPSendRequest_InvalidJSON() {
 
 func (suite *MessageHandlerTestSuite) TestHandleOTPSendRequest_InvalidRecipient() {
 	mOtp := NewOTPServiceInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(nil, mOtp)
+	handler := newNotificationSenderHandler(nil, mOtp, common.NotificationSenderTypeMessage)
 	sendReq := common.SendOTPRequest{Recipient: "+1", SenderID: "s1", Channel: "sms"}
 	b, _ := json.Marshal(sendReq)
 	mOtp.On("SendOTP", mock.Anything, mock.Anything).Return(nil, &ErrorInvalidRecipient).Once()
@@ -323,7 +342,7 @@ func (suite *MessageHandlerTestSuite) TestHandleOTPSendRequest_InvalidRecipient(
 }
 
 func (suite *MessageHandlerTestSuite) TestHandleOTPVerifyRequest_InvalidJSON() {
-	handler := newMessageNotificationSenderHandler(nil, nil)
+	handler := newNotificationSenderHandler(nil, nil, common.NotificationSenderTypeMessage)
 	req3 := httptest.NewRequest(http.MethodPost, "/otp/verify", bytes.NewBufferString("invalid"))
 	rr3 := httptest.NewRecorder()
 	handler.HandleOTPVerifyRequest(rr3, req3)
@@ -332,7 +351,7 @@ func (suite *MessageHandlerTestSuite) TestHandleOTPVerifyRequest_InvalidJSON() {
 
 func (suite *MessageHandlerTestSuite) TestHandleOTPVerifyRequest_InvalidOTP() {
 	mOtp := NewOTPServiceInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(nil, mOtp)
+	handler := newNotificationSenderHandler(nil, mOtp, common.NotificationSenderTypeMessage)
 	vreq := common.VerifyOTPRequest{SessionToken: "t", OTPCode: "c"}
 	vb, _ := json.Marshal(vreq)
 	mOtp.On("VerifyOTP", mock.Anything, mock.Anything).Return(nil, &ErrorInvalidOTP).Once()
@@ -343,7 +362,7 @@ func (suite *MessageHandlerTestSuite) TestHandleOTPVerifyRequest_InvalidOTP() {
 }
 
 func (suite *MessageHandlerTestSuite) TestValidateSenderID_EmptyID() {
-	handler := newMessageNotificationSenderHandler(nil, nil)
+	handler := newNotificationSenderHandler(nil, nil, common.NotificationSenderTypeMessage)
 
 	rr := httptest.NewRecorder()
 	ok := handler.validateSenderID(context.Background(), rr, "")
@@ -357,7 +376,7 @@ func (suite *MessageHandlerTestSuite) TestValidateSenderID_EmptyID() {
 }
 
 func (suite *MessageHandlerTestSuite) TestValidateSenderID_NonEmptyID() {
-	handler := newMessageNotificationSenderHandler(nil, nil)
+	handler := newNotificationSenderHandler(nil, nil, common.NotificationSenderTypeMessage)
 	rr := httptest.NewRecorder()
 	ok := handler.validateSenderID(context.Background(), rr, "sender-1")
 	suite.True(ok)
@@ -365,7 +384,7 @@ func (suite *MessageHandlerTestSuite) TestValidateSenderID_NonEmptyID() {
 }
 
 func (suite *MessageHandlerTestSuite) TestHandleError() {
-	handler := newMessageNotificationSenderHandler(nil, nil)
+	handler := newNotificationSenderHandler(nil, nil, common.NotificationSenderTypeMessage)
 
 	cases := []struct {
 		name          string
@@ -429,7 +448,7 @@ func (suite *MessageHandlerTestSuite) TestHandleError() {
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest_EmptyID() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	req := httptest.NewRequest(http.MethodGet, "/senders/", nil)
 	req.SetPathValue("id", "")
@@ -442,7 +461,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest_EmptyID() {
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest_EmptyID() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	req := httptest.NewRequest(http.MethodPut, "/senders/", nil)
 	req.SetPathValue("id", "")
@@ -455,7 +474,7 @@ func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest_EmptyID() {
 
 func (suite *MessageHandlerTestSuite) TestHandleSenderDeleteRequest_EmptyID() {
 	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
-	handler := newMessageNotificationSenderHandler(m, nil)
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
 
 	req := httptest.NewRequest(http.MethodDelete, "/senders/", nil)
 	req.SetPathValue("id", "")
@@ -474,7 +493,7 @@ func (e *errWriter) Write([]byte) (int, error)  { return 0, io.ErrClosedPipe }
 func (e *errWriter) WriteHeader(statusCode int) {}
 
 func (suite *MessageHandlerTestSuite) TestHandleError_EncodeFailure() {
-	handler := newMessageNotificationSenderHandler(nil, nil)
+	handler := newNotificationSenderHandler(nil, nil, common.NotificationSenderTypeMessage)
 	ew := &errWriter{}
 	handler.handleError(context.Background(), ew, &serviceerror.InternalServerError, "boom")
 }
@@ -503,7 +522,7 @@ func (suite *MessageHandlerTestSuite) TestGetDTOFromSenderRequest() {
 		},
 	}
 
-	dto, err := getDTOFromSenderRequest(request)
+	dto, err := getDTOFromSenderRequest(request, common.NotificationSenderTypeMessage)
 
 	suite.NoError(err)
 	suite.NotNil(dto)
@@ -522,7 +541,7 @@ func (suite *MessageHandlerTestSuite) TestGetDTOFromSenderRequest_EmptyPropertie
 		Properties:  []cmodels.PropertyDTO{},
 	}
 
-	dto, err := getDTOFromSenderRequest(request)
+	dto, err := getDTOFromSenderRequest(request, common.NotificationSenderTypeMessage)
 
 	suite.NoError(err)
 	suite.NotNil(dto)
@@ -538,7 +557,7 @@ func (suite *MessageHandlerTestSuite) TestGetDTOFromSenderRequest_Sanitization()
 		Properties:  []cmodels.PropertyDTO{},
 	}
 
-	dto, err := getDTOFromSenderRequest(request)
+	dto, err := getDTOFromSenderRequest(request, common.NotificationSenderTypeMessage)
 
 	suite.NoError(err)
 	suite.NotNil(dto)
@@ -651,4 +670,77 @@ func (suite *MessageHandlerTestSuite) TestGetSenderResponseFromDTO_EmptyProperti
 
 	suite.NoError(err)
 	suite.Len(response.Properties, 0)
+}
+
+func (suite *MessageHandlerTestSuite) TestHandleSenderListRequest_TypeMismatch() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
+
+	sender1 := common.NotificationSenderDTO{
+		ID:         "id1",
+		Name:       "s1",
+		Type:       common.NotificationSenderTypeEmail,
+		Provider:   common.MessageProviderTypeSMTP,
+		Properties: []cmodels.Property{createTestProperty("k", "v", false)},
+	}
+	m.On("ListSenders", mock.Anything).Return([]common.NotificationSenderDTO{sender1}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodGet, "/senders", nil)
+	rr := httptest.NewRecorder()
+
+	handler.HandleSenderListRequest(rr, req)
+
+	suite.Equal(http.StatusOK, rr.Code)
+
+	var res []common.NotificationSenderResponse
+	suite.NoError(json.Unmarshal(rr.Body.Bytes(), &res))
+	suite.Len(res, 0)
+}
+
+func (suite *MessageHandlerTestSuite) TestHandleSenderGetRequest_TypeMismatch() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
+
+	dto := &common.NotificationSenderDTO{ID: "s-1", Name: "ns",
+		Type: common.NotificationSenderTypeEmail, Provider: common.MessageProviderTypeSMTP,
+		Properties: []cmodels.Property{createTestProperty("k", "v", false)}}
+
+	m.On("GetSender", mock.Anything, "s-1").Return(dto, nil).Once()
+	reqGet := httptest.NewRequest(http.MethodGet, "/senders/s-1", nil)
+	reqGet.SetPathValue("id", "s-1")
+	rrGet := httptest.NewRecorder()
+	handler.HandleSenderGetRequest(rrGet, reqGet)
+	suite.Equal(http.StatusNotFound, rrGet.Code)
+}
+
+func (suite *MessageHandlerTestSuite) TestHandleSenderUpdateRequest_TypeMismatch() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
+
+	updateReq := common.NotificationSenderRequest{Name: "Updated", Provider: "twilio"}
+	body, _ := json.Marshal(updateReq)
+
+	getDTO := &common.NotificationSenderDTO{ID: "s-1", Type: common.NotificationSenderTypeEmail}
+	m.On("GetSender", mock.Anything, "s-1").Return(getDTO, nil).Once()
+
+	reqUpd := httptest.NewRequest(http.MethodPut, "/senders/s-1", bytes.NewBuffer(body))
+	reqUpd.SetPathValue("id", "s-1")
+	reqUpd.Header.Set("Content-Type", "application/json")
+	rrUpd := httptest.NewRecorder()
+	handler.HandleSenderUpdateRequest(rrUpd, reqUpd)
+	suite.Equal(http.StatusNotFound, rrUpd.Code)
+}
+
+func (suite *MessageHandlerTestSuite) TestHandleSenderDeleteRequest_TypeMismatch() {
+	m := NewNotificationSenderMgtSvcInterfaceMock(suite.T())
+	handler := newNotificationSenderHandler(m, nil, common.NotificationSenderTypeMessage)
+
+	dto := &common.NotificationSenderDTO{ID: "s-1", Type: common.NotificationSenderTypeEmail}
+	m.On("GetSender", mock.Anything, "s-1").Return(dto, nil).Once()
+
+	reqDel := httptest.NewRequest(http.MethodDelete, "/senders/s-1", nil)
+	reqDel.SetPathValue("id", "s-1")
+	rrDel := httptest.NewRecorder()
+	handler.HandleSenderDeleteRequest(rrDel, reqDel)
+	suite.Equal(http.StatusNotFound, rrDel.Code)
 }

@@ -87,7 +87,7 @@ func (v *VonageClient) IsChannelSupported(channel common.ChannelType) bool {
 }
 
 // Send dispatches a notification via the requested channel.
-func (v *VonageClient) Send(ctx context.Context, channel common.ChannelType, data common.NotificationData) error {
+func (v *VonageClient) Send(ctx context.Context, channel common.ChannelType, data common.MessageData) error {
 	switch channel {
 	case common.ChannelTypeSMS:
 		return v.sendSMS(ctx, data)
@@ -97,7 +97,7 @@ func (v *VonageClient) Send(ctx context.Context, channel common.ChannelType, dat
 }
 
 // sendSMS sends an SMS via the Vonage API.
-func (v *VonageClient) sendSMS(ctx context.Context, data common.NotificationData) error {
+func (v *VonageClient) sendSMS(ctx context.Context, data common.MessageData) error {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, vonageLoggerComponentName))
 	logger.Debug(ctx, "Sending SMS via Vonage", log.MaskedString("to", data.Recipient))
 

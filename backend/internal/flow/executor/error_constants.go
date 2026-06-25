@@ -558,17 +558,17 @@ var (
 		},
 	}
 
-	// ErrEmailServiceNotConfigured is returned when the email service is not configured.
-	ErrEmailServiceNotConfigured = serviceerror.ServiceError{
+	// ErrEmailProviderNotConfigured is returned when the email provider is not configured.
+	ErrEmailProviderNotConfigured = serviceerror.ServiceError{
 		Type: serviceerror.ClientErrorType,
 		Code: "FET-1039",
 		Error: core.I18nMessage{
-			Key:          "flows.executor.errors.email_service_not_configured",
-			DefaultValue: "Email service is not configured",
+			Key:          "flows.executor.errors.email_provider_not_configured",
+			DefaultValue: "Email provider is not configured",
 		},
 		ErrorDescription: core.I18nMessage{
-			Key:          "flows.executor.errors.email_service_not_configured_desc",
-			DefaultValue: "The email notification service has not been configured",
+			Key:          "flows.executor.errors.email_provider_not_configured_desc",
+			DefaultValue: "The email notification provider has not been configured",
 		},
 	}
 

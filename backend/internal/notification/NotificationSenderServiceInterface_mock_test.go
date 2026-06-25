@@ -39,16 +39,81 @@ func (_m *NotificationSenderServiceInterfaceMock) EXPECT() *NotificationSenderSe
 	return &NotificationSenderServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
-// Send provides a mock function for the type NotificationSenderServiceInterfaceMock
-func (_mock *NotificationSenderServiceInterfaceMock) Send(ctx context.Context, channel common.ChannelType, senderID string, data common.NotificationData) *serviceerror.ServiceError {
-	ret := _mock.Called(ctx, channel, senderID, data)
+// SendEmail provides a mock function for the type NotificationSenderServiceInterfaceMock
+func (_mock *NotificationSenderServiceInterfaceMock) SendEmail(ctx context.Context, senderID string, data common.EmailData) *serviceerror.ServiceError {
+	ret := _mock.Called(ctx, senderID, data)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Send")
+		panic("no return value specified for SendEmail")
 	}
 
 	var r0 *serviceerror.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, common.ChannelType, string, common.NotificationData) *serviceerror.ServiceError); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, common.EmailData) *serviceerror.ServiceError); ok {
+		r0 = returnFunc(ctx, senderID, data)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*serviceerror.ServiceError)
+		}
+	}
+	return r0
+}
+
+// NotificationSenderServiceInterfaceMock_SendEmail_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SendEmail'
+type NotificationSenderServiceInterfaceMock_SendEmail_Call struct {
+	*mock.Call
+}
+
+// SendEmail is a helper method to define mock.On call
+//   - ctx context.Context
+//   - senderID string
+//   - data common.EmailData
+func (_e *NotificationSenderServiceInterfaceMock_Expecter) SendEmail(ctx interface{}, senderID interface{}, data interface{}) *NotificationSenderServiceInterfaceMock_SendEmail_Call {
+	return &NotificationSenderServiceInterfaceMock_SendEmail_Call{Call: _e.mock.On("SendEmail", ctx, senderID, data)}
+}
+
+func (_c *NotificationSenderServiceInterfaceMock_SendEmail_Call) Run(run func(ctx context.Context, senderID string, data common.EmailData)) *NotificationSenderServiceInterfaceMock_SendEmail_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 common.EmailData
+		if args[2] != nil {
+			arg2 = args[2].(common.EmailData)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *NotificationSenderServiceInterfaceMock_SendEmail_Call) Return(serviceError *serviceerror.ServiceError) *NotificationSenderServiceInterfaceMock_SendEmail_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *NotificationSenderServiceInterfaceMock_SendEmail_Call) RunAndReturn(run func(ctx context.Context, senderID string, data common.EmailData) *serviceerror.ServiceError) *NotificationSenderServiceInterfaceMock_SendEmail_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SendMessage provides a mock function for the type NotificationSenderServiceInterfaceMock
+func (_mock *NotificationSenderServiceInterfaceMock) SendMessage(ctx context.Context, channel common.ChannelType, senderID string, data common.MessageData) *serviceerror.ServiceError {
+	ret := _mock.Called(ctx, channel, senderID, data)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SendMessage")
+	}
+
+	var r0 *serviceerror.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, common.ChannelType, string, common.MessageData) *serviceerror.ServiceError); ok {
 		r0 = returnFunc(ctx, channel, senderID, data)
 	} else {
 		if ret.Get(0) != nil {
@@ -58,21 +123,21 @@ func (_mock *NotificationSenderServiceInterfaceMock) Send(ctx context.Context, c
 	return r0
 }
 
-// NotificationSenderServiceInterfaceMock_Send_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Send'
-type NotificationSenderServiceInterfaceMock_Send_Call struct {
+// NotificationSenderServiceInterfaceMock_SendMessage_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SendMessage'
+type NotificationSenderServiceInterfaceMock_SendMessage_Call struct {
 	*mock.Call
 }
 
-// Send is a helper method to define mock.On call
+// SendMessage is a helper method to define mock.On call
 //   - ctx context.Context
 //   - channel common.ChannelType
 //   - senderID string
-//   - data common.NotificationData
-func (_e *NotificationSenderServiceInterfaceMock_Expecter) Send(ctx interface{}, channel interface{}, senderID interface{}, data interface{}) *NotificationSenderServiceInterfaceMock_Send_Call {
-	return &NotificationSenderServiceInterfaceMock_Send_Call{Call: _e.mock.On("Send", ctx, channel, senderID, data)}
+//   - data common.MessageData
+func (_e *NotificationSenderServiceInterfaceMock_Expecter) SendMessage(ctx interface{}, channel interface{}, senderID interface{}, data interface{}) *NotificationSenderServiceInterfaceMock_SendMessage_Call {
+	return &NotificationSenderServiceInterfaceMock_SendMessage_Call{Call: _e.mock.On("SendMessage", ctx, channel, senderID, data)}
 }
 
-func (_c *NotificationSenderServiceInterfaceMock_Send_Call) Run(run func(ctx context.Context, channel common.ChannelType, senderID string, data common.NotificationData)) *NotificationSenderServiceInterfaceMock_Send_Call {
+func (_c *NotificationSenderServiceInterfaceMock_SendMessage_Call) Run(run func(ctx context.Context, channel common.ChannelType, senderID string, data common.MessageData)) *NotificationSenderServiceInterfaceMock_SendMessage_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -86,9 +151,9 @@ func (_c *NotificationSenderServiceInterfaceMock_Send_Call) Run(run func(ctx con
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
-		var arg3 common.NotificationData
+		var arg3 common.MessageData
 		if args[3] != nil {
-			arg3 = args[3].(common.NotificationData)
+			arg3 = args[3].(common.MessageData)
 		}
 		run(
 			arg0,
@@ -100,12 +165,12 @@ func (_c *NotificationSenderServiceInterfaceMock_Send_Call) Run(run func(ctx con
 	return _c
 }
 
-func (_c *NotificationSenderServiceInterfaceMock_Send_Call) Return(serviceError *serviceerror.ServiceError) *NotificationSenderServiceInterfaceMock_Send_Call {
+func (_c *NotificationSenderServiceInterfaceMock_SendMessage_Call) Return(serviceError *serviceerror.ServiceError) *NotificationSenderServiceInterfaceMock_SendMessage_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *NotificationSenderServiceInterfaceMock_Send_Call) RunAndReturn(run func(ctx context.Context, channel common.ChannelType, senderID string, data common.NotificationData) *serviceerror.ServiceError) *NotificationSenderServiceInterfaceMock_Send_Call {
+func (_c *NotificationSenderServiceInterfaceMock_SendMessage_Call) RunAndReturn(run func(ctx context.Context, channel common.ChannelType, senderID string, data common.MessageData) *serviceerror.ServiceError) *NotificationSenderServiceInterfaceMock_SendMessage_Call {
 	_c.Call.Return(run)
 	return _c
 }

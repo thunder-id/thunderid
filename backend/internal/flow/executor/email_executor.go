@@ -25,7 +25,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
-	"github.com/thunder-id/thunderid/internal/system/email"
+	"github.com/thunder-id/thunderid/internal/notification"
+	notifcm "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/template"
 )
@@ -34,15 +36,18 @@ import (
 type emailExecutor struct {
 	core.ExecutorInterface
 	logger          *log.Logger
-	emailClient     email.EmailClientInterface
+	notifSenderSvc  notification.NotificationSenderServiceInterface
 	templateService template.TemplateServiceInterface
 	entityProvider  entityprovider.EntityProviderInterface
 }
 
 // newEmailExecutor creates a new instance of the email executor.
-func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.EmailClientInterface,
+func newEmailExecutor(
+	flowFactory core.FlowFactoryInterface,
+	notifSenderSvc notification.NotificationSenderServiceInterface,
 	templateService template.TemplateServiceInterface,
-	entityProvider entityprovider.EntityProviderInterface) *emailExecutor {
+	entityProvider entityprovider.EntityProviderInterface,
+) *emailExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EmailExecutor"))
 	base := flowFactory.CreateExecutor(
 		ExecutorNameEmailExecutor,
@@ -55,7 +60,7 @@ func newEmailExecutor(flowFactory core.FlowFactoryInterface, emailClient email.E
 	return &emailExecutor{
 		ExecutorInterface: base,
 		logger:            logger,
-		emailClient:       emailClient,
+		notifSenderSvc:    notifSenderSvc,
 		templateService:   templateService,
 		entityProvider:    entityProvider,
 	}
@@ -87,12 +92,8 @@ func (e *emailExecutor) executeSend(ctx *core.NodeContext) (*common.ExecutorResp
 		return execResp, nil
 	}
 
-	if e.emailClient == nil {
-		execResp.AdditionalData[common.DataEmailSent] = dataValueFalse
-		execResp.Status = common.ExecFailure
-		execResp.Error = &ErrEmailServiceNotConfigured
-		logger.Debug(ctx.Context, "Email client not configured")
-		return execResp, nil
+	if e.notifSenderSvc == nil {
+		return nil, errors.New("notification sender service is not configured")
 	}
 
 	if e.templateService == nil {
@@ -108,6 +109,11 @@ func (e *emailExecutor) executeSend(ctx *core.NodeContext) (*common.ExecutorResp
 		execResp.Status = common.ExecFailure
 		execResp.Error = &ErrEmailRecipientMissing
 		return execResp, nil
+	}
+
+	senderID, err := resolveStringNodeProperty(ctx, propertyKeyNotificationSenderID)
+	if err != nil {
+		return nil, fmt.Errorf("senderId is not configured in node properties: %w", err)
 	}
 
 	var scenario template.ScenarioType
@@ -132,17 +138,21 @@ func (e *emailExecutor) executeSend(ctx *core.NodeContext) (*common.ExecutorResp
 		return nil, fmt.Errorf("failed to render email template: %s", svcErr.Code)
 	}
 
-	emailData := email.EmailData{
+	emailData := notifcm.EmailData{
 		To:      []string{recipient},
 		Subject: rendered.Subject,
 		Body:    rendered.Body,
 		IsHTML:  rendered.IsHTML,
 	}
 
-	if err := e.emailClient.Send(ctx.Context, emailData); err != nil {
-		execResp.Status = common.ExecFailure
-		execResp.Error = &ErrEmailSendFailed
-		return execResp, nil
+	notifSvcErr := e.notifSenderSvc.SendEmail(ctx.Context, senderID, emailData)
+	if notifSvcErr != nil {
+		if ctx.FlowType == common.FlowTypeUserOnboarding && notifSvcErr.Type == serviceerror.ClientErrorType {
+			execResp.Status = common.ExecFailure
+			execResp.Error = &ErrEmailProviderNotConfigured
+			return execResp, nil
+		}
+		return nil, fmt.Errorf("email send failed: %s", notifSvcErr.ErrorDescription.DefaultValue)
 	}
 
 	logger.Debug(ctx.Context, "Email sent successfully", log.MaskedString("recipient", recipient))

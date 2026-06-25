@@ -222,7 +222,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameEmailExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameEmailExecutor, newEmailExecutor(
-				deps.FlowFactory, deps.EmailClient, deps.TemplateService, deps.EntityProvider))
+				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateService, deps.EntityProvider))
 		},
 		ExecutorNameCredentialSetter: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialSetter, newCredentialSetter(

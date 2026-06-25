@@ -136,8 +136,8 @@ func (e *smsExecutor) Execute(ctx *core.NodeContext) (*common.ExecutorResponse, 
 		return nil, fmt.Errorf("failed to render SMS template: %s", svcErr.Code)
 	}
 
-	notifSvcErr := e.notifSenderSvc.Send(ctx.Context, notifcm.ChannelTypeSMS, senderID,
-		notifcm.NotificationData{Recipient: recipient, Body: rendered.Body})
+	notifSvcErr := e.notifSenderSvc.SendMessage(ctx.Context, notifcm.ChannelTypeSMS, senderID,
+		notifcm.MessageData{Recipient: recipient, Body: rendered.Body})
 	if notifSvcErr != nil {
 		if ctx.FlowType == common.FlowTypeUserOnboarding && notifSvcErr.Type == serviceerror.ClientErrorType {
 			execResp.Status = common.ExecFailure
