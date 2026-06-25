@@ -29,6 +29,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 )
 
 type VonageClientTestSuite struct {
@@ -119,6 +120,35 @@ func (suite *VonageClientTestSuite) TestSendSMS_Success() {
 	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.NoError(err)
+}
+
+func (suite *VonageClientTestSuite) TestSendSMS_PropagatesCorrelationID() {
+	sender := suite.getValidVonageSender()
+	client, _ := newVonageClient(context.Background(), sender)
+
+	var gotCorrelationID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCorrelationID = r.Header.Get("X-Correlation-ID")
+		w.WriteHeader(http.StatusAccepted)
+		if _, err := w.Write([]byte(`{"message_uuid":"abc123"}`)); err != nil {
+			suite.T().Errorf("Failed to write response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	vonageClient := client.(*VonageClient)
+	vonageClient.url = server.URL
+
+	data := common.NotificationData{
+		Recipient: "+15559876543",
+		Body:      "Test message",
+	}
+
+	ctx := sysContext.WithTraceID(context.Background(), "trace-xyz")
+	err := client.Send(ctx, common.ChannelTypeSMS, data)
+
+	suite.NoError(err)
+	suite.Equal("trace-xyz", gotCorrelationID)
 }
 
 func (suite *VonageClientTestSuite) TestSendSMS_Error() {

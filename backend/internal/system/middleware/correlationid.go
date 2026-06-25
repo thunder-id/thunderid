@@ -21,6 +21,7 @@ package middleware
 import (
 	"net/http"
 
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 )
 
@@ -50,7 +51,7 @@ func CorrelationIDMiddleware(next http.Handler) http.Handler {
 		r = r.WithContext(ctx)
 
 		// Add correlation ID to response headers so clients can track requests
-		w.Header().Set("X-Correlation-ID", correlationID)
+		w.Header().Set(serverconst.CorrelationIDHeaderName, correlationID)
 
 		// Continue with the next handler
 		next.ServeHTTP(w, r)

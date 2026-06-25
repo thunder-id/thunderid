@@ -31,6 +31,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	sysconst "github.com/thunder-id/thunderid/internal/system/constants"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/error/serviceerror"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -1104,6 +1105,7 @@ func (c *defaultClient) doRequest(ctx context.Context, method, url, ouID, groupI
 		if encodedBody != nil {
 			req.Header.Set(sysconst.ContentTypeHeaderName, sysconst.ContentTypeJSON)
 		}
+		req.Header.Set(sysconst.CorrelationIDHeaderName, sysContext.GetTraceID(reqCtx))
 		c.setCommonHeaders(req, ouID, groupID)
 
 		resp, err := c.httpClient.Do(req)

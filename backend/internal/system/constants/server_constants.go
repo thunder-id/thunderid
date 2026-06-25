@@ -35,6 +35,10 @@ const AcceptHeaderName = "Accept"
 // ContentTypeHeaderName is the name of the content type header used in HTTP requests.
 const ContentTypeHeaderName = "Content-Type"
 
+// CorrelationIDHeaderName is the name of the correlation ID (trace ID) header used to propagate
+// the request's trace ID across service boundaries.
+const CorrelationIDHeaderName = "X-Correlation-ID"
+
 // TokenTypeBearer is the token type used in bearer authentication.
 const TokenTypeBearer = "Bearer"
 
