@@ -111,10 +111,10 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) SetupSuite() {
 	ts.Require().NoError(ts.mockSMTP.Start(), "Failed to start mock SMTP server")
 	time.Sleep(100 * time.Millisecond)
 
-	// Create notification sender pointing at the mock SMTP server
+	// Create email notification sender pointing at the mock SMTP server
 	senderID, err := testutils.CreateEmailNotificationSender(testutils.NotificationSender{
 		Name:        "Email Recovery Test Sender",
-		Description: "Notification sender for Email recovery flow testing",
+		Description: "Email notification sender for Email recovery flow testing",
 		Provider:    "smtp",
 		Properties: []testutils.SenderProperty{
 			{Name: "host", Value: "localhost", IsSecret: false},

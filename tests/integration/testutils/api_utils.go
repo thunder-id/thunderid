@@ -1356,11 +1356,11 @@ func GetFlowIDByHandle(handle string, flowType string) (string, error) {
 	return "", fmt.Errorf("flow with handle '%s' not found", handle)
 }
 
-// CreateNotificationSender creates a notification sender via API and returns the sender ID
-func CreateNotificationSender(sender NotificationSender) (string, error) {
+// CreateMessageNotificationSender creates a message notification sender via API and returns the sender ID
+func CreateMessageNotificationSender(sender NotificationSender) (string, error) {
 	senderJSON, err := json.Marshal(sender)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal notification sender: %w", err)
+		return "", fmt.Errorf("failed to marshal message notification sender: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", TestServerURL+"/notification-senders/message",
@@ -1404,7 +1404,7 @@ func CreateNotificationSender(sender NotificationSender) (string, error) {
 func CreateEmailNotificationSender(sender NotificationSender) (string, error) {
 	senderJSON, err := json.Marshal(sender)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal notification sender: %w", err)
+		return "", fmt.Errorf("failed to marshal email notification sender: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", TestServerURL+"/notification-senders/email",
@@ -1441,8 +1441,8 @@ func CreateEmailNotificationSender(sender NotificationSender) (string, error) {
 	return "", fmt.Errorf("id not found in response")
 }
 
-// DeleteNotificationSender deletes a notification sender by ID
-func DeleteNotificationSender(senderID string) error {
+// DeleteMessageNotificationSender deletes a message notification sender by ID
+func DeleteMessageNotificationSender(senderID string) error {
 	req, err := http.NewRequest("DELETE", TestServerURL+"/notification-senders/message/"+senderID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create delete request: %w", err)
@@ -1451,7 +1451,7 @@ func DeleteNotificationSender(senderID string) error {
 	client := GetHTTPClient()
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to delete notification sender: %w", err)
+		return fmt.Errorf("failed to delete message notification sender: %w", err)
 	}
 	defer resp.Body.Close()
 

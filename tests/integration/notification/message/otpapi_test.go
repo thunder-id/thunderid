@@ -121,10 +121,12 @@ func (ts *OTPAPITestSuite) SetupSuite() {
 	// Create the sender
 	senderID, err := createSenderWithRequest(customSender)
 	if err != nil {
-		ts.T().Fatalf("Failed to create test notification sender: %v", err)
+		ts.T().Fatalf("Failed to create test message notification sender: %v", err)
 	}
 	ts.testSenderID = senderID
-	ts.T().Logf("Created test notification sender with ID: %s", senderID)
+	ts.T().Logf("Created test message notification sender with ID: %s", senderID)
+
+	ts.testAppID, err = createTestApp()
 }
 
 // TearDownSuite cleans up after the test suite

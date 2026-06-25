@@ -325,7 +325,7 @@ func (ts *SMSAuthFlowTestSuite) SetupSuite() {
 	ts.config.CreatedUserIDs = userIDs
 	ts.T().Logf("Test user created with ID: %s", ts.config.CreatedUserIDs[0])
 
-	// Create notification sender
+	// Create message notification sender
 	customSender := testutils.NotificationSender{
 		Name:        "SMS Auth Test Sender",
 		Description: "Sender for SMS authentication flow testing",
@@ -349,8 +349,8 @@ func (ts *SMSAuthFlowTestSuite) SetupSuite() {
 		},
 	}
 
-	senderID, err := testutils.CreateNotificationSender(customSender)
-	ts.Require().NoError(err, "Failed to create notification sender")
+	senderID, err := testutils.CreateMessageNotificationSender(customSender)
+	ts.Require().NoError(err, "Failed to create message notification sender")
 	smsAuthTestSenderID = senderID
 	ts.config.CreatedSenderIDs = append(ts.config.CreatedSenderIDs, senderID)
 
@@ -415,10 +415,10 @@ func (ts *SMSAuthFlowTestSuite) TearDownSuite() {
 		}
 	}
 
-	// Delete notification senders
+	// Delete message notification senders
 	for _, senderID := range ts.config.CreatedSenderIDs {
-		if err := testutils.DeleteNotificationSender(senderID); err != nil {
-			ts.T().Logf("Failed to delete notification sender during teardown: %v", err)
+		if err := testutils.DeleteMessageNotificationSender(senderID); err != nil {
+			ts.T().Logf("Failed to delete message notification sender during teardown: %v", err)
 		}
 	}
 

@@ -305,10 +305,10 @@ func (ts *SMSRegistrationFlowTestSuite) SetupSuite() {
 	time.Sleep(100 * time.Millisecond)
 	ts.T().Log("Mock notification server started successfully")
 
-	// Create notification sender for SMS flows
+	// Create message notification sender for SMS flows
 	customSender := testutils.NotificationSender{
-		Name:        "SMS Registration Test Notification Sender",
-		Description: "Notification sender for SMS registration flow testing",
+		Name:        "SMS Registration Test Message Notification Sender",
+		Description: "Message notification sender for SMS registration flow testing",
 		Provider:    "custom",
 		Properties: []testutils.SenderProperty{
 			{
@@ -328,8 +328,8 @@ func (ts *SMSRegistrationFlowTestSuite) SetupSuite() {
 			},
 		},
 	}
-	senderID, err := testutils.CreateNotificationSender(customSender)
-	ts.Require().NoError(err, "Failed to create notification sender")
+	senderID, err := testutils.CreateMessageNotificationSender(customSender)
+	ts.Require().NoError(err, "Failed to create message notification sender")
 	ts.config.CreatedSenderIDs = append(ts.config.CreatedSenderIDs, senderID)
 
 	// Update registration flow with created sender ID
@@ -381,10 +381,10 @@ func (ts *SMSRegistrationFlowTestSuite) TearDownSuite() {
 		}
 	}
 
-	// Delete notification senders
+	// Delete message notification senders
 	for _, senderID := range ts.config.CreatedSenderIDs {
-		if err := testutils.DeleteNotificationSender(senderID); err != nil {
-			ts.T().Logf("Failed to delete notification sender during teardown: %v", err)
+		if err := testutils.DeleteMessageNotificationSender(senderID); err != nil {
+			ts.T().Logf("Failed to delete message notification sender during teardown: %v", err)
 		}
 	}
 

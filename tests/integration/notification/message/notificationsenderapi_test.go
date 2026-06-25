@@ -198,7 +198,7 @@ func TestNotificationSenderAPITestSuite(t *testing.T) {
 	suite.Run(t, new(NotificationSenderAPITestSuite))
 }
 
-// SetupSuite creates a test notification sender
+// SetupSuite creates a test message notification sender
 func (ts *NotificationSenderAPITestSuite) SetupSuite() {
 	id, err := createSender(ts)
 	if err != nil {
@@ -214,7 +214,7 @@ func (ts *NotificationSenderAPITestSuite) TearDownSuite() {
 	if createdSenderID != "" {
 		err := deleteSender(createdSenderID)
 		if err != nil {
-			ts.T().Fatalf("Failed to delete notification sender during teardown: %v", err)
+			ts.T().Fatalf("Failed to delete message notification sender during teardown: %v", err)
 		}
 	}
 
