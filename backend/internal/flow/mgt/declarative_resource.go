@@ -164,8 +164,8 @@ func validateFlowGraphWrapper(dto interface{}) error {
 		Nodes:    flowDef.Nodes,
 	}
 
-	// Use the service-level validation function
-	svcErr := validateFlowDefinition(flowDefForValidation)
+	// Use the package-level validation function (no registry access needed for declarative flows)
+	svcErr := validateFlowDefinitionBasic(flowDefForValidation)
 	if svcErr != nil {
 		return fmt.Errorf("validation failed: %s - %s", svcErr.Code, svcErr.Error)
 	}
