@@ -3520,7 +3520,7 @@ const translations = {
     'create.name.nameLabel': 'Resource Server Name',
     'create.name.namePlaceholder': 'e.g. Payments API',
     'create.name.suggestions': 'Need inspiration? Pick one:',
-    'create.name.handleLabel': 'Handle',
+    'create.name.handleLabel': 'Handle (Optional)',
     'create.name.handlePlaceholder': 'e.g. payments-api',
     'create.name.handleHint':
       'The handle prefixes every permission in this resource server. It cannot be changed after creation.',

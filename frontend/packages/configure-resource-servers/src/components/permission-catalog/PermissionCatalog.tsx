@@ -32,6 +32,7 @@ import {
 import {ChevronDown, ChevronRight} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import McpServerSectionContent from './McpServerSectionContent';
 import useGetResourceActions from '../../api/useGetResourceActions';
 import useGetResources from '../../api/useGetResources';
 import useGetResourceServers from '../../api/useGetResourceServers';
@@ -55,7 +56,7 @@ export interface PermissionCatalogProps {
 
 /* ---------- Row ---------- */
 
-interface CatalogRowProps {
+export interface CatalogRowProps {
   name: string;
   permission: string;
   depth: number;
@@ -67,7 +68,7 @@ interface CatalogRowProps {
   expandControl?: JSX.Element;
 }
 
-function CatalogRow({
+export function CatalogRow({
   name,
   permission,
   depth,
@@ -103,7 +104,7 @@ function CatalogRow({
 
 /* ---------- Resource node (recursive, tri-state) ---------- */
 
-interface CatalogResourceNodeProps {
+export interface CatalogResourceNodeProps {
   resourceServerId: string;
   resource: Resource;
   depth: number;
@@ -115,7 +116,7 @@ interface CatalogResourceNodeProps {
   getCachedSubtree: (resource: Resource) => string[] | null;
 }
 
-function CatalogResourceNode({
+export function CatalogResourceNode({
   resourceServerId,
   resource,
   depth,
@@ -230,17 +231,19 @@ interface ServerSectionProps {
   onChange: (selected: ResourcePermissions[]) => void;
 }
 
-function ServerSectionContent({
+export interface ServerSectionContentProps extends ServerSectionProps {
+  collectSubtree: (resource: Resource) => Promise<string[]>;
+  getCachedSubtree: (resource: Resource) => string[] | null;
+}
+
+function DefaultServerSectionContent({
   server,
   selected,
   readOnly,
   onChange,
   collectSubtree,
   getCachedSubtree,
-}: ServerSectionProps & {
-  collectSubtree: (resource: Resource) => Promise<string[]>;
-  getCachedSubtree: (resource: Resource) => string[] | null;
-}): JSX.Element {
+}: ServerSectionContentProps): JSX.Element {
   const delimiter = server.delimiter;
   const {t} = useTranslation();
   const {data: resourcesData, isLoading: loadingResources, error: resourcesError} = useGetResources(server.id);
@@ -302,6 +305,20 @@ function ServerSectionContent({
       ))}
     </>
   );
+}
+
+const SERVER_SECTION_CONTENT_BY_TYPE: Record<
+  ResourceServer['type'],
+  (props: ServerSectionContentProps) => JSX.Element
+> = {
+  API: DefaultServerSectionContent,
+  CUSTOM: DefaultServerSectionContent,
+  MCP: McpServerSectionContent,
+};
+
+function ServerSectionContent(props: ServerSectionContentProps): JSX.Element {
+  const Content = SERVER_SECTION_CONTENT_BY_TYPE[props.server.type];
+  return <Content {...props} />;
 }
 
 function ServerSection({server, selected, readOnly, onChange}: ServerSectionProps): JSX.Element {

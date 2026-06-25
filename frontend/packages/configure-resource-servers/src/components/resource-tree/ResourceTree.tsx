@@ -31,24 +31,31 @@ import {Layers, Plus, Zap} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import AddNodeDialog, {type AddNodeMode} from './AddNodeDialog';
+import McpCapabilitiesPanel from './McpCapabilitiesPanel';
 import ResourceDetailPanel from './ResourceDetailPanel';
 import {ActionNode, ResourceNode} from './ResourceTreeNode';
 import useGetResources from '../../api/useGetResources';
 import useGetServerActions from '../../api/useGetServerActions';
 import type {Action, Resource, ResourceServer} from '../../models/resource-server';
 
+export type KindFilter = 'all' | 'tool' | 'resource';
+
 export type SelectedNode =
   | {type: 'server'; id: string; data: ResourceServer}
-  | {type: 'resource'; id: string; data: Resource}
-  | {type: 'server-action'; id: string; data: Action; parentResourceId?: string}
-  | {type: 'resource-action'; id: string; data: Action; parentResourceId?: string};
+  | {type: 'resource'; id: string; data: Resource; breadcrumb?: string[]}
+  | {type: 'server-action'; id: string; data: Action; parentResourceId?: string; breadcrumb?: string[]}
+  | {type: 'resource-action'; id: string; data: Action; parentResourceId?: string; breadcrumb?: string[]};
 
 interface ResourceTreeProps {
   resourceServer: ResourceServer;
   onRefresh: () => void;
 }
 
-export default function ResourceTree({resourceServer, onRefresh}: ResourceTreeProps): JSX.Element {
+/* -------------------------------------------------------------------------- */
+/*  Generic Resource Tree (API / CUSTOM — unchanged)                           */
+/* -------------------------------------------------------------------------- */
+
+function GenericResourceTree({resourceServer, onRefresh}: ResourceTreeProps): JSX.Element {
   const {t} = useTranslation();
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [addDialog, setAddDialog] = useState<{
@@ -226,4 +233,15 @@ export default function ResourceTree({resourceServer, onRefresh}: ResourceTreePr
       )}
     </Box>
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Root component — branches on type                                          */
+/* -------------------------------------------------------------------------- */
+
+export default function ResourceTree({resourceServer, onRefresh}: ResourceTreeProps): JSX.Element {
+  if (resourceServer.type === 'MCP') {
+    return <McpCapabilitiesPanel resourceServer={resourceServer} onRefresh={onRefresh} />;
+  }
+  return <GenericResourceTree resourceServer={resourceServer} onRefresh={onRefresh} />;
 }

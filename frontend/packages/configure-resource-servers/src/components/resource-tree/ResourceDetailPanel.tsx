@@ -23,6 +23,7 @@ import {
   Box,
   Button,
   Chip,
+  Collapse,
   Divider,
   FormControl,
   FormLabel,
@@ -32,13 +33,14 @@ import {
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {Check, Copy} from '@wso2/oxygen-ui-icons-react';
-import {useCallback, useState, type JSX} from 'react';
+import {Check, ChevronDown, ChevronRight, Copy, Database, Folder, Lock, Wrench} from '@wso2/oxygen-ui-icons-react';
+import {useCallback, useState, type JSX, type KeyboardEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {SelectedNode} from './ResourceTree';
 import useUpdateAction from '../../api/useUpdateAction';
 import useUpdateResource from '../../api/useUpdateResource';
 import useUpdateResourceServer from '../../api/useUpdateResourceServer';
+import {getActionKindLabel} from '../../config/get-action-kind-label';
 import type {ResourceServer} from '../../models/resource-server';
 
 interface ResourceDetailPanelProps {
@@ -73,6 +75,8 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
   const [description, setDescription] = useState(initial.description);
   const [identifier, setIdentifier] = useState(initial.identifier);
   const [dirty, setDirty] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [copiedPermission, setCopiedPermission] = useState(false);
 
   const updateRs = useUpdateResourceServer();
   const updateResource = useUpdateResource(resourceServer.id);
@@ -148,7 +152,6 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
     updateRs.isPending || updateResource.isPending || updateServerAction.isPending || updateResourceAction.isPending;
 
   const permission = selectedNode.type === 'server' ? selectedNode.data.handle : selectedNode.data.permission;
-  const [copiedPermission, setCopiedPermission] = useState(false);
 
   const handleCopyPermission = (): void => {
     navigator.clipboard
@@ -160,11 +163,15 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
       .catch((err: unknown) => logger.error('Failed to copy permission', {error: err}));
   };
 
-  const nodeTypeLabel: Record<SelectedNode['type'], string> = {
-    server: t('resourceServers:detail.types.resourceServer', 'Resource Server'),
-    resource: t('resourceServers:detail.types.resource', 'Resource'),
-    'server-action': t('resourceServers:detail.types.action', 'Action'),
-    'resource-action': t('resourceServers:detail.types.action', 'Action'),
+  const resolveNodeTypeLabel = (): string => {
+    if (selectedNode.type === 'server') return t('resourceServers:detail.types.resourceServer', 'Resource Server');
+    if (selectedNode.type === 'resource') {
+      if (resourceServer.type === 'MCP') return getActionKindLabel(undefined, t);
+      return t('resourceServers:detail.types.resource', 'Resource');
+    }
+    const action = selectedNode.data;
+    if (action.kind) return getActionKindLabel(action.kind, t);
+    return t('resourceServers:detail.types.action', 'Action');
   };
 
   const handleField = (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,11 +179,73 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
     setDirty(true);
   };
 
+  const isMcpNonServer = resourceServer.type === 'MCP' && selectedNode.type !== 'server';
+
+  const resolveMcpKindBadge = (): JSX.Element | null => {
+    if (!isMcpNonServer) return null;
+
+    if (selectedNode.type === 'resource') {
+      return (
+        <Chip
+          size="small"
+          variant="outlined"
+          label={t('resourceServers:mcp.types.namespace', 'Namespace')}
+          icon={<Folder size={14} />}
+        />
+      );
+    }
+
+    const action = selectedNode.data;
+    if (action.kind === 'tool') {
+      return (
+        <Chip
+          size="small"
+          variant="outlined"
+          label={t('resourceServers:mcp.types.tool', 'Tool')}
+          icon={<Wrench size={14} />}
+        />
+      );
+    }
+    if (action.kind === 'resource') {
+      return (
+        <Chip
+          size="small"
+          variant="outlined"
+          label={t('resourceServers:mcp.types.resource', 'Resource')}
+          icon={<Database size={14} />}
+        />
+      );
+    }
+    return null;
+  };
+
+  const breadcrumb =
+    selectedNode.type === 'resource' || selectedNode.type === 'resource-action' || selectedNode.type === 'server-action'
+      ? ((selectedNode as {breadcrumb?: string[]}).breadcrumb ?? [])
+      : [];
+
+  const kindBadge = resolveMcpKindBadge();
+
   return (
     <Box sx={{display: 'flex', flexDirection: 'column', gap: 2, p: 2, height: '100%', overflowY: 'auto'}}>
-      <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: 0.5}}>
-        {nodeTypeLabel[selectedNode.type]}
-      </Typography>
+      {/* MCP non-server: breadcrumb + name row + kind badge */}
+      {isMcpNonServer ? (
+        <Stack spacing={0.5}>
+          {breadcrumb.length > 0 && (
+            <Typography variant="caption" color="text.secondary">
+              {breadcrumb.join(' › ')} ›
+            </Typography>
+          )}
+          <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap">
+            <Typography variant="h6">{name}</Typography>
+            {kindBadge}
+          </Stack>
+        </Stack>
+      ) : (
+        <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: 0.5}}>
+          {resolveNodeTypeLabel()}
+        </Typography>
+      )}
 
       {isReadOnly && (
         <Alert severity="info">
@@ -205,61 +274,181 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
 
       <Divider />
 
-      <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
-        <Typography variant="body2" color="text.secondary">
-          {t('resourceServers:detail.permission', 'Permission')}
-        </Typography>
-        <Chip label={permission} size="small" variant="outlined" sx={{fontFamily: 'monospace', fontSize: '0.78rem'}} />
-        <Tooltip title={copiedPermission ? t('common:copied', 'Copied!') : t('common:copy', 'Copy permission')}>
-          <IconButton size="small" sx={{p: 0.25}} onClick={handleCopyPermission}>
-            {copiedPermission ? <Check size={14} /> : <Copy size={14} />}
-          </IconButton>
-        </Tooltip>
-      </Box>
+      {/* MCP non-server: structured PERMISSION SCOPE block */}
+      {isMcpNonServer ? (
+        <Box
+          sx={{
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 1,
+            p: 1.5,
+          }}
+        >
+          <Stack direction="row" alignItems="center" gap={0.75}>
+            <Lock size={14} style={{opacity: 0.7}} aria-hidden="true" />
+            <Typography variant="caption" color="text.secondary" sx={{textTransform: 'uppercase', letterSpacing: 0.5}}>
+              {t('resourceServers:mcp.detail.permissionScope', 'Permission scope')}
+            </Typography>
+          </Stack>
 
-      <Box>
-        <Typography variant="caption" color="text.secondary">
-          {t('resourceServers:detail.fields.handle', 'Handle (immutable)')}
-        </Typography>
-        <Box>
-          <Chip
-            label={selectedNode.data.handle}
-            size="small"
-            sx={{fontFamily: 'monospace', fontSize: '0.75rem', mt: 0.5}}
-          />
-        </Box>
-      </Box>
-
-      {selectedNode.type === 'server' && (
-        <Box>
-          <Typography variant="caption" color="text.secondary">
-            {t('resourceServers:detail.fields.delimiter', 'Delimiter (immutable)')}
-          </Typography>
-          <Box>
+          <Stack direction="row" alignItems="center" gap={1} sx={{mt: 0.5}}>
             <Chip
-              label={selectedNode.data.delimiter}
+              label={permission}
               size="small"
-              sx={{fontFamily: 'monospace', fontSize: '0.75rem', mt: 0.5}}
+              variant="outlined"
+              sx={{fontFamily: 'monospace', fontSize: '0.78rem'}}
             />
-          </Box>
-        </Box>
-      )}
+            <Tooltip
+              title={
+                copiedPermission
+                  ? t('common:copied', 'Copied!')
+                  : t('resourceServers:mcp.detail.copyScope', 'Copy permission scope')
+              }
+            >
+              <IconButton
+                size="small"
+                sx={{p: 0.25}}
+                onClick={handleCopyPermission}
+                aria-label={t('resourceServers:mcp.detail.copyScope', 'Copy permission scope')}
+              >
+                {copiedPermission ? <Check size={14} /> : <Copy size={14} />}
+              </IconButton>
+            </Tooltip>
+          </Stack>
 
-      {selectedNode.type === 'server' && (
-        <FormControl fullWidth>
-          <FormLabel>{t('resourceServers:detail.fields.identifier', 'Identifier')}</FormLabel>
-          <TextField
-            value={identifier}
-            onChange={handleField(setIdentifier)}
-            fullWidth
-            size="small"
-            helperText={t(
-              'resourceServers:detail.fields.identifierHint',
-              'Used as audience parameter in OAuth2 flows.',
+          <Typography variant="caption" color="text.secondary" sx={{display: 'block', mt: 0.5}}>
+            {t(
+              'resourceServers:mcp.detail.permissionScopeHelp',
+              "Derived from kind + the resource path + name (+ the optional server handle). You don't author it — it changes only when the server does.",
             )}
-            disabled={isReadOnly}
-          />
-        </FormControl>
+          </Typography>
+
+          {/* Advanced expander */}
+          <Box
+            role="button"
+            tabIndex={0}
+            aria-expanded={advancedOpen}
+            onClick={() => setAdvancedOpen((v) => !v)}
+            onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setAdvancedOpen((v) => !v);
+              }
+            }}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              mt: 1,
+              cursor: 'pointer',
+              '&:focus-visible': {outline: '2px solid', outlineColor: 'primary.main', borderRadius: 0.5},
+            }}
+          >
+            {advancedOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            <Typography variant="caption" color="text.secondary">
+              {t('resourceServers:mcp.detail.advanced', 'Advanced · raw permission string & delimiter')}
+            </Typography>
+          </Box>
+          <Collapse in={advancedOpen}>
+            <Stack spacing={1} sx={{mt: 1}}>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 0.5}}>
+                  {t('resourceServers:detail.permission', 'Permission')}
+                </Typography>
+                <Chip
+                  label={permission}
+                  size="small"
+                  variant="outlined"
+                  sx={{fontFamily: 'monospace', fontSize: '0.75rem'}}
+                />
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 0.5}}>
+                  {t('resourceServers:detail.fields.delimiter', 'Delimiter (immutable)')}
+                </Typography>
+                <Chip
+                  label={resourceServer.delimiter}
+                  size="small"
+                  sx={{fontFamily: 'monospace', fontSize: '0.75rem'}}
+                />
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 0.5}}>
+                  {t('resourceServers:detail.fields.handle', 'Handle (immutable)')}
+                </Typography>
+                <Chip
+                  label={selectedNode.data.handle}
+                  size="small"
+                  sx={{fontFamily: 'monospace', fontSize: '0.75rem', mt: 0.5}}
+                />
+              </Box>
+            </Stack>
+          </Collapse>
+        </Box>
+      ) : (
+        <>
+          <Box sx={{display: 'flex', alignItems: 'center', gap: 1}}>
+            <Typography variant="body2" color="text.secondary">
+              {t('resourceServers:detail.permission', 'Permission')}
+            </Typography>
+            <Chip
+              label={permission}
+              size="small"
+              variant="outlined"
+              sx={{fontFamily: 'monospace', fontSize: '0.78rem'}}
+            />
+            <Tooltip title={copiedPermission ? t('common:copied', 'Copied!') : t('common:copy', 'Copy permission')}>
+              <IconButton size="small" sx={{p: 0.25}} onClick={handleCopyPermission}>
+                {copiedPermission ? <Check size={14} /> : <Copy size={14} />}
+              </IconButton>
+            </Tooltip>
+          </Box>
+
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              {t('resourceServers:detail.fields.handle', 'Handle (immutable)')}
+            </Typography>
+            <Box>
+              <Chip
+                label={selectedNode.data.handle}
+                size="small"
+                sx={{fontFamily: 'monospace', fontSize: '0.75rem', mt: 0.5}}
+              />
+            </Box>
+          </Box>
+
+          {selectedNode.type === 'server' && (
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                {t('resourceServers:detail.fields.delimiter', 'Delimiter (immutable)')}
+              </Typography>
+              <Box>
+                <Chip
+                  label={selectedNode.data.delimiter}
+                  size="small"
+                  sx={{fontFamily: 'monospace', fontSize: '0.75rem', mt: 0.5}}
+                />
+              </Box>
+            </Box>
+          )}
+
+          {selectedNode.type === 'server' && (
+            <FormControl fullWidth>
+              <FormLabel>{t('resourceServers:detail.fields.identifier', 'Identifier')}</FormLabel>
+              <TextField
+                value={identifier}
+                onChange={handleField(setIdentifier)}
+                fullWidth
+                size="small"
+                helperText={t(
+                  'resourceServers:detail.fields.identifierHint',
+                  'Used as audience parameter in OAuth2 flows.',
+                )}
+                disabled={isReadOnly}
+              />
+            </FormControl>
+          )}
+        </>
       )}
 
       {!isReadOnly && dirty && (

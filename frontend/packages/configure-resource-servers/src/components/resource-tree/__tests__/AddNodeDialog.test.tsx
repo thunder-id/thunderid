@@ -37,12 +37,15 @@ vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({error: vi.fn(), info: vi.fn(), debug: vi.fn()}),
 }));
 
+const mockCreateResourceMutate = vi.fn();
+const mockCreateActionMutate = vi.fn();
+
 vi.mock('../../../api/useCreateResource', () => ({
-  default: () => ({mutate: vi.fn(), isPending: false}),
+  default: () => ({mutate: mockCreateResourceMutate, isPending: false}),
 }));
 
 vi.mock('../../../api/useCreateAction', () => ({
-  default: () => ({mutate: vi.fn(), isPending: false}),
+  default: () => ({mutate: mockCreateActionMutate, isPending: false}),
 }));
 
 const defaultProps = {
@@ -160,5 +163,121 @@ describe('AddNodeDialog', () => {
 
     const addButton = screen.getByRole('button', {name: /^add$/i});
     expect(addButton).toBeDisabled();
+  });
+
+  it('renders the Add Tool title when mode is mcp-server-tool', () => {
+    renderWithProviders(<AddNodeDialog {...defaultProps} mode="mcp-server-tool" />);
+
+    expect(screen.getByText('Add Tool')).toBeInTheDocument();
+  });
+
+  it('renders the Add Resource title when mode is mcp-server-resource', () => {
+    renderWithProviders(<AddNodeDialog {...defaultProps} mode="mcp-server-resource" />);
+
+    expect(screen.getByText('Add Resource')).toBeInTheDocument();
+  });
+
+  it('renders the Add Namespace title when mode is mcp-namespace', () => {
+    renderWithProviders(<AddNodeDialog {...defaultProps} mode="mcp-namespace" />);
+
+    expect(screen.getByText('Add Namespace')).toBeInTheDocument();
+  });
+
+  it('renders the Add Namespace title when mode is mcp-sub-namespace', () => {
+    renderWithProviders(<AddNodeDialog {...defaultProps} mode="mcp-sub-namespace" />);
+
+    expect(screen.getByText('Add Namespace')).toBeInTheDocument();
+  });
+
+  it('renders the Add Tool title when mode is mcp-namespace-tool', () => {
+    renderWithProviders(<AddNodeDialog {...defaultProps} mode="mcp-namespace-tool" />);
+
+    expect(screen.getByText('Add Tool')).toBeInTheDocument();
+  });
+
+  it('renders the Add Resource title when mode is mcp-namespace-resource', () => {
+    renderWithProviders(<AddNodeDialog {...defaultProps} mode="mcp-namespace-resource" />);
+
+    expect(screen.getByText('Add Resource')).toBeInTheDocument();
+  });
+
+  it('sends kind=tool in the create payload for mcp-server-tool mode', async () => {
+    renderWithProviders(<AddNodeDialog {...defaultProps} mode="mcp-server-tool" delimiter=":" />);
+
+    const textboxes = screen.getAllByRole('textbox');
+    fireEvent.change(textboxes[0], {target: {value: 'Search Files'}});
+
+    await waitFor(() => expect(textboxes[1]).toHaveValue('search-files'));
+
+    fireEvent.click(screen.getByRole('button', {name: /^add$/i}));
+
+    await waitFor(() => {
+      expect(mockCreateActionMutate).toHaveBeenCalledWith(
+        expect.objectContaining({kind: 'tool', name: 'Search Files', handle: 'search-files'}),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it('sends kind=resource in the create payload for mcp-server-resource mode', async () => {
+    renderWithProviders(<AddNodeDialog {...defaultProps} mode="mcp-server-resource" delimiter=":" />);
+
+    const textboxes = screen.getAllByRole('textbox');
+    fireEvent.change(textboxes[0], {target: {value: 'File Contents'}});
+
+    await waitFor(() => expect(textboxes[1]).toHaveValue('file-contents'));
+
+    fireEvent.click(screen.getByRole('button', {name: /^add$/i}));
+
+    await waitFor(() => {
+      expect(mockCreateActionMutate).toHaveBeenCalledWith(
+        expect.objectContaining({kind: 'resource', name: 'File Contents', handle: 'file-contents'}),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it('does not send kind in the create payload for mcp-namespace mode', async () => {
+    renderWithProviders(
+      <AddNodeDialog {...defaultProps} mode="mcp-namespace" delimiter=":" parentResourceId={undefined} />,
+    );
+
+    const textboxes = screen.getAllByRole('textbox');
+    fireEvent.change(textboxes[0], {target: {value: 'My Namespace'}});
+
+    await waitFor(() => expect(textboxes[1]).toHaveValue('my-namespace'));
+
+    fireEvent.click(screen.getByRole('button', {name: /^add$/i}));
+
+    await waitFor(() => {
+      expect(mockCreateResourceMutate).toHaveBeenCalledWith(
+        expect.objectContaining({name: 'My Namespace', handle: 'my-namespace'}),
+        expect.any(Object),
+      );
+      expect(mockCreateResourceMutate).toHaveBeenCalledWith(
+        expect.not.objectContaining({kind: expect.anything() as unknown}),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it('sends kind=tool in the create payload for mcp-namespace-tool mode', async () => {
+    renderWithProviders(
+      <AddNodeDialog {...defaultProps} mode="mcp-namespace-tool" delimiter=":" parentResourceId="ns-1" />,
+    );
+
+    const textboxes = screen.getAllByRole('textbox');
+    fireEvent.change(textboxes[0], {target: {value: 'Search'}});
+
+    await waitFor(() => expect(textboxes[1]).toHaveValue('search'));
+
+    fireEvent.click(screen.getByRole('button', {name: /^add$/i}));
+
+    await waitFor(() => {
+      expect(mockCreateActionMutate).toHaveBeenCalledWith(
+        expect.objectContaining({kind: 'tool', name: 'Search', handle: 'search'}),
+        expect.any(Object),
+      );
+    });
   });
 });

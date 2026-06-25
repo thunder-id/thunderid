@@ -21,14 +21,11 @@ import {Box, Chip, FormControl, FormLabel, Stack, TextField, Typography, useThem
 import {Lightbulb} from '@wso2/oxygen-ui-icons-react';
 import {useEffect, useMemo, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {deriveHandle} from '../../utils/deriveHandle';
 
 interface ConfigureNameProps {
   name: string;
   handle: string;
   delimiter?: string;
-  handleEdited?: boolean;
-  onHandleEditedChange?: (edited: boolean) => void;
   onNameChange: (name: string) => void;
   onHandleChange: (handle: string) => void;
   onReadyChange?: (isReady: boolean) => void;
@@ -38,8 +35,6 @@ export default function ConfigureName({
   name,
   handle,
   delimiter = undefined,
-  handleEdited = false,
-  onHandleEditedChange = undefined,
   onNameChange,
   onHandleChange,
   onReadyChange = undefined,
@@ -53,24 +48,17 @@ export default function ConfigureName({
     if (onReadyChange) {
       onReadyChange(name.trim().length > 0);
     }
-  }, [name, handle, onReadyChange]);
+  }, [name, onReadyChange]);
 
   const handleNameChange = (e: ChangeEvent<HTMLInputElement>): void => {
-    const newName = e.target.value;
-    onNameChange(newName);
-    if (!handleEdited) {
-      onHandleChange(deriveHandle(newName, delimiter));
-    }
+    onNameChange(e.target.value);
   };
 
   const handleSuggestionClick = (suggestion: string): void => {
     onNameChange(suggestion);
-    onHandleChange(deriveHandle(suggestion, delimiter));
-    onHandleEditedChange?.(false);
   };
 
   const handleHandleChange = (e: ChangeEvent<HTMLInputElement>): void => {
-    onHandleEditedChange?.(true);
     const sanitized = e.target.value.toLowerCase().replace(/[^a-z0-9._\-:/]/g, '');
     onHandleChange(delimiter ? sanitized.replace(new RegExp(`\\${delimiter}`, 'g'), '') : sanitized);
   };
@@ -123,9 +111,9 @@ export default function ConfigureName({
         </Box>
       </Stack>
 
-      <FormControl fullWidth required>
+      <FormControl fullWidth>
         <FormLabel htmlFor="resource-server-handle-input">
-          {t('resourceServers:create.name.handleLabel', 'Handle')}
+          {t('resourceServers:create.name.handleLabel', 'Handle (Optional)')}
         </FormLabel>
         <TextField
           id="resource-server-handle-input"

@@ -38,7 +38,7 @@ describe('ConfigureName', () => {
     expect(screen.getByRole('textbox', {name: /handle/i})).toBeInTheDocument();
   });
 
-  it('calls onNameChange and derives handle when name input changes', () => {
+  it('calls onNameChange when name input changes without auto-deriving handle', () => {
     const onNameChange = vi.fn();
     const onHandleChange = vi.fn();
     render(<ConfigureName name="" handle="" onNameChange={onNameChange} onHandleChange={onHandleChange} />);
@@ -48,7 +48,7 @@ describe('ConfigureName', () => {
     });
 
     expect(onNameChange).toHaveBeenCalledWith('Payments API');
-    expect(onHandleChange).toHaveBeenCalledWith('payments-api');
+    expect(onHandleChange).not.toHaveBeenCalled();
   });
 
   it('calls onHandleChange with invalid characters stripped when handle input changes', () => {
@@ -114,7 +114,7 @@ describe('ConfigureName', () => {
     expect(screen.getByText('Beta Platform')).toBeInTheDocument();
   });
 
-  it('fills name and handle when a suggestion chip is clicked', () => {
+  it('fills name when a suggestion chip is clicked', () => {
     const onNameChange = vi.fn();
     const onHandleChange = vi.fn();
     render(<ConfigureName name="" handle="" onNameChange={onNameChange} onHandleChange={onHandleChange} />);
@@ -122,36 +122,6 @@ describe('ConfigureName', () => {
     fireEvent.click(screen.getByText('Alpha Service'));
 
     expect(onNameChange).toHaveBeenCalledWith('Alpha Service');
-    expect(onHandleChange).toHaveBeenCalledWith('alpha-service');
-  });
-
-  it('derives handle with underscore when delimiter is hyphen', () => {
-    const onHandleChange = vi.fn();
-    render(<ConfigureName name="" handle="" delimiter="-" onNameChange={vi.fn()} onHandleChange={onHandleChange} />);
-
-    fireEvent.change(screen.getByRole('textbox', {name: /resource server name/i}), {
-      target: {value: 'Shaky Trees Refuse'},
-    });
-
-    expect(onHandleChange).toHaveBeenCalledWith('shaky_trees_refuse');
-  });
-
-  it('does not auto-derive handle when handleEdited is true', () => {
-    const onHandleChange = vi.fn();
-    render(
-      <ConfigureName
-        name=""
-        handle="custom-handle"
-        handleEdited={true}
-        onNameChange={vi.fn()}
-        onHandleChange={onHandleChange}
-      />,
-    );
-
-    fireEvent.change(screen.getByRole('textbox', {name: /resource server name/i}), {
-      target: {value: 'New Name'},
-    });
-
     expect(onHandleChange).not.toHaveBeenCalled();
   });
 

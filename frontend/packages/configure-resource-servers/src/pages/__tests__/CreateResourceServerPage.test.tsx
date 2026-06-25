@@ -142,6 +142,10 @@ describe('CreateResourceServerPage', () => {
       target: {value: 'Payments API'},
     });
 
+    fireEvent.change(screen.getByRole('textbox', {name: /handle/i}), {
+      target: {value: 'payments-api'},
+    });
+
     fireEvent.click(screen.getByRole('button', {name: /Continue/i}));
 
     await waitFor(() => {

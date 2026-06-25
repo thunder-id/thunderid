@@ -149,6 +149,7 @@ describe('ResourceNode', () => {
       type: 'resource',
       id: 'r-1',
       data: mockResource,
+      breadcrumb: [],
     });
   });
 
@@ -224,6 +225,7 @@ describe('ActionNode', () => {
       id: 'a-1',
       data: mockAction,
       parentResourceId: undefined,
+      breadcrumb: [],
     });
   });
 
@@ -238,6 +240,7 @@ describe('ActionNode', () => {
       id: 'a-1',
       data: mockAction,
       parentResourceId: 'r-1',
+      breadcrumb: [],
     });
   });
 
