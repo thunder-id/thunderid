@@ -300,7 +300,11 @@ export default function ResourceServerEditPage(): JSX.Element {
         aria-label={t('resourceServers:edit.tabs', 'Resource server settings')}
       >
         <Tab
-          label={t('resourceServers:edit.tab.resources', 'Resources')}
+          label={
+            resourceServer.type === 'MCP'
+              ? t('resourceServers:edit.tab.capabilities', 'Capabilities')
+              : t('resourceServers:edit.tab.resources', 'Resources')
+          }
           id="resource-server-tab-0"
           aria-controls="resource-server-tabpanel-0"
           sx={{textTransform: 'none'}}

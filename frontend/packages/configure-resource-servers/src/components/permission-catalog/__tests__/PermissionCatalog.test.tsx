@@ -445,4 +445,147 @@ describe('PermissionCatalog', () => {
       expect(screen.getByRole('checkbox', {name: 'Empty API'})).toBeDisabled();
     });
   });
+
+  it('renders MCP server actions split into Tools and Resources subsections', async () => {
+    const user = userEvent.setup();
+
+    const mcpServer = {
+      id: 'rs-mcp',
+      name: 'My MCP Server',
+      handle: 'my-mcp',
+      ouId: 'ou-1',
+      delimiter: ':',
+      type: 'MCP' as const,
+    };
+
+    const mcpTools = [
+      {
+        id: 'tool-1',
+        name: 'Search Files',
+        handle: 'search-files',
+        permission: 'my-mcp:search-files',
+        kind: 'tool' as const,
+      },
+    ];
+    const mcpResources = [
+      {
+        id: 'res-1',
+        name: 'File Contents',
+        handle: 'file-contents',
+        permission: 'my-mcp:file-contents',
+        kind: 'resource' as const,
+      },
+    ];
+
+    vi.mocked(useGetResourceServersModule.default).mockReturnValue(
+      queryResult({totalResults: 1, startIndex: 1, count: 1, resourceServers: [mcpServer]}),
+    );
+
+    vi.mocked(useGetServerActionsModule.default).mockReturnValue(
+      queryResult({totalResults: 2, startIndex: 1, count: 2, actions: [...mcpTools, ...mcpResources]}),
+    );
+
+    vi.mocked(useGetResourcesModule.default).mockReturnValue(
+      queryResult({totalResults: 0, startIndex: 1, count: 0, resources: []}),
+    );
+
+    vi.mocked(useGetResourceActionsModule.default).mockReturnValue(emptyQueryResult());
+
+    mockGetCachedServerPermissions.mockReturnValue(['my-mcp:search-files', 'my-mcp:file-contents']);
+    mockCollectServerPermissions.mockResolvedValue(['my-mcp:search-files', 'my-mcp:file-contents']);
+
+    renderCatalog({selected: []});
+
+    // Expand the MCP server
+    await user.click(screen.getByRole('button', {name: 'my-mcp'}));
+
+    // Both subsection labels should be visible
+    await waitFor(() => {
+      expect(screen.getByText('Search Files')).toBeInTheDocument();
+      expect(screen.getByText('File Contents')).toBeInTheDocument();
+    });
+
+    // Tools and Resources subsection label text should be rendered
+    const allTools = screen.getAllByText('Tools');
+    expect(allTools.length).toBeGreaterThanOrEqual(1);
+    const allResources = screen.getAllByText('Resources');
+    expect(allResources.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('preserves tri-state cascade for MCP servers — selecting a tool permission works', async () => {
+    const user = userEvent.setup();
+
+    const mcpServer = {
+      id: 'rs-mcp',
+      name: 'My MCP Server',
+      handle: 'my-mcp',
+      ouId: 'ou-1',
+      delimiter: ':',
+      type: 'MCP' as const,
+    };
+
+    const mcpTools = [
+      {
+        id: 'tool-1',
+        name: 'Search Files',
+        handle: 'search-files',
+        permission: 'my-mcp:search-files',
+        kind: 'tool' as const,
+      },
+    ];
+
+    vi.mocked(useGetResourceServersModule.default).mockReturnValue(
+      queryResult({totalResults: 1, startIndex: 1, count: 1, resourceServers: [mcpServer]}),
+    );
+
+    vi.mocked(useGetServerActionsModule.default).mockReturnValue(
+      queryResult({totalResults: 1, startIndex: 1, count: 1, actions: mcpTools}),
+    );
+
+    vi.mocked(useGetResourcesModule.default).mockReturnValue(
+      queryResult({totalResults: 0, startIndex: 1, count: 0, resources: []}),
+    );
+
+    vi.mocked(useGetResourceActionsModule.default).mockReturnValue(emptyQueryResult());
+
+    mockGetCachedServerPermissions.mockReturnValue(['my-mcp:search-files']);
+    mockCollectServerPermissions.mockResolvedValue(['my-mcp:search-files']);
+
+    const onChange = renderCatalog({selected: []});
+
+    // Expand the MCP server
+    await user.click(screen.getByRole('button', {name: 'my-mcp'}));
+
+    await waitFor(() => expect(screen.getByText('Search Files')).toBeInTheDocument());
+
+    // Click the Search Files permission checkbox
+    const searchFilesCheckbox = screen.getByRole('checkbox', {name: 'my-mcp:search-files'});
+    await user.click(searchFilesCheckbox);
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith([
+        {
+          resourceServerId: 'rs-mcp',
+          permissions: expect.arrayContaining(['my-mcp:search-files']) as string[],
+        },
+      ]);
+    });
+  });
+
+  it('renders API-type server with flat action list (no Tools/Resources subsections)', async () => {
+    const user = userEvent.setup();
+
+    renderCatalog({selected: []});
+
+    // Expand the rs-1 server (API type)
+    await user.click(screen.getByRole('button', {name: 'booking-api'}));
+
+    await waitFor(() => expect(screen.getByText('Health Ping')).toBeInTheDocument());
+
+    // API-type sections should NOT show the "Tools" subsection label inside the expanded section
+    // (The section header "Tools"/"Resources" should not appear as the only text for API servers)
+    // Since rs-1 is API type, its actions are listed flat without subsection labels
+    const toolsLabels = screen.queryAllByText('Tools');
+    expect(toolsLabels.length).toBe(0);
+  });
 });

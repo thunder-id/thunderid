@@ -273,6 +273,86 @@ function ServerSectionContent({
     );
   }
 
+  if (server.type === 'MCP') {
+    const tools = serverActions.filter((a) => a.kind === 'tool');
+    const mcpResources = serverActions.filter((a) => a.kind === 'resource');
+
+    return (
+      <>
+        {tools.length > 0 && (
+          <>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: 'block',
+                pl: 3,
+                py: 0.25,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}
+            >
+              {t('resourceServers:permissionCatalog.mcp.tools', 'Tools')}
+            </Typography>
+            {tools.map((action) => (
+              <CatalogRow
+                key={action.id}
+                name={action.name}
+                permission={action.permission}
+                depth={1}
+                checked={isPermissionSelected(selected, server.id, action.permission)}
+                disabled={readOnly}
+                onToggle={() => onChange(togglePermission(selected, server.id, action.permission))}
+              />
+            ))}
+          </>
+        )}
+        {mcpResources.length > 0 && (
+          <>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{
+                display: 'block',
+                pl: 3,
+                py: 0.25,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}
+            >
+              {t('resourceServers:permissionCatalog.mcp.resources', 'Resources')}
+            </Typography>
+            {mcpResources.map((action) => (
+              <CatalogRow
+                key={action.id}
+                name={action.name}
+                permission={action.permission}
+                depth={1}
+                checked={isPermissionSelected(selected, server.id, action.permission)}
+                disabled={readOnly}
+                onToggle={() => onChange(togglePermission(selected, server.id, action.permission))}
+              />
+            ))}
+          </>
+        )}
+        {resources.map((resource) => (
+          <CatalogResourceNode
+            key={resource.id}
+            resourceServerId={server.id}
+            resource={resource}
+            depth={1}
+            selected={selected}
+            readOnly={readOnly}
+            delimiter={delimiter}
+            onChange={onChange}
+            collectSubtree={collectSubtree}
+            getCachedSubtree={getCachedSubtree}
+          />
+        ))}
+      </>
+    );
+  }
+
   return (
     <>
       {serverActions.map((action) => (
