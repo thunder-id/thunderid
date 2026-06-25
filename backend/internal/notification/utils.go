@@ -163,6 +163,18 @@ func validateSMTPProperties(properties []cmodels.Property) error {
 		common.SMTPPropKeyPort:        false,
 		common.SMTPPropKeyFromAddress: false,
 	}
+
+	for _, prop := range properties {
+		if prop.GetName() == common.SMTPPropKeyEnableAuth {
+			val, err := prop.GetValue()
+			if err == nil && strings.TrimSpace(strings.ToLower(val)) == "true" {
+				requiredProps[common.SMTPPropKeyUsername] = false
+				requiredProps[common.SMTPPropKeyPassword] = false
+			}
+			break
+		}
+	}
+
 	return validateSenderProperties(properties, requiredProps)
 }
 

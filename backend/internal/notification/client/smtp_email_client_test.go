@@ -93,12 +93,23 @@ func (suite *SMTPEmailClientTestSuite) TestNewSMTPEmailClient_InvalidConfig() {
 			errContains: "port is invalid",
 		},
 		{
+			name: "missing TLS when auth enabled",
+			props: []cmodels.Property{
+				createTestProperty(common.SMTPPropKeyHost, "smtp.example.com", false),
+				createTestProperty(common.SMTPPropKeyPort, "587", false),
+				createTestProperty(common.SMTPPropKeyFromAddress, "test@example.com", false),
+				createTestProperty(common.SMTPPropKeyEnableAuth, "true", false),
+			},
+			errContains: "TLS must be enabled",
+		},
+		{
 			name: "missing credentials when auth enabled",
 			props: []cmodels.Property{
 				createTestProperty(common.SMTPPropKeyHost, "smtp.example.com", false),
 				createTestProperty(common.SMTPPropKeyPort, "587", false),
 				createTestProperty(common.SMTPPropKeyFromAddress, "test@example.com", false),
 				createTestProperty(common.SMTPPropKeyEnableAuth, "true", false),
+				createTestProperty(common.SMTPPropKeyEnableStartTLS, "true", false),
 			},
 			errContains: "credentials are required",
 		},

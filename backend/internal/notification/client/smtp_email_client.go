@@ -100,6 +100,9 @@ func newSMTPEmailClient(ctx context.Context, sender common.NotificationSenderDTO
 		return nil, errors.New("port is invalid")
 	}
 	if config.enableAuthentication {
+		if !config.useTLS {
+			return nil, errors.New("TLS must be enabled when authentication is enabled")
+		}
 		if config.username == "" || config.password == "" {
 			return nil, errors.New("credentials are required when authentication is enabled")
 		}
@@ -215,6 +218,9 @@ func (c *SMTPEmailClient) sendViaSMTP(
 	}
 
 	if c.config.enableAuthentication && c.config.username != "" && c.config.password != "" {
+		if !c.config.useTLS {
+			return errors.New("smtp connection failed: TLS must be enabled when authentication is enabled")
+		}
 		if err := client.Auth(smtp.PlainAuth("", c.config.username, c.config.password, c.config.host)); err != nil {
 			return fmt.Errorf("smtp authentication failed: %w", err)
 		}

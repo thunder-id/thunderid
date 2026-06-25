@@ -20,6 +20,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -66,6 +67,11 @@ func parseHTTPWebhookConfig(
 			logger.Warn(ctx, "Unknown property for HTTP webhook client", log.String("property", prop.GetName()))
 		}
 	}
+
+	if config.url == "" {
+		return config, errors.New("custom provider must have a URL property")
+	}
+
 	return config, nil
 }
 
