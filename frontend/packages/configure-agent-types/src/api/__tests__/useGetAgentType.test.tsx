@@ -44,9 +44,12 @@ describe('useGetAgentType', () => {
     name: 'default',
     ouId: '111e8400-e29b-41d4-a716-446655440000',
     schema: {
-      model: {type: 'string', required: false},
-      department: {type: 'string', required: false},
-      purpose: {type: 'string', required: false},
+      provider: {type: 'string', required: true, enum: ['openai', 'anthropic', 'google', 'meta', 'mistral', 'aws-bedrock', 'ibm', 'custom']},
+      model: {type: 'string', required: true},
+      agentFunction: {type: 'string', required: true, enum: ['task-automation', 'rag-retrieval', 'code-gen', 'data-analysis', 'orchestrator', 'sub-agent', 'assistant']},
+      autonomyLevel: {type: 'string', required: true, enum: ['suggest', 'propose', 'execute']},
+      tags: {type: 'array', required: false, items: {type: 'string'}},
+      deploymentEnvironment: {type: 'string', required: false, enum: ['development', 'staging', 'production']},
     },
   };
 
