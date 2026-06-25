@@ -1400,6 +1400,47 @@ func CreateNotificationSender(sender NotificationSender) (string, error) {
 	return id, nil
 }
 
+// CreateEmailNotificationSender creates an email notification sender via API and returns the sender ID
+func CreateEmailNotificationSender(sender NotificationSender) (string, error) {
+	senderJSON, err := json.Marshal(sender)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal notification sender: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", TestServerURL+"/notification-senders/email",
+		bytes.NewReader(senderJSON))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("expected status 201 Created, got %s. Body: %s", resp.Status, string(bodyBytes))
+	}
+
+	var res map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &res); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if id, ok := res["id"].(string); ok {
+		return id, nil
+	}
+	return "", fmt.Errorf("id not found in response")
+}
+
 // DeleteNotificationSender deletes a notification sender by ID
 func DeleteNotificationSender(senderID string) error {
 	req, err := http.NewRequest("DELETE", TestServerURL+"/notification-senders/message/"+senderID, nil)
@@ -1411,6 +1452,28 @@ func DeleteNotificationSender(senderID string) error {
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to delete notification sender: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 200 or 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+
+	return nil
+}
+
+// DeleteEmailNotificationSender deletes an email notification sender by ID
+func DeleteEmailNotificationSender(senderID string) error {
+	req, err := http.NewRequest("DELETE", TestServerURL+"/notification-senders/email/"+senderID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	client := GetHTTPClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete email notification sender: %w", err)
 	}
 	defer resp.Body.Close()
 
