@@ -29,6 +29,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
 
@@ -142,7 +143,7 @@ func (t *applicationTools) listApplications(
 	req *mcp.CallToolRequest,
 	_ any,
 ) (*mcp.CallToolResult, model.ApplicationListOutput, error) {
-	listResponse, svcErr := t.appService.GetApplicationList(ctx)
+	listResponse, svcErr := t.appService.GetApplicationList(ctx, serverconst.MaxCompositeStoreRecords, 0, nil)
 	if svcErr != nil {
 		return nil, model.ApplicationListOutput{},
 			fmt.Errorf("failed to list applications: %s", svcErr.ErrorDescription)

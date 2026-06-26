@@ -17,13 +17,13 @@
  */
 
 import userEvent from '@testing-library/user-event';
-import {fireEvent, render, screen} from '@thunderid/test-utils';
+import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ApplicationsListPage from '../ApplicationsListPage';
 
-// Mock the ApplicationsList component
+// Mock the ApplicationsList component, surfacing the received search prop for assertions.
 vi.mock('../../components/ApplicationsList', () => ({
-  default: () => <div data-testid="applications-list">Applications List Component</div>,
+  default: ({search}: {search?: string}) => <div data-testid="applications-list">{`search:${search ?? ''}`}</div>,
 }));
 
 // Mock react-router navigate
@@ -163,6 +163,20 @@ describe('ApplicationsListPage', () => {
       await user.type(searchInput, '!@#$%^&*()');
 
       expect(searchInput).toHaveValue('!@#$%^&*()');
+    });
+
+    it('should pass the debounced, trimmed search term to ApplicationsList', async () => {
+      const user = userEvent.setup();
+      renderWithProviders();
+
+      expect(screen.getByTestId('applications-list')).toHaveTextContent('search:');
+
+      const searchInput = screen.getByPlaceholderText('Search applications...');
+      await user.type(searchInput, '  My App  ');
+
+      await waitFor(() => {
+        expect(screen.getByTestId('applications-list')).toHaveTextContent('search:My App');
+      });
     });
   });
 

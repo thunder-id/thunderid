@@ -45,6 +45,13 @@ func TestParseFilterExpression(t *testing.T) {
 			wantValue: "engineering",
 		},
 		{
+			name:      "co with quoted string",
+			input:     `name co "port"`,
+			wantAttr:  "name",
+			wantOp:    tidcommon.OperatorContains,
+			wantValue: "port",
+		},
+		{
 			name:      "gt with quoted timestamp",
 			input:     `createdAt gt "2024-01-01T00:00:00Z"`,
 			wantAttr:  "createdAt",

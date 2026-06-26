@@ -54,6 +54,8 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
         columns,
         onRowClick = undefined,
         getRowId,
+        paginationModel = undefined,
+        onPaginationModelChange = undefined,
       }: {
         rows: Record<string, unknown>[];
         columns: {
@@ -63,8 +65,22 @@ vi.mock('@wso2/oxygen-ui', async (importOriginal) => {
         }[];
         onRowClick?: (params: {row: Record<string, unknown>}) => void;
         getRowId: (row: Record<string, unknown>) => string;
+        paginationModel?: {page: number; pageSize: number};
+        onPaginationModelChange?: (model: {page: number; pageSize: number}) => void;
       }) => (
         <div role="grid" data-testid="data-grid">
+          <button
+            type="button"
+            data-testid="next-page"
+            onClick={() =>
+              onPaginationModelChange?.({
+                page: (paginationModel?.page ?? 0) + 1,
+                pageSize: paginationModel?.pageSize ?? 10,
+              })
+            }
+          >
+            next
+          </button>
           {rows.map((row: Record<string, unknown>) => (
             <div
               key={getRowId(row)}
@@ -580,6 +596,43 @@ describe('ApplicationsList', () => {
           applicationId: 'app-1',
         }),
       );
+    });
+  });
+
+  describe('Server-side pagination', () => {
+    beforeEach(() => {
+      vi.mocked(useGetApplications).mockReturnValue({
+        data: mockApplicationsData,
+        isLoading: false,
+        error: null,
+      } as ReturnType<typeof useGetApplications>);
+    });
+
+    it('requests the first page with the default page size on initial render', () => {
+      render(<ApplicationsList />);
+
+      expect(useGetApplications).toHaveBeenCalledWith(expect.objectContaining({limit: 10, offset: 0}));
+    });
+
+    it('requests the next page (offset = page * pageSize) when pagination changes', async () => {
+      const user = userEvent.setup();
+      render(<ApplicationsList />);
+
+      await user.click(screen.getByTestId('next-page'));
+
+      expect(useGetApplications).toHaveBeenLastCalledWith(expect.objectContaining({limit: 10, offset: 10}));
+    });
+
+    it('resets to the first page when the search term changes', async () => {
+      const user = userEvent.setup();
+      const {rerender} = render(<ApplicationsList search="" />);
+
+      await user.click(screen.getByTestId('next-page'));
+      expect(useGetApplications).toHaveBeenLastCalledWith(expect.objectContaining({offset: 10}));
+
+      rerender(<ApplicationsList search="portal" />);
+
+      expect(useGetApplications).toHaveBeenLastCalledWith(expect.objectContaining({offset: 0, search: 'portal'}));
     });
   });
 });

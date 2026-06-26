@@ -25,6 +25,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 const (
@@ -394,14 +395,16 @@ func buildBulkEntityExistsQueryInOUs(
 	return query, args, nil
 }
 
-// buildEntityListQuery constructs a query to get entities with optional filtering.
+// buildEntityListQuery constructs a query to get entities with optional attribute filtering and
+// a SCIM-style filter group.
 func buildEntityListQuery(
-	category string, filters map[string]interface{}, limit, offset int, deploymentID string,
+	category string, filters map[string]interface{}, filterGroup *tidcommon.FilterGroup,
+	limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	baseQuery := `SELECT ID, OU_ID, CATEGORY, TYPE, STATE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY"`
 	queryID := "ASQ-ENTITY_MGT-25"
 
-	if len(filters) > 0 {
+	if len(filters) > 0 || hasFilterGroup(filterGroup) {
 		var baseWithCategory string
 		var args []interface{}
 		if category != "" {
@@ -416,6 +419,10 @@ func buildEntityListQuery(
 			return model.DBQuery{}, nil, err
 		}
 		args = append(args, fArgs...)
+		fq, args, err = appendFilterGroupConditions(fq, args, filterGroup)
+		if err != nil {
+			return model.DBQuery{}, nil, err
+		}
 		fq, args = utils.AppendDeploymentIDToFilterQuery(fq, args, deploymentID)
 
 		postgresQuery, err := buildPaginatedQuery(fq.PostgresQuery, len(args), "$")
@@ -445,14 +452,15 @@ func buildEntityListQuery(
 	return QueryGetEntityList, []interface{}{limit, offset, deploymentID, category}, nil
 }
 
-// buildEntityCountQuery constructs a query to count entities with optional filtering.
+// buildEntityCountQuery constructs a query to count entities with optional attribute filtering and
+// a SCIM-style filter group.
 func buildEntityCountQuery(
-	category string, filters map[string]interface{}, deploymentID string,
+	category string, filters map[string]interface{}, filterGroup *tidcommon.FilterGroup, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
 	baseQuery := `SELECT COUNT(*) as total FROM "ENTITY"`
 	queryID := "ASQ-ENTITY_MGT-26"
 
-	if len(filters) > 0 {
+	if len(filters) > 0 || hasFilterGroup(filterGroup) {
 		baseWithCategory := baseQuery + " WHERE CATEGORY = $1"
 		args := []interface{}{category}
 		fq, fArgs, err := buildFilterQueryWithOffset(queryID, baseWithCategory, filters, len(args))
@@ -460,11 +468,88 @@ func buildEntityCountQuery(
 			return model.DBQuery{}, nil, err
 		}
 		args = append(args, fArgs...)
+		fq, args, err = appendFilterGroupConditions(fq, args, filterGroup)
+		if err != nil {
+			return model.DBQuery{}, nil, err
+		}
 		fq, args = utils.AppendDeploymentIDToFilterQuery(fq, args, deploymentID)
 		return fq, args, nil
 	}
 
 	return QueryGetEntityCount, []interface{}{category, deploymentID}, nil
+}
+
+// hasFilterGroup reports whether the given filter group has any clauses to apply.
+func hasFilterGroup(g *tidcommon.FilterGroup) bool {
+	return g != nil && len(g.Clauses) > 0
+}
+
+// escapeLikePattern escapes the special LIKE/ILIKE wildcard characters so that user input
+// is matched literally. The backslash is used as the escape character.
+func escapeLikePattern(s string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(s)
+}
+
+// appendFilterGroupConditions appends the conditions for a SCIM-style filter group, matching each
+// attribute against both SYSTEM_ATTRIBUTES and ATTRIBUTES. One bound parameter is added per clause
+// (the same value for both dialects) so the shared args slice is valid for Postgres and SQLite.
+// AND binds tighter than OR, matching SQL's native precedence, so connectors are emitted inline.
+func appendFilterGroupConditions(
+	query model.DBQuery, args []interface{}, g *tidcommon.FilterGroup,
+) (model.DBQuery, []interface{}, error) {
+	if !hasFilterGroup(g) {
+		return query, args, nil
+	}
+
+	var pg, sq strings.Builder
+	for i, clause := range g.Clauses {
+		attr := clause.Expr.Attribute
+		if err := utils.ValidateKey(attr); err != nil {
+			return model.DBQuery{}, nil, fmt.Errorf("invalid filter attribute: %w", err)
+		}
+		pgCol := fmt.Sprintf("COALESCE(%s->>'%s', %s->>'%s', '')",
+			SystemAttributesColumn, attr, AttributesColumn, attr)
+		sqCol := fmt.Sprintf("COALESCE(json_extract(%s, '$.%s'), json_extract(%s, '$.%s'), '')",
+			SystemAttributesColumn, attr, AttributesColumn, attr)
+
+		paramIndex := len(args) + 1
+		var pgClause, sqClause string
+		var arg interface{}
+		switch clause.Expr.Operator {
+		case tidcommon.OperatorContains:
+			arg = "%" + escapeLikePattern(strings.ToLower(fmt.Sprintf("%v", clause.Expr.Value))) + "%"
+			pgClause = fmt.Sprintf(`%s ILIKE $%d ESCAPE '\'`, pgCol, paramIndex)
+			sqClause = fmt.Sprintf(`LOWER(%s) LIKE ? ESCAPE '\'`, sqCol)
+		case tidcommon.OperatorEq:
+			arg = fmt.Sprintf("%v", clause.Expr.Value)
+			pgClause = fmt.Sprintf("LOWER(%s) = LOWER($%d)", pgCol, paramIndex)
+			sqClause = fmt.Sprintf("LOWER(%s) = LOWER(?)", sqCol)
+		default:
+			return model.DBQuery{}, nil, fmt.Errorf("unsupported filter operator %q", clause.Expr.Operator)
+		}
+
+		if i > 0 {
+			pg.WriteString(" " + string(clause.Connector) + " ")
+			sq.WriteString(" " + string(clause.Connector) + " ")
+		}
+		pg.WriteString(pgClause)
+		sq.WriteString(sqClause)
+		args = append(args, arg)
+	}
+
+	pgClause, sqClause := pg.String(), sq.String()
+	if len(g.Clauses) > 1 {
+		pgClause, sqClause = "("+pgClause+")", "("+sqClause+")"
+	}
+	pgClause, sqClause = " AND "+pgClause, " AND "+sqClause
+
+	return model.DBQuery{
+		ID:            query.ID,
+		Query:         query.PostgresQuery + pgClause,
+		PostgresQuery: query.PostgresQuery + pgClause,
+		SQLiteQuery:   query.SQLiteQuery + sqClause,
+	}, args, nil
 }
 
 // buildIdentifyQueryFromIdentifiers constructs a query to identify

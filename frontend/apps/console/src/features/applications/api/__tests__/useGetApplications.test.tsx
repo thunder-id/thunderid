@@ -151,6 +151,62 @@ describe('useGetApplications', () => {
     expect(callArgs.url).toContain('offset=5');
   });
 
+  it('should build a SCIM filter across name, clientId and description when a search term is provided', async () => {
+    mockHttpRequest.mockResolvedValueOnce({
+      data: mockApplicationListResponse,
+    });
+
+    renderHook(() => useGetApplications({search: 'my app'}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const callArgs = mockHttpRequest.mock.calls[0][0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const filterValue = new URL(callArgs.url as string).searchParams.get('filter');
+    expect(filterValue).toBe('name co "my app" OR clientId co "my app" OR description co "my app"');
+  });
+
+  it('should omit the filter query param when no search term is provided', async () => {
+    mockHttpRequest.mockResolvedValueOnce({
+      data: mockApplicationListResponse,
+    });
+
+    renderHook(() => useGetApplications());
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const callArgs = mockHttpRequest.mock.calls[0][0];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const url = callArgs.url as string;
+    expect(url).not.toContain('filter=');
+  });
+
+  it('should make a new request when only the search term changes', async () => {
+    mockHttpRequest.mockResolvedValue({
+      data: mockApplicationListResponse,
+    });
+
+    const {result: result1} = renderHook(() => useGetApplications({search: 'alpha'}));
+
+    await waitFor(() => {
+      expect(result1.current.isSuccess).toBe(true);
+    });
+
+    const {result: result2} = renderHook(() => useGetApplications({search: 'beta'}));
+
+    await waitFor(() => {
+      expect(result2.current.isSuccess).toBe(true);
+    });
+
+    expect(mockHttpRequest).toHaveBeenCalledTimes(2);
+  });
+
   it('should handle API error', async () => {
     const apiError = new Error('Failed to fetch applications');
     mockHttpRequest.mockRejectedValueOnce(apiError);

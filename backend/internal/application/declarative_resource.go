@@ -31,6 +31,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -74,7 +75,7 @@ func (e *applicationExporter) GetParameterizerType() string {
 // GetAllResourceIDs retrieves all application IDs.
 // In composite mode, this excludes declarative (YAML-based) applications.
 func (e *applicationExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
-	apps, err := e.service.GetApplicationList(ctx)
+	apps, err := e.service.GetApplicationList(ctx, serverconst.MaxCompositeStoreRecords, 0, nil)
 	if err != nil {
 		return nil, &tidcommon.InternalServerError
 	}

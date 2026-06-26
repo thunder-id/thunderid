@@ -64,10 +64,11 @@ func (suite *ApplicationToolsTestSuite) TestListApplications_Success() {
 		},
 	}
 
-	mockService.On("GetApplicationList", mock.Anything).Return(&model.ApplicationListResponse{
-		TotalResults: 2,
-		Applications: expectedApps,
-	}, nil)
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(&model.ApplicationListResponse{
+			TotalResults: 2,
+			Applications: expectedApps,
+		}, nil)
 
 	ctx := context.Background()
 	req := &mcp.CallToolRequest{}
@@ -87,9 +88,10 @@ func (suite *ApplicationToolsTestSuite) TestListApplications_Error() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	tools := &applicationTools{appService: mockService}
 
-	mockService.On("GetApplicationList", mock.Anything).Return(nil, &tidcommon.ServiceError{
-		ErrorDescription: tidcommon.I18nMessage{DefaultValue: "database error"},
-	})
+	mockService.On("GetApplicationList", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil, &tidcommon.ServiceError{
+			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "database error"},
+		})
 
 	ctx := context.Background()
 	req := &mcp.CallToolRequest{}

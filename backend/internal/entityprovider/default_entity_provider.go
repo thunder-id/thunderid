@@ -26,6 +26,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -229,9 +230,10 @@ func (p *defaultEntityProvider) GetEntitiesByIDs(
 // GetEntityListCount returns the total number of entities in the given category.
 func (p *defaultEntityProvider) GetEntityListCount(
 	category providers.EntityCategory, filters map[string]interface{},
+	search *tidcommon.FilterGroup,
 ) (int, *EntityProviderError) {
 	ctx := security.WithRuntimeContext(context.Background())
-	count, err := p.entitySvc.GetEntityListCount(ctx, category, filters)
+	count, err := p.entitySvc.GetEntityListCount(ctx, category, filters, search)
 	if err != nil {
 		return 0, mapEntityError(err)
 	}
@@ -241,9 +243,10 @@ func (p *defaultEntityProvider) GetEntityListCount(
 // GetEntityList returns a page of entities in the given category.
 func (p *defaultEntityProvider) GetEntityList(
 	category providers.EntityCategory, limit, offset int, filters map[string]interface{},
+	search *tidcommon.FilterGroup,
 ) ([]providers.Entity, *EntityProviderError) {
 	ctx := security.WithRuntimeContext(context.Background())
-	entities, err := p.entitySvc.GetEntityList(ctx, category, limit, offset, filters)
+	entities, err := p.entitySvc.GetEntityList(ctx, category, limit, offset, filters, search)
 	if err != nil {
 		return nil, mapEntityError(err)
 	}

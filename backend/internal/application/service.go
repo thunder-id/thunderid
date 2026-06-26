@@ -37,7 +37,6 @@ import (
 	oauthutils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/config"
-	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -49,7 +48,9 @@ type ApplicationServiceInterface interface {
 		ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO, *tidcommon.ServiceError)
 	ValidateApplication(ctx context.Context, app *model.ApplicationDTO) (
 		*model.ApplicationProcessedDTO, *providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError)
-	GetApplicationList(ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError)
+	GetApplicationList(
+		ctx context.Context, limit, offset int,
+		filter *tidcommon.FilterGroup) (*model.ApplicationListResponse, *tidcommon.ServiceError)
 	GetOAuthApplication(
 		ctx context.Context, clientID string) (*providers.OAuthClient, *tidcommon.ServiceError)
 	GetApplication(ctx context.Context, appID string) (*providers.Application, *tidcommon.ServiceError)
@@ -240,17 +241,25 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 	return processedDTO, inboundAuthConfig, nil
 }
 
-// GetApplicationList list the applications.
+// GetApplicationList list the applications, optionally filtered by a search term
+// matched against the application name, client ID and description.
 func (as *applicationService) GetApplicationList(
-	ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
-	totalResults, epErr := as.entityProvider.GetEntityListCount(providers.EntityCategoryApp, nil)
+	ctx context.Context, limit, offset int,
+	filter *tidcommon.FilterGroup) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	if svcErr := validateApplicationFilter(filter); svcErr != nil {
+		return nil, svcErr
+	}
+
+	totalResults, epErr := as.entityProvider.GetEntityListCount(providers.EntityCategoryApp, nil, filter)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to count application entities", log.Error(epErr))
 		return nil, &tidcommon.InternalServerError
 	}
 
+	links := sysutils.BuildPaginationLinks(applicationListBasePath, limit, offset, totalResults, "")
+
 	entities, epErr := as.entityProvider.GetEntityList(
-		providers.EntityCategoryApp, serverconst.MaxCompositeStoreRecords, 0, nil)
+		providers.EntityCategoryApp, limit, offset, nil, filter)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to list application entities", log.Error(epErr))
 		return nil, &tidcommon.InternalServerError
@@ -258,8 +267,10 @@ func (as *applicationService) GetApplicationList(
 	if len(entities) == 0 {
 		return &model.ApplicationListResponse{
 			TotalResults: totalResults,
+			StartIndex:   offset + 1,
 			Count:        0,
 			Applications: []model.BasicApplicationResponse{},
+			Links:        links,
 		}, nil
 	}
 
@@ -297,9 +308,32 @@ func (as *applicationService) GetApplicationList(
 
 	return &model.ApplicationListResponse{
 		TotalResults: totalResults,
+		StartIndex:   offset + 1,
 		Count:        len(applicationList),
 		Applications: applicationList,
+		Links:        links,
 	}, nil
+}
+
+// validateApplicationFilter ensures the filter only targets searchable application attributes
+// (name, clientId, description) with supported operators (co, eq). A nil/empty filter is valid.
+func validateApplicationFilter(filter *tidcommon.FilterGroup) *tidcommon.ServiceError {
+	if filter == nil {
+		return nil
+	}
+	for _, clause := range filter.Clauses {
+		switch clause.Expr.Attribute {
+		case fieldName, fieldClientID, fieldDescription:
+		default:
+			return &ErrorInvalidFilter
+		}
+		switch clause.Expr.Operator {
+		case tidcommon.OperatorContains, tidcommon.OperatorEq:
+		default:
+			return &ErrorInvalidFilter
+		}
+	}
+	return nil
 }
 
 // GetOAuthApplication retrieves the OAuth application based on the client id.

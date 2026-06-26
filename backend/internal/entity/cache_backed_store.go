@@ -24,6 +24,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -197,13 +198,14 @@ func (s *cacheBackedEntityStore) SearchEntities(ctx context.Context,
 }
 
 func (s *cacheBackedEntityStore) GetEntityListCount(ctx context.Context,
-	category string, filters map[string]interface{}) (int, error) {
-	return s.store.GetEntityListCount(ctx, category, filters)
+	category string, filters map[string]interface{}, search *tidcommon.FilterGroup) (int, error) {
+	return s.store.GetEntityListCount(ctx, category, filters, search)
 }
 
 func (s *cacheBackedEntityStore) GetEntityList(ctx context.Context,
-	category string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
-	return s.store.GetEntityList(ctx, category, limit, offset, filters)
+	category string, limit, offset int, filters map[string]interface{},
+	search *tidcommon.FilterGroup) ([]providers.Entity, error) {
+	return s.store.GetEntityList(ctx, category, limit, offset, filters, search)
 }
 
 func (s *cacheBackedEntityStore) GetEntityListCountByOUIDs(ctx context.Context,

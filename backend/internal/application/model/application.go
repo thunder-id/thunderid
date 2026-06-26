@@ -23,6 +23,7 @@ package model
 
 import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -180,6 +181,8 @@ type BasicApplicationResponse struct {
 // ApplicationListResponse represents the response structure for listing applications.
 type ApplicationListResponse struct {
 	TotalResults int                        `json:"totalResults"`
+	StartIndex   int                        `json:"startIndex"`
 	Count        int                        `json:"count"`
 	Applications []BasicApplicationResponse `json:"applications"`
+	Links        []utils.Link               `json:"links"`
 }

@@ -209,56 +209,62 @@ func (s *CompositeStoreTestSuite) TestGetEntityListCount_MergesStores() {
 	e1 := compEntity("e1", "ou1")
 	e2 := compEntity("e2", "ou1")
 	e3 := compEntity("e3", "ou1") // unique to file
-	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(2, nil)
-	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.dbStore.On("GetEntityList", mock.Anything, "user", 2, 0, mock.Anything).Return([]providers.Entity{e1, e2}, nil)
-	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e3}, nil)
+	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(2, nil)
+	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(1, nil)
+	s.dbStore.On("GetEntityList", mock.Anything, "user", 2, 0, mock.Anything, mock.Anything).
+		Return([]providers.Entity{e1, e2}, nil)
+	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything, mock.Anything).
+		Return([]providers.Entity{e3}, nil)
 
-	count, err := s.store.GetEntityListCount(s.ctx, "user", nil)
+	count, err := s.store.GetEntityListCount(s.ctx, "user", nil, nil)
 	s.NoError(err)
 	s.Equal(3, count)
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntityListCount_DBCountError() {
-	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(0, s.testErr)
-	_, err := s.store.GetEntityListCount(s.ctx, "user", nil)
+	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(0, s.testErr)
+	_, err := s.store.GetEntityListCount(s.ctx, "user", nil, nil)
 	s.Error(err)
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntityListCount_FileCountError() {
-	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(0, nil)
-	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(0, s.testErr)
-	_, err := s.store.GetEntityListCount(s.ctx, "user", nil)
+	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(0, nil)
+	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(0, s.testErr)
+	_, err := s.store.GetEntityListCount(s.ctx, "user", nil, nil)
 	s.Error(err)
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntityListCount_DBListError() {
-	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(2, nil)
-	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(0, nil)
-	s.dbStore.On("GetEntityList", mock.Anything, "user", 2, 0, mock.Anything).Return(nil, s.testErr)
-	_, err := s.store.GetEntityListCount(s.ctx, "user", nil)
+	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(2, nil)
+	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(0, nil)
+	s.dbStore.On("GetEntityList", mock.Anything, "user", 2, 0, mock.Anything, mock.Anything).Return(nil, s.testErr)
+	_, err := s.store.GetEntityListCount(s.ctx, "user", nil, nil)
 	s.Error(err)
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntityListCount_FileListError() {
 	e1 := compEntity("e1", "ou1")
-	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e1}, nil)
-	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return(nil, s.testErr)
-	_, err := s.store.GetEntityListCount(s.ctx, "user", nil)
+	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(1, nil)
+	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(1, nil)
+	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything, mock.Anything).
+		Return([]providers.Entity{e1}, nil)
+	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything, mock.Anything).
+		Return(nil, s.testErr)
+	_, err := s.store.GetEntityListCount(s.ctx, "user", nil, nil)
 	s.Error(err)
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntityList_Success() {
 	e1 := compEntity("e1", "ou1")
 	e2 := compEntity("e2", "ou1")
-	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e1}, nil)
-	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e2}, nil)
+	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(1, nil)
+	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(1, nil)
+	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything, mock.Anything).
+		Return([]providers.Entity{e1}, nil)
+	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything, mock.Anything).
+		Return([]providers.Entity{e2}, nil)
 
-	list, err := s.store.GetEntityList(s.ctx, "user", 10, 0, nil)
+	list, err := s.store.GetEntityList(s.ctx, "user", 10, 0, nil, nil)
 	s.NoError(err)
 	s.Len(list, 2)
 }
@@ -268,16 +274,16 @@ func (s *CompositeStoreTestSuite) TestGetEntityList_LimitExceeded() {
 
 	// When total count exceeds the hard limit, CompositeMergeListHelperWithLimit short-circuits
 	// and returns errResultLimitExceededInCompositeMode without calling the fetchers.
-	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(limit, nil)
-	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(0, nil)
+	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(limit, nil)
+	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(0, nil)
 
-	_, err := s.store.GetEntityList(s.ctx, "user", limit, 0, nil)
+	_, err := s.store.GetEntityList(s.ctx, "user", limit, 0, nil, nil)
 	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
 }
 
 func (s *CompositeStoreTestSuite) TestGetEntityList_Error() {
-	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(0, s.testErr)
-	_, err := s.store.GetEntityList(s.ctx, "user", 10, 0, nil)
+	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything, mock.Anything).Return(0, s.testErr)
+	_, err := s.store.GetEntityList(s.ctx, "user", 10, 0, nil, nil)
 	s.Error(err)
 }
 

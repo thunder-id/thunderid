@@ -30,11 +30,11 @@ import (
 )
 
 // filterPattern matches a complete single expression (with end anchor) for validation.
-var filterPattern = regexp.MustCompile(`^(\w+(?:\.\w+)*)\s+(eq|gt|lt)\s+(?:"([^"]*)"|(\S+))$`)
+var filterPattern = regexp.MustCompile(`^(\w+(?:\.\w+)*)\s+(eq|gt|lt|co)\s+(?:"([^"]*)"|(\S+))$`)
 
 // singleExprPrefix matches one expression from the start of the string without an end anchor,
 // used during iterative multi-expression parsing.
-var singleExprPrefix = regexp.MustCompile(`^(\w+(?:\.\w+)*)\s+(eq|gt|lt)\s+(?:"([^"]*)"|(\S+))`)
+var singleExprPrefix = regexp.MustCompile(`^(\w+(?:\.\w+)*)\s+(eq|gt|lt|co)\s+(?:"([^"]*)"|(\S+))`)
 
 // connectorPrefix matches a leading AND or OR connector (case-insensitive) surrounded by whitespace.
 var connectorPrefix = regexp.MustCompile(`(?i)^\s+(AND|OR)\s+`)
@@ -100,8 +100,8 @@ func ParseFilterGroup(filterStr string) (*tidcommon.FilterGroup, error) {
 
 // ParseFilterExpression parses a single filter expression string of the form:
 //
-//	attribute (eq|gt|lt) "value"
-//	attribute (eq|gt|lt) value
+//	attribute (eq|gt|lt|co) "value"
+//	attribute (eq|gt|lt|co) value
 func ParseFilterExpression(filterStr string) (*tidcommon.FilterExpression, error) {
 	matches := filterPattern.FindStringSubmatch(filterStr)
 	if len(matches) == 0 {

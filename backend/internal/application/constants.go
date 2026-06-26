@@ -18,6 +18,9 @@
 
 package application
 
+// applicationListBasePath is the base path used when building pagination links for the listing API.
+const applicationListBasePath = "/applications"
+
 // Field keys for entity system attributes.
 const (
 	fieldName         = "name"

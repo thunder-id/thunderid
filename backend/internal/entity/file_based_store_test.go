@@ -161,11 +161,11 @@ func (s *FileBasedStoreTestSuite) TestGetEntityListCount_WithCategoryAndFilter()
 	s.seedEntity(makeTestEntity("u2", "user", "ou1"))
 	s.seedEntity(makeTestEntity("a1", "app", "ou1"))
 
-	count, err := s.store.GetEntityListCount(s.ctx, "user", nil)
+	count, err := s.store.GetEntityListCount(s.ctx, "user", nil, nil)
 	s.NoError(err)
 	s.Equal(2, count)
 
-	count, err = s.store.GetEntityListCount(s.ctx, "user", map[string]interface{}{"email": "u1@test.com"})
+	count, err = s.store.GetEntityListCount(s.ctx, "user", map[string]interface{}{"email": "u1@test.com"}, nil)
 	s.NoError(err)
 	s.Equal(1, count)
 }
@@ -175,19 +175,19 @@ func (s *FileBasedStoreTestSuite) TestGetEntityList_Pagination() {
 		s.seedEntity(makeTestEntity("p"+string(rune('0'+i)), "user", "ou1"))
 	}
 
-	all, err := s.store.GetEntityList(s.ctx, "user", 0, 0, nil)
+	all, err := s.store.GetEntityList(s.ctx, "user", 0, 0, nil, nil)
 	s.NoError(err)
 	s.Len(all, 5)
 
-	page, err := s.store.GetEntityList(s.ctx, "user", 2, 1, nil)
+	page, err := s.store.GetEntityList(s.ctx, "user", 2, 1, nil, nil)
 	s.NoError(err)
 	s.Len(page, 2)
 
-	empty, err := s.store.GetEntityList(s.ctx, "user", 2, 100, nil)
+	empty, err := s.store.GetEntityList(s.ctx, "user", 2, 100, nil, nil)
 	s.NoError(err)
 	s.Empty(empty)
 
-	negLimit, err := s.store.GetEntityList(s.ctx, "user", -1, 0, nil)
+	negLimit, err := s.store.GetEntityList(s.ctx, "user", -1, 0, nil, nil)
 	s.NoError(err)
 	s.Empty(negLimit)
 }
