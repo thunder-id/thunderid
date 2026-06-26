@@ -21,19 +21,24 @@ import cloneDeep from 'lodash-es/cloneDeep';
 import isEmpty from 'lodash-es/isEmpty';
 import mergeWith from 'lodash-es/mergeWith';
 import {useCallback} from 'react';
+import {EXECUTOR_TO_IDP_TYPE_MAP} from '../components/resource-property-panel/extended-properties/execution-properties/constants';
 import {mutateComponents} from '../utils/componentMutations';
 import generateUnconnectedEdges from '../utils/edgeUtils';
 import useFlowConfig from '@/features/flows/hooks/useFlowConfig';
 import useGenerateStepElement from '@/features/flows/hooks/useGenerateStepElement';
 import {BlockTypes, type Element} from '@/features/flows/models/elements';
 import {ResourceTypes, type Resource, type Resources} from '@/features/flows/models/resources';
-import {StepTypes, type Step, type StepData} from '@/features/flows/models/steps';
+import {ExecutionTypes, StepTypes, type Step, type StepData} from '@/features/flows/models/steps';
 import {type Template, TemplateTypes, type TemplateReplacer} from '@/features/flows/models/templates';
+import useIdentityProviders from '@/features/integrations/api/useIdentityProviders';
+import useNotificationSenders from '@/features/notification-senders/api/useNotificationSenders';
 import type {Widget} from '@/features/flows/models/widget';
 import generateIdsForResources from '@/features/flows/utils/generateIdsForResources';
 import resolveComponentMetadata from '@/features/flows/utils/resolveComponentMetadata';
 import resolveStepMetadata from '@/features/flows/utils/resolveStepMetadata';
 import updateTemplatePlaceholderReferences from '@/features/flows/utils/updateTemplatePlaceholderReferences';
+
+const SMS_EXECUTORS = new Set<string>([ExecutionTypes.SMSOTPAuth, ExecutionTypes.SMSExecutor]);
 
 /**
  * Props for the useTemplateAndWidgetLoading hook.
@@ -94,6 +99,62 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
   const {setFlowCompletionConfigs, edgeStyle} = useFlowConfig();
   const {generateStepElement} = useGenerateStepElement();
 
+  const {data: identityProviders} = useIdentityProviders();
+  const {data: notificationSenders} = useNotificationSenders();
+
+  const autoAssignExecutionNodes = useCallback(
+    <T extends Node | Step>(nodes: T[]): T[] => {
+      return nodes.map((node: T) => {
+        if (node.type !== StepTypes.Execution) return node;
+
+        const stepData = node.data as StepData | undefined;
+        const executorName = (stepData?.action as {executor?: {name?: string}} | undefined)?.executor?.name;
+        if (!executorName) return node;
+
+        const {senderId: currentSenderId = '', idpId: currentIdpId = ''} =
+          (stepData?.properties as Record<string, string> | undefined) ?? {};
+
+        // Handle SMS executors - auto-assign senderId
+        if (SMS_EXECUTORS.has(executorName)) {
+          if (!notificationSenders) return node;
+          if (currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') {
+            if (notificationSenders.length === 1) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  properties: {
+                    ...((stepData?.properties as Record<string, unknown>) ?? {}),
+                    senderId: notificationSenders[0].id,
+                  },
+                },
+              };
+            }
+          }
+          return node;
+        }
+
+        // Handle IDP executors - auto-assign idpId
+        const idpType = EXECUTOR_TO_IDP_TYPE_MAP[executorName];
+        if (!idpType || !identityProviders) return node;
+
+        if (currentIdpId !== '{{IDP_ID}}' && currentIdpId !== '') return node;
+
+        const matching = identityProviders.filter((idp) => idp.type === idpType);
+        if (matching.length !== 1) return node;
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            properties: {...((stepData?.properties as Record<string, unknown>) ?? {}), idpId: matching[0].id},
+          },
+        };
+      });
+    },
+    [identityProviders, notificationSenders],
+  );
+
   /**
    * Handle loading a step.
    */
@@ -118,9 +179,10 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
         processedStep.data.components = resolveComponentMetadata(resources, processedStep.data.components);
       }
 
-      return resolveStepMetadata(resources, [processedStep])[0];
+      const resolvedStep = resolveStepMetadata(resources, [processedStep])[0];
+      return autoAssignExecutionNodes([resolvedStep])[0];
     },
-    [resources, getBlankTemplateComponents],
+    [resources, getBlankTemplateComponents, autoAssignExecutionNodes],
   );
 
   /**
@@ -143,9 +205,11 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
         }
       });
 
-      const templateSteps: Node[] = replacers
+      let templateSteps: Node[] = replacers
         ? updateTemplatePlaceholderReferences(generateSteps(template.config.data.steps), replacers)[0]
         : generateSteps(template.config.data.steps);
+
+      templateSteps = autoAssignExecutionNodes(templateSteps);
 
       const generatedTemplateEdges: Edge[] = validateEdges(generateEdges(templateSteps as Step[]), templateSteps);
       // Apply current edge style to all template edges
@@ -167,7 +231,7 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
 
       return [templateSteps, templateEdges, {} as Resource, ''];
     },
-    [generateSteps, generateEdges, validateEdges, setFlowCompletionConfigs, edgeStyle],
+    [generateSteps, generateEdges, validateEdges, setFlowCompletionConfigs, edgeStyle, autoAssignExecutionNodes],
   );
 
   /**
@@ -257,6 +321,8 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
         ) as Step[],
       ) as Node[];
 
+      newNodes = autoAssignExecutionNodes(newNodes);
+
       // Find default property selector
       newNodes.forEach((node: Node) => {
         if (node.id === defaultPropertySelectorId) {
@@ -327,7 +393,7 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
 
       return [updatedNodes, newEdges, defaultPropertySelector, defaultPropertySelectorStepId];
     },
-    [resources, edgeStyle],
+    [resources, edgeStyle, autoAssignExecutionNodes],
   );
 
   /**
