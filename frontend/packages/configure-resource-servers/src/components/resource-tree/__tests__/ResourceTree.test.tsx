@@ -31,6 +31,15 @@ const mockResourceServer = {
   type: 'API' as const,
 };
 
+const mockMcpResourceServer = {
+  id: 'rs-mcp',
+  name: 'My MCP Server',
+  handle: 'my-mcp',
+  ouId: 'ou-1',
+  delimiter: ':',
+  type: 'MCP' as const,
+};
+
 const mockUseGetResources = vi.fn();
 const mockUseGetServerActions = vi.fn();
 
@@ -81,8 +90,16 @@ vi.mock('../ResourceDetailPanel', () => ({
 }));
 
 vi.mock('../ResourceTreeNode', () => ({
-  ResourceNode: ({node}: {node: {name: string}}) => <div data-testid="resource-node">{node.name}</div>,
-  ActionNode: ({action}: {action: {name: string}}) => <div data-testid="action-node">{action.name}</div>,
+  ResourceNode: ({node, kindFilter}: {node: {name: string}; kindFilter?: string}) => (
+    <div data-testid="resource-node" data-kind-filter={kindFilter ?? 'all'}>
+      {node.name}
+    </div>
+  ),
+  ActionNode: ({action}: {action: {name: string; kind?: string}}) => (
+    <div data-testid="action-node" data-kind={action.kind ?? 'action'}>
+      {action.name}
+    </div>
+  ),
 }));
 
 const emptyResources: ResourceListResponse = {
@@ -113,7 +130,42 @@ const withActions: ActionListResponse = {
   actions: [{id: 'a-1', name: 'Read All', handle: 'read-all', permission: 'dark-dodos:read-all'}],
 };
 
-describe('ResourceTree', () => {
+const withMcpTools: ActionListResponse = {
+  totalResults: 1,
+  startIndex: 0,
+  count: 1,
+  actions: [
+    {id: 'tool-1', name: 'Search Files', handle: 'search-files', permission: 'my-mcp:search-files', kind: 'tool'},
+  ],
+};
+
+const withMcpResources: ActionListResponse = {
+  totalResults: 1,
+  startIndex: 0,
+  count: 1,
+  actions: [
+    {id: 'res-1', name: 'File Contents', handle: 'file-contents', permission: 'my-mcp:file-contents', kind: 'resource'},
+  ],
+};
+
+const withNamespaces: ResourceListResponse = {
+  totalResults: 1,
+  startIndex: 0,
+  count: 1,
+  resources: [{id: 'ns-1', name: 'Booking', handle: 'booking', permission: 'my-mcp:booking'}],
+};
+
+const withMcpMixed: ActionListResponse = {
+  totalResults: 2,
+  startIndex: 0,
+  count: 2,
+  actions: [
+    {id: 'tool-1', name: 'Search Files', handle: 'search-files', permission: 'my-mcp:search-files', kind: 'tool'},
+    {id: 'res-1', name: 'File Contents', handle: 'file-contents', permission: 'my-mcp:file-contents', kind: 'resource'},
+  ],
+};
+
+describe('ResourceTree (API type — generic tree)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseGetResources.mockReturnValue({data: emptyResources, isLoading: false});
@@ -230,5 +282,362 @@ describe('ResourceTree', () => {
 
     expect(screen.getByTestId('action-node')).toBeInTheDocument();
     expect(screen.getByText('Read All')).toBeInTheDocument();
+  });
+
+  it('does not render the Capabilities panel header for an API-type server', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.queryByText('Capabilities')).not.toBeInTheDocument();
+  });
+});
+
+describe('ResourceTree (MCP type — Capabilities panel)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseGetResources.mockReturnValue({data: emptyResources, isLoading: false});
+    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
+  });
+
+  it('renders the Capabilities panel header', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByText('Capabilities')).toBeInTheDocument();
+  });
+
+  it('does not render separate TOOLS or RESOURCES subsection headers', () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    // The chip labels in the radiogroup use "Tools" / "Resources" text, but there must be
+    // no additional subsection header elements (i.e. no second occurrence as a section title).
+    // We verify there is no heading-level or caption element acting as a section divider.
+    // The only "Tools" / "Resources" text present should be inside the radiogroup chips.
+    const radioGroup = screen.getByRole('radiogroup');
+    expect(radioGroup).toBeInTheDocument();
+    // Both tools and resources render as action-nodes in a single list (no section grouping).
+    expect(screen.getByText('Search Files')).toBeInTheDocument();
+    expect(screen.getByText('File Contents')).toBeInTheDocument();
+  });
+
+  it('does not render a separate Groups section header', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.queryByText('Groups')).not.toBeInTheDocument();
+  });
+
+  it('shows the loading spinner while data is loading', () => {
+    mockUseGetResources.mockReturnValue({data: undefined, isLoading: true});
+    mockUseGetServerActions.mockReturnValue({data: undefined, isLoading: true});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
+  });
+
+  it('shows the MCP empty message when all sections are empty', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByText('No capabilities yet. Use + to add a tool, resource, or namespace.')).toBeInTheDocument();
+  });
+
+  it('shows the whole-RS empty message (not subsection messages) when everything is empty', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByText('No capabilities yet. Use + to add a tool, resource, or namespace.')).toBeInTheDocument();
+    expect(screen.queryByText('No tools yet.')).not.toBeInTheDocument();
+    expect(screen.queryByText('No resources yet.')).not.toBeInTheDocument();
+  });
+
+  it('renders a namespace node exactly once in the unified tree', () => {
+    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    // Single-pass: a namespace appears once, not duplicated across two sections
+    expect(screen.getAllByTestId('resource-node').length).toBe(1);
+    expect(screen.getAllByText('Booking').length).toBe(1);
+  });
+
+  it('passes the active kindFilter down to namespace ResourceNodes', () => {
+    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
+    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    const nsNode = screen.getByTestId('resource-node');
+    expect(nsNode).toHaveAttribute('data-kind-filter', 'all');
+  });
+
+  it('renders tools and resources intermixed in a single list (no section grouping)', () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    const actionNodes = screen.getAllByTestId('action-node');
+    expect(actionNodes.length).toBe(2);
+    // Both kinds present in same flat list
+    expect(actionNodes.some((n) => n.getAttribute('data-kind') === 'tool')).toBe(true);
+    expect(actionNodes.some((n) => n.getAttribute('data-kind') === 'resource')).toBe(true);
+  });
+
+  it('renders tools in the unified tree when kind=tool actions exist', () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpTools, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getAllByTestId('action-node').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Search Files')).toBeInTheDocument();
+  });
+
+  it('renders kind=resource actions in the unified tree', () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpResources, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getAllByTestId('action-node').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('File Contents')).toBeInTheDocument();
+  });
+
+  it('renders namespace nodes once even when both tools and resources exist', () => {
+    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
+    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    const namespaceNodes = screen.getAllByTestId('resource-node');
+    expect(namespaceNodes.length).toBe(1);
+    expect(screen.getAllByText('Booking').length).toBe(1);
+  });
+
+  it('renders the filter chip group for MCP', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByRole('radiogroup', {name: /Filter capabilities/i})).toBeInTheDocument();
+  });
+
+  it('renders All, Tools, Resources filter chips', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    const radioGroup = screen.getByRole('radiogroup');
+    expect(radioGroup).toBeInTheDocument();
+    expect(screen.getByRole('radio', {name: /All/i})).toBeInTheDocument();
+    expect(screen.getByRole('radio', {name: /Tools/i})).toBeInTheDocument();
+    expect(screen.getByRole('radio', {name: /Resources/i})).toBeInTheDocument();
+  });
+
+  it('hides resource ActionNodes when Tools filter chip is selected', async () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('radio', {name: /Tools/i}));
+
+    await waitFor(() => {
+      expect(screen.getByText('Search Files')).toBeInTheDocument();
+      expect(screen.queryByText('File Contents')).not.toBeInTheDocument();
+    });
+  });
+
+  it('hides tool ActionNodes when Resources filter chip is selected', async () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('radio', {name: /Resources/i}));
+
+    await waitFor(() => {
+      expect(screen.getByText('File Contents')).toBeInTheDocument();
+      expect(screen.queryByText('Search Files')).not.toBeInTheDocument();
+    });
+  });
+
+  it('passes kindFilter=tool to namespace ResourceNodes when Tools chip is selected', async () => {
+    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
+    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('radio', {name: /Tools/i}));
+
+    await waitFor(() => {
+      const nsNode = screen.getByTestId('resource-node');
+      expect(nsNode).toHaveAttribute('data-kind-filter', 'tool');
+    });
+  });
+
+  it('passes kindFilter=resource to namespace ResourceNodes when Resources chip is selected', async () => {
+    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
+    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('radio', {name: /Resources/i}));
+
+    await waitFor(() => {
+      const nsNode = screen.getByTestId('resource-node');
+      expect(nsNode).toHaveAttribute('data-kind-filter', 'resource');
+    });
+  });
+
+  it('shows All filter as active restores both tools and resources', async () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('radio', {name: /Tools/i}));
+
+    await waitFor(() => {
+      expect(screen.queryByText('File Contents')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('radio', {name: /All/i}));
+
+    await waitFor(() => {
+      expect(screen.getByText('Search Files')).toBeInTheDocument();
+      expect(screen.getByText('File Contents')).toBeInTheDocument();
+    });
+  });
+
+  it('renders the search input', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByPlaceholderText('Search capabilities')).toBeInTheDocument();
+  });
+
+  it('filters server-level tools by search query', async () => {
+    mockUseGetServerActions.mockReturnValue({
+      data: {
+        totalResults: 2,
+        startIndex: 0,
+        count: 2,
+        actions: [
+          {id: 'tool-1', name: 'Search Files', handle: 'search-files', permission: 'my-mcp:search-files', kind: 'tool'},
+          {id: 'tool-2', name: 'Upload Files', handle: 'upload-files', permission: 'my-mcp:upload-files', kind: 'tool'},
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    const searchInput = screen.getByPlaceholderText('Search capabilities');
+    fireEvent.change(searchInput, {target: {value: 'search'}});
+
+    await waitFor(() => {
+      expect(screen.getByText('Search Files')).toBeInTheDocument();
+      expect(screen.queryByText('Upload Files')).not.toBeInTheDocument();
+    });
+  });
+
+  it('shows the no-results message when search matches nothing', async () => {
+    mockUseGetServerActions.mockReturnValue({data: withMcpTools, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    const searchInput = screen.getByPlaceholderText('Search capabilities');
+    fireEvent.change(searchInput, {target: {value: 'zzznomatch'}});
+
+    await waitFor(() => {
+      expect(screen.getByText(/No capabilities match/i)).toBeInTheDocument();
+    });
+  });
+
+  it('opens the add dialog in mcp-server-tool mode from the header + menu', async () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Add'}));
+
+    await waitFor(() => {
+      expect(screen.getByText('Add tool')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add tool'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', {name: 'add-node-dialog'})).toBeInTheDocument();
+      expect(screen.getByTestId('dialog-mode').textContent).toBe('mcp-server-tool');
+    });
+  });
+
+  it('opens the add dialog in mcp-server-resource mode from the header + menu', async () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Add'}));
+
+    await waitFor(() => {
+      expect(screen.getByText('Add resource')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add resource'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', {name: 'add-node-dialog'})).toBeInTheDocument();
+      expect(screen.getByTestId('dialog-mode').textContent).toBe('mcp-server-resource');
+    });
+  });
+
+  it('opens the add dialog in mcp-namespace mode from the header + menu', async () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole('button', {name: 'Add'}));
+
+    await waitFor(() => {
+      expect(screen.getByText('Add namespace')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add namespace'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', {name: 'add-node-dialog'})).toBeInTheDocument();
+      expect(screen.getByTestId('dialog-mode').textContent).toBe('mcp-namespace');
+    });
+  });
+
+  it('does not render the generic Resource Hierarchy header for an MCP server', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.queryByText('Resource Hierarchy')).not.toBeInTheDocument();
+  });
+
+  it('shows the All filter chip as selected by default (aria-checked=true)', () => {
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByRole('radio', {name: /All/i})).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', {name: /Tools/i})).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('radio', {name: /Resources/i})).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('shows exact counts on filter chips when the server has no namespaces', () => {
+    mockUseGetResources.mockReturnValue({data: emptyResources, isLoading: false});
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByRole('radio', {name: /All · 2$/})).toBeInTheDocument();
+    expect(screen.getByRole('radio', {name: /Tools · 1$/})).toBeInTheDocument();
+    expect(screen.getByRole('radio', {name: /Resources · 1$/})).toBeInTheDocument();
+  });
+
+  it('shows at-least counts (N+) on filter chips when the server has namespaces', () => {
+    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
+    mockUseGetServerActions.mockReturnValue({data: withMcpMixed, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByRole('radio', {name: /All · 2\+/})).toBeInTheDocument();
+    expect(screen.getByRole('radio', {name: /Tools · 1\+/})).toBeInTheDocument();
+    expect(screen.getByRole('radio', {name: /Resources · 1\+/})).toBeInTheDocument();
+  });
+
+  it('shows at-least counts (N+) when namespaces exist but no server-level actions exist', () => {
+    mockUseGetResources.mockReturnValue({data: withNamespaces, isLoading: false});
+    mockUseGetServerActions.mockReturnValue({data: emptyActions, isLoading: false});
+
+    renderWithProviders(<ResourceTree resourceServer={mockMcpResourceServer} onRefresh={vi.fn()} />);
+
+    expect(screen.getByRole('radio', {name: /All · 0\+/})).toBeInTheDocument();
+    expect(screen.getByRole('radio', {name: /Tools · 0\+/})).toBeInTheDocument();
+    expect(screen.getByRole('radio', {name: /Resources · 0\+/})).toBeInTheDocument();
   });
 });

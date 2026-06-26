@@ -35,20 +35,60 @@ import {type JSX, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import useCreateAction from '../../api/useCreateAction';
 import useCreateResource from '../../api/useCreateResource';
+import type {ActionKind} from '../../models/resource-server';
 import {deriveHandle} from '../../utils/deriveHandle';
 
-export type AddNodeMode = 'resource' | 'sub-resource' | 'server-action' | 'resource-action';
+export type AddNodeMode =
+  | 'resource'
+  | 'sub-resource'
+  | 'server-action'
+  | 'resource-action'
+  | 'mcp-server-tool'
+  | 'mcp-server-resource'
+  | 'mcp-namespace'
+  | 'mcp-namespace-tool'
+  | 'mcp-namespace-resource'
+  | 'mcp-sub-namespace';
 
 export interface AddNodeDialogProps {
+  /** Whether the dialog is open. */
   open: boolean;
+  /** The mode that determines what kind of node to create. */
   mode: AddNodeMode;
+  /** The ID of the resource server. */
   resourceServerId: string;
+  /** The ID of the parent resource (for in-namespace creates). */
   parentResourceId?: string;
+  /** The permission prefix used to derive the full permission string preview. */
   parentPermission: string;
+  /** The permission delimiter character. */
   delimiter: string;
+  /** Called when the dialog is closed without submitting. */
   onClose: () => void;
+  /** Called after a successful create. */
   onSuccess: () => void;
 }
+
+function deriveKind(mode: AddNodeMode): ActionKind | undefined {
+  if (mode === 'mcp-server-tool' || mode === 'mcp-namespace-tool') return 'tool';
+  if (mode === 'mcp-server-resource' || mode === 'mcp-namespace-resource') return 'resource';
+  return undefined;
+}
+
+const ACTION_MODES = new Set<AddNodeMode>([
+  'server-action',
+  'resource-action',
+  'mcp-server-tool',
+  'mcp-server-resource',
+  'mcp-namespace-tool',
+  'mcp-namespace-resource',
+]);
+
+const IN_NAMESPACE_RESOURCE_MODES = new Set<AddNodeMode>([
+  'resource-action',
+  'mcp-namespace-tool',
+  'mcp-namespace-resource',
+]);
 
 export default function AddNodeDialog({
   open,
@@ -69,8 +109,11 @@ export default function AddNodeDialog({
   const [description, setDescription] = useState('');
   const [handleEdited, setHandleEdited] = useState(false);
 
-  const isAction = mode === 'server-action' || mode === 'resource-action';
-  const resourceId = mode === 'resource-action' ? parentResourceId : undefined;
+  const isAction = ACTION_MODES.has(mode);
+  const resourceId = IN_NAMESPACE_RESOURCE_MODES.has(mode) ? parentResourceId : undefined;
+  const kind = deriveKind(mode);
+
+  const subNamespaceParent = mode === 'mcp-sub-namespace' ? parentResourceId : undefined;
 
   const createResource = useCreateResource(resourceServerId);
   const createAction = useCreateAction(resourceServerId, resourceId);
@@ -87,40 +130,73 @@ export default function AddNodeDialog({
     onClose();
   };
 
+  const resolveSuccessToast = (): string => {
+    if (mode === 'mcp-server-tool' || mode === 'mcp-namespace-tool') {
+      return t('resourceServers:mcp.addTool.success', 'Tool added.');
+    }
+    if (mode === 'mcp-server-resource' || mode === 'mcp-namespace-resource') {
+      return t('resourceServers:mcp.addResource.success', 'Resource added.');
+    }
+    if (mode === 'mcp-namespace' || mode === 'mcp-sub-namespace') {
+      return t('resourceServers:mcp.addNamespace.success', 'Namespace added.');
+    }
+    if (isAction) {
+      return t('resourceServers:tree.addAction.success', 'Action added.');
+    }
+    return t('resourceServers:tree.addResource.success', 'Resource added.');
+  };
+
+  const resolveErrorToast = (): string => {
+    if (mode === 'mcp-server-tool' || mode === 'mcp-namespace-tool') {
+      return t('resourceServers:mcp.addTool.error', 'Failed to add tool.');
+    }
+    if (mode === 'mcp-server-resource' || mode === 'mcp-namespace-resource') {
+      return t('resourceServers:mcp.addResource.error', 'Failed to add resource.');
+    }
+    if (mode === 'mcp-namespace' || mode === 'mcp-sub-namespace') {
+      return t('resourceServers:mcp.addNamespace.error', 'Failed to add namespace.');
+    }
+    if (isAction) {
+      return t('resourceServers:tree.addAction.error', 'Failed to add action.');
+    }
+    return t('resourceServers:tree.addResource.error', 'Failed to add resource.');
+  };
+
   const handleSubmit = (): void => {
     const trimmedName = name.trim();
     const trimmedHandle = handle.trim();
     if (!trimmedName || !trimmedHandle) return;
 
-    const data = {name: trimmedName, handle: trimmedHandle, description: description.trim() || undefined};
+    const baseData = {name: trimmedName, handle: trimmedHandle, description: description.trim() || undefined};
 
     if (isAction) {
-      createAction.mutate(data, {
-        onSuccess: () => {
-          showToast(t('resourceServers:tree.addAction.success', 'Action added.'), 'success');
-          handleClose();
-          onSuccess();
-        },
-        onError: (err: Error) => {
-          logger.error('Failed to create action', {error: err});
-          showToast(t('resourceServers:tree.addAction.error', 'Failed to add action.'), 'error');
-        },
-      });
-    } else {
-      createResource.mutate(
-        {
-          ...data,
-          parent: mode === 'sub-resource' ? parentResourceId : undefined,
-        },
+      createAction.mutate(
+        {...baseData, kind},
         {
           onSuccess: () => {
-            showToast(t('resourceServers:tree.addResource.success', 'Resource added.'), 'success');
+            showToast(resolveSuccessToast(), 'success');
+            handleClose();
+            onSuccess();
+          },
+          onError: (err: Error) => {
+            logger.error('Failed to create action', {error: err});
+            showToast(resolveErrorToast(), 'error');
+          },
+        },
+      );
+    } else {
+      const parent = mode === 'sub-resource' ? parentResourceId : subNamespaceParent;
+      createResource.mutate(
+        {...baseData, parent},
+        {
+          onSuccess: () => {
+            showToast(resolveSuccessToast(), 'success');
             handleClose();
             onSuccess();
           },
           onError: (err: Error) => {
             logger.error('Failed to create resource', {error: err});
-            showToast(t('resourceServers:tree.addResource.error', 'Failed to add resource.'), 'error');
+            showToast(resolveErrorToast(), 'error');
           },
         },
       );
@@ -132,6 +208,12 @@ export default function AddNodeDialog({
     'sub-resource': t('resourceServers:tree.addSubResource.title', 'Add Sub-resource'),
     'server-action': t('resourceServers:tree.addAction.title', 'Add Action'),
     'resource-action': t('resourceServers:tree.addAction.title', 'Add Action'),
+    'mcp-server-tool': t('resourceServers:mcp.addTool.title', 'Add Tool'),
+    'mcp-namespace-tool': t('resourceServers:mcp.addTool.title', 'Add Tool'),
+    'mcp-server-resource': t('resourceServers:mcp.addResource.title', 'Add Resource'),
+    'mcp-namespace-resource': t('resourceServers:mcp.addResource.title', 'Add Resource'),
+    'mcp-namespace': t('resourceServers:mcp.addNamespace.title', 'Add Namespace'),
+    'mcp-sub-namespace': t('resourceServers:mcp.addNamespace.title', 'Add Namespace'),
   };
 
   const isPending = createResource.isPending || createAction.isPending;
