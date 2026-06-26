@@ -131,13 +131,13 @@ Create a `middleware.ts` file at your project root to protect routes and handle 
 
 ```ts title="middleware.ts" showLineNumbers
 import {
-  thunderIDMiddleware,
+  thunderIDProxy,
   createRouteMatcher,
-} from '@thunderid/nextjs/middleware'
+} from '@thunderid/nextjs/server'
 
 const isProtectedRoute = createRouteMatcher(['/dashboard(.*)'])
 
-export default thunderIDMiddleware(async (thunderid, request) => {
+export default thunderIDProxy(async (thunderid, request) => {
   if (isProtectedRoute(request)) {
     await thunderid.protectRoute()
   }

@@ -135,13 +135,12 @@ describe('AppWithConfig', () => {
     });
 
     it('passes config.sdk.preferences to ThunderIDProvider', () => {
-      mockConfig.sdk = {preferences: {resolveFromMeta: false, theme: {inheritFromBranding: false}}};
+      mockConfig.sdk = {preferences: {resolveFromMeta: false}};
       mockGetServerUrl.mockReturnValue('https://server-url.com');
 
       render(<AppWithConfig />);
       expect(capturedProviderProps.preferences).toEqual({
         resolveFromMeta: false,
-        theme: {inheritFromBranding: false},
       });
     });
 
