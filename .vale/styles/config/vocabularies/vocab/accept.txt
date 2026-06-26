@@ -110,7 +110,8 @@ Algolia
 [Cc]yberattacks?
 Datadog
 [Dd]eno
-DIDs
+DID'?s?
+VC'?s?
 dlx
 Docusaurus'?s?
 [Dd]on'ts
