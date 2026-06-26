@@ -44,6 +44,7 @@ import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {SchemaPropertyInput, PropertyType} from '../../../types/user-types';
 import {invalidateI18nCache} from '../../../utils/invalidateI18nCache';
+import {isValidPropertyName} from '../../../utils/isValidPropertyName';
 
 export interface EditSchemaSettingsProps {
   properties: SchemaPropertyInput[];
@@ -178,6 +179,12 @@ export default function EditSchemaSettings({
                   placeholder={t('userTypes:propertyNamePlaceholder', 'e.g., email, age, address')}
                   size="small"
                   disabled={disabled}
+                  error={property.name.length > 0 && !isValidPropertyName(property.name)}
+                  helperText={
+                    property.name.length > 0 && !isValidPropertyName(property.name)
+                      ? t('userTypes:propertyNameInvalid', 'Only letters, digits, and underscores are allowed.')
+                      : undefined
+                  }
                 />
               </FormControl>
 
