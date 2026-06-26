@@ -23,9 +23,11 @@ import {describe, it, expect, vi, beforeEach} from 'vitest';
 import useTemplateAndWidgetLoading from '../useTemplateAndWidgetLoading';
 import {BlockTypes, ElementCategories, ElementTypes, type Element} from '@/features/flows/models/elements';
 import {ResourceTypes, type Resource, type Resources} from '@/features/flows/models/resources';
-import {StepTypes, type Step} from '@/features/flows/models/steps';
+import {StepTypes, ExecutionTypes, type Step} from '@/features/flows/models/steps';
 import {TemplateTypes, type Template} from '@/features/flows/models/templates';
 import type {Widget} from '@/features/flows/models/widget';
+import useIdentityProviders from '@/features/integrations/api/useIdentityProviders';
+import useNotificationSenders from '@/features/notification-senders/api/useNotificationSenders';
 
 // Mock external dependencies
 vi.mock('lodash-es/cloneDeep', () => ({
@@ -61,6 +63,14 @@ vi.mock('lodash-es/mergeWith', () => ({
     });
     return result;
   },
+}));
+
+vi.mock('@/features/integrations/api/useIdentityProviders', () => ({
+  default: vi.fn(() => ({data: []})),
+}));
+
+vi.mock('@/features/notification-senders/api/useNotificationSenders', () => ({
+  default: vi.fn(() => ({data: []})),
 }));
 
 vi.mock('@/features/flows/utils/generateIdsForResources', () => ({
@@ -951,6 +961,188 @@ describe('useTemplateAndWidgetLoading', () => {
       expect(capturedNodes).toHaveLength(2);
       const endNode = capturedNodes.find((n) => n.id === 'end-1');
       expect(endNode?.type).toBe(StepTypes.End);
+    });
+  });
+
+  describe('autoAssignExecutionNodes', () => {
+    beforeEach(() => {
+      vi.mocked(useIdentityProviders).mockReturnValue({data: []} as any);
+      vi.mocked(useNotificationSenders).mockReturnValue({data: []} as any);
+    });
+
+    it('should auto-assign senderId for SMS executors when exactly one sender exists and senderId is empty or placeholder', () => {
+      vi.mocked(useNotificationSenders).mockReturnValue({
+        data: [{id: 'sender-123'}],
+      } as any);
+
+      const {result} = renderUseTemplateAndWidgetLoading();
+
+      const step = createMockStep({
+        type: StepTypes.Execution,
+        data: {
+          action: {executor: {name: ExecutionTypes.SMSOTPAuth}},
+          properties: {senderId: '{{SENDER_ID}}'},
+        },
+      });
+
+      const step2 = createMockStep({
+        type: StepTypes.Execution,
+        data: {
+          action: {executor: {name: ExecutionTypes.SMSExecutor}},
+          properties: {senderId: ''},
+        },
+      });
+
+      const loadedStep = result.current.handleStepLoad(step);
+      const loadedStep2 = result.current.handleStepLoad(step2);
+
+      expect((loadedStep.data as any).properties.senderId).toBe('sender-123');
+      expect((loadedStep2.data as any).properties.senderId).toBe('sender-123');
+    });
+
+    it('should not auto-assign senderId for SMS executors if senderId is already set', () => {
+      vi.mocked(useNotificationSenders).mockReturnValue({
+        data: [{id: 'sender-123'}],
+      } as any);
+
+      const {result} = renderUseTemplateAndWidgetLoading();
+
+      const step = createMockStep({
+        type: StepTypes.Execution,
+        data: {
+          action: {executor: {name: ExecutionTypes.SMSOTPAuth}},
+          properties: {senderId: 'existing-sender'},
+        },
+      });
+
+      const loadedStep = result.current.handleStepLoad(step);
+
+      expect((loadedStep.data as any).properties.senderId).toBe('existing-sender');
+    });
+
+    it('should not auto-assign senderId for SMS executors if multiple senders exist', () => {
+      vi.mocked(useNotificationSenders).mockReturnValue({
+        data: [{id: 'sender-1'}, {id: 'sender-2'}],
+      } as any);
+
+      const {result} = renderUseTemplateAndWidgetLoading();
+
+      const step = createMockStep({
+        type: StepTypes.Execution,
+        data: {
+          action: {executor: {name: ExecutionTypes.SMSOTPAuth}},
+          properties: {senderId: '{{SENDER_ID}}'},
+        },
+      });
+
+      const loadedStep = result.current.handleStepLoad(step);
+
+      expect((loadedStep.data as any).properties.senderId).toBe('{{SENDER_ID}}');
+    });
+
+    it('should auto-assign idpId for IDP executors when exactly one matching IDP exists and idpId is empty or placeholder', () => {
+      vi.mocked(useIdentityProviders).mockReturnValue({
+        data: [
+          {id: 'idp-google', type: 'GOOGLE'},
+          {id: 'idp-github', type: 'GITHUB'},
+        ],
+      } as any);
+
+      const {result} = renderUseTemplateAndWidgetLoading();
+
+      const step = createMockStep({
+        type: StepTypes.Execution,
+        data: {
+          action: {executor: {name: ExecutionTypes.GoogleFederation}},
+          properties: {idpId: '{{IDP_ID}}'},
+        },
+      });
+
+      const step2 = createMockStep({
+        type: StepTypes.Execution,
+        data: {
+          action: {executor: {name: ExecutionTypes.GoogleFederation}},
+          properties: {idpId: ''},
+        },
+      });
+
+      const loadedStep = result.current.handleStepLoad(step);
+      const loadedStep2 = result.current.handleStepLoad(step2);
+
+      expect((loadedStep.data as any).properties.idpId).toBe('idp-google');
+      expect((loadedStep2.data as any).properties.idpId).toBe('idp-google');
+    });
+
+    it('should not auto-assign idpId for IDP executors if idpId is already set', () => {
+      vi.mocked(useIdentityProviders).mockReturnValue({
+        data: [{id: 'idp-google', type: 'GOOGLE'}],
+      } as any);
+
+      const {result} = renderUseTemplateAndWidgetLoading();
+
+      const step = createMockStep({
+        type: StepTypes.Execution,
+        data: {
+          action: {executor: {name: ExecutionTypes.GoogleFederation}},
+          properties: {idpId: 'existing-idp'},
+        },
+      });
+
+      const loadedStep = result.current.handleStepLoad(step);
+
+      expect((loadedStep.data as any).properties.idpId).toBe('existing-idp');
+    });
+
+    it('should not auto-assign idpId for IDP executors if multiple matching IDPs exist', () => {
+      vi.mocked(useIdentityProviders).mockReturnValue({
+        data: [
+          {id: 'idp-google-1', type: 'GOOGLE'},
+          {id: 'idp-google-2', type: 'GOOGLE'},
+        ],
+      } as any);
+
+      const {result} = renderUseTemplateAndWidgetLoading();
+
+      const step = createMockStep({
+        type: StepTypes.Execution,
+        data: {
+          action: {executor: {name: ExecutionTypes.GoogleFederation}},
+          properties: {idpId: '{{IDP_ID}}'},
+        },
+      });
+
+      const loadedStep = result.current.handleStepLoad(step);
+
+      expect((loadedStep.data as any).properties.idpId).toBe('{{IDP_ID}}');
+    });
+
+    it('should not throw if notificationSenders or identityProviders are undefined', () => {
+      vi.mocked(useNotificationSenders).mockReturnValue({data: undefined} as any);
+      vi.mocked(useIdentityProviders).mockReturnValue({data: undefined} as any);
+
+      const {result} = renderUseTemplateAndWidgetLoading();
+
+      const step1 = createMockStep({
+        type: StepTypes.Execution,
+        data: {
+          action: {executor: {name: ExecutionTypes.SMSOTPAuth}},
+          properties: {senderId: '{{SENDER_ID}}'},
+        },
+      });
+
+      const step2 = createMockStep({
+        type: StepTypes.Execution,
+        data: {
+          action: {executor: {name: ExecutionTypes.GoogleFederation}},
+          properties: {idpId: '{{IDP_ID}}'},
+        },
+      });
+
+      const loadedStep1 = result.current.handleStepLoad(step1);
+      const loadedStep2 = result.current.handleStepLoad(step2);
+
+      expect((loadedStep1.data as any).properties.senderId).toBe('{{SENDER_ID}}');
+      expect((loadedStep2.data as any).properties.idpId).toBe('{{IDP_ID}}');
     });
   });
 });
