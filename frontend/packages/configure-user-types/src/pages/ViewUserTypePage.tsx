@@ -43,6 +43,7 @@ import EditGeneralSettings from '../components/edit-user-type/general-settings/E
 import EditSchemaSettings from '../components/edit-user-type/schema-settings/EditSchemaSettings';
 import UserTypeDeleteDialog from '../components/edit-user-type/UserTypeDeleteDialog';
 import type {PropertyDefinition, UserTypeDefinition, PropertyType, SchemaPropertyInput} from '../types/user-types';
+import {isValidPropertyName} from '../utils/isValidPropertyName';
 
 interface TabPanelProps {
   children?: ReactNode;
@@ -199,6 +200,11 @@ export default function ViewUserTypePage(): JSX.Element {
   const hasChanges = useMemo(
     () => Object.keys(editedUserType).length > 0 || editedProperties !== null,
     [editedUserType, editedProperties],
+  );
+
+  const hasInvalidPropertyName = useMemo(
+    () => effectiveProperties.some((prop) => prop.name.length > 0 && !isValidPropertyName(prop.name)),
+    [effectiveProperties],
   );
 
   const handleBack = async (): Promise<void> => {
@@ -441,7 +447,7 @@ export default function ViewUserTypePage(): JSX.Element {
           saveLabel={t('common:actions.save', 'Save')}
           savingLabel={t('common:status.saving', 'Saving...')}
           isSaving={updateUserTypeMutation.isPending}
-          saveDisabled={userType.isReadOnly === true}
+          saveDisabled={userType.isReadOnly === true || hasInvalidPropertyName}
           onReset={handleReset}
           onSave={() => {
             handleSave().catch(() => null);
