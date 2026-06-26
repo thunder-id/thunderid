@@ -55,6 +55,18 @@
   stroke: color-mix(in srgb, var(--ifm-color-primary) 28%, rgba(255, 255, 255, 0.12));
 }
 
+/* Authorization Adapter box */
+.sts-diagram__adapter rect {
+  fill: color-mix(in srgb, var(--ifm-color-primary) 5%, var(--ifm-background-surface-color));
+  stroke: color-mix(in srgb, var(--ifm-color-primary) 20%, var(--ifm-color-emphasis-200));
+  stroke-width: 1;
+}
+
+[data-theme='dark'] .sts-diagram__adapter rect {
+  fill: color-mix(in srgb, var(--ifm-color-primary) 12%, rgba(255, 255, 255, 0.06));
+  stroke: color-mix(in srgb, var(--ifm-color-primary) 28%, rgba(255, 255, 255, 0.12));
+}
+
 /* Backend API box */
 .sts-diagram__backend rect {
   fill: var(--ifm-background-surface-color);

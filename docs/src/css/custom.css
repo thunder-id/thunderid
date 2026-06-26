@@ -3204,6 +3204,35 @@ a.connect-card {
   margin-bottom: 1rem;
 }
 
+/* Scroll long Envoy guide snippets without oversized browser scrollbars. */
+.envoy-scroll-code {
+  max-height: 28rem;
+  overflow: auto;
+}
+
+.envoy-scroll-code,
+.envoy-scroll-code pre {
+  scrollbar-color: var(--ifm-color-emphasis-400) transparent;
+  scrollbar-width: thin;
+}
+
+.envoy-scroll-code::-webkit-scrollbar,
+.envoy-scroll-code pre::-webkit-scrollbar {
+  height: 4px;
+  width: 4px;
+}
+
+.envoy-scroll-code::-webkit-scrollbar-thumb,
+.envoy-scroll-code pre::-webkit-scrollbar-thumb {
+  background: var(--ifm-color-emphasis-400);
+  border-radius: 999px;
+}
+
+.envoy-scroll-code::-webkit-scrollbar-track,
+.envoy-scroll-code pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 /* ─── Agent Identity Model Diagram ───────────────────────────────────────── */
 
 .aim {
