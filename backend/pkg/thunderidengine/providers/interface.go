@@ -52,6 +52,12 @@ type ActorProviderInterface interface {
 	GetInboundClientByID(
 		ctx context.Context, id string,
 	) (*InboundClient, *common.ServiceError)
+	GetFlowInitiationMode(
+		ctx context.Context, id string,
+	) (FlowInitiationMode, *common.ServiceError)
+	AuthenticateActor(
+		ctx context.Context, actorID string, credentials map[string]interface{},
+	) *common.ServiceError
 	GetActor(actorID string) (*Entity, *common.ServiceError)
 	GetActorGroups(actorID string) ([]EntityGroup, *common.ServiceError)
 }

@@ -34,6 +34,14 @@ interface DangerZoneSectionProps {
    */
   showRegenerateSecret?: boolean;
   /**
+   * Callback function to open the regenerate App Secret confirmation dialog
+   */
+  onRegenerateAppSecretClick?: () => void;
+  /**
+   * Whether to show the regenerate App Secret section (only for backend / non-public clients)
+   */
+  showRegenerateAppSecret?: boolean;
+  /**
    * Callback function to open the delete application confirmation dialog
    */
   onDeleteClick: () => void;
@@ -51,6 +59,8 @@ interface DangerZoneSectionProps {
 export default function DangerZoneSection({
   onRegenerateClick = undefined,
   showRegenerateSecret = false,
+  onRegenerateAppSecretClick = undefined,
+  showRegenerateAppSecret = false,
   onDeleteClick,
 }: DangerZoneSectionProps): JSX.Element {
   const {t} = useTranslation();
@@ -76,6 +86,23 @@ export default function DangerZoneSection({
           </Typography>
           <Button variant="contained" color="error" onClick={onRegenerateClick}>
             {t('applications:edit.general.sections.dangerZone.regenerateSecret.button', 'Regenerate Client Secret')}
+          </Button>
+          <Divider sx={{my: 3}} />
+        </>
+      )}
+      {showRegenerateAppSecret && (
+        <>
+          <Typography variant="h6" gutterBottom color="error">
+            {t('applications:edit.general.sections.dangerZone.regenerateAppSecret.title', 'Regenerate App Secret')}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
+            {t(
+              'applications:edit.general.sections.dangerZone.regenerateAppSecret.description',
+              'Regenerating the App Secret immediately invalidates the current one. Server-side flow initiation will fail until the new secret is deployed.',
+            )}
+          </Typography>
+          <Button variant="contained" color="error" onClick={onRegenerateAppSecretClick}>
+            {t('applications:edit.general.sections.dangerZone.regenerateAppSecret.button', 'Regenerate App Secret')}
           </Button>
           <Divider sx={{my: 3}} />
         </>

@@ -223,6 +223,24 @@ func (ec EntityCategory) String() string {
 	return string(ec)
 }
 
+// FlowInitiationMode classifies how an application is permitted to initiate a new authentication
+// flow directly over HTTP. It is derived at runtime from the application's inbound protocol
+// configuration and is intentionally protocol-neutral, so the flow-execution layer can decide
+// behavior without inspecting protocol-specific data (e.g. OAuth grant types).
+type FlowInitiationMode string
+
+const (
+	// FlowInitiationModeRedirectOnly indicates the application signs users in through a
+	// redirect-based protocol component (currently OAuth 2.0 apps using the authorization_code
+	// grant). Such applications must have their flows initiated by that component and may not
+	// initiate a new flow via a direct HTTP call.
+	FlowInitiationModeRedirectOnly FlowInitiationMode = "REDIRECT_ONLY"
+	// FlowInitiationModeAppSecret indicates a backend / server-side application — one that does not
+	// sign in by redirect, or an embedded app with no protocol profile at all — that may initiate a
+	// flow directly by presenting a valid App Secret.
+	FlowInitiationModeAppSecret FlowInitiationMode = "APP_SECRET"
+)
+
 // IDTokenResponseType is the response format of the ID token.
 type IDTokenResponseType string
 

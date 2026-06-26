@@ -20,6 +20,7 @@ import {useConfig} from '@thunderid/contexts';
 import {Stack} from '@wso2/oxygen-ui';
 import {useState, useCallback} from 'react';
 import type {JSX} from 'react';
+import {useTranslation} from 'react-i18next';
 import AccessSection from './AccessSection';
 import DangerZoneSection from './DangerZoneSection';
 import QuickCopySection from './QuickCopySection';
@@ -28,6 +29,7 @@ import {TokenEndpointAuthMethods} from '../../../models/oauth';
 import type {OAuth2Config} from '../../../models/oauth';
 import ApplicationDeleteDialog from '../../ApplicationDeleteDialog';
 import ClientSecretSuccessDialog from '../../ClientSecretSuccessDialog';
+import RegenerateAppSecretDialog from '../../RegenerateAppSecretDialog';
 import RegenerateSecretDialog from '../../RegenerateSecretDialog';
 
 /**
@@ -89,15 +91,26 @@ export default function EditGeneralSettings({
   onDeleteSuccess = undefined,
 }: EditGeneralSettingsProps): JSX.Element {
   const {config} = useConfig();
+  const {t} = useTranslation();
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
   const [secretDialogOpen, setSecretDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [newClientSecret, setNewClientSecret] = useState<string>('');
+  const [regenerateAppSecretDialogOpen, setRegenerateAppSecretDialogOpen] = useState(false);
+  const [appSecretDialogOpen, setAppSecretDialogOpen] = useState(false);
+  const [newAppSecret, setNewAppSecret] = useState<string>('');
   const systemConsoleClientId = (config?.client?.client_id ?? 'CONSOLE').toUpperCase();
 
   const isConfidentialClient =
     oauth2Config?.tokenEndpointAuthMethod === TokenEndpointAuthMethods.CLIENT_SECRET_BASIC ||
     oauth2Config?.tokenEndpointAuthMethod === TokenEndpointAuthMethods.CLIENT_SECRET_POST;
+
+  // Backend / server-side apps are issued an App Secret and can rotate it. These are non-public
+  // clients that do NOT use the redirect-based authorization_code flow (i.e. M2M apps and embedded
+  // apps with no OAuth profile). Redirect-based apps initiate flows through OAuth, so they get no
+  // App Secret.
+  const isRedirectClient = oauth2Config?.grantTypes?.includes('authorization_code') ?? false;
+  const isBackendClient = !oauth2Config?.publicClient && !isRedirectClient;
 
   const handleRegenerateClick = useCallback((): void => {
     setRegenerateDialogOpen(true);
@@ -111,6 +124,20 @@ export default function EditGeneralSettings({
   const handleSecretDialogClose = useCallback((): void => {
     setSecretDialogOpen(false);
     setNewClientSecret('');
+  }, []);
+
+  const handleRegenerateAppSecretClick = useCallback((): void => {
+    setRegenerateAppSecretDialogOpen(true);
+  }, []);
+
+  const handleRegenerateAppSecretSuccess = useCallback((appSecret: string): void => {
+    setNewAppSecret(appSecret);
+    setAppSecretDialogOpen(true);
+  }, []);
+
+  const handleAppSecretDialogClose = useCallback((): void => {
+    setAppSecretDialogOpen(false);
+    setNewAppSecret('');
   }, []);
 
   return (
@@ -132,6 +159,8 @@ export default function EditGeneralSettings({
           <DangerZoneSection
             showRegenerateSecret={isConfidentialClient}
             onRegenerateClick={handleRegenerateClick}
+            showRegenerateAppSecret={isBackendClient}
+            onRegenerateAppSecretClick={handleRegenerateAppSecretClick}
             onDeleteClick={() => setDeleteDialogOpen(true)}
           />
         )}
@@ -150,6 +179,27 @@ export default function EditGeneralSettings({
         open={secretDialogOpen}
         clientSecret={newClientSecret}
         onClose={handleSecretDialogClose}
+      />
+
+      {/* Regenerate App Secret Confirmation Dialog */}
+      <RegenerateAppSecretDialog
+        open={regenerateAppSecretDialogOpen}
+        applicationId={application.id}
+        onClose={() => setRegenerateAppSecretDialogOpen(false)}
+        onSuccess={handleRegenerateAppSecretSuccess}
+      />
+
+      {/* New App Secret Success Dialog */}
+      <ClientSecretSuccessDialog
+        open={appSecretDialogOpen}
+        clientSecret={newAppSecret}
+        title={t('applications:regenerateAppSecret.success.title')}
+        subtitle={t('applications:regenerateAppSecret.success.subtitle')}
+        secretLabel={t('applications:regenerateAppSecret.success.secretLabel')}
+        copySecretLabel={t('applications:regenerateAppSecret.success.copySecret')}
+        securityReminderTitle={t('applications:regenerateAppSecret.success.securityReminder.title')}
+        securityReminderDescription={t('applications:regenerateAppSecret.success.securityReminder.description')}
+        onClose={handleAppSecretDialogClose}
       />
 
       {/* Delete Application Confirmation Dialog */}

@@ -7,6 +7,9 @@ id: 019e3a5c-0501-7f3e-a66e-66fc7918c3a7
 ouHandle: default
 name: E2E Admin Native App
 description: Native application for E2E test infrastructure admin authentication
+# App Secret presented by the E2E helpers when initiating the admin authentication flow
+# directly via the Flow Execution API. Test-only credential.
+appSecret: e2e-admin-native-app-secret
 authFlowHandle: default-basic-flow
 allowedUserTypes:
   - Customer

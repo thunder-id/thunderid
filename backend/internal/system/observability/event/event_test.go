@@ -14,6 +14,7 @@ func TestNewEvent(t *testing.T) {
 
 	if evt == nil {
 		t.Fatal("NewEvent returned nil")
+		return
 	}
 
 	if evt.TraceID != traceID {

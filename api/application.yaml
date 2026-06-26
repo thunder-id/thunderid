@@ -863,6 +863,14 @@ components:
           example:
             env: "production"
             team: "platform"
+        appSecret:
+          type: string
+          description: >
+            App Secret for backend/server-side applications — non-public clients that do not use the
+            redirect-based authorization_code flow. Used to authenticate when initiating a flow directly
+            via the Flow Execution API. When omitted on creation, a secret is generated automatically for
+            eligible applications and returned once in the creation response.
+          example: "550e8400e29b41d4a716446655440000abcdef0123456789"
 
     ApplicationCompleteResponse:
       type: object
@@ -921,6 +929,14 @@ components:
           type: string
           description: The template type of the application.
           example: "spa"
+        appSecret:
+          type: string
+          description: >
+            App Secret for backend/server-side applications. Returned only in the creation response
+            for eligible applications (non-public clients that do not use the redirect-based
+            authorization_code flow). Used to authenticate when initiating a flow directly via the
+            Flow Execution API.
+          example: "550e8400e29b41d4a716446655440000abcdef0123456789"
         url:
           type: string
           format: uri
