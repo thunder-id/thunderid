@@ -259,6 +259,8 @@ const (
 	InputTypeHidden = "HIDDEN"
 	// InputTypeSelect represents a select (dropdown) input type.
 	InputTypeSelect = "SELECT"
+	// InputTypeOUSelect represents an organization unit selection input type.
+	InputTypeOUSelect = "OU_SELECT"
 
 	// TODO: Add support for other sensitive input types:
 	// - Passkey credential fields (credentialId, clientDataJSON, authenticatorData, signature, userHandle)
@@ -353,3 +355,18 @@ const (
 	// InterceptorDataKeyChallengeTokenIn is the shared data key for the incoming challenge token.
 	InterceptorDataKeyChallengeTokenIn = "challengeTokenIn"
 )
+
+// ValidNodeTypes is the set of valid node type strings.
+var ValidNodeTypes = map[string]bool{
+	string(NodeTypeStart):         true,
+	string(NodeTypeEnd):           true,
+	string(NodeTypeTaskExecution): true,
+	string(NodeTypePrompt):        true,
+}
+
+// ValidValidationRuleTypes is the set of valid validation rule type strings.
+var ValidValidationRuleTypes = map[string]bool{
+	string(ValidationTypeRegex):     true,
+	string(ValidationTypeMinLength): true,
+	string(ValidationTypeMaxLength): true,
+}

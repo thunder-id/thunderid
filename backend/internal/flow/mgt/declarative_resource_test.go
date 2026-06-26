@@ -92,12 +92,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateFlowGraphWrapper_ValidFlow() 
 		Handle:   "basic-auth",
 		Name:     "Basic Auth",
 		FlowType: "AUTHENTICATION",
-		Nodes: []providers.NodeDefinition{
-			{ID: "start", Type: "START"},
-			{ID: "login", Type: "BASIC_AUTHENTICATION"},
-			{ID: "mfa", Type: "TOTP_AUTHENTICATION"},
-			{ID: "end", Type: "END"},
-		},
+		Nodes:    validFlowNodes(),
 	}
 
 	err := validateFlowGraphWrapper(flow)

@@ -155,3 +155,62 @@ func (_c *GraphBuilderInterfaceMock_InvalidateCache_Call) RunAndReturn(run func(
 	_c.Run(run)
 	return _c
 }
+
+// ValidateGraph provides a mock function for the type GraphBuilderInterfaceMock
+func (_mock *GraphBuilderInterfaceMock) ValidateGraph(ctx context.Context, flow *providers.CompleteFlowDefinition) *common.ServiceError {
+	ret := _mock.Called(ctx, flow)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateGraph")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *providers.CompleteFlowDefinition) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, flow)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// GraphBuilderInterfaceMock_ValidateGraph_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateGraph'
+type GraphBuilderInterfaceMock_ValidateGraph_Call struct {
+	*mock.Call
+}
+
+// ValidateGraph is a helper method to define mock.On call
+//   - ctx context.Context
+//   - flow *providers.CompleteFlowDefinition
+func (_e *GraphBuilderInterfaceMock_Expecter) ValidateGraph(ctx interface{}, flow interface{}) *GraphBuilderInterfaceMock_ValidateGraph_Call {
+	return &GraphBuilderInterfaceMock_ValidateGraph_Call{Call: _e.mock.On("ValidateGraph", ctx, flow)}
+}
+
+func (_c *GraphBuilderInterfaceMock_ValidateGraph_Call) Run(run func(ctx context.Context, flow *providers.CompleteFlowDefinition)) *GraphBuilderInterfaceMock_ValidateGraph_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *providers.CompleteFlowDefinition
+		if args[1] != nil {
+			arg1 = args[1].(*providers.CompleteFlowDefinition)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *GraphBuilderInterfaceMock_ValidateGraph_Call) Return(serviceError *common.ServiceError) *GraphBuilderInterfaceMock_ValidateGraph_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *GraphBuilderInterfaceMock_ValidateGraph_Call) RunAndReturn(run func(ctx context.Context, flow *providers.CompleteFlowDefinition) *common.ServiceError) *GraphBuilderInterfaceMock_ValidateGraph_Call {
+	_c.Call.Return(run)
+	return _c
+}

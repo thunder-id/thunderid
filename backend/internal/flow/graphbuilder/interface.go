@@ -30,5 +30,6 @@ import (
 // GraphBuilderInterface builds and caches executable flow graphs from flow definitions.
 type GraphBuilderInterface interface {
 	GetGraph(ctx context.Context, flow *providers.CompleteFlowDefinition) (core.GraphInterface, *tidcommon.ServiceError)
+	ValidateGraph(ctx context.Context, flow *providers.CompleteFlowDefinition) *tidcommon.ServiceError
 	InvalidateCache(ctx context.Context, flowID string)
 }
