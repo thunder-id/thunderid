@@ -137,6 +137,27 @@ resources:
         description: Allows the upgrade scheduler agent to execute a pending upgrade via CIBA user token
 
 ---
+# resource_type: notification_sender
+id: wayfinder_email_sender
+name: Wayfinder Email Sender
+provider: smtp
+properties:
+  - name: host
+    value: "127.0.0.1"
+  - name: port
+    value: "2525"
+  - name: username
+    value: "dev"
+  - name: password
+    value: "dev"
+  - name: from_address
+    value: "noreply@thunderid.dev"
+  - name: enable_start_tls
+    value: "false"
+  - name: enable_authentication
+    value: "true"
+
+---
 # resource_type: flow
 id: 0193b0a1-1001-7000-8000-000000000001
 name: Wayfinder Registration Flow
@@ -381,6 +402,7 @@ nodes:
     type: TASK_EXECUTION
     properties:
       emailTemplate: PASSWORD_RECOVERY
+      senderId: wayfinder_email_sender
     executor:
       name: EmailExecutor
       mode: send
@@ -623,6 +645,7 @@ nodes:
     type: TASK_EXECUTION
     properties:
       emailTemplate: USER_INVITE
+      senderId: wayfinder_email_sender
     executor:
       name: EmailExecutor
       mode: send
@@ -743,6 +766,7 @@ nodes:
     type: TASK_EXECUTION
     properties:
       emailTemplate: USER_INVITE
+      senderId: wayfinder_email_sender
     executor:
       name: EmailExecutor
       mode: send
@@ -930,6 +954,7 @@ nodes:
     type: TASK_EXECUTION
     properties:
       emailTemplate: CIBA_NOTIFICATION
+      senderId: wayfinder_email_sender
     executor:
       name: EmailExecutor
       mode: send
@@ -1693,3 +1718,4 @@ attributes:
   displayName: Alex Carter
 credentials:
   password: "{{.ALEX_CARTER_PASSWORD}}"
+
