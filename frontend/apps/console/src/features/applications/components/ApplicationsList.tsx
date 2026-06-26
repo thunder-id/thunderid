@@ -30,13 +30,20 @@ import useGetApplications from '../api/useGetApplications';
 import type {BasicApplication} from '../models/application';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
 
-export default function ApplicationsList(): JSX.Element {
+export interface ApplicationsListProps {
+  /**
+   * Search term matched against the application name, client ID and description.
+   */
+  search?: string;
+}
+
+export default function ApplicationsList({search}: ApplicationsListProps = {}): JSX.Element {
   const navigate = useNavigate();
   const {config} = useConfig();
   const {t} = useTranslation();
   const logger = useLogger('ApplicationsList');
   const dataGridLocaleText = useDataGridLocaleText();
-  const {data, isLoading, error} = useGetApplications();
+  const {data, isLoading, error} = useGetApplications({search});
   const systemConsoleClientId = (config?.client?.client_id ?? 'CONSOLE').toUpperCase();
 
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);

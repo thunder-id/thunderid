@@ -30,6 +30,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -145,7 +146,14 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 // HandleApplicationListRequest handles the application request.
 func (ah *applicationHandler) HandleApplicationListRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	listResponse, svcErr := ah.service.GetApplicationList(ctx)
+
+	filterGroup, err := filter.ParseFilterParam(r.URL.Query())
+	if err != nil {
+		ah.handleError(ctx, w, r, &ErrorInvalidFilter)
+		return
+	}
+
+	listResponse, svcErr := ah.service.GetApplicationList(ctx, filterGroup)
 	if svcErr != nil {
 		ah.handleError(ctx, w, r, svcErr)
 		return

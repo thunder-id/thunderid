@@ -19,9 +19,12 @@
 package entity
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 type StoreConstantsTestSuite struct {
@@ -127,7 +130,7 @@ func (s *StoreConstantsTestSuite) TestBuildBulkEntityExistsQueryInOUs_WithBoth()
 }
 
 func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_NoFilters() {
-	q, args, err := buildEntityListQuery("user", nil, 10, 0, testDeploymentID)
+	q, args, err := buildEntityListQuery("user", nil, nil, 10, 0, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -135,14 +138,14 @@ func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_NoFilters() {
 
 func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_WithFilters() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	q, args, err := buildEntityListQuery("user", filters, 10, 0, testDeploymentID)
+	q, args, err := buildEntityListQuery("user", filters, nil, 10, 0, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
 }
 
 func (s *StoreConstantsTestSuite) TestBuildEntityCountQuery_NoFilters() {
-	q, args, err := buildEntityCountQuery("user", nil, testDeploymentID)
+	q, args, err := buildEntityCountQuery("user", nil, nil, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
@@ -150,10 +153,77 @@ func (s *StoreConstantsTestSuite) TestBuildEntityCountQuery_NoFilters() {
 
 func (s *StoreConstantsTestSuite) TestBuildEntityCountQuery_WithFilters() {
 	filters := map[string]interface{}{"email": "a@b.com"}
-	q, args, err := buildEntityCountQuery("user", filters, testDeploymentID)
+	q, args, err := buildEntityCountQuery("user", filters, nil, testDeploymentID)
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_WithContainsFilterGroup() {
+	fg := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+		{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorContains, Value: "Foo"}},
+		{Connector: tidcommon.LogicalOr, Expr: tidcommon.FilterExpression{
+			Attribute: "clientId", Operator: tidcommon.OperatorContains, Value: "Foo"}},
+	}}
+	q, args, err := buildEntityListQuery("app", nil, fg, 10, 0, testDeploymentID)
+	s.NoError(err)
+
+	// One condition per clause, OR'd, against both SYSTEM_ATTRIBUTES and ATTRIBUTES.
+	s.Contains(q.PostgresQuery, "COALESCE(SYSTEM_ATTRIBUTES->>'name', ATTRIBUTES->>'name', '') ILIKE $")
+	s.Contains(q.PostgresQuery, "COALESCE(SYSTEM_ATTRIBUTES->>'clientId', ATTRIBUTES->>'clientId', '') ILIKE $")
+	s.Contains(q.PostgresQuery, " OR ")
+	s.Contains(q.SQLiteQuery, "LOWER(COALESCE(json_extract(SYSTEM_ATTRIBUTES, '$.name')")
+	s.Contains(q.SQLiteQuery, "LIKE ?")
+
+	// category + one bound pattern per clause + deployment id + limit + offset.
+	s.Len(args, 6)
+	s.Equal("%foo%", args[1])
+	s.Equal("%foo%", args[2])
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityCountQuery_WithContainsFilterGroup() {
+	fg := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+		{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorContains, Value: "bar"}},
+	}}
+	q, args, err := buildEntityCountQuery("app", nil, fg, testDeploymentID)
+	s.NoError(err)
+	s.Contains(q.PostgresQuery, "ILIKE $")
+	// category + one pattern + deployment id.
+	s.Len(args, 3)
+	s.Equal("%bar%", args[1])
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_EqFilterGroup() {
+	fg := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+		{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorEq, Value: "Exact"}},
+	}}
+	q, args, err := buildEntityListQuery("app", nil, fg, 10, 0, testDeploymentID)
+	s.NoError(err)
+	s.Contains(q.PostgresQuery, "LOWER(COALESCE(SYSTEM_ATTRIBUTES->>'name', ATTRIBUTES->>'name', '')) = LOWER($")
+	s.Equal("Exact", args[1])
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_FilterEscapesWildcards() {
+	fg := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+		{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorContains, Value: "50%_off"}},
+	}}
+	_, args, err := buildEntityListQuery("app", nil, fg, 10, 0, testDeploymentID)
+	s.NoError(err)
+	s.Equal(`%50\%\_off%`, args[1])
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_EmptyFilterGroupIgnored() {
+	q, _, err := buildEntityListQuery("app", nil, &tidcommon.FilterGroup{}, 10, 0, testDeploymentID)
+	s.NoError(err)
+	s.False(strings.Contains(q.PostgresQuery, "ILIKE"))
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_UnsupportedOperatorErrors() {
+	fg := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+		{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorGt, Value: "x"}},
+	}}
+	_, _, err := buildEntityListQuery("app", nil, fg, 10, 0, testDeploymentID)
+	s.Error(err)
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_EmptyFilters() {

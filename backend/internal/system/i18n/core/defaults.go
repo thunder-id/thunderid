@@ -191,6 +191,8 @@ var defaultMessages = map[string]string{
 	"error.applicationservice.invalid_certificate_value_description": "The provided certificate value is invalid",
 	"error.applicationservice.invalid_client_id": "Invalid client ID",
 	"error.applicationservice.invalid_client_id_description": "The provided client ID is invalid or empty",
+	"error.applicationservice.invalid_filter": "Invalid filter parameter",
+	"error.applicationservice.invalid_filter_description": "The filter parameter is malformed or targets an unsupported attribute or operator. Supported attributes are name, clientId and description with the co or eq operators.",
 	"error.applicationservice.invalid_grant_type": "Invalid grant type",
 	"error.applicationservice.invalid_grant_type_description": "One or more provided grant types are invalid",
 	"error.applicationservice.invalid_inbound_auth_config": "Invalid inbound auth config",

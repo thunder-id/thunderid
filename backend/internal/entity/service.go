@@ -31,6 +31,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -59,9 +60,10 @@ type EntityServiceInterface interface {
 
 	// Lists (category-scoped)
 	GetEntityListCount(ctx context.Context, category providers.EntityCategory,
-		filters map[string]interface{}) (int, error)
+		filters map[string]interface{}, search *tidcommon.FilterGroup) (int, error)
 	GetEntityList(ctx context.Context, category providers.EntityCategory,
-		limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
+		limit, offset int, filters map[string]interface{},
+		search *tidcommon.FilterGroup) ([]providers.Entity, error)
 	GetEntityListCountByOUIDs(ctx context.Context, category providers.EntityCategory,
 		ouIDs []string, filters map[string]interface{}) (int, error)
 	GetEntityListByOUIDs(ctx context.Context, category providers.EntityCategory,
@@ -378,14 +380,15 @@ func (s *entityService) SearchEntities(ctx context.Context,
 
 // GetEntityListCount retrieves the total count of entities by category.
 func (s *entityService) GetEntityListCount(ctx context.Context, category providers.EntityCategory,
-	filters map[string]interface{}) (int, error) {
-	return s.store.GetEntityListCount(ctx, string(category), filters)
+	filters map[string]interface{}, search *tidcommon.FilterGroup) (int, error) {
+	return s.store.GetEntityListCount(ctx, string(category), filters, search)
 }
 
 // GetEntityList retrieves a list of entities by category.
 func (s *entityService) GetEntityList(ctx context.Context, category providers.EntityCategory,
-	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
-	return s.store.GetEntityList(ctx, string(category), limit, offset, filters)
+	limit, offset int, filters map[string]interface{},
+	search *tidcommon.FilterGroup) ([]providers.Entity, error) {
+	return s.store.GetEntityList(ctx, string(category), limit, offset, filters, search)
 }
 
 // GetEntityListCountByOUIDs retrieves the total count of entities scoped to OU IDs.

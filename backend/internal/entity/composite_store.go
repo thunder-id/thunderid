@@ -25,6 +25,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -158,30 +159,31 @@ func (c *entityCompositeStore) SearchEntities(ctx context.Context,
 
 // GetEntityListCount retrieves the total count of entities from both stores.
 func (c *entityCompositeStore) GetEntityListCount(ctx context.Context, category string,
-	filters map[string]interface{}) (int, error) {
+	filters map[string]interface{}, search *tidcommon.FilterGroup) (int, error) {
 	return c.getDistinctEntityCount(
-		func() (int, error) { return c.dbStore.GetEntityListCount(ctx, category, filters) },
-		func() (int, error) { return c.fileStore.GetEntityListCount(ctx, category, filters) },
+		func() (int, error) { return c.dbStore.GetEntityListCount(ctx, category, filters, search) },
+		func() (int, error) { return c.fileStore.GetEntityListCount(ctx, category, filters, search) },
 		func(count int) ([]providers.Entity, error) {
-			return c.dbStore.GetEntityList(ctx, category, count, 0, filters)
+			return c.dbStore.GetEntityList(ctx, category, count, 0, filters, search)
 		},
 		func(count int) ([]providers.Entity, error) {
-			return c.fileStore.GetEntityList(ctx, category, count, 0, filters)
+			return c.fileStore.GetEntityList(ctx, category, count, 0, filters, search)
 		},
 	)
 }
 
 // GetEntityList retrieves entities from both stores with pagination.
 func (c *entityCompositeStore) GetEntityList(ctx context.Context, category string,
-	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
+	limit, offset int, filters map[string]interface{},
+	search *tidcommon.FilterGroup) ([]providers.Entity, error) {
 	entities, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
-		func() (int, error) { return c.dbStore.GetEntityListCount(ctx, category, filters) },
-		func() (int, error) { return c.fileStore.GetEntityListCount(ctx, category, filters) },
+		func() (int, error) { return c.dbStore.GetEntityListCount(ctx, category, filters, search) },
+		func() (int, error) { return c.fileStore.GetEntityListCount(ctx, category, filters, search) },
 		func(count int) ([]providers.Entity, error) {
-			return c.dbStore.GetEntityList(ctx, category, count, 0, filters)
+			return c.dbStore.GetEntityList(ctx, category, count, 0, filters, search)
 		},
 		func(count int) ([]providers.Entity, error) {
-			return c.fileStore.GetEntityList(ctx, category, count, 0, filters)
+			return c.fileStore.GetEntityList(ctx, category, count, 0, filters, search)
 		},
 		mergeAndDeduplicateEntities,
 		limit,

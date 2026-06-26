@@ -25,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1725,6 +1726,82 @@ func (ts *ApplicationAPITestSuite) TestApplicationListRetrievesMultiple() {
 	var listResponse ApplicationList
 	json.NewDecoder(resp.Body).Decode(&listResponse)
 	ts.Assert().GreaterOrEqual(listResponse.TotalResults, 3)
+}
+
+// TestApplicationListWithSearchFilter tests the SCIM-style ?filter= search on the listing endpoint,
+// matching the application name with the case-insensitive "co" (contains) operator.
+func (ts *ApplicationAPITestSuite) TestApplicationListWithSearchFilter() {
+	unique := "Zphyr"
+	apps := []struct {
+		name  string
+		match bool
+	}{
+		{name: unique + " Portal", match: true},
+		{name: "lower " + strings.ToLower(unique), match: true},
+		{name: "Unrelated Service", match: false},
+	}
+
+	appIDs := make([]string, 0, len(apps))
+	for i, a := range apps {
+		appID, err := createApplication(Application{
+			OUID:        testOUID,
+			Name:        a.name,
+			Description: "search filter test",
+			URL:         fmt.Sprintf("https://searchfilter%d.example.com", i),
+			InboundAuthConfig: []InboundAuthConfig{
+				{
+					Type: "oauth2",
+					OAuthAppConfig: &OAuthAppConfig{
+						RedirectURIs:            []string{fmt.Sprintf("https://searchfilter%d.example.com/cb", i)},
+						GrantTypes:              []string{"authorization_code"},
+						ResponseTypes:           []string{"code"},
+						TokenEndpointAuthMethod: "client_secret_basic",
+						Scopes:                  []string{"openid"},
+					},
+				},
+			},
+		})
+		ts.Require().NoError(err)
+		appIDs = append(appIDs, appID)
+	}
+	defer func() {
+		for _, appID := range appIDs {
+			deleteApplication(appID)
+		}
+	}()
+
+	// Case-insensitive contains match on name.
+	req, _ := http.NewRequest("GET", testServerURL+"/applications", nil)
+	q := req.URL.Query()
+	q.Set("filter", fmt.Sprintf(`name co "%s"`, unique))
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Assert().Equal(http.StatusOK, resp.StatusCode)
+
+	var listResponse ApplicationList
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&listResponse))
+
+	ts.Assert().Equal(2, listResponse.TotalResults)
+	ts.Assert().Len(listResponse.Applications, 2)
+	for _, app := range listResponse.Applications {
+		ts.Assert().Contains(strings.ToLower(app.Name), strings.ToLower(unique))
+	}
+}
+
+// TestApplicationListWithInvalidFilter tests that a malformed filter expression is rejected with 400.
+func (ts *ApplicationAPITestSuite) TestApplicationListWithInvalidFilter() {
+	req, _ := http.NewRequest("GET", testServerURL+"/applications", nil)
+	q := req.URL.Query()
+	q.Set("filter", "name") // missing operator and value
+	req.URL.RawQuery = q.Encode()
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Assert().Equal(http.StatusBadRequest, resp.StatusCode)
 }
 
 // TestApplicationUpdateCompleteOAuthConfig tests updating all OAuth fields.

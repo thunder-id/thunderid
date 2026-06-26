@@ -21,6 +21,7 @@ package entityprovider
 import (
 	"encoding/json"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -72,9 +73,10 @@ type EntityProviderInterface interface {
 	GetEntitiesByIDs(entityIDs []string) ([]providers.Entity, *EntityProviderError)
 
 	// GetEntityListCount returns the total number of entities in the given category.
-	GetEntityListCount(category providers.EntityCategory, filters map[string]interface{}) (int, *EntityProviderError)
+	GetEntityListCount(category providers.EntityCategory, filters map[string]interface{},
+		search *tidcommon.FilterGroup) (int, *EntityProviderError)
 
 	// GetEntityList returns a page of entities in the given category.
 	GetEntityList(category providers.EntityCategory, limit, offset int,
-		filters map[string]interface{}) ([]providers.Entity, *EntityProviderError)
+		filters map[string]interface{}, search *tidcommon.FilterGroup) ([]providers.Entity, *EntityProviderError)
 }

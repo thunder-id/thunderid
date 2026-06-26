@@ -199,13 +199,13 @@ func (s *agentService) GetAgentList(ctx context.Context, limit, offset int,
 		limit = 30
 	}
 
-	totalCount, err := s.entityService.GetEntityListCount(ctx, providers.EntityCategoryAgent, filters)
+	totalCount, err := s.entityService.GetEntityListCount(ctx, providers.EntityCategoryAgent, filters, nil)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get agent list count", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	entities, err := s.entityService.GetEntityList(ctx, providers.EntityCategoryAgent, limit, offset, filters)
+	entities, err := s.entityService.GetEntityList(ctx, providers.EntityCategoryAgent, limit, offset, filters, nil)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to get agent list", log.Error(err))
 		return nil, &tidcommon.InternalServerError

@@ -72,6 +72,8 @@ const (
 	OperatorGt Operator = "gt"
 	// OperatorLt represents the less-than operator.
 	OperatorLt Operator = "lt"
+	// OperatorContains represents the case-insensitive substring (contains) operator.
+	OperatorContains Operator = "co"
 )
 
 // FilterExpression holds a parsed filter expression from an API request.

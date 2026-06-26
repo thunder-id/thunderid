@@ -36,6 +36,10 @@ export interface UseGetApplicationsParams {
    * Number of records to skip for pagination.
    */
   offset?: number;
+  /**
+   * Search term matched against the application name, client ID and description.
+   */
+  search?: string;
 }
 
 /**
@@ -70,19 +74,40 @@ export interface UseGetApplicationsParams {
  *
  * @public
  */
+/**
+ * Builds a SCIM-style filter expression that matches the search term (case-insensitive substring)
+ * against the application name, client ID and description, OR'd together. Double quotes are stripped
+ * since the backend filter grammar does not support escaped quotes inside quoted values.
+ *
+ * @param search - The raw search term.
+ * @returns A SCIM filter expression, or an empty string when there is no term.
+ */
+function buildApplicationsFilter(search: string): string {
+  const term: string = search.trim().replace(/"/g, '');
+  if (!term) {
+    return '';
+  }
+  return ['name', 'clientId', 'description'].map((field) => `${field} co "${term}"`).join(' OR ');
+}
+
 export default function useGetApplications(params?: UseGetApplicationsParams): UseQueryResult<ApplicationListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0} = params ?? {};
+  const {limit = 30, offset = 0, search = ''} = params ?? {};
+  const appsFilter: string = buildApplicationsFilter(search);
 
   return useQuery<ApplicationListResponse>({
-    queryKey: [ApplicationQueryKeys.APPLICATIONS, {limit, offset}],
+    queryKey: [ApplicationQueryKeys.APPLICATIONS, {limit, offset, filter: appsFilter}],
     queryFn: async (): Promise<ApplicationListResponse> => {
       const serverUrl: string = getServerUrl();
       const queryParams: URLSearchParams = new URLSearchParams({
         limit: limit.toString(),
         offset: offset.toString(),
       });
+
+      if (appsFilter) {
+        queryParams.set('filter', appsFilter);
+      }
 
       const response: {
         data: ApplicationListResponse;

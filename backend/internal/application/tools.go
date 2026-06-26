@@ -143,7 +143,7 @@ func (t *applicationTools) listApplications(
 	req *mcp.CallToolRequest,
 	_ any,
 ) (*mcp.CallToolResult, model.ApplicationListOutput, error) {
-	listResponse, svcErr := t.appService.GetApplicationList(ctx)
+	listResponse, svcErr := t.appService.GetApplicationList(ctx, nil)
 	if svcErr != nil {
 		return nil, model.ApplicationListOutput{},
 			fmt.Errorf("failed to list applications: %s", svcErr.ErrorDescription)

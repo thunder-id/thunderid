@@ -74,7 +74,7 @@ func (e *applicationExporter) GetParameterizerType() string {
 // GetAllResourceIDs retrieves all application IDs.
 // In composite mode, this excludes declarative (YAML-based) applications.
 func (e *applicationExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
-	apps, err := e.service.GetApplicationList(ctx)
+	apps, err := e.service.GetApplicationList(ctx, nil)
 	if err != nil {
 		return nil, &tidcommon.InternalServerError
 	}
