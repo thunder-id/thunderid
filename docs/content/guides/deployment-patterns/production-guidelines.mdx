@@ -175,16 +175,19 @@ Protect the encryption key with the same level of care as a database password. I
 
 ## Configure a CORS Allowlist
 
-Cross-Origin Resource Sharing (CORS) controls which origins can make requests to <ProductName /> from a browser. The default configuration allows only `https://localhost:3000`. In production, you must explicitly list every origin that legitimately needs access.
+Cross-Origin Resource Sharing (CORS) controls which origins can make requests to <ProductName /> from a browser. Allowed origins are managed through the server-config `cors` section. No origins are allowed by default; in production, you must explicitly list every origin that legitimately needs access.
 
-Update `deployment.yaml` with your allowed origins:
+Provide your allowed origins as a declarative baseline: create `config/resources/server_configs/cors.yaml` and enable the server-config store by setting `server_config.store: composite` in `deployment.yaml` so it loads at boot (the default, `mutable`, does not load declarative resources):
 
 ```yaml
-cors:
-  allowed_origins:
+name: cors
+value:
+  allowedOrigins:
     - "https://app.example.com"
     - "https://admin.example.com"
 ```
+
+You can also add or change origins at runtime — without a restart — with `PUT /server-config/cors` (the runtime value is merged with this baseline).
 
 **Guidelines:**
 
@@ -193,13 +196,14 @@ cors:
 - If your domain follows a consistent pattern, you can use a regular expression:
 
   ```yaml
-  cors:
-    allowed_origins:
+  name: cors
+  value:
+    allowedOrigins:
       - "https://app.example.com"
       - regex: '^https://[a-z0-9-]+\.example\.com$'
   ```
 
-  Regex patterns must be fully anchored — start with `^` and end with `$`. ThunderID logs a warning at startup for any pattern that is not fully anchored, because unanchored patterns match more origins than intended.
+  Regex patterns must be fully anchored — start with `^` and end with `$`. <ProductName /> logs a warning at startup for any pattern that is not fully anchored, because unanchored patterns match more origins than intended.
 
 ## Configure Caching
 

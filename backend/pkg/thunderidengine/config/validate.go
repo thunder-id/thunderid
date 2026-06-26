@@ -23,8 +23,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-
-	"github.com/thunder-id/thunderid/internal/system/cors"
 )
 
 const schemeHTTPS = "https"
@@ -77,16 +75,6 @@ func (c *DPoPConfig) Validate() error {
 		}
 	}
 	return nil
-}
-
-// Validate checks every allowed-origins entry so configuration errors —
-// invalid literals, malformed regexes, the unsupported "*" wildcard — are
-// surfaced at server start rather than on the first cross-origin request.
-// Installation of the runtime matcher is the server bootstrap's
-// responsibility (see cors.InitializeMatcher); this config layer only owns
-// YAML validation.
-func (c *CORSConfig) Validate() error {
-	return cors.Validate(c.AllowedOrigins)
 }
 
 // IsConfigured reports whether the trusted issuer feature is configured and active.

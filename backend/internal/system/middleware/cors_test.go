@@ -23,14 +23,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 	yaml "gopkg.in/yaml.v3"
 
-	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cors"
+	"github.com/thunder-id/thunderid/internal/system/cors/corstest"
 )
 
 type CORSMiddlewareTestSuite struct {
@@ -41,21 +39,16 @@ func TestCORSMiddlewareTestSuite(t *testing.T) {
 	suite.Run(t, new(CORSMiddlewareTestSuite))
 }
 
-// initRuntime parses the given YAML allowed-origins document, installs a
-// fresh CORS matcher from it, and seeds the runtime config singleton. Pass
-// the empty string to install an empty matcher. SetupTest calls this with
-// the default doc; tests that need different origins call ResetServerRuntime
-// + initRuntime directly. cors.InitializeMatcher is invoked explicitly here
-// because production wires it from the server bootstrap; tests that bypass
-// LoadConfig + main own that step themselves.
+// initRuntime parses the given YAML allowed-origins document and installs a fresh CORS dynamic matcher
+// from it. Pass the empty string to install an empty (deny-all) matcher. SetupTest calls this with the
+// default doc; tests that need different origins call it directly. Origins are sourced entirely from the
+// dynamic matcher now — there is no static deployment.yaml matcher.
 func (suite *CORSMiddlewareTestSuite) initRuntime(allowedOriginsYAML string) {
 	var entries cors.OriginEntries
 	if allowedOriginsYAML != "" {
 		suite.Require().NoError(yaml.Unmarshal([]byte(allowedOriginsYAML), &entries))
 	}
-	cfg := &config.Config{CORS: engineconfig.CORSConfig{AllowedOrigins: entries}}
-	suite.Require().NoError(cors.InitializeMatcher(cfg.CORS.AllowedOrigins))
-	suite.Require().NoError(config.InitializeServerRuntime("/tmp", cfg))
+	corstest.InstallMatcherEntries(suite.T(), entries)
 }
 
 func (suite *CORSMiddlewareTestSuite) SetupTest() {
@@ -67,7 +60,7 @@ func (suite *CORSMiddlewareTestSuite) SetupTest() {
 }
 
 func (suite *CORSMiddlewareTestSuite) TearDownTest() {
-	config.ResetServerRuntime()
+	cors.InitializeDynamicMatcher(nil)
 }
 
 // newGetRequest returns a (GET request, recorder) pair primed with the given
@@ -269,7 +262,6 @@ func (suite *CORSMiddlewareTestSuite) TestWithCORS_MultipleAllowedOrigins() {
 }
 
 func (suite *CORSMiddlewareTestSuite) TestWithCORS_NoOriginsConfigured() {
-	config.ResetServerRuntime()
 	suite.initRuntime("")
 
 	_, wrapped := WithCORS("GET /test", noopHandler, fullOpts)
@@ -280,6 +272,20 @@ func (suite *CORSMiddlewareTestSuite) TestWithCORS_NoOriginsConfigured() {
 	assert.Empty(suite.T(), w.Header().Get("Access-Control-Allow-Origin"))
 	// Empty config still fails closed via a real (empty) matcher; Vary is
 	// set so caches don't pool an allow response with this deny one.
+	assert.Equal(suite.T(), "Origin", w.Header().Get("Vary"))
+}
+
+func (suite *CORSMiddlewareTestSuite) TestWithCORS_NoMatcherInstalledFailsClosed() {
+	// When no dynamic matcher is installed (e.g. the server-config service is not wired), every
+	// cross-origin request is denied — the same fail-closed outcome as an empty allow-list.
+	cors.InitializeDynamicMatcher(nil)
+
+	_, wrapped := WithCORS("GET /test", noopHandler, fullOpts)
+
+	req, w := newGetRequest("https://example.com")
+	wrapped(w, req)
+
+	assert.Empty(suite.T(), w.Header().Get("Access-Control-Allow-Origin"))
 	assert.Equal(suite.T(), "Origin", w.Header().Get("Vary"))
 }
 
@@ -394,7 +400,6 @@ func (suite *CORSMiddlewareTestSuite) TestWithCORS_OriginAllWhitespaceIgnored() 
 // --- IPv6 / IDN / null. ---------------------------------------------------
 
 func (suite *CORSMiddlewareTestSuite) TestWithCORS_IPv6Origin() {
-	config.ResetServerRuntime()
 	suite.initRuntime(`
 - http://[::1]:8080
 `)
@@ -411,7 +416,6 @@ func (suite *CORSMiddlewareTestSuite) TestWithCORS_IPv6Origin() {
 func (suite *CORSMiddlewareTestSuite) TestWithCORS_IDNOriginPunycodeEquivalence() {
 	// Configure with the Punycode form; a request that uses the Unicode form
 	// must canonicalize to the same value and match.
-	config.ResetServerRuntime()
 	suite.initRuntime(`
 - https://xn--mnchen-3ya.example
 `)
@@ -426,7 +430,6 @@ func (suite *CORSMiddlewareTestSuite) TestWithCORS_IDNOriginPunycodeEquivalence(
 }
 
 func (suite *CORSMiddlewareTestSuite) TestWithCORS_NullOriginAllowed() {
-	config.ResetServerRuntime()
 	suite.initRuntime(`
 - "null"
 `)
@@ -486,7 +489,6 @@ func (suite *CORSMiddlewareTestSuite) TestWithCORS_HotReloadMatcherTakesEffect()
 	wrapped(w1, req1)
 	assert.Equal(suite.T(), "https://example.com", w1.Header().Get("Access-Control-Allow-Origin"))
 
-	config.ResetServerRuntime()
 	suite.initRuntime(`
 - https://other.com
 `)

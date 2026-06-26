@@ -25,17 +25,13 @@ import (
 	"strings"
 	"testing"
 
-	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	yaml "gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
-	"github.com/thunder-id/thunderid/internal/system/cors"
 )
 
 type fakeImportService struct {
@@ -63,15 +59,7 @@ type ImportHandlerTestSuite struct {
 
 func (suite *ImportHandlerTestSuite) SetupTest() {
 	config.ResetServerRuntime()
-	var allowedOrigins cors.OriginEntries
-	suite.Require().NoError(yaml.Unmarshal([]byte(`
-- https://localhost:3000
-`), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: engineconfig.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	suite.Require().NoError(cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
-	require.NoError(suite.T(), config.InitializeServerRuntime("/tmp/test", testConfig))
+	require.NoError(suite.T(), config.InitializeServerRuntime("/tmp/test", &config.Config{}))
 
 	suite.service = &fakeImportService{}
 	suite.handler = newImportHandler(suite.service)

@@ -28,8 +28,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/thunder-id/thunderid/tests/integration/testutils"
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 // ServerConfigAPITestSuite validates the generic server-config store API: list, get-by-name, the layered
@@ -83,18 +83,18 @@ func (suite *ServerConfigAPITestSuite) TestGetByNameMergesDeclarativeAndWritable
 	suite.putCORS(fmt.Sprintf(`[%q]`, sampleOrigin))
 
 	layers := suite.getLayers(corsConfigURL)
-	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.ReadOnly))
-	suite.Equal([]string{quoted(sampleOrigin)}, rawStrings(layers.Writable))
+	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.ReadOnly.AllowedOrigins))
+	suite.Equal([]string{quoted(sampleOrigin)}, rawStrings(layers.Writable.AllowedOrigins))
 	// merged = readOnly (declarative) ∪ writable, declarative first.
-	suite.Equal([]string{quoted(declarativeOrigin), quoted(sampleOrigin)}, rawStrings(layers.Merged))
+	suite.Equal([]string{quoted(declarativeOrigin), quoted(sampleOrigin)}, rawStrings(layers.Merged.AllowedOrigins))
 }
 
 func (suite *ServerConfigAPITestSuite) TestGetByNameReturnsDeclarativeWhenWritableEmpty() {
 	// SetupTest cleared the writable layer; the read-only declarative layer is always present.
 	layers := suite.getLayers(corsConfigURL)
-	suite.Empty(layers.Writable)
-	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.ReadOnly))
-	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.Merged))
+	suite.Empty(layers.Writable.AllowedOrigins)
+	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.ReadOnly.AllowedOrigins))
+	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.Merged.AllowedOrigins))
 }
 
 func (suite *ServerConfigAPITestSuite) TestMergeDeduplicatesOverlap() {
@@ -102,8 +102,8 @@ func (suite *ServerConfigAPITestSuite) TestMergeDeduplicatesOverlap() {
 	suite.putCORS(fmt.Sprintf(`[%q]`, declarativeOrigin))
 
 	layers := suite.getLayers(corsConfigURL)
-	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.Writable))
-	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.Merged))
+	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.Writable.AllowedOrigins))
+	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.Merged.AllowedOrigins))
 }
 
 func (suite *ServerConfigAPITestSuite) TestGetByNameUnsupportedNameReturns400() {
@@ -120,25 +120,25 @@ func (suite *ServerConfigAPITestSuite) TestPutReplacesWritableLeavingDeclarative
 	suite.putCORS(fmt.Sprintf(`[%q]`, otherOrigin)) // replaces, does not append
 
 	layers := suite.getLayers(corsConfigURL)
-	suite.Equal([]string{quoted(otherOrigin)}, rawStrings(layers.Writable))
-	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.ReadOnly))
+	suite.Equal([]string{quoted(otherOrigin)}, rawStrings(layers.Writable.AllowedOrigins))
+	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.ReadOnly.AllowedOrigins))
 
 	suite.putCORS(`[]`) // clearing the writable layer leaves the declarative layer untouched
 	layers = suite.getLayers(corsConfigURL)
-	suite.Empty(layers.Writable)
-	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.ReadOnly))
-	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.Merged))
+	suite.Empty(layers.Writable.AllowedOrigins)
+	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.ReadOnly.AllowedOrigins))
+	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.Merged.AllowedOrigins))
 }
 
 func (suite *ServerConfigAPITestSuite) TestPutInvalidValueReturns400AndDoesNotPersist() {
-	status, body := suite.putRaw(suite.adminClient, `["*"]`)
+	status, body := suite.putRaw(suite.adminClient, corsBody(`["*"]`))
 	suite.Equal(http.StatusBadRequest, status)
 	suite.Equal("SCF-1003", suite.errorCode(body))
 
 	// Nothing persisted: the writable layer is still empty and the declarative layer is intact.
 	layers := suite.getLayers(corsConfigURL)
-	suite.Empty(layers.Writable)
-	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.ReadOnly))
+	suite.Empty(layers.Writable.AllowedOrigins)
+	suite.Equal([]string{quoted(declarativeOrigin)}, rawStrings(layers.ReadOnly.AllowedOrigins))
 }
 
 func (suite *ServerConfigAPITestSuite) TestPutMalformedBodyReturns400() {
@@ -161,10 +161,15 @@ func (suite *ServerConfigAPITestSuite) TestUnauthenticatedRequestsAreRejected() 
 
 // --- helpers ---
 
-// putCORS sets the cors writable layer to the given raw JSON array and requires a 200 response.
-func (suite *ServerConfigAPITestSuite) putCORS(corsArray string) {
-	status, _ := suite.putRaw(suite.adminClient, corsArray)
+// putCORS sets the cors writable layer to the given allowed-origins array and requires a 200 response.
+func (suite *ServerConfigAPITestSuite) putCORS(allowedOrigins string) {
+	status, _ := suite.putRaw(suite.adminClient, corsBody(allowedOrigins))
 	suite.Require().Equal(http.StatusOK, status)
+}
+
+// corsBody wraps an allowed-origins array literal in the object-shaped section value the API expects.
+func corsBody(allowedOrigins string) string {
+	return `{"allowedOrigins":` + allowedOrigins + `}`
 }
 
 // putRaw sends a PUT /server-config/cors with the given body and returns the status and response body.

@@ -115,10 +115,6 @@ thunderid-component:
     size: 10000   # Maximum number of cache entries
     ttl: 3600     # Cache entry TTL in seconds
 
-  cors:
-    allowed_origins:
-      - "https://gate.your-domain.com"
-      - "https://localhost:3000"
 
   # ── Gate and Console ─────────────────────────────────────────────────────────
   gate:

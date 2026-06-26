@@ -20,38 +20,47 @@ package cors
 
 import "encoding/json"
 
+// OriginConfig is the cors server-config section value. It is an object (not a bare list) so future CORS
+// settings can be added without a breaking change.
+type OriginConfig struct {
+	AllowedOrigins OriginEntries `json:"allowedOrigins" yaml:"allowedOrigins"`
+}
+
 // OriginHandler decodes, validates, and merges CORS origin config. It satisfies a consumer's
 // value-handler interface structurally, so the cors package stays decoupled from the configuration store.
 type OriginHandler struct{}
 
-// Decode parses raw JSON origin entries into typed OriginEntries. Empty input yields an empty (non-nil)
-// list so an unset layer serializes as [] rather than null, consistent with the merged layer.
+// Decode parses a raw JSON cors value into OriginConfig. Empty input or a missing allowedOrigins key yields
+// an empty (non-nil) list; an explicit allowedOrigins:null is rejected.
 func (OriginHandler) Decode(raw json.RawMessage) (any, error) {
 	if len(raw) == 0 {
-		return OriginEntries{}, nil
+		return OriginConfig{AllowedOrigins: OriginEntries{}}, nil
 	}
-	var entries OriginEntries
-	if err := json.Unmarshal(raw, &entries); err != nil {
+	var cfg OriginConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, err
 	}
-	return entries, nil
+	if cfg.AllowedOrigins == nil {
+		cfg.AllowedOrigins = OriginEntries{}
+	}
+	return cfg, nil
 }
 
-// Validate checks that incoming is a valid set of origin entries. The readOnly and writable layers are
+// Validate checks that incoming carries a valid set of origin entries. The readOnly and writable layers are
 // unused for CORS — an origin list is valid on its own.
 func (OriginHandler) Validate(incoming, _, _ any) error {
-	entries, _ := incoming.(OriginEntries)
-	return Validate(entries)
+	cfg, _ := incoming.(OriginConfig)
+	return Validate(cfg.AllowedOrigins)
 }
 
-// Merge returns the union of the readOnly and writable origin lists, de-duplicated, preserving order
-// (readOnly entries first). Empty or absent layers contribute nothing.
+// Merge returns an OriginConfig whose AllowedOrigins is the union of the readOnly and writable origin lists,
+// de-duplicated, preserving order (readOnly entries first). Empty or absent layers contribute nothing.
 func (OriginHandler) Merge(readOnly, writable any) any {
 	seen := make(map[string]struct{})
 	out := make(OriginEntries, 0)
 	for _, layer := range []any{readOnly, writable} {
-		entries, _ := layer.(OriginEntries)
-		for _, e := range entries {
+		cfg, _ := layer.(OriginConfig)
+		for _, e := range cfg.AllowedOrigins {
 			key := entryKey(e)
 			if _, dup := seen[key]; dup {
 				continue
@@ -60,5 +69,5 @@ func (OriginHandler) Merge(readOnly, writable any) any {
 			out = append(out, e)
 		}
 	}
-	return out
+	return OriginConfig{AllowedOrigins: out}
 }

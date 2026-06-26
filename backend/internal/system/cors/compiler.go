@@ -32,7 +32,7 @@ import (
 // entries). Anything else is rejected at decode time.
 func (e *OriginEntries) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.SequenceNode {
-		return fmt.Errorf("cors: allowed_origins must be a list, got %v", nodeKindString(node.Kind))
+		return fmt.Errorf("cors: allowedOrigins must be a list, got %v", nodeKindString(node.Kind))
 	}
 	out := make(OriginEntries, 0, len(node.Content))
 	for i, child := range node.Content {
@@ -44,14 +44,14 @@ func (e *OriginEntries) UnmarshalYAML(node *yaml.Node) error {
 				Regex string `yaml:"regex"`
 			}
 			if err := child.Decode(&obj); err != nil {
-				return fmt.Errorf("cors: allowed_origins[%d]: %w", i, err)
+				return fmt.Errorf("cors: allowedOrigins[%d]: %w", i, err)
 			}
 			if obj.Regex == "" {
-				return fmt.Errorf("cors: allowed_origins[%d]: regex object missing 'regex' field", i)
+				return fmt.Errorf("cors: allowedOrigins[%d]: regex object missing 'regex' field", i)
 			}
 			out = append(out, regexEntry{Pattern: obj.Regex})
 		default:
-			return fmt.Errorf("cors: allowed_origins[%d]: entry must be a string or { regex: ... } object", i)
+			return fmt.Errorf("cors: allowedOrigins[%d]: entry must be a string or { regex: ... } object", i)
 		}
 	}
 	*e = out
@@ -64,10 +64,10 @@ func (e *OriginEntries) UnmarshalYAML(node *yaml.Node) error {
 func (e *OriginEntries) UnmarshalJSON(data []byte) error {
 	var raw []json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("cors: allowed_origins must be a list: %w", err)
+		return fmt.Errorf("cors: allowedOrigins must be a list: %w", err)
 	}
 	if raw == nil {
-		return fmt.Errorf("cors: allowed_origins must be a list, not null")
+		return fmt.Errorf("cors: allowedOrigins must be a list, not null")
 	}
 	out := make(OriginEntries, 0, len(raw))
 	for i, child := range raw {
@@ -80,10 +80,10 @@ func (e *OriginEntries) UnmarshalJSON(data []byte) error {
 			Regex string `json:"regex"`
 		}
 		if err := json.Unmarshal(child, &obj); err != nil {
-			return fmt.Errorf("cors: allowed_origins[%d]: entry must be a string or { regex: ... } object", i)
+			return fmt.Errorf("cors: allowedOrigins[%d]: entry must be a string or { regex: ... } object", i)
 		}
 		if obj.Regex == "" {
-			return fmt.Errorf("cors: allowed_origins[%d]: regex object missing 'regex' field", i)
+			return fmt.Errorf("cors: allowedOrigins[%d]: regex object missing 'regex' field", i)
 		}
 		out = append(out, regexEntry{Pattern: obj.Regex})
 	}
@@ -109,12 +109,21 @@ func nodeKindString(k yaml.Kind) string {
 	}
 }
 
-// Validate checks every entry without installing the resulting matcher. It is
-// the pure-validation entry point used by the config layer; runtime
-// installation happens later via InitializeMatcher.
+// Validate checks every entry without compiling a matcher; it is the validation entry point used when a
+// cors value is decoded (declarative load or API write).
 func Validate(entries OriginEntries) error {
 	_, err := compileAll(entries)
 	return err
+}
+
+// CompileMatcher compiles allowed-origin entries into a Matcher without installing the process-wide
+// singleton; it is the building block the dynamic matcher recompiles on change.
+func CompileMatcher(entries OriginEntries) (*Matcher, error) {
+	rules, err := compileAll(entries)
+	if err != nil {
+		return nil, err
+	}
+	return newMatcher(rules), nil
 }
 
 // entryKey returns a stable de-duplication key that distinguishes literal and regex entries.
@@ -145,7 +154,7 @@ func (e OriginEntries) toGeneric() ([]any, error) {
 	return out, nil
 }
 
-// MarshalJSON encodes entries back to the allowed_origins JSON array; an empty list encodes as [], not null.
+// MarshalJSON encodes entries back to the allowedOrigins JSON array; an empty list encodes as [], not null.
 func (e OriginEntries) MarshalJSON() ([]byte, error) {
 	out, err := e.toGeneric()
 	if err != nil {
@@ -154,7 +163,7 @@ func (e OriginEntries) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
-// MarshalYAML encodes entries to the allowed_origins YAML sequence, mirroring MarshalJSON.
+// MarshalYAML encodes entries to the allowedOrigins YAML sequence, mirroring MarshalJSON.
 func (e OriginEntries) MarshalYAML() (any, error) {
 	return e.toGeneric()
 }
@@ -186,7 +195,7 @@ func compileAll(entries []entry) ([]originRule, error) {
 	for i, e := range entries {
 		rule, err := compile(e)
 		if err != nil {
-			return nil, fmt.Errorf("cors: allowed_origins[%d]: %w", i, err)
+			return nil, fmt.Errorf("cors: allowedOrigins[%d]: %w", i, err)
 		}
 		out = append(out, rule)
 	}

@@ -107,6 +107,76 @@ func (_c *ServerConfigServiceMock_GetConfig_Call) RunAndReturn(run func(ctx cont
 	return _c
 }
 
+// GetMergedConfig provides a mock function for the type ServerConfigServiceMock
+func (_mock *ServerConfigServiceMock) GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError) {
+	ret := _mock.Called(ctx, name)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetMergedConfig")
+	}
+
+	var r0 any
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (any, *common.ServiceError)); ok {
+		return returnFunc(ctx, name)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) any); ok {
+		r0 = returnFunc(ctx, name)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(any)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, name)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ServerConfigServiceMock_GetMergedConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetMergedConfig'
+type ServerConfigServiceMock_GetMergedConfig_Call struct {
+	*mock.Call
+}
+
+// GetMergedConfig is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name string
+func (_e *ServerConfigServiceMock_Expecter) GetMergedConfig(ctx interface{}, name interface{}) *ServerConfigServiceMock_GetMergedConfig_Call {
+	return &ServerConfigServiceMock_GetMergedConfig_Call{Call: _e.mock.On("GetMergedConfig", ctx, name)}
+}
+
+func (_c *ServerConfigServiceMock_GetMergedConfig_Call) Run(run func(ctx context.Context, name string)) *ServerConfigServiceMock_GetMergedConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *ServerConfigServiceMock_GetMergedConfig_Call) Return(v any, serviceError *common.ServiceError) *ServerConfigServiceMock_GetMergedConfig_Call {
+	_c.Call.Return(v, serviceError)
+	return _c
+}
+
+func (_c *ServerConfigServiceMock_GetMergedConfig_Call) RunAndReturn(run func(ctx context.Context, name string) (any, *common.ServiceError)) *ServerConfigServiceMock_GetMergedConfig_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListConfigNames provides a mock function for the type ServerConfigServiceMock
 func (_mock *ServerConfigServiceMock) ListConfigNames(ctx context.Context) ([]ConfigName, *common.ServiceError) {
 	ret := _mock.Called(ctx)

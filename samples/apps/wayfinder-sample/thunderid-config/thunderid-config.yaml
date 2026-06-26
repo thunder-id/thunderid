@@ -1693,3 +1693,12 @@ attributes:
   displayName: Alex Carter
 credentials:
   password: "{{.ALEX_CARTER_PASSWORD}}"
+
+---
+# resource_type: server_config
+# Allows the Wayfinder web app's browser origin to call Thunder. CORS origins come only from the
+# server-config "cors" section (no default ships), so importing this bundle sets the frontend origin.
+name: cors
+value:
+  allowedOrigins:
+    - "http://localhost:5173"

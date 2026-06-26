@@ -213,12 +213,6 @@ flow:
   {{- end }}
 {{- end }}
 
-cors:
-  allowed_origins:
-  {{- range .Values.configuration.cors.allowedOrigins }}
-    - {{ . | quote }}
-  {{- end }}
-
 passkey:
   allowed_origins:
   {{- range .Values.configuration.passkey.allowedOrigins }}

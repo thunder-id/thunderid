@@ -408,7 +408,6 @@ type Config struct {
 	OAuth                engineconfig.OAuthConfig         `yaml:"oauth"                 json:"oauth"`
 	Flow                 engineconfig.FlowConfig          `yaml:"flow"                  json:"flow"`
 	Crypto               CryptoConfig                     `yaml:"crypto"                json:"crypto"`
-	CORS                 engineconfig.CORSConfig          `yaml:"cors"                  json:"cors"`
 	User                 UserConfig                       `yaml:"user"                  json:"user"`
 	DeclarativeResources DeclarativeResources             `yaml:"declarative_resources" json:"declarative_resources"`
 	Resource             engineconfig.ResourceConfig      `yaml:"resource"              json:"resource"`
@@ -476,9 +475,6 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 	}
 
 	if err := cfg.Server.SecurityConfig.Validate(); err != nil {
-		return nil, err
-	}
-	if err := cfg.CORS.Validate(); err != nil {
 		return nil, err
 	}
 

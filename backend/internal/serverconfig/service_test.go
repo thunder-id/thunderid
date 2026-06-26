@@ -138,6 +138,34 @@ func (suite *ServiceTestSuite) TestGetConfig_Unset() {
 	assert.Equal(suite.T(), mergedVal, layers.Merged)
 }
 
+// --- GetMergedConfig ---
+
+func (suite *ServiceTestSuite) TestGetMergedConfig_OK() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{ReadOnly: declarative, Writable: corsValue}, nil)
+	suite.mockHandler.EXPECT().Decode(declarative).Return(readOnlyVal, nil)
+	suite.mockHandler.EXPECT().Decode(corsValue).Return(writableVal, nil)
+	suite.mockHandler.EXPECT().Merge(readOnlyVal, writableVal).Return(mergedVal)
+
+	merged, svcErr := suite.service.GetMergedConfig(suite.ctx, string(ConfigNameCORS))
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), mergedVal, merged)
+}
+
+func (suite *ServiceTestSuite) TestGetMergedConfig_UnsupportedName() {
+	merged, svcErr := suite.service.GetMergedConfig(suite.ctx, "bogus")
+	assert.Nil(suite.T(), merged)
+	assert.Same(suite.T(), &ErrorUnsupportedConfigName, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestGetMergedConfig_StoreError() {
+	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
+		Return(storeLayers{}, errors.New("db error"))
+	merged, svcErr := suite.service.GetMergedConfig(suite.ctx, string(ConfigNameCORS))
+	assert.Nil(suite.T(), merged)
+	assert.Same(suite.T(), &common.InternalServerError, svcErr)
+}
+
 // --- SetConfig ---
 
 func (suite *ServiceTestSuite) TestSetConfig_UnsupportedName() {

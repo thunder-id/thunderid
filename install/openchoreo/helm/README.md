@@ -261,12 +261,6 @@ To promote ThunderID to `staging` or `production`:
 | `thunderid-component.consent.enabled` | Enable consent server integration | `false` |
 | `thunderid-component.consent.baseUrl` | Consent server base URL | `http://localhost:9090/api/v1` |
 
-### CORS
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `thunderid-component.cors.allowed_origins` | Allowed CORS origins for the development environment | `["https://gate.your-domain.com", "https://localhost:3000"]` |
-
 ### Resource Controls
 
 | Parameter | Description | Default |
@@ -331,7 +325,6 @@ Use this to derive the following values when configuring the Component via the U
 | `OAUTH_REFRESH_TOKEN_VALIDITY` | Refresh token lifetime in seconds |
 | `CACHE_SIZE` | Maximum number of in-memory cache entries |
 | `CACHE_TTL` | Cache entry TTL in seconds |
-| `CORS_ALLOWED_ORIGINS` | JSON array of allowed origins e.g. `["https://app.example.com"]` |
 
 ### Gate Client
 
@@ -447,7 +440,7 @@ helm template thunderid install/openchoreo/helm/ \
 
 - Never use default passwords in production
 - Replace `crypto.encryption.key` with a strong 32-byte hex key in production
-- Configure `cors.allowed_origins` restrictively — avoid wildcards
+- Configure CORS allowed origins restrictively through the server-config `cors` section (`PUT /server-config/cors`) — list explicit origins, avoid wildcards
 - Enable SSL/TLS for PostgreSQL connections in production (`sslmode: verify-full`)
 - Use specific image tags instead of `latest` in production
 - Set `thunderid-oc-componenttype.componentType.cluster: false` if you need namespace-scoped isolation

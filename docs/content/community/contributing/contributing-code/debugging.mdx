@@ -48,13 +48,12 @@ This guide focuses on local development and debugging with SQLite for database s
 
 ### Step 1: Configure the Server
 
-Edit `backend/cmd/server/deployment.yaml` and add:
-
-**CORS allowed origins** (so the frontend development servers and sample app can talk to the backend):
+**CORS allowed origins** (so the frontend development servers and sample app can talk to the backend) are managed through the server-config `cors` section. Create the declarative resource file `backend/cmd/server/config/resources/server_configs/cors.yaml` and set `server_config.store: composite` in `deployment.yaml` so it loads at boot (the default, `mutable`, does not load declarative resources):
 
 ```yaml
-cors:
-  allowed_origins:
+name: cors
+value:
+  allowedOrigins:
     - "https://localhost:3000"
     - "https://localhost:5190"
     - "https://localhost:5191"

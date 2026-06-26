@@ -105,14 +105,16 @@ func TestServerConfigExporter_ValidateResource_EmptyName(t *testing.T) {
 }
 
 // TestServerConfigExportDoc_YAMLShape confirms the export document marshals to the declarative shape the
-// loader parses back (name + a value list), which is what the export parameterizer produces.
+// loader parses back (name + a value object carrying allowedOrigins), which is what the export parameterizer
+// produces.
 func TestServerConfigExportDoc_YAMLShape(t *testing.T) {
 	out, err := yaml.Marshal(&serverConfigExportDoc{
 		Name:  "cors",
-		Value: []interface{}{"https://app.example.com"},
+		Value: map[string]interface{}{"allowedOrigins": []interface{}{"https://app.example.com"}},
 	})
 	require.NoError(t, err)
 	assert.Contains(t, string(out), "name: cors")
 	assert.Contains(t, string(out), "value:")
+	assert.Contains(t, string(out), "allowedOrigins:")
 	assert.Contains(t, string(out), "- https://app.example.com")
 }

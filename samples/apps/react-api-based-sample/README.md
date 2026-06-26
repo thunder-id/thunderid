@@ -155,7 +155,7 @@ This sample interacts with the following APIs:
 
 **Issue**: "Failed to fetch" errors
 - Ensure server is running and accessible at the configured base URL
-- Check CORS configuration in `deployment.yaml`
+- Check the CORS configuration in the server-config `cors` section
 
 **Issue**: "User type not found" error during sign-up
 - Import `thunderid-config/thunderid-config.yaml` via the ThunderID Console (see "Set Up Sample Resources" above) to create the "Customer" user type
@@ -164,12 +164,18 @@ This sample interacts with the following APIs:
 - Ensure `SKIP_SECURITY=true` is set when starting the server
 
 **Issue**: CORS errors
-- Add your application URL to "Allowed Origins" in configuration:
-  ```yaml
-  cors:
-    allowed_origins:
-      - "https://localhost:3000"
-  ```
+- Add your application URL to the server-config `cors` section, either way:
+  - **Declarative** — create `config/resources/server_configs/cors.yaml` and set `server_config.store: composite` in `deployment.yaml` so it loads at boot:
+    ```yaml
+    name: cors
+    value:
+      allowedOrigins:
+        - "https://localhost:3000"
+    ```
+  - **Runtime** (no restart) — `PUT /server-config/cors` with the raw section value:
+    ```json
+    { "allowedOrigins": ["https://localhost:3000"] }
+    ```
 
 **Issue**: SSL certificate errors
 - Ensure `server.key` and `server.cert` exist in the project root

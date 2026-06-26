@@ -48,13 +48,6 @@ crypto:
 jwt:
     preferred_key_id: "default-key"
 
-cors:
-  allowed_origins:
-    - "https://localhost:3000" # This is for test samples, remove it for production
-    - "http://localhost:5173" # This is for wayfinder test sample app, remove it for production
-    - "http://localhost:6274" # This is for wayfinder test sample app, remove it for production
-    # - regex: '^https://[a-z0-9-]+\.staging\.example\.com(:[0-9]+)?$'
-
 passkey:
   allowed_origins:
     - "https://localhost:8090"

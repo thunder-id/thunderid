@@ -75,8 +75,6 @@ spec:
         value: {{ .Values.console.clientId | quote }}
       - key: CONSOLE_SCOPES
         value: {{ .Values.console.scopes | quote }}
-      - key: CORS_ALLOWED_ORIGINS
-        value: {{ .Values.cors.allowed_origins | toJson | quote }}
       - key: GATE_CLIENT_PORT
         value: {{ .Values.gate.port | quote }}
       - key: GATE_CLIENT_SCHEME

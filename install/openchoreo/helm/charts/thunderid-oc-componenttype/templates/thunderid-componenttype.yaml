@@ -221,9 +221,6 @@ spec:
               max_version_history: 3
               auto_infer_registration: true
 
-            cors:
-              allowed_origins: {{ "{{.CORS_ALLOWED_ORIGINS}}" }}
-
             consent:
               enabled: {{ "{{.CONSENT_ENABLED}}" }}
               base_url: "{{ "{{.CONSENT_BASE_URL}}" }}"
@@ -301,9 +298,6 @@ spec:
             flow:
               max_version_history: 3
               auto_infer_registration: true
-
-            cors:
-              allowed_origins: {{ "{{.CORS_ALLOWED_ORIGINS}}" }}
 
             consent:
               enabled: {{ "{{.CONSENT_ENABLED}}" }}

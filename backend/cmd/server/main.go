@@ -37,7 +37,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
@@ -66,13 +65,6 @@ func main() {
 	cfg := initThunderConfigurations(ctx, logger, serverHome)
 	if cfg == nil {
 		logger.Fatal(ctx, "Failed to initialize configurations")
-	}
-
-	// Install the CORS allowed-origins matcher used by the HTTP middleware.
-	// Compilation errors are already surfaced by config validation; this call
-	// rebuilds the rules and installs them as the cors package singleton.
-	if err := cors.InitializeMatcher(cfg.CORS.AllowedOrigins); err != nil {
-		logger.Fatal(ctx, "Failed to initialize CORS matcher", log.Error(err))
 	}
 
 	// Initialize the cache manager.

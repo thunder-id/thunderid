@@ -21,8 +21,6 @@ package config
 
 import (
 	"time"
-
-	"github.com/thunder-id/thunderid/internal/system/cors"
 )
 
 // TrustedIssuerConfig holds configuration for trusted external issuer authentication.
@@ -127,18 +125,6 @@ type GateClientConfig struct {
 // EncryptionConfig holds the encryption configuration details.
 type EncryptionConfig struct {
 	Key string `yaml:"key" json:"key"`
-}
-
-// CORSConfig holds the configuration details for the CORS middleware.
-//
-// AllowedOrigins is heterogeneous: each entry is either a bare string (a
-// literal origin matched after RFC-6454 canonicalization, with the special
-// value "null" denoting the CORS null origin) or an object of the shape
-// { regex: "..." } (an RE2 pattern matched against the raw request Origin
-// header byte for byte). See the CORS section of
-// docs/content/guides/getting-started/configuration.mdx.
-type CORSConfig struct {
-	AllowedOrigins cors.OriginEntries `yaml:"allowed_origins" json:"allowed_origins"`
 }
 
 // JWTConfig holds the JWT configuration details.

@@ -44,5 +44,7 @@ func TestGetConfig_EmptyLayersSerializeToArrays(t *testing.T) {
 
 	out, err := json.Marshal(layers)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"readOnly":[],"writable":[],"merged":[]}`, string(out))
+	assert.JSONEq(t,
+		`{"readOnly":{"allowedOrigins":[]},"writable":{"allowedOrigins":[]},"merged":{"allowedOrigins":[]}}`,
+		string(out))
 }

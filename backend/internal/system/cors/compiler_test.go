@@ -152,7 +152,7 @@ func (suite *CompilerTestSuite) TestCompileAllFailsFastWithIndex() {
 		regexEntry{Pattern: "([bad"},
 	})
 	suite.Require().Error(err)
-	assert.Contains(suite.T(), err.Error(), "allowed_origins[1]")
+	assert.Contains(suite.T(), err.Error(), "allowedOrigins[1]")
 }
 
 func (suite *CompilerTestSuite) TestUnmarshalYAMLLiteralEntries() {
