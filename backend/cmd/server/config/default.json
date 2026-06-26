@@ -146,12 +146,7 @@
     }
   },
   "user": {
-    "indexed_attributes": [
-      "username",
-      "email",
-      "mobile_number",
-      "sub"
-    ],
+    "indexed_attributes": ["username", "email", "mobileNumber", "sub"],
     "store": "composite"
   },
   "group": {
@@ -166,9 +161,7 @@
       "console": {
         "enabled": false,
         "format": "json",
-        "categories": [
-          "observability.all"
-        ]
+        "categories": ["observability.all"]
       }
     }
   },
@@ -256,7 +249,12 @@
     "client_id": "x509_san_dns:localhost",
     "signing_key_id": "",
     "ephemeral_key_id": "vp-enc",
-    "response_enc_values": ["A128GCM", "A256GCM", "A128CBC-HS256", "A256CBC-HS512"],
+    "response_enc_values": [
+      "A128GCM",
+      "A256GCM",
+      "A128CBC-HS256",
+      "A256CBC-HS512"
+    ],
     "request_validity_seconds": 300,
     "state_ttl_seconds": 300,
     "leeway_seconds": 30,
@@ -272,5 +270,16 @@
     "credential_validity_seconds": 2592000,
     "batch_size": 5,
     "enforce_scope": false
+  },
+  "scim": {
+    "patch_supported": false,
+    "bulk_supported": false,
+    "bulk_max_operations": 0,
+    "bulk_max_payload_size": 0,
+    "filter_supported": false,
+    "filter_max_results": 0,
+    "change_password_supported": false,
+    "sort_supported": false,
+    "etag_supported": false
   }
 }
