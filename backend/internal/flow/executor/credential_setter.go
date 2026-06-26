@@ -32,7 +32,7 @@ import (
 type credentialSetter struct {
 	core.ExecutorInterface
 	entityProvider entityprovider.EntityProviderInterface
-	authnProvider  providers.AuthnProviderManagerInterface
+	authnProvider  providers.AuthnProviderManager
 	logger         *log.Logger
 }
 
@@ -40,7 +40,7 @@ type credentialSetter struct {
 func newCredentialSetter(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *credentialSetter {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CredentialSetter"))
 	base := flowFactory.CreateExecutor(

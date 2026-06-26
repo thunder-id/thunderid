@@ -51,7 +51,7 @@ type oidcAuthExecutorInterface interface {
 type oidcAuthExecutor struct {
 	oAuthExecutorInterface
 	authService   authnoidc.OIDCAuthnCoreServiceInterface
-	authnProvider providers.AuthnProviderManagerInterface
+	authnProvider providers.AuthnProviderManager
 	idpType       providers.IDPType
 	logger        *log.Logger
 }
@@ -65,7 +65,7 @@ func newOIDCAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	idpService idp.IDPServiceInterface,
 	authService authnoidc.OIDCAuthnCoreServiceInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 	idpType providers.IDPType,
 ) oidcAuthExecutorInterface {
 	if name == "" {

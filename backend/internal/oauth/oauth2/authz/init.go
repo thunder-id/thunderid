@@ -35,8 +35,8 @@ import (
 // Initialize initializes the authorization handler and registers its routes.
 func Initialize(
 	mux *http.ServeMux,
-	actorProvider providers.ActorProviderInterface,
-	resourceService providers.ResourceProviderInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 	jwtService jwt.JWTServiceInterface,
 	flowExecService flowexec.FlowExecServiceInterface,
 	parService par.PARServiceInterface,

@@ -40,7 +40,7 @@ type ActorProviderTestSuite struct {
 	suite.Suite
 	mockInbound *inboundclientmock.InboundClientServiceInterfaceMock
 	mockEntity  *entityprovidermock.EntityProviderInterfaceMock
-	provider    providers.ActorProviderInterface
+	provider    providers.ActorProvider
 }
 
 func TestActorProviderTestSuite(t *testing.T) {

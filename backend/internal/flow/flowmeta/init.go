@@ -28,10 +28,10 @@ import (
 // Initialize creates and configures the flow metadata service components.
 func Initialize(
 	mux *http.ServeMux,
-	actorProvider providers.ActorProviderInterface,
+	actorProvider providers.ActorProvider,
 	ouService providers.OrganizationUnitProvider,
-	designResolve providers.DesignResolveProviderInterface,
-	i18nService providers.I18nProviderInterface,
+	designResolve providers.DesignProvider,
+	i18nService providers.I18nProvider,
 ) FlowMetaServiceInterface {
 	// Create service instance
 	flowMetaService := newFlowMetaService(

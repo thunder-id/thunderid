@@ -45,7 +45,7 @@ type ClientAuthMiddlewareTestSuite struct {
 	suite.Suite
 	mockInboundClient  *inboundclientmock.InboundClientServiceInterfaceMock
 	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
-	mockAuthnProvider  *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerMock
 	mockJwtService     *jwtmock.JWTServiceInterfaceMock
 }
 
@@ -53,14 +53,14 @@ func TestClientAuthMiddlewareTestSuite(t *testing.T) {
 	suite.Run(t, new(ClientAuthMiddlewareTestSuite))
 }
 
-func (suite *ClientAuthMiddlewareTestSuite) actorProvider() providers.ActorProviderInterface {
+func (suite *ClientAuthMiddlewareTestSuite) actorProvider() providers.ActorProvider {
 	return actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider)
 }
 
 func (suite *ClientAuthMiddlewareTestSuite) SetupTest() {
 	suite.mockInboundClient = inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockJwtService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 
 	// Default authn mock: return success for client secret authentication.
@@ -226,7 +226,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_InvalidClie
 		Return(mockApp, nil).Once()
 
 	// Override authn mock to fail for wrong secret.
-	failAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	failAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 	failAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, (providers.AuthenticatedClaims)(nil),
@@ -378,7 +378,7 @@ func (suite *ClientAuthMiddlewareTestSuite) TestClientAuthMiddleware_BasicAuth_I
 		Return(mockApp, nil).Once()
 
 	// Override authn mock to fail for wrong secret.
-	failAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	failAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 	failAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, (providers.AuthenticatedClaims)(nil),

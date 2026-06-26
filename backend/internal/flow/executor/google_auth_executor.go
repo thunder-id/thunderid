@@ -40,7 +40,7 @@ func newGoogleOIDCAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	idpService idp.IDPServiceInterface,
 	authService authngoogle.GoogleOIDCAuthnServiceInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) oidcAuthExecutorInterface {
 	defaultInputs := []common.Input{
 		{

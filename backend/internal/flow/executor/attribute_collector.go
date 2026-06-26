@@ -41,7 +41,7 @@ const (
 type attributeCollector struct {
 	core.ExecutorInterface
 	entityProvider entityprovider.EntityProviderInterface
-	authnProvider  providers.AuthnProviderManagerInterface
+	authnProvider  providers.AuthnProviderManager
 	logger         *log.Logger
 }
 
@@ -51,7 +51,7 @@ var _ core.ExecutorInterface = (*attributeCollector)(nil)
 func newAttributeCollector(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *attributeCollector {
 	prerequisites := []common.Input{
 		{

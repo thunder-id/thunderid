@@ -171,13 +171,13 @@ type engineContext struct {
 	observabilityConfig engineconfig.ObservabilityConfig
 	gateClientConfig    engineconfig.GateClientConfig
 
-	actorProvider         providers.ActorProviderInterface
-	authnProvider         providers.AuthnProviderManagerInterface
-	resourceProvider      providers.ResourceProviderInterface
+	actorProvider         providers.ActorProvider
+	authnProvider         providers.AuthnProviderManager
+	resourceProvider      providers.ResourceServerProvider
 	ouProvider            providers.OrganizationUnitProvider
-	designResolveProvider providers.DesignResolveProviderInterface
-	flowProvider          providers.FlowProviderInterface
-	i18nProvider          providers.I18nProviderInterface
+	designResolveProvider providers.DesignProvider
+	flowProvider          providers.FlowProvider
+	i18nProvider          providers.I18nProvider
 	roleProvider          providers.RoleProvider
 	idpProvider           providers.IDPProvider
 	consentProvider       providers.ConsentProvider
@@ -223,17 +223,17 @@ func WithObservabilityConfig(config engineconfig.ObservabilityConfig) Option {
 }
 
 // WithActorProvider supplies the actor provider.
-func WithActorProvider(provider providers.ActorProviderInterface) Option {
+func WithActorProvider(provider providers.ActorProvider) Option {
 	return func(c *engineContext) { c.actorProvider = provider }
 }
 
 // WithAuthnProvider supplies the authentication provider manager.
-func WithAuthnProvider(provider providers.AuthnProviderManagerInterface) Option {
+func WithAuthnProvider(provider providers.AuthnProviderManager) Option {
 	return func(c *engineContext) { c.authnProvider = provider }
 }
 
 // WithResourceProvider supplies the resource provider.
-func WithResourceProvider(provider providers.ResourceProviderInterface) Option {
+func WithResourceProvider(provider providers.ResourceServerProvider) Option {
 	return func(c *engineContext) { c.resourceProvider = provider }
 }
 
@@ -243,17 +243,17 @@ func WithOUProvider(provider providers.OrganizationUnitProvider) Option {
 }
 
 // WithDesignResolveProvider supplies the design resolve provider.
-func WithDesignResolveProvider(provider providers.DesignResolveProviderInterface) Option {
+func WithDesignResolveProvider(provider providers.DesignProvider) Option {
 	return func(c *engineContext) { c.designResolveProvider = provider }
 }
 
 // WithFlowProvider supplies the flow provider.
-func WithFlowProvider(provider providers.FlowProviderInterface) Option {
+func WithFlowProvider(provider providers.FlowProvider) Option {
 	return func(c *engineContext) { c.flowProvider = provider }
 }
 
 // WithI18nProvider supplies the i18n provider.
-func WithI18nProvider(provider providers.I18nProviderInterface) Option {
+func WithI18nProvider(provider providers.I18nProvider) Option {
 	return func(c *engineContext) { c.i18nProvider = provider }
 }
 

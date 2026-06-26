@@ -56,7 +56,7 @@ func newPasskeyAuthenticatedUser() providers.AuthUser {
 type PasskeyAuthExecutorTestSuite struct {
 	suite.Suite
 	mockPasskeyService *passkeymock.WebAuthnAuthnServiceInterfaceMock
-	mockAuthnProvider  *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerMock
 	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
 	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
 	executor           *passkeyAuthExecutor
@@ -68,7 +68,7 @@ func TestPasskeyAuthExecutorSuite(t *testing.T) {
 
 func (suite *PasskeyAuthExecutorTestSuite) SetupTest() {
 	suite.mockPasskeyService = passkeymock.NewWebAuthnAuthnServiceInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 
@@ -123,7 +123,7 @@ func createMockPasskeyAuthExecutor(t *testing.T) core.ExecutorInterface {
 		func(
 			ctx *core.NodeContext,
 			execResp *common.ExecutorResponse,
-			_ providers.AuthnProviderManagerInterface,
+			_ providers.AuthnProviderManager,
 		) string {
 			if userID, ok := ctx.RuntimeData[userAttributeUserID]; ok {
 				return userID

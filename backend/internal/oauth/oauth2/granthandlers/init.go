@@ -40,8 +40,8 @@ func Initialize(
 	attrCacheService attributecache.AttributeCacheServiceInterface,
 	ouService providers.OrganizationUnitProvider,
 	authzService authz.AuthorizationServiceInterface,
-	actorProvider providers.ActorProviderInterface,
-	resourceService providers.ResourceProviderInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 	cibaService ciba.CIBAServiceInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {

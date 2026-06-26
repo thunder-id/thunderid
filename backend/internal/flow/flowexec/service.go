@@ -52,19 +52,19 @@ const (
 // flowExecService is the implementation of FlowExecServiceInterface
 type flowExecService struct {
 	flowEngine       flowEngineInterface
-	flowProvider     providers.FlowProviderInterface
+	flowProvider     providers.FlowProvider
 	graphBuilder     graphbuilder.GraphBuilderInterface
 	flowStore        flowStoreInterface
-	actorProvider    providers.ActorProviderInterface
+	actorProvider    providers.ActorProvider
 	observabilitySvc observability.ObservabilityServiceInterface
 	transactioner    transaction.Transactioner
 	cryptoSvc        kmprovider.RuntimeCryptoProvider
 	cfg              flowconfig.Config
 }
 
-func newFlowExecService(flowProvider providers.FlowProviderInterface,
+func newFlowExecService(flowProvider providers.FlowProvider,
 	flowStore flowStoreInterface, flowEngine flowEngineInterface,
-	actorProvider providers.ActorProviderInterface,
+	actorProvider providers.ActorProvider,
 	observabilitySvc observability.ObservabilityServiceInterface,
 	transactioner transaction.Transactioner,
 	cryptoSvc kmprovider.RuntimeCryptoProvider,

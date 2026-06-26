@@ -127,7 +127,7 @@ type ExecutorDependencies struct {
 	JWTService            jwt.JWTServiceInterface
 	AuthAssertGen         assert.AuthAssertGeneratorInterface
 	ConsentEnforcer       providers.ConsentProvider
-	AuthnProvider         providers.AuthnProviderManagerInterface
+	AuthnProvider         providers.AuthnProviderManager
 	OTPService            otp.OTPAuthnServiceInterface
 	PasskeyService        passkey.PasskeyServiceInterface
 	MagicLinkService      magiclink.MagicLinkAuthnServiceInterface

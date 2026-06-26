@@ -42,7 +42,7 @@ import (
 type SMSAuthExecutorTestSuite struct {
 	suite.Suite
 	mockOTPService     *otpmock.OTPAuthnServiceInterfaceMock
-	mockAuthnProvider  *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerMock
 	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
 	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
 	executor           *smsOTPAuthExecutor
@@ -54,7 +54,7 @@ func TestSMSAuthExecutorSuite(t *testing.T) {
 
 func (suite *SMSAuthExecutorTestSuite) SetupTest() {
 	suite.mockOTPService = otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 

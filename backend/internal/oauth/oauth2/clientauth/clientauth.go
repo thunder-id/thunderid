@@ -45,8 +45,8 @@ import (
 func authenticate(
 	ctx context.Context,
 	r *http.Request,
-	actorProvider providers.ActorProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	endpointURL string,
 ) (*OAuthClientInfo, *authError) {

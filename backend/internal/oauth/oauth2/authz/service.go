@@ -57,8 +57,8 @@ type AuthorizeServiceInterface interface {
 // authorizeService implements the AuthorizeService for managing OAuth2 authorization flows.
 type authorizeService struct {
 	cfg             oauthconfig.Config
-	inboundClient   providers.ActorProviderInterface
-	resourceService providers.ResourceProviderInterface
+	inboundClient   providers.ActorProvider
+	resourceService providers.ResourceServerProvider
 	authZValidator  AuthorizationValidatorInterface
 	authCodeStore   AuthorizationCodeStoreInterface
 	authReqStore    authorizationRequestStoreInterface
@@ -71,8 +71,8 @@ type authorizeService struct {
 
 // newAuthorizeService creates a new instance of authorizeService with injected dependencies.
 func newAuthorizeService(
-	actorProvider providers.ActorProviderInterface,
-	resourceService providers.ResourceProviderInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 	jwtService jwt.JWTServiceInterface,
 	flowExecService flowexec.FlowExecServiceInterface,
 	authCodeStore AuthorizationCodeStoreInterface,

@@ -125,7 +125,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderRuntimeTakesPrecedence() {
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromAuthnProvider() {
-	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 	authUser := newAuthenticatedAuthUser()
 	ctx := &NodeContext{
 		Context:     context.Background(),
@@ -155,7 +155,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDFromRuntimeData() {
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderUserIDRuntimeDataTakesPrecedence() {
-	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 	authUser := newAuthenticatedAuthUser()
 	ctx := &NodeContext{
 		Context:     context.Background(),
@@ -180,7 +180,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDNotFromUserInputs() {
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromAuthnProvider() {
-	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 	authUser := newAuthenticatedAuthUser()
 	ctx := &NodeContext{
 		Context:     context.Background(),
@@ -201,7 +201,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromAuthnProvider() {
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromAuthnProviderWithoutEntityID() {
-	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 	authUser := newAuthenticatedAuthUser()
 	ctx := &NodeContext{
 		Context:     context.Background(),
@@ -230,7 +230,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderOUIDFromRuntimeData() {
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderOUIDRuntimeDataTakesPrecedence() {
-	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 	authUser := newAuthenticatedAuthUser()
 	ctx := &NodeContext{
 		Context:     context.Background(),
@@ -255,7 +255,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderOUIDNotFromUserInputs() {
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderUserIDAndOUIDShareSingleFetch() {
-	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 	authUser := newAuthenticatedAuthUser()
 	ctx := &NodeContext{
 		Context:     context.Background(),
@@ -289,7 +289,7 @@ func (s *UtilsTestSuite) TestResolvePlaceholderUserIDWithNilAuthnProvider() {
 }
 
 func (s *UtilsTestSuite) TestResolvePlaceholderUserIDWithUnauthenticatedUser() {
-	mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+	mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 	ctx := &NodeContext{
 		Context:     context.Background(),
 		RuntimeData: map[string]string{},

@@ -53,8 +53,8 @@ func newGrantHandlerProvider(
 	attrCacheService attributecache.AttributeCacheServiceInterface,
 	ouService providers.OrganizationUnitProvider,
 	rbacAuthzService rbacauthz.AuthorizationServiceInterface,
-	actorProvider providers.ActorProviderInterface,
-	resourceService providers.ResourceProviderInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 	cibaService ciba.CIBAServiceInterface,
 	cfg oauthconfig.Config,
 ) GrantHandlerProviderInterface {

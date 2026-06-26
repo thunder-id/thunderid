@@ -31,7 +31,7 @@ import (
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
-// authnProviderManager is a proxy struct that implements AuthnProviderManagerInterface by delegating
+// authnProviderManager is a proxy struct that implements AuthnProviderManager by delegating
 // to an underlying AuthnProviderInterface.
 type authnProviderManager struct {
 	provider provider.AuthnProviderInterface
@@ -39,7 +39,7 @@ type authnProviderManager struct {
 }
 
 // newAuthnProviderManager creates a new authnProviderManager.
-func newAuthnProviderManager(p provider.AuthnProviderInterface) providers.AuthnProviderManagerInterface {
+func newAuthnProviderManager(p provider.AuthnProviderInterface) providers.AuthnProviderManager {
 	return &authnProviderManager{
 		provider: p,
 		logger:   log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AuthnProviderManager")),

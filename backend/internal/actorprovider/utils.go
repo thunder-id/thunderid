@@ -32,7 +32,7 @@ import (
 // BuildApplication assembles the runtime application view read from engineCtx.Application.
 // Entity-agnostic: works for any actor with an inbound-client row.
 func BuildApplication(
-	ctx context.Context, provider providers.ActorProviderInterface, actorID string,
+	ctx context.Context, provider providers.ActorProvider, actorID string,
 ) (*appmodel.Application, *tidcommon.ServiceError) {
 	client, svcErr := provider.GetInboundClientByID(ctx, actorID)
 	if svcErr != nil {

@@ -43,7 +43,7 @@ type AttributeCollectorTestSuite struct {
 	suite.Suite
 	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
 	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
-	mockAuthnProvider  *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerMock
 	executor           *attributeCollector
 }
 
@@ -54,7 +54,7 @@ func TestAttributeCollectorSuite(t *testing.T) {
 func (suite *AttributeCollectorTestSuite) SetupTest() {
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 
 	prerequisites := []common.Input{{Identifier: "userID", Type: "string", Required: true}}
 	mockExec := createMockExecutorForAttrCollector(suite.T(), ExecutorNameAttributeCollect,
@@ -84,7 +84,7 @@ func createMockExecutorForAttrCollector(t *testing.T, name string,
 	mockExec.On("GetInputs", mock.Anything).Return([]common.Input{}).Maybe()
 	mockExec.On("ValidatePrerequisites", mock.Anything, mock.Anything, mock.Anything).
 		Return(func(ctx *core.NodeContext, execResp *common.ExecutorResponse,
-			_ providers.AuthnProviderManagerInterface) bool {
+			_ providers.AuthnProviderManager) bool {
 			return ctx.RuntimeData != nil && ctx.RuntimeData[userAttributeUserID] != ""
 		}).Maybe()
 	mockExec.On("HasRequiredInputs", mock.Anything, mock.Anything).
@@ -103,7 +103,7 @@ func createMockExecutorForAttrCollector(t *testing.T, name string,
 		}).Maybe()
 	mockExec.On("GetUserIDFromContext", mock.Anything, mock.Anything, mock.Anything).
 		Return(func(ctx *core.NodeContext, execResp *common.ExecutorResponse,
-			_ providers.AuthnProviderManagerInterface) string {
+			_ providers.AuthnProviderManager) string {
 			if ctx.RuntimeData != nil {
 				return ctx.RuntimeData[userAttributeUserID]
 			}

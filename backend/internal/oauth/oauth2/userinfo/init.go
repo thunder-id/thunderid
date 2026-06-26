@@ -42,7 +42,7 @@ func Initialize(
 	jweService jwe.JWEServiceInterface,
 	resolver *jwksresolver.Resolver,
 	tokenValidator tokenservice.TokenValidatorInterface,
-	actorProvider providers.ActorProviderInterface,
+	actorProvider providers.ActorProvider,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 	dpopVerifier dpop.VerifierInterface,

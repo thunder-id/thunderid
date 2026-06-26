@@ -57,7 +57,7 @@ type ClientCredentialsGrantHandlerTestSuite struct {
 	mockTokenBuilder    *tokenservicemock.TokenBuilderInterfaceMock
 	mockOUService       *oumock.OrganizationUnitServiceInterfaceMock
 	mockAuthzService    *authzmock.AuthorizationServiceInterfaceMock
-	mockEntityProvider  *actorprovidermock.ActorProviderInterfaceMock
+	mockEntityProvider  *actorprovidermock.ActorProviderMock
 	mockResourceService *resourcemock.ResourceServiceInterfaceMock
 	handler             *clientCredentialsGrantHandler
 	oauthApp            *providers.OAuthClient
@@ -82,7 +82,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 	suite.mockTokenBuilder = tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	suite.mockAuthzService = authzmock.NewAuthorizationServiceInterfaceMock(suite.T())
-	suite.mockEntityProvider = actorprovidermock.NewActorProviderInterfaceMock(suite.T())
+	suite.mockEntityProvider = actorprovidermock.NewActorProviderMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
 		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
@@ -615,7 +615,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 	mockTokenBuilder := tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	mockAuthzService := authzmock.NewAuthorizationServiceInterfaceMock(suite.T())
 	mockResourceService := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	mockEntityProvider := actorprovidermock.NewActorProviderInterfaceMock(suite.T())
+	mockEntityProvider := actorprovidermock.NewActorProviderMock(suite.T())
 
 	handler := &clientCredentialsGrantHandler{
 		tokenBuilder:    mockTokenBuilder,
@@ -677,7 +677,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_ImplicitRSD
 	mockTokenBuilder := tokenservicemock.NewTokenBuilderInterfaceMock(suite.T())
 	mockAuthzService := authzmock.NewAuthorizationServiceInterfaceMock(suite.T())
 	mockResourceService := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	mockEntityProvider := actorprovidermock.NewActorProviderInterfaceMock(suite.T())
+	mockEntityProvider := actorprovidermock.NewActorProviderMock(suite.T())
 
 	handler := &clientCredentialsGrantHandler{
 		tokenBuilder:    mockTokenBuilder,

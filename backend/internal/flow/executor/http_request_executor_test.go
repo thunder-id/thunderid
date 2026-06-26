@@ -42,7 +42,7 @@ import (
 
 type HTTPRequestExecutorTestSuite struct {
 	suite.Suite
-	mockAuthnProvider *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider *managermock.AuthnProviderManagerMock
 	executor          *httpRequestExecutor
 	mockServer        *httptest.Server
 }
@@ -60,7 +60,7 @@ func (suite *HTTPRequestExecutorTestSuite) TearDownSuite() {
 }
 
 func (suite *HTTPRequestExecutorTestSuite) SetupTest() {
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
 		[]common.Input{}, []common.Input{}).
@@ -742,7 +742,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromEntit
 		}, nil)
 
 	authUser := newHTTPRequestAuthUser()
-	mockAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(authUser, &providers.EntityReference{EntityID: "ou-auth-123"}, nil)
 
@@ -799,7 +799,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromRunti
 		}, nil)
 
 	authUser := newHTTPRequestAuthUser()
-	mockAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
@@ -856,7 +856,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_RuntimeDataPr
 		}, nil)
 
 	authUser := newHTTPRequestAuthUser()
-	mockAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 
 	mockFlowFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
 	mockFlowFactory.On("CreateExecutor", ExecutorNameHTTPRequest, common.ExecutorTypeUtility,
@@ -909,7 +909,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OverwritesExi
 		}, nil)
 
 	authUser := newHTTPRequestAuthUser()
-	mockAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(authUser, &providers.EntityReference{EntityID: "ou-overwrite-test"}, nil)
 
@@ -962,7 +962,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 		})
 
 	authUser := newHTTPRequestAuthUser()
-	mockAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 	mockAuthnProvider.On("GetEntityReference", mock.Anything, mock.Anything).
 		Return(authUser, &providers.EntityReference{EntityID: "ou-not-found"}, nil)
 

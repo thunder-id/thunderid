@@ -58,7 +58,7 @@ func ValidateResourceURIs(resources []string) *model.ErrorResponse {
 // The returned slice preserves the order of the input identifiers.
 func ResolveResourceServers(
 	ctx context.Context,
-	resourceService providers.ResourceProviderInterface,
+	resourceService providers.ResourceServerProvider,
 	resources []string,
 ) ([]*providers.ResourceServer, *model.ErrorResponse) {
 	if len(resources) == 0 {
@@ -92,7 +92,7 @@ func ResolveResourceServers(
 // unchanged.
 func ResolveAndDownscope(
 	ctx context.Context,
-	resourceService providers.ResourceProviderInterface,
+	resourceService providers.ResourceServerProvider,
 	resources []string,
 	requestedScopes []string,
 ) ([]*providers.ResourceServer, []string, *model.ErrorResponse) {
@@ -128,7 +128,7 @@ func ResolveAndDownscope(
 // from the union of the per-RS slices (downscoping per RFC 6749 §3.3).
 func ComputeRSValidScopes(
 	ctx context.Context,
-	resourceService providers.ResourceProviderInterface,
+	resourceService providers.ResourceServerProvider,
 	resolvedRSes []*providers.ResourceServer,
 	requestedScopes []string,
 ) (map[string][]string, *model.ErrorResponse) {
@@ -188,7 +188,7 @@ func UnionScopes(rsValidScopes map[string][]string) []string {
 // audience. If clientID is also empty, an empty slice is returned.
 func ComposeAudiences(
 	ctx context.Context,
-	resourceService providers.ResourceProviderInterface,
+	resourceService providers.ResourceServerProvider,
 	clientID string,
 	resolvedRSes []*providers.ResourceServer,
 	grantedScopes []string,

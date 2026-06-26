@@ -34,14 +34,14 @@ import (
 type tokenExchangeGrantHandler struct {
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	tokenValidator  tokenservice.TokenValidatorInterface
-	resourceService providers.ResourceProviderInterface
+	resourceService providers.ResourceServerProvider
 }
 
 // newTokenExchangeGrantHandler creates a new instance of tokenExchangeGrantHandler.
 func newTokenExchangeGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
-	resourceService providers.ResourceProviderInterface,
+	resourceService providers.ResourceServerProvider,
 ) GrantHandlerInterface {
 	return &tokenExchangeGrantHandler{
 		tokenBuilder:    tokenBuilder,

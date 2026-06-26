@@ -65,7 +65,7 @@ func newTestOpenID4VPExecutor(t *testing.T, service openid4vpVerifierService) co
 }
 
 func newTestOpenID4VPExecutorWithProvider(t *testing.T, service openid4vpVerifierService,
-	authnProvider providers.AuthnProviderManagerInterface) core.ExecutorInterface {
+	authnProvider providers.AuthnProviderManager) core.ExecutorInterface {
 	t.Helper()
 	factory := coremock.NewFlowFactoryInterfaceMock(t)
 	base := coremock.NewExecutorInterfaceMock(t)
@@ -179,7 +179,7 @@ func TestOpenID4VPExecutorPollCompleted(t *testing.T) {
 		},
 	}
 
-	mockAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(t)
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(t)
 	mockAuthnProvider.On("AuthenticateUser",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(providers.AuthUser{}, providers.AuthenticatedClaims{
