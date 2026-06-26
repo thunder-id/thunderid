@@ -31,6 +31,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -107,6 +108,11 @@ func (s *InlineStubAgentService) ValidateAgent(
 	ctx context.Context, agent *model.Agent, flowID string,
 ) (string, string, inboundmodel.InboundClient, *tidcommon.ServiceError) {
 	return "", "", inboundmodel.InboundClient{}, nil
+}
+
+func (s *InlineStubAgentService) GetResourceDependencies(
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	return nil, nil
 }
 
 func TestHandleAgentPostRequest_Success(t *testing.T) {

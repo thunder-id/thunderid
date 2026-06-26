@@ -717,3 +717,89 @@ func (suite *InboundClientStoreTestSuite) TestIsDeclarative_AlwaysFalse() {
 	suite.False(suite.store.IsDeclarative(context.Background(), "any-id"))
 	suite.False(suite.store.IsDeclarative(context.Background(), ""))
 }
+
+func (suite *InboundClientStoreTestSuite) TestGetEntityIDsByThemeID() {
+	suite.Run("db client error", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").
+			Return((*providermock.DBClientInterfaceMock)(nil), errors.New("db unavailable")).Once()
+
+		ids, total, err := suite.store.GetEntityIDsByThemeID(context.Background(), "theme-1", 10, 0)
+		suite.Error(err)
+		suite.Nil(ids)
+		suite.Equal(0, total)
+	})
+
+	suite.Run("count query error", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByThemeIDCount,
+			"theme-1", testServerID).Return(nil, errors.New("count query failed")).Once()
+
+		ids, total, err := suite.store.GetEntityIDsByThemeID(context.Background(), "theme-1", 10, 0)
+		suite.Error(err)
+		suite.Nil(ids)
+		suite.Equal(0, total)
+	})
+
+	suite.Run("list query error", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByThemeIDCount,
+			"theme-1", testServerID).
+			Return([]map[string]interface{}{{"total": int64(2)}}, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByThemeID,
+			"theme-1", testServerID, 10, 0).
+			Return(nil, errors.New("list query failed")).Once()
+
+		ids, total, err := suite.store.GetEntityIDsByThemeID(context.Background(), "theme-1", 10, 0)
+		suite.Error(err)
+		suite.Nil(ids)
+		suite.Equal(0, total)
+	})
+
+	suite.Run("invalid entity_id type in row", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByThemeIDCount,
+			"theme-1", testServerID).
+			Return([]map[string]interface{}{{"total": int64(1)}}, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByThemeID,
+			"theme-1", testServerID, 10, 0).
+			Return([]map[string]interface{}{{"entity_id": 12345}}, nil).Once()
+
+		ids, total, err := suite.store.GetEntityIDsByThemeID(context.Background(), "theme-1", 10, 0)
+		suite.Error(err)
+		suite.Nil(ids)
+		suite.Equal(0, total)
+	})
+
+	suite.Run("returns ids and total", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByThemeIDCount,
+			"theme-1", testServerID).
+			Return([]map[string]interface{}{{"total": int64(2)}}, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByThemeID,
+			"theme-1", testServerID, 10, 0).
+			Return([]map[string]interface{}{
+				{"entity_id": "app-1"},
+				{"entity_id": "app-2"},
+			}, nil).Once()
+
+		ids, total, err := suite.store.GetEntityIDsByThemeID(context.Background(), "theme-1", 10, 0)
+		suite.NoError(err)
+		suite.Equal(2, total)
+		suite.Equal([]string{"app-1", "app-2"}, ids)
+	})
+
+	suite.Run("empty count result defaults to zero", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByThemeIDCount,
+			"theme-1", testServerID).
+			Return([]map[string]interface{}{}, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByThemeID,
+			"theme-1", testServerID, 10, 0).
+			Return([]map[string]interface{}{}, nil).Once()
+
+		ids, total, err := suite.store.GetEntityIDsByThemeID(context.Background(), "theme-1", 10, 0)
+		suite.NoError(err)
+		suite.Equal(0, total)
+		suite.Empty(ids)
+	})
+}

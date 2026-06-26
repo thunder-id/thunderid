@@ -89,4 +89,17 @@ var (
 		ID:    "ASQ-INBC_MGT-12",
 		Query: `SELECT COUNT(*) as count FROM "INBOUND_CLIENT" WHERE ENTITY_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
+
+	// queryGetEntityIDsByThemeID retrieves paginated entity IDs for inbound clients using a specific theme.
+	queryGetEntityIDsByThemeID = dbmodel.DBQuery{
+		ID: "ASQ-INBC_MGT-13",
+		Query: `SELECT ENTITY_ID FROM "INBOUND_CLIENT" WHERE THEME_ID = $1 AND DEPLOYMENT_ID = $2 ` +
+			`ORDER BY ENTITY_ID ASC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryGetEntityIDsByThemeIDCount retrieves the total count of inbound clients using a specific theme.
+	queryGetEntityIDsByThemeIDCount = dbmodel.DBQuery{
+		ID:    "ASQ-INBC_MGT-14",
+		Query: `SELECT COUNT(*) as total FROM "INBOUND_CLIENT" WHERE THEME_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
 )
