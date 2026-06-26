@@ -93,54 +93,14 @@ playwright-cli state-load thunderid-auth -s=thunderid
 playwright-cli goto {CONSOLE_URL} -s=thunderid
 ```
 
-## Route Map
+## Routes
 
-The ThunderID Console base path is `/console`. Append routes below to the resolved `{CONSOLE_URL}`. The sidebar is organized into categories.
+Routes change often, so they are not duplicated here — a copied table goes stale. Derive routes from the source files (repo-root-relative):
 
-### Sidebar Navigation
+- Route definitions: `frontend/apps/console/src/App.tsx`
+- Sidebar navigation and categories: `frontend/apps/console/src/layouts/DashboardLayout.tsx`
 
-| Category | Page | Path |
-|---|---|---|
-| - | Home | `/console/home` |
-| Resources | Applications | `/console/applications` |
-| Identities | Users | `/console/users` |
-| Identities | Groups | `/console/groups` |
-| Identities | Roles | `/console/roles` |
-| Identities | User Types | `/console/user-types` |
-| Configure | Organization Units | `/console/organization-units` |
-| Configure | Flows | `/console/flows` |
-| Configure | Integrations | `/console/integrations` |
-| Customize | Design | `/console/design` |
-| Customize | Translations | `/console/translations` |
-
-### Creation Routes
-
-| Resource | Path |
-|---|---|
-| Application | `/console/applications/create` |
-| User | `/console/users/create` |
-| Invite User | `/console/users/invite` |
-| Group | `/console/groups/create` |
-| Role | `/console/roles/create` |
-| User Type | `/console/user-types/create` |
-| Organization Unit | `/console/organization-units/create` |
-| Theme | `/console/design/themes/create` |
-| Translation | `/console/translations/create` |
-
-### Detail/Edit Routes
-
-| Resource | Path |
-|---|---|
-| Application | `/console/applications/:applicationId` |
-| User | `/console/users/:userId` |
-| Group | `/console/groups/:groupId` |
-| Role | `/console/roles/:roleId` |
-| User Type | `/console/user-types/:id` |
-| Organization Unit | `/console/organization-units/:id` |
-| Theme Builder | `/console/design/themes/:themeId` |
-| Layout Builder | `/console/design/layouts/:layoutId` |
-| Login Flow | `/console/flows/signin` or `/console/flows/signin/:flowId` |
-| Translation | `/console/translations/:language` |
+The Console base path is `/console`; append a route from `App.tsx` to the resolved `{CONSOLE_URL}` (e.g. `{CONSOLE_URL}/users`).
 
 ## Common Patterns
 
