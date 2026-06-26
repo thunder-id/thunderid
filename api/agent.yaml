@@ -1421,18 +1421,28 @@ paths:
               systemAttributes:
                 display: "name"
               schema:
-                name:
+                provider:
                   type: "string"
                   required: true
-                  unique: true
-                description:
-                  type: "string"
+                  enum: ["openai", "anthropic", "google", "meta", "mistral", "aws-bedrock", "ibm", "custom"]
                 model:
                   type: "string"
                   required: true
-                  enum: ["gpt-4", "gpt-4o", "claude-sonnet", "claude-opus"]
-                isActive:
-                  type: "boolean"
+                agentFunction:
+                  type: "string"
+                  required: true
+                  enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant"]
+                autonomyLevel:
+                  type: "string"
+                  required: true
+                  enum: ["suggest", "propose", "execute"]
+                tags:
+                  type: "array"
+                  items:
+                    type: "string"
+                deploymentEnvironment:
+                  type: "string"
+                  enum: ["development", "staging", "production"]
       responses:
         "201":
           description: Agent type created
@@ -1448,18 +1458,28 @@ paths:
                 systemAttributes:
                   display: "name"
                 schema:
-                  name:
+                  provider:
                     type: "string"
                     required: true
-                    unique: true
-                  description:
-                    type: "string"
+                    enum: ["openai", "anthropic", "google", "meta", "mistral", "aws-bedrock", "ibm", "custom"]
                   model:
                     type: "string"
                     required: true
-                    enum: ["gpt-4", "gpt-4o", "claude-sonnet", "claude-opus"]
-                  isActive:
-                    type: "boolean"
+                  agentFunction:
+                    type: "string"
+                    required: true
+                    enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant"]
+                  autonomyLevel:
+                    type: "string"
+                    required: true
+                    enum: ["suggest", "propose", "execute"]
+                  tags:
+                    type: "array"
+                    items:
+                      type: "string"
+                  deploymentEnvironment:
+                    type: "string"
+                    enum: ["development", "staging", "production"]
         "400":
           description: Bad request
           content:
@@ -1549,23 +1569,28 @@ paths:
                 systemAttributes:
                   display: "name"
                 schema:
-                  name:
+                  provider:
                     type: "string"
                     required: true
-                    unique: true
-                  description:
-                    type: "string"
+                    enum: ["openai", "anthropic", "google", "meta", "mistral", "aws-bedrock", "ibm", "custom"]
                   model:
                     type: "string"
                     required: true
-                    enum: ["gpt-4", "gpt-4o", "claude-sonnet", "claude-opus"]
-                  capabilities:
+                  agentFunction:
+                    type: "string"
+                    required: true
+                    enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant"]
+                  autonomyLevel:
+                    type: "string"
+                    required: true
+                    enum: ["suggest", "propose", "execute"]
+                  tags:
                     type: "array"
                     items:
                       type: "string"
-                      enum: ["chat", "tools", "vision", "code"]
-                  isActive:
-                    type: "boolean"
+                  deploymentEnvironment:
+                    type: "string"
+                    enum: ["development", "staging", "production"]
         "404":
           description: Agent type not found
           content:
@@ -1616,15 +1641,28 @@ paths:
               systemAttributes:
                 display: "name"
               schema:
-                name:
+                provider:
                   type: "string"
                   required: true
-                  unique: true
+                  enum: ["openai", "anthropic", "google", "meta", "mistral", "aws-bedrock", "ibm", "custom"]
                 model:
                   type: "string"
                   required: true
-                temperature:
-                  type: "number"
+                agentFunction:
+                  type: "string"
+                  required: true
+                  enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant"]
+                autonomyLevel:
+                  type: "string"
+                  required: true
+                  enum: ["suggest", "propose", "execute"]
+                tags:
+                  type: "array"
+                  items:
+                    type: "string"
+                deploymentEnvironment:
+                  type: "string"
+                  enum: ["development", "staging", "production"]
       responses:
         "200":
           description: Agent type updated
@@ -2697,25 +2735,28 @@ components:
                         additionalProperties: false
                 additionalProperties: false
           example:
-            name:
+            provider:
               type: "string"
               required: true
-              unique: true
-            description:
-              type: "string"
+              enum: ["openai", "anthropic", "google", "meta", "mistral", "aws-bedrock", "ibm", "custom"]
             model:
               type: "string"
               required: true
-              enum: ["gpt-4", "gpt-4o", "claude-sonnet", "claude-opus"]
-            temperature:
-              type: "number"
-            isActive:
-              type: "boolean"
-            capabilities:
+            agentFunction:
+              type: "string"
+              required: true
+              enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant"]
+            autonomyLevel:
+              type: "string"
+              required: true
+              enum: ["suggest", "propose", "execute"]
+            tags:
               type: "array"
               items:
                 type: "string"
-                enum: ["chat", "tools", "vision", "code"]
+            deploymentEnvironment:
+              type: "string"
+              enum: ["development", "staging", "production"]
 
     AgentTypeListResponse:
       type: object
