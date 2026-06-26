@@ -150,12 +150,18 @@ Before running the app, ensure your application is configured with:
 - Ensure the application exists in and is enabled
 
 **Issue**: CORS errors
-- Add your application URL to "Allowed Origins" in  `deployment.yaml`:
-  ```yaml
-  cors:
-    allowed_origins:
-      - "https://localhost:3000"
-  ```
+- Add your application URL to the server-config `cors` section, either way:
+  - **Declarative** — create `config/resources/server_configs/cors.yaml` and set `server_config.store: composite` in `deployment.yaml` so it loads at boot:
+    ```yaml
+    name: cors
+    value:
+      allowedOrigins:
+        - "https://localhost:3000"
+    ```
+  - **Runtime** (no restart) — `PUT /server-config/cors` with the raw section value:
+    ```json
+    { "allowedOrigins": ["https://localhost:3000"] }
+    ```
 
 ## How It Works
 

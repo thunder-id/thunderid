@@ -29,8 +29,6 @@ import (
 	"strings"
 	"testing"
 
-	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/mock"
@@ -42,7 +40,6 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
-	"github.com/thunder-id/thunderid/internal/system/cors"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
@@ -51,9 +48,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	yaml "gopkg.in/yaml.v3"
 )
 
 // HandlerTestSuite contains comprehensive tests for the export handler functions.
@@ -70,15 +65,7 @@ type HandlerTestSuite struct {
 func (suite *HandlerTestSuite) SetupTest() {
 	// Initialize config for tests
 	config.ResetServerRuntime()
-	var allowedOrigins cors.OriginEntries
-	suite.Require().NoError(yaml.Unmarshal([]byte(`
-- https://localhost:3000
-`), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: engineconfig.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	suite.Require().NoError(cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
-	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	err := config.InitializeServerRuntime("/tmp/test", &config.Config{})
 	suite.Require().NoError(err)
 
 	// Setup services and handler
@@ -381,15 +368,7 @@ func TestGenerateAndSendZipResponse_Standalone(t *testing.T) {
 	logger := log.GetLogger()
 	// Setup config
 	config.ResetServerRuntime()
-	var allowedOrigins cors.OriginEntries
-	assert.NoError(t, yaml.Unmarshal([]byte(`
-- https://localhost:3000
-`), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: engineconfig.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	require.NoError(t, cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
-	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	err := config.InitializeServerRuntime("/tmp/test", &config.Config{})
 	assert.NoError(t, err)
 	defer config.ResetServerRuntime()
 

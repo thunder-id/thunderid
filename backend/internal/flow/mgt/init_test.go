@@ -33,6 +33,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/cors"
+	"github.com/thunder-id/thunderid/internal/system/cors/corstest"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 )
@@ -84,9 +85,8 @@ func (s *InitTestSuite) SetupTest() {
 		Server: engineconfig.ServerConfig{
 			Identifier: "test-deployment",
 		},
-		CORS: engineconfig.CORSConfig{AllowedOrigins: allowedOrigins},
 	}
-	s.Require().NoError(cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
+	corstest.InstallMatcherEntries(s.T(), allowedOrigins)
 	_ = config.InitializeServerRuntime("test", testConfig)
 }
 

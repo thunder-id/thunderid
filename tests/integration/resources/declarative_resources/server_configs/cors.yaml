@@ -1,3 +1,4 @@
 name: cors
 value:
-  - "https://declarative.example.com"
+  allowedOrigins:
+    - "https://declarative.example.com"

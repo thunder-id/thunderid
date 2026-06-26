@@ -9,20 +9,23 @@ hide_table_of_contents: false
 
 ## Configure the Server
 
-Open `backend/cmd/server/deployment.yaml` in your favorite text editor and make the following changes:
-
 **Add CORS allowed origins:**
 
+CORS allowed origins are managed through the server-config `cors` section, not `deployment.yaml`. For local development, create the declarative resource file `backend/cmd/server/config/resources/server_configs/cors.yaml` with the Gate and Console origins, and set `server_config.store: composite` in `deployment.yaml` so it loads at boot (the default, `mutable`, does not load declarative resources):
+
 ```yaml
-cors:
-  allowed_origins:
+name: cors
+value:
+  allowedOrigins:
     - "https://localhost:5190"
     - "https://localhost:5191"
 ```
 
 :::tip
-This configuration allows the <ProductName /> Gate and <ProductName /> Console applications to communicate with the backend server during development.
+This configuration allows the <ProductName /> Gate and <ProductName /> Console applications to communicate with the backend server during development. You can also add or change origins at runtime — without a restart — with `PUT /server-config/cors`.
 :::
+
+Open `backend/cmd/server/deployment.yaml` in your favorite text editor and make the following changes:
 
 **Configure the Gate client:**
 

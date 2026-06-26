@@ -34,9 +34,14 @@ func TestOriginHandlerTestSuite(t *testing.T) {
 	suite.Run(t, new(OriginHandlerTestSuite))
 }
 
+// wrap nests an allowed-origins array literal in the object-shaped section value the handler expects.
+func wrap(allowedOrigins string) json.RawMessage {
+	return json.RawMessage(`{"allowedOrigins":` + allowedOrigins + `}`)
+}
+
 func (suite *OriginHandlerTestSuite) validate(raw string) error {
 	v := OriginHandler{}
-	decoded, err := v.Decode(json.RawMessage(raw))
+	decoded, err := v.Decode(wrap(raw))
 	if err != nil {
 		return err
 	}
@@ -89,39 +94,59 @@ func (suite *OriginHandlerTestSuite) decode(s string) any {
 	if s == "" {
 		return nil
 	}
-	v, err := OriginHandler{}.Decode(json.RawMessage(s))
+	v, err := OriginHandler{}.Decode(wrap(s))
 	suite.Require().NoError(err)
 	return v
 }
 
 func (suite *OriginHandlerTestSuite) TestMergeUnionDeduplicates() {
-	assert.JSONEq(suite.T(), `["a","b","c"]`, suite.merge(`["a","b"]`, `["b","c"]`))
+	assert.JSONEq(suite.T(), `{"allowedOrigins":["a","b","c"]}`, suite.merge(`["a","b"]`, `["b","c"]`))
 }
 
 func (suite *OriginHandlerTestSuite) TestMergeReadOnlyFirst() {
-	assert.Equal(suite.T(), `["https://static.example.com","https://app.example.com"]`,
+	assert.Equal(suite.T(), `{"allowedOrigins":["https://static.example.com","https://app.example.com"]}`,
 		suite.merge(`["https://static.example.com"]`, `["https://app.example.com"]`))
 }
 
 func (suite *OriginHandlerTestSuite) TestMergeEmptyLayers() {
-	assert.Equal(suite.T(), `[]`, suite.merge("", ""))
+	assert.Equal(suite.T(), `{"allowedOrigins":[]}`, suite.merge("", ""))
 }
 
 func (suite *OriginHandlerTestSuite) TestMergeOnlyWritable() {
-	assert.Equal(suite.T(), `["a"]`, suite.merge("", `["a"]`))
+	assert.Equal(suite.T(), `{"allowedOrigins":["a"]}`, suite.merge("", `["a"]`))
 }
 
 func (suite *OriginHandlerTestSuite) TestMergeRegexEntryMarshals() {
-	assert.JSONEq(suite.T(), `[{"regex":"^https://x$"}]`, suite.merge(`[{"regex":"^https://x$"}]`, ""))
+	assert.JSONEq(suite.T(), `{"allowedOrigins":[{"regex":"^https://x$"}]}`,
+		suite.merge(`[{"regex":"^https://x$"}]`, ""))
 }
 
 // --- Decode ---
 
-func (suite *OriginHandlerTestSuite) TestDecodeEmptyYieldsEmptyArray() {
+func (suite *OriginHandlerTestSuite) TestDecodeEmptyYieldsEmptyAllowedOrigins() {
 	decoded, err := OriginHandler{}.Decode(json.RawMessage(nil))
 	suite.Require().NoError(err)
 
 	out, err := json.Marshal(decoded)
 	suite.Require().NoError(err)
-	assert.Equal(suite.T(), `[]`, string(out))
+	assert.Equal(suite.T(), `{"allowedOrigins":[]}`, string(out))
+}
+
+func (suite *OriginHandlerTestSuite) TestDecodeMissingKeyYieldsEmptyAllowedOrigins() {
+	decoded, err := OriginHandler{}.Decode(json.RawMessage(`{}`))
+	suite.Require().NoError(err)
+
+	out, err := json.Marshal(decoded)
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), `{"allowedOrigins":[]}`, string(out))
+}
+
+func (suite *OriginHandlerTestSuite) TestDecodeExplicitNullRejected() {
+	_, err := OriginHandler{}.Decode(json.RawMessage(`{"allowedOrigins":null}`))
+	assert.Error(suite.T(), err)
+}
+
+func (suite *OriginHandlerTestSuite) TestDecodeBareListRejected() {
+	_, err := OriginHandler{}.Decode(json.RawMessage(`["https://app.example.com"]`))
+	assert.Error(suite.T(), err)
 }

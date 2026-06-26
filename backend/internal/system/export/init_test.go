@@ -24,14 +24,13 @@ import (
 	"strings"
 	"testing"
 
-	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
-
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/notification"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cors"
+	"github.com/thunder-id/thunderid/internal/system/cors/corstest"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
@@ -69,12 +68,8 @@ func (suite *InitTestSuite) SetupTest() {
 - https://example.com
 - https://localhost:3000
 `), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: engineconfig.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	if err := cors.InitializeMatcher(testConfig.CORS.AllowedOrigins); err != nil {
-		suite.T().Fatalf("Failed to initialize CORS matcher: %v", err)
-	}
+	testConfig := &config.Config{}
+	corstest.InstallMatcherEntries(suite.T(), allowedOrigins)
 	err := config.InitializeServerRuntime("/tmp/test", testConfig)
 	if err != nil {
 		suite.T().Fatalf("Failed to initialize config: %v", err)
@@ -364,10 +359,8 @@ func TestInitialize_Standalone(t *testing.T) {
 - https://example.com
 - https://localhost:3000
 `), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: engineconfig.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	assert.NoError(t, cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
+	testConfig := &config.Config{}
+	corstest.InstallMatcherEntries(t, allowedOrigins)
 	err := config.InitializeServerRuntime("/tmp/test", testConfig)
 	assert.NoError(t, err)
 	defer config.ResetServerRuntime()
@@ -396,10 +389,8 @@ func TestRegisterRoutes_Standalone(t *testing.T) {
 - https://example.com
 - https://localhost:3000
 `), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: engineconfig.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	assert.NoError(t, cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
+	testConfig := &config.Config{}
+	corstest.InstallMatcherEntries(t, allowedOrigins)
 	err := config.InitializeServerRuntime("/tmp/test", testConfig)
 	assert.NoError(t, err)
 	defer config.ResetServerRuntime()
@@ -428,10 +419,8 @@ func TestRouteHandling_Standalone(t *testing.T) {
 - https://example.com
 - https://localhost:3000
 `), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: engineconfig.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	assert.NoError(t, cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
+	testConfig := &config.Config{}
+	corstest.InstallMatcherEntries(t, allowedOrigins)
 	err := config.InitializeServerRuntime("/tmp/test", testConfig)
 	assert.NoError(t, err)
 	defer config.ResetServerRuntime()
@@ -488,10 +477,8 @@ func TestCORSConfiguration_Standalone(t *testing.T) {
 - https://example.com
 - https://localhost:3000
 `), &allowedOrigins))
-	testConfig := &config.Config{
-		CORS: engineconfig.CORSConfig{AllowedOrigins: allowedOrigins},
-	}
-	assert.NoError(t, cors.InitializeMatcher(testConfig.CORS.AllowedOrigins))
+	testConfig := &config.Config{}
+	corstest.InstallMatcherEntries(t, allowedOrigins)
 	err := config.InitializeServerRuntime("/tmp/test", testConfig)
 	assert.NoError(t, err)
 	defer config.ResetServerRuntime()

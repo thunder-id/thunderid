@@ -161,7 +161,8 @@ func (suite *ImportExportFreshPackSuite) TestServerConfigExportImportRoundTrip()
 	suite.putServerConfigCORS(`[]`)
 }
 
-func (suite *ImportExportFreshPackSuite) putServerConfigCORS(body string) {
+func (suite *ImportExportFreshPackSuite) putServerConfigCORS(allowedOrigins string) {
+	body := `{"allowedOrigins":` + allowedOrigins + `}`
 	req, err := http.NewRequest(http.MethodPut,
 		testutils.TestServerURL+"/server-config/cors", bytes.NewReader([]byte(body)))
 	suite.Require().NoError(err)

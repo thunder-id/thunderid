@@ -61,6 +61,15 @@ packages:
       pkgname: cachemock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/system/cors:
+    interfaces:
+      MergedConfigReader:
+        config:
+          dir: tests/mocks/corsmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: corsmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/cert:
     config:
       all: true

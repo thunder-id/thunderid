@@ -53,10 +53,16 @@ type apiErrorResponse struct {
 	Description i18nMessage `json:"description"`
 }
 
-// serverConfigLayers mirrors the layered GET/PUT response. Unset readOnly/writable layers decode to nil
-// (JSON null); merged is always present.
+// corsSectionValue mirrors the object-shaped cors section value ({"allowedOrigins":[...]}). Each origin
+// element is kept raw for order-sensitive comparison (a literal is the quoted "https://...").
+type corsSectionValue struct {
+	AllowedOrigins []json.RawMessage `json:"allowedOrigins"`
+}
+
+// serverConfigLayers mirrors the layered GET/PUT response. Each layer is the cors section value object;
+// an unset layer still carries an (empty) allowedOrigins list. Merged is always present.
 type serverConfigLayers struct {
-	ReadOnly []json.RawMessage `json:"readOnly"`
-	Writable []json.RawMessage `json:"writable"`
-	Merged   []json.RawMessage `json:"merged"`
+	ReadOnly corsSectionValue `json:"readOnly"`
+	Writable corsSectionValue `json:"writable"`
+	Merged   corsSectionValue `json:"merged"`
 }

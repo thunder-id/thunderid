@@ -385,11 +385,6 @@ configuration:
     # Leave empty to register all built-in interceptors.
     interceptors: []
 
-  # CORS configuration
-  cors:
-    allowedOrigins:
-      - "https://localhost:3000"
-
   # Passkey configuration
   passkey:
     allowedOrigins:

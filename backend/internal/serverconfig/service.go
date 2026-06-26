@@ -32,6 +32,7 @@ const loggerComponentName = "ServerConfigService"
 type ServerConfigService interface {
 	ListConfigNames(ctx context.Context) ([]ConfigName, *common.ServiceError)
 	GetConfig(ctx context.Context, name ConfigName) (ServerConfigLayers, *common.ServiceError)
+	GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError)
 	SetConfig(ctx context.Context, name ConfigName, value json.RawMessage) *common.ServiceError
 }
 
@@ -85,6 +86,21 @@ func (s *serverConfigService) GetConfig(ctx context.Context,
 		Writable: writable,
 		Merged:   handler.Merge(readOnly, writable),
 	}, nil
+}
+
+// GetMergedConfig returns only the effective (merged) value of a section. The name is a plain string,
+// validated here, so enforcement consumers can depend on a minimal, enum-free interface.
+func (s *serverConfigService) GetMergedConfig(ctx context.Context,
+	name string) (any, *common.ServiceError) {
+	configName := ConfigName(name)
+	if !configName.IsValid() {
+		return nil, &ErrorUnsupportedConfigName
+	}
+	layers, svcErr := s.GetConfig(ctx, configName)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return layers.Merged, nil
 }
 
 // SetConfig decodes and validates an incoming value against the current layers and persists the raw

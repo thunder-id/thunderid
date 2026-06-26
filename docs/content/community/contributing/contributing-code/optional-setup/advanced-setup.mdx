@@ -56,11 +56,12 @@ gate_client:
   port: 5190
 ```
 
-2. Add the local development origin of the <ProductName /> Gate application (https://localhost:5190) to the CORS allowed origins in `<THUNDERID_HOME>/deployment.yaml`.
+2. Add the local development origin of the <ProductName /> Gate application (https://localhost:5190) to the CORS allowed origins. Create the declarative resource file (source checkout: `backend/cmd/server/config/resources/server_configs/cors.yaml`; packaged distribution: `<THUNDERID_HOME>/config/resources/server_configs/cors.yaml`) and set `server_config.store: composite` in `deployment.yaml` so it loads at boot (the default, `mutable`, does not load declarative resources).
 
 ```yaml
-cors:
-  allowed_origins:
+name: cors
+value:
+  allowedOrigins:
     - "https://localhost:5190"
 ```
 
@@ -106,11 +107,12 @@ curl -k -X PUT "https://localhost:8090/applications/<console-application-id>" \
   -d '<paste-the-modified-json-here>'
 ```
 
-5. Add the local development origin of the console application (https://localhost:5191) to the CORS allowed origins in `<THUNDERID_HOME>/deployment.yaml`.
+5. Add the local development origin of the console application (https://localhost:5191) to the CORS allowed origins. Create the declarative resource file (source checkout: `backend/cmd/server/config/resources/server_configs/cors.yaml`; packaged distribution: `<THUNDERID_HOME>/config/resources/server_configs/cors.yaml`) and set `server_config.store: composite` in `deployment.yaml` so it loads at boot (the default, `mutable`, does not load declarative resources).
 
 ```yaml
-cors:
-  allowed_origins:
+name: cors
+value:
+  allowedOrigins:
     - "https://localhost:5191"
 ```
 
