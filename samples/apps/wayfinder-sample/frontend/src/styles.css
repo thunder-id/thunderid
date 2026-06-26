@@ -2728,3 +2728,234 @@ h2 {
     justify-content: flex-start;
   }
 }
+
+/* =========================================================
+   Native Auth Pages
+   ========================================================= */
+
+.native-auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  padding: 2rem 1rem;
+}
+
+.native-auth-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.07);
+}
+
+.native-auth-heading {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 1.5rem;
+}
+
+.native-auth-error {
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.native-auth-status {
+  color: #64748b;
+  font-size: 0.9rem;
+  text-align: center;
+  margin: 0;
+}
+
+.native-auth-form-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.native-auth-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.native-auth-field-label-text {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.native-auth-required {
+  color: #ef4444;
+}
+
+.native-auth-input {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  color: #111827;
+  background: #fff;
+  transition: border-color 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.native-auth-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.native-auth-input:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+}
+
+.native-auth-btn-primary {
+  padding: 0.65rem 1.25rem;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  width: 100%;
+}
+
+.native-auth-btn-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.native-auth-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.native-auth-btn-secondary {
+  padding: 0.65rem 1.25rem;
+  background: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  width: 100%;
+}
+
+.native-auth-btn-secondary:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #9ca3af;
+}
+
+.native-auth-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.native-auth-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.native-auth-mode-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 1.25rem;
+  font-size: 0.875rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.native-auth-link-btn {
+  background: none;
+  border: none;
+  color: #2563eb;
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.native-auth-link-btn:hover {
+  color: #1d4ed8;
+}
+
+.native-auth-branding {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.native-auth-logo-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.native-auth-emoji-logo {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.native-auth-img-logo {
+  height: 36px;
+  width: auto;
+}
+
+.native-auth-brand-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.native-auth-success {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 0;
+}
+
+.native-auth-success-icon {
+  font-size: 2.5rem;
+}
+
+.native-auth-success-heading {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.native-auth-success-message {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.native-auth-inline-link-row {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #64748b;
+}

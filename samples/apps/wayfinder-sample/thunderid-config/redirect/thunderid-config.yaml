@@ -226,8 +226,8 @@ nodes:
             required: true
         action:
           ref: action_credentials
-          nextNode: credentials_auth
-  - id: credentials_auth
+          nextNode: basic_auth
+  - id: basic_auth
     type: TASK_EXECUTION
     executor:
       name: CredentialsAuthExecutor
@@ -1005,8 +1005,8 @@ nodes:
             required: true
         action:
           ref: action_approve
-          nextNode: credentials_auth
-  - id: credentials_auth
+          nextNode: basic_auth
+  - id: basic_auth
     type: TASK_EXECUTION
     executor:
       name: CredentialsAuthExecutor
@@ -1210,8 +1210,8 @@ nodes:
             required: true
         action:
           ref: action_approve
-          nextNode: credentials_auth
-  - id: credentials_auth
+          nextNode: basic_auth
+  - id: basic_auth
     type: TASK_EXECUTION
     executor:
       name: CredentialsAuthExecutor
@@ -1366,8 +1366,8 @@ nodes:
             required: true
         action:
           ref: action_001
-          nextNode: credentials_auth
-  - id: credentials_auth
+          nextNode: basic_auth
+  - id: basic_auth
     type: TASK_EXECUTION
     executor:
       name: CredentialsAuthExecutor

@@ -27,7 +27,7 @@ import type {ImportResponse} from '../../import-export/models/import-configurati
 import {useGetSampleBundle} from '../api/useGetSampleBundles';
 import getWayfinderConfiguredStorageKey from '../utils/getWayfinderConfiguredStorageKey';
 
-const WAYFINDER_BUNDLE_KEY = 'wayfinder';
+const WAYFINDER_BUNDLE_KEY = 'wayfinder/redirect';
 
 type Status = 'idle' | 'importing' | 'success' | 'alreadyDone' | 'error';
 

@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useThunderID } from "@thunderid/react";
+import { useAuth } from "../auth/useAuth";
 import { Link, useNavigate } from "react-router-dom";
 import { ChevronLeft, CreditCard } from "lucide-react";
 import { createBooking, getBookedFlights, getFlight } from "../api";
@@ -26,7 +26,7 @@ import { buildFlightDetailsPath } from "../utils/routes";
 
 export function PaymentPageWithAuth({ criteria, flightId }) {
   const navigate = useNavigate();
-  const { getAccessToken, isSignedIn, signIn, user } = useThunderID();
+  const { getAccessToken, isSignedIn, signIn, user } = useAuth();
   const [flight, setFlight] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [paymentState, setPaymentState] = useState("idle");
@@ -116,7 +116,7 @@ export function PaymentPageWithAuth({ criteria, flightId }) {
             <h1>Sign in to complete payment.</h1>
             <p>Your flight will be booked only after payment is completed.</p>
           </div>
-          <button className="dashboard-action dashboard-action--secondary" type="button" onClick={() => signIn({ acr_values: "urn:thunder:auth:user" })}>
+          <button className="dashboard-action dashboard-action--secondary" type="button" onClick={() => signIn()}>
             Sign in
           </button>
         </section>

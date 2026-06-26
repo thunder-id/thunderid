@@ -17,12 +17,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useThunderID } from "@thunderid/react";
+import { useAuth } from "../auth/useAuth";
 import { KeyRound, RefreshCw, Save } from "lucide-react";
 import { getMyUser, updateMyCredentials, updateMyUser } from "../api/userApi";
 
 export function ProfilePage() {
-  const { isSignedIn, isLoading: authLoading, signIn, getAccessToken } = useThunderID();
+  const { isSignedIn, isLoading: authLoading, signIn, getAccessToken } = useAuth();
 
   if (authLoading) {
     return (
@@ -44,7 +44,7 @@ export function ProfilePage() {
           <button
             className="dashboard-action dashboard-action--secondary"
             type="button"
-            onClick={() => signIn({ acr_values: "urn:thunder:auth:user" })}
+            onClick={() => signIn()}
           >
             Sign in
           </button>

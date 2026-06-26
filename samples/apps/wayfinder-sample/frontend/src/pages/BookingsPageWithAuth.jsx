@@ -17,13 +17,13 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useThunderID } from "@thunderid/react";
+import { useAuth } from "../auth/useAuth";
 import { Link } from "react-router-dom";
 import { getBookedFlights } from "../api";
 import { formatPrice, getBookingReference } from "../utils/bookings";
 
 export function BookingsPageWithAuth() {
-  const { getAccessToken, isSignedIn, signIn, user } = useThunderID();
+  const { getAccessToken, isSignedIn, signIn, user } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -79,7 +79,7 @@ export function BookingsPageWithAuth() {
             <h1>Sign in to manage your bookings.</h1>
             <p>View confirmed trips, booking status, passenger count, and flight details.</p>
           </div>
-          <button className="dashboard-action dashboard-action--secondary" type="button" onClick={() => signIn({ acr_values: "urn:thunder:auth:user" })}>
+          <button className="dashboard-action dashboard-action--secondary" type="button" onClick={() => signIn()}>
             Sign in
           </button>
         </section>

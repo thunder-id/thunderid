@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { getLocations } from "./api";
+import { AUTH_CONFIG } from "./auth/config";
+import { useAuth } from "./auth/useAuth";
 import { BookingDetailsPageWithAuth } from "./pages/BookingDetailsPageWithAuth";
 import { BookingsPageWithAuth } from "./pages/BookingsPageWithAuth";
 import { BookingsUnavailable } from "./pages/BookingsUnavailable";
@@ -39,6 +41,7 @@ import { getDisplayName, HomePage, SignedInHomePage } from "./pages/HomePage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { PaymentPageWithAuth } from "./pages/PaymentPageWithAuth";
 import { ResultsPage, ResultsPageWithAuth } from "./pages/ResultsPage";
+import { AuthPage } from "./pages/AuthPage";
 import { buildResultsPath, readCriteria } from "./utils/routes";
 
 const AGENT_CHAT_URL = import.meta.env.VITE_AGENT_CHAT_URL || "http://localhost:8790/chat";
@@ -80,7 +83,7 @@ function PublicPrimaryNav() {
 }
 
 function LivePrimaryNav() {
-  const { isSignedIn } = useThunderID();
+  const { isSignedIn } = useAuth();
 
   if (isSignedIn) {
     return <span aria-hidden="true" />;
@@ -90,19 +93,15 @@ function LivePrimaryNav() {
 }
 
 function LiveAuthHeader() {
-  const { isSignedIn, isLoading, signIn, clearSession, user } = useThunderID();
+  const { isSignedIn, isLoading, signIn, signOut, user } = useAuth();
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const accountMenuRef = useRef(null);
   const email = user?.email || user?.mail || "";
   const displayName = getDisplayName(user) || user?.sub || "Traveler";
   const showEmailSub = email && email !== displayName;
 
-  async function handleSignOut() {
-    try {
-      await clearSession();
-    } finally {
-      window.location.replace("/flights");
-    }
+  function handleSignOut() {
+    signOut();
   }
 
   useEffect(() => {
@@ -170,7 +169,7 @@ function LiveAuthHeader() {
         className="primary-small"
         type="button"
         disabled={isLoading}
-        onClick={() => signIn({ acr_values: "urn:thunder:auth:user" })}
+        onClick={() => signIn()}
       >
         Sign in
       </button>
@@ -207,7 +206,7 @@ function PublicFooterLinks() {
 }
 
 function LiveFooterLinks() {
-  const { isSignedIn } = useThunderID();
+  const { isSignedIn } = useAuth();
 
   if (isSignedIn) {
     return null;
@@ -345,7 +344,7 @@ function ChatWidget({ authReady }) {
 }
 
 function LiveChatWidget() {
-  const { getAccessToken, isSignedIn } = useThunderID();
+  const { getAccessToken, isSignedIn } = useAuth();
 
   return <ChatWidgetCore getToken={isSignedIn ? getAccessToken : null} />;
 }
@@ -820,6 +819,10 @@ function AppRoutes({ authReady, criteria, locations, onSearch }) {
         path="/profile"
         element={authReady ? <ProfilePage /> : <BookingsUnavailable />}
       />
+      <Route path="/signin" element={authReady ? <AuthPage key="signin" /> : <BookingsUnavailable />} />
+      <Route path="/signup" element={authReady ? <AuthPage key="signup" /> : <BookingsUnavailable />} />
+      <Route path="/recovery" element={authReady ? <AuthPage key="recovery" /> : <BookingsUnavailable />} />
+      <Route path="/auth" element={<Navigate to="/signin" replace />} />
       {AI_FEATURES_ENABLED && <Route path="/agent-callback" element={<AgentCallbackRoute />} />}
       {AI_FEATURES_ENABLED && (
         <Route
@@ -896,21 +899,26 @@ function App({ authReady }) {
   }
 
   const criteria = readCriteria(location.search);
+  const isAuthPage =
+    !AUTH_CONFIG.isRedirectBased &&
+    ["/signin", "/signup", "/recovery"].includes(location.pathname);
 
   return (
     <div className="app-shell">
-      <header className="site-header">
-        <Link className="brand" to="/flights" aria-label="Wayfinder Travel home">
-          <span className="brand-mark">
-            <Plane size={22} />
-          </span>
-          <span>Wayfinder</span>
-        </Link>
-        <PrimaryNav authReady={authReady} />
-        <AuthenticatedHeader authReady={authReady} />
-      </header>
+      {!isAuthPage && (
+        <header className="site-header">
+          <Link className="brand" to="/flights" aria-label="Wayfinder Travel home">
+            <span className="brand-mark">
+              <Plane size={22} />
+            </span>
+            <span>Wayfinder</span>
+          </Link>
+          <PrimaryNav authReady={authReady} />
+          <AuthenticatedHeader authReady={authReady} />
+        </header>
+      )}
 
-      {!authReady && (
+      {!isAuthPage && !authReady && (
         <div className="setup-banner" role="status">
           <ShieldCheck size={18} />
           Add `VITE_THUNDER_CLIENT_ID` and `VITE_THUNDER_BASE_URL` to enable live
@@ -924,8 +932,8 @@ function App({ authReady }) {
         locations={locations}
         onSearch={handleSearch}
       />
-      {AI_FEATURES_ENABLED && <ChatWidget authReady={authReady} />}
-      <SiteFooter authReady={authReady} />
+      {AI_FEATURES_ENABLED && !isAuthPage && <ChatWidget authReady={authReady} />}
+      {!isAuthPage && <SiteFooter authReady={authReady} />}
     </div>
   );
 }
