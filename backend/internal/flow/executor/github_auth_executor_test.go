@@ -38,7 +38,7 @@ type GithubAuthExecutorTestSuite struct {
 	mockIDPService    *idpmock.IDPServiceInterfaceMock
 	mockGithubService *githubmock.GithubOAuthAuthnServiceInterfaceMock
 	mockOAuthService  *oauthmock.OAuthAuthnCoreServiceInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider *managermock.AuthnProviderManagerMock
 }
 
 func TestGithubAuthExecutorTestSuite(t *testing.T) {
@@ -50,7 +50,7 @@ func (suite *GithubAuthExecutorTestSuite) SetupTest() {
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockGithubService = githubmock.NewGithubOAuthAuthnServiceInterfaceMock(suite.T())
 	suite.mockOAuthService = oauthmock.NewOAuthAuthnCoreServiceInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 }
 
 func (suite *GithubAuthExecutorTestSuite) TestNewGithubOAuthExecutor_Success() {

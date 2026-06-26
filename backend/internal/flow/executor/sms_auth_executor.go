@@ -50,7 +50,7 @@ type smsOTPAuthExecutor struct {
 	identifyingExecutorInterface
 	entityProvider entityprovider.EntityProviderInterface
 	otpService     otp.OTPAuthnServiceInterface
-	authnProvider  providers.AuthnProviderManagerInterface
+	authnProvider  providers.AuthnProviderManager
 	logger         *log.Logger
 }
 
@@ -61,7 +61,7 @@ var _ identifyingExecutorInterface = (*smsOTPAuthExecutor)(nil)
 func newSMSOTPAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	otpService otp.OTPAuthnServiceInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 	entityProvider entityprovider.EntityProviderInterface,
 ) *smsOTPAuthExecutor {
 	defaultInputs := []common.Input{
@@ -271,7 +271,7 @@ func (s *smsOTPAuthExecutor) ProcessAuthFlowResponse(ctx *core.NodeContext,
 // ValidatePrerequisites validates whether the prerequisites for the SMSOTPAuthExecutor are met.
 func (s *smsOTPAuthExecutor) ValidatePrerequisites(ctx *core.NodeContext,
 	execResp *common.ExecutorResponse,
-	authnProvider providers.AuthnProviderManagerInterface) bool {
+	authnProvider providers.AuthnProviderManager) bool {
 	if s.isPhonePrerequisiteMet(ctx) {
 		return true
 	}

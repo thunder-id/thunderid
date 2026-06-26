@@ -33,8 +33,8 @@ import (
 func Initialize(
 	mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface,
-	actorProvider providers.ActorProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	discoveryService discovery.DiscoveryServiceInterface,
 ) TokenIntrospectionServiceInterface {
 	introspectionService := newTokenIntrospectionService(jwtService)
@@ -47,8 +47,8 @@ func Initialize(
 func registerRoutes(
 	mux *http.ServeMux,
 	introspectHandler *tokenIntrospectionHandler,
-	actorProvider providers.ActorProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 ) {

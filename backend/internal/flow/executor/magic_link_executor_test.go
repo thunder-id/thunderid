@@ -91,7 +91,7 @@ type MagicLinkExecutorTestSuite struct {
 	mockMagicLinkService *magiclinkmock.MagicLinkAuthnServiceInterfaceMock
 	mockFlowFactory      *coremock.FlowFactoryInterfaceMock
 	mockEntityProvider   *entityprovidermock.EntityProviderInterfaceMock
-	mockAuthnProvider    *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider    *managermock.AuthnProviderManagerMock
 	executor             *magicLinkExecutor
 }
 
@@ -123,7 +123,7 @@ func (suite *MagicLinkExecutorTestSuite) SetupTest() {
 	suite.mockMagicLinkService = magiclinkmock.NewMagicLinkAuthnServiceInterfaceMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 
 	defaultInputs := []common.Input{testMagicLinkTokenInput}
 	var prerequisites []common.Input

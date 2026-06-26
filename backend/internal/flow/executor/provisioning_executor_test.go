@@ -61,7 +61,7 @@ type ProvisioningExecutorTestSuite struct {
 	mockFlowFactory           *coremock.FlowFactoryInterfaceMock
 	mockEntityProvider        *entityprovidermock.EntityProviderInterfaceMock
 	mockEntityTypeService     *entitytypemock.EntityTypeServiceInterfaceMock
-	mockAuthnProvider         *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider         *managermock.AuthnProviderManagerMock
 	executor                  *provisioningExecutor
 }
 
@@ -76,7 +76,7 @@ func (suite *ProvisioningExecutorTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(newAuthenticatedAuthUser(), providers.AuthenticatedClaims{},

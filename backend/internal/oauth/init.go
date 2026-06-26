@@ -51,8 +51,8 @@ import (
 // Initialize initializes all OAuth-related services and registers their routes.
 func Initialize(
 	mux *http.ServeMux,
-	actorProvider providers.ActorProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	jweService jwe.JWEServiceInterface,
 	flowExecService flowexec.FlowExecServiceInterface,
@@ -61,8 +61,8 @@ func Initialize(
 	ouService providers.OrganizationUnitProvider,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	authzService authz.AuthorizationServiceInterface,
-	resourceService providers.ResourceProviderInterface,
-	i18nService providers.I18nProviderInterface,
+	resourceService providers.ResourceServerProvider,
+	i18nService providers.I18nProvider,
 	idpService providers.IDPProvider,
 	dpopVerifier dpop.VerifierInterface,
 	cfg oauthconfig.Config,

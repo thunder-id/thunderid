@@ -62,7 +62,7 @@ type AuthAssertExecutorTestSuite struct {
 	mockJWTService        *jwtmock.JWTServiceInterfaceMock
 	mockOUService         *oumock.OrganizationUnitServiceInterfaceMock
 	mockAssertGenerator   *assertmock.AuthAssertGeneratorInterfaceMock
-	mockAuthnProvider     *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider     *managermock.AuthnProviderManagerMock
 	mockEntityProvider    *entityprovidermock.EntityProviderInterfaceMock
 	mockFlowFactory       *coremock.FlowFactoryInterfaceMock
 	mockAttributeCacheSvc *attributecachemock.AttributeCacheServiceInterfaceMock
@@ -81,7 +81,7 @@ func (suite *AuthAssertExecutorTestSuite) SetupTest() {
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	suite.mockAssertGenerator = assertmock.NewAuthAssertGeneratorInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockAttributeCacheSvc = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())

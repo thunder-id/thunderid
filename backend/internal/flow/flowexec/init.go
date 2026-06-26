@@ -37,8 +37,8 @@ import (
 // The observabilitySvc parameter is optional (can be nil) - if nil, observability events won't be published.
 func Initialize(
 	mux *http.ServeMux,
-	flowProvider providers.FlowProviderInterface,
-	actorProvider providers.ActorProviderInterface,
+	flowProvider providers.FlowProvider,
+	actorProvider providers.ActorProvider,
 	executorRegistry executor.ExecutorRegistryInterface,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	observabilitySvc observability.ObservabilityServiceInterface,

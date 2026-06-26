@@ -43,7 +43,7 @@ type authorizationExecutor struct {
 	core.ExecutorInterface
 	authzService   authzsvc.AuthorizationServiceInterface
 	entityProvider entityprovider.EntityProviderInterface
-	authnProvider  providers.AuthnProviderManagerInterface
+	authnProvider  providers.AuthnProviderManager
 	logger         *log.Logger
 }
 
@@ -54,7 +54,7 @@ func newAuthorizationExecutor(
 	flowFactory core.FlowFactoryInterface,
 	authZService authzsvc.AuthorizationServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *authorizationExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authzLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthorization))

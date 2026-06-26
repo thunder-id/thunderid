@@ -38,7 +38,7 @@ type credentialsAuthExecutor struct {
 	core.ExecutorInterface
 	identifyingExecutorInterface
 	entityProvider entityprovider.EntityProviderInterface
-	authnProvider  providers.AuthnProviderManagerInterface
+	authnProvider  providers.AuthnProviderManager
 	logger         *log.Logger
 }
 
@@ -49,7 +49,7 @@ var _ identifyingExecutorInterface = (*credentialsAuthExecutor)(nil)
 func newCredentialsAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *credentialsAuthExecutor {
 	defaultInputs := []common.Input{
 		{

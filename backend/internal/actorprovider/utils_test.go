@@ -43,7 +43,7 @@ type UtilsTestSuite struct {
 	suite.Suite
 	mockInbound *inboundclientmock.InboundClientServiceInterfaceMock
 	mockEntity  *entityprovidermock.EntityProviderInterfaceMock
-	provider    providers.ActorProviderInterface
+	provider    providers.ActorProvider
 }
 
 func TestUtilsTestSuite(t *testing.T) {
@@ -80,7 +80,7 @@ func (s *UtilsTestSuite) TestBuildApplication_Success() {
 }
 
 func (s *UtilsTestSuite) TestBuildApplication_NilClient() {
-	mockProvider := actorprovidermock.NewActorProviderInterfaceMock(s.T())
+	mockProvider := actorprovidermock.NewActorProviderMock(s.T())
 	mockProvider.EXPECT().GetInboundClientByID(mock.Anything, "app-1").
 		Return((*providers.InboundClient)(nil), (*tidcommon.ServiceError)(nil))
 

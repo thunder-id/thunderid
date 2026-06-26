@@ -514,19 +514,19 @@ packages:
 
   github.com/thunder-id/thunderid/pkg/thunderidengine/providers:
     interfaces:
-      AuthnProviderManagerInterface:
+      AuthnProviderManager:
         config:
           dir: tests/mocks/authnprovider/managermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: managermock
           filename: "{{.InterfaceName}}_mock.go"
-      ActorProviderInterface:
+      ActorProvider:
         config:
           dir: tests/mocks/actorprovidermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: actorprovidermock
           filename: "{{.InterfaceName}}_mock.go"
-      FlowProviderInterface:
+      FlowProvider:
         config:
           dir: tests/mocks/flow/flowexecmock
           structname: '{{.InterfaceName}}Mock'

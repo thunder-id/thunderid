@@ -25,8 +25,8 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
-// AuthnProviderManagerInterface defines the interface for the authentication provider manager.
-type AuthnProviderManagerInterface interface {
+// AuthnProviderManager defines the interface for the authentication provider manager.
+type AuthnProviderManager interface {
 	AuthenticateUser(ctx context.Context, identifiers, credentials map[string]interface{},
 		requestedAttributes *RequestedAttributes,
 		metadata *AuthnMetadata,
@@ -41,8 +41,8 @@ type AuthnProviderManagerInterface interface {
 		authUser AuthUser) (AuthUser, *AttributesResponse, *common.ServiceError)
 }
 
-// ActorProviderInterface resolves inbound actors and exposes their OAuth and membership data.
-type ActorProviderInterface interface {
+// ActorProvider resolves inbound actors and exposes their OAuth and membership data.
+type ActorProvider interface {
 	GetOAuthClientByClientID(
 		ctx context.Context, clientID string,
 	) (*OAuthClient, *common.ServiceError)
@@ -56,8 +56,8 @@ type ActorProviderInterface interface {
 	GetActorGroups(actorID string) ([]EntityGroup, *common.ServiceError)
 }
 
-// I18nProviderInterface defines the interface for the i18n provider.
-type I18nProviderInterface interface {
+// I18nProvider defines the interface for the i18n provider.
+type I18nProvider interface {
 	ResolveTranslations(
 		ctx context.Context,
 		language string,
@@ -66,8 +66,8 @@ type I18nProviderInterface interface {
 	ListLanguages(ctx context.Context) ([]string, *common.ServiceError)
 }
 
-// DesignResolveProviderInterface defines the interface for the design resolve service.
-type DesignResolveProviderInterface interface {
+// DesignProvider defines the interface for the design resolve service.
+type DesignProvider interface {
 	ResolveDesign(
 		ctx context.Context, resolveType DesignResolveType, id string,
 	) (*DesignResponse, *common.ServiceError)
@@ -89,15 +89,15 @@ type OrganizationUnitProvider interface {
 	) (*OrganizationUnitListResponse, *common.ServiceError)
 }
 
-// FlowProviderInterface defines the flow management operations required for flow execution.
-type FlowProviderInterface interface {
+// FlowProvider defines the flow management operations required for flow execution.
+type FlowProvider interface {
 	GetFlowByHandle(ctx context.Context, handle string, flowType FlowType) (
 		*CompleteFlowDefinition, *common.ServiceError)
 	GetFlow(ctx context.Context, flowID string) (*CompleteFlowDefinition, *common.ServiceError)
 }
 
-// ResourceProviderInterface defines the interface for the resource provider.
-type ResourceProviderInterface interface {
+// ResourceServerProvider defines the interface for the resource provider.
+type ResourceServerProvider interface {
 	GetResourceServerByIdentifier(
 		ctx context.Context, identifier string,
 	) (*ResourceServer, *common.ServiceError)

@@ -38,7 +38,7 @@ import (
 type FederatedAuthResolverTestSuite struct {
 	suite.Suite
 	mockFlowFactory   *coremock.FlowFactoryInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider *managermock.AuthnProviderManagerMock
 	executor          *federatedAuthResolverExecutor
 }
 
@@ -54,7 +54,7 @@ func newFederatedAuthResolverAuthenticatedUser() providers.AuthUser {
 
 func (suite *FederatedAuthResolverTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 
 	mockExec := createMockExecutor(suite.T(), ExecutorNameFederatedAuthResolver,
 		common.ExecutorTypeAuthentication)

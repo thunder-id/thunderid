@@ -42,7 +42,7 @@ type authorizationCodeGrantHandler struct {
 	authzService    authz.AuthorizeServiceInterface
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	attributeCache  attributecache.AttributeCacheServiceInterface
-	resourceService providers.ResourceProviderInterface
+	resourceService providers.ResourceServerProvider
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -50,7 +50,7 @@ func newAuthorizationCodeGrantHandler(
 	authzService authz.AuthorizeServiceInterface,
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	attributeCache attributecache.AttributeCacheServiceInterface,
-	resourceService providers.ResourceProviderInterface,
+	resourceService providers.ResourceServerProvider,
 ) GrantHandlerInterface {
 	return &authorizationCodeGrantHandler{
 		authzService:    authzService,

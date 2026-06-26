@@ -44,7 +44,7 @@ import (
 type consentExecutor struct {
 	core.ExecutorInterface
 	consentEnforcer providers.ConsentProvider
-	authnProvider   providers.AuthnProviderManagerInterface
+	authnProvider   providers.AuthnProviderManager
 	logger          *log.Logger
 }
 
@@ -54,7 +54,7 @@ var _ core.ExecutorInterface = (*consentExecutor)(nil)
 func newConsentExecutor(
 	flowFactory core.FlowFactoryInterface,
 	consentEnforcer providers.ConsentProvider,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *consentExecutor {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, "ConsentExecutor"),

@@ -387,7 +387,7 @@ func (_c *ExecutorInterfaceMock_GetType_Call) RunAndReturn(run func() common.Exe
 }
 
 // GetUserIDFromContext provides a mock function for the type ExecutorInterfaceMock
-func (_mock *ExecutorInterfaceMock) GetUserIDFromContext(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManagerInterface) string {
+func (_mock *ExecutorInterfaceMock) GetUserIDFromContext(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManager) string {
 	ret := _mock.Called(ctx, execResp, authnProvider)
 
 	if len(ret) == 0 {
@@ -395,7 +395,7 @@ func (_mock *ExecutorInterfaceMock) GetUserIDFromContext(ctx *core.NodeContext, 
 	}
 
 	var r0 string
-	if returnFunc, ok := ret.Get(0).(func(*core.NodeContext, *common.ExecutorResponse, providers.AuthnProviderManagerInterface) string); ok {
+	if returnFunc, ok := ret.Get(0).(func(*core.NodeContext, *common.ExecutorResponse, providers.AuthnProviderManager) string); ok {
 		r0 = returnFunc(ctx, execResp, authnProvider)
 	} else {
 		r0 = ret.Get(0).(string)
@@ -411,12 +411,12 @@ type ExecutorInterfaceMock_GetUserIDFromContext_Call struct {
 // GetUserIDFromContext is a helper method to define mock.On call
 //   - ctx *core.NodeContext
 //   - execResp *common.ExecutorResponse
-//   - authnProvider providers.AuthnProviderManagerInterface
+//   - authnProvider providers.AuthnProviderManager
 func (_e *ExecutorInterfaceMock_Expecter) GetUserIDFromContext(ctx interface{}, execResp interface{}, authnProvider interface{}) *ExecutorInterfaceMock_GetUserIDFromContext_Call {
 	return &ExecutorInterfaceMock_GetUserIDFromContext_Call{Call: _e.mock.On("GetUserIDFromContext", ctx, execResp, authnProvider)}
 }
 
-func (_c *ExecutorInterfaceMock_GetUserIDFromContext_Call) Run(run func(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManagerInterface)) *ExecutorInterfaceMock_GetUserIDFromContext_Call {
+func (_c *ExecutorInterfaceMock_GetUserIDFromContext_Call) Run(run func(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManager)) *ExecutorInterfaceMock_GetUserIDFromContext_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 *core.NodeContext
 		if args[0] != nil {
@@ -426,9 +426,9 @@ func (_c *ExecutorInterfaceMock_GetUserIDFromContext_Call) Run(run func(ctx *cor
 		if args[1] != nil {
 			arg1 = args[1].(*common.ExecutorResponse)
 		}
-		var arg2 providers.AuthnProviderManagerInterface
+		var arg2 providers.AuthnProviderManager
 		if args[2] != nil {
-			arg2 = args[2].(providers.AuthnProviderManagerInterface)
+			arg2 = args[2].(providers.AuthnProviderManager)
 		}
 		run(
 			arg0,
@@ -444,7 +444,7 @@ func (_c *ExecutorInterfaceMock_GetUserIDFromContext_Call) Return(s string) *Exe
 	return _c
 }
 
-func (_c *ExecutorInterfaceMock_GetUserIDFromContext_Call) RunAndReturn(run func(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManagerInterface) string) *ExecutorInterfaceMock_GetUserIDFromContext_Call {
+func (_c *ExecutorInterfaceMock_GetUserIDFromContext_Call) RunAndReturn(run func(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManager) string) *ExecutorInterfaceMock_GetUserIDFromContext_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -507,7 +507,7 @@ func (_c *ExecutorInterfaceMock_HasRequiredInputs_Call) RunAndReturn(run func(ct
 }
 
 // ValidatePrerequisites provides a mock function for the type ExecutorInterfaceMock
-func (_mock *ExecutorInterfaceMock) ValidatePrerequisites(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManagerInterface) bool {
+func (_mock *ExecutorInterfaceMock) ValidatePrerequisites(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManager) bool {
 	ret := _mock.Called(ctx, execResp, authnProvider)
 
 	if len(ret) == 0 {
@@ -515,7 +515,7 @@ func (_mock *ExecutorInterfaceMock) ValidatePrerequisites(ctx *core.NodeContext,
 	}
 
 	var r0 bool
-	if returnFunc, ok := ret.Get(0).(func(*core.NodeContext, *common.ExecutorResponse, providers.AuthnProviderManagerInterface) bool); ok {
+	if returnFunc, ok := ret.Get(0).(func(*core.NodeContext, *common.ExecutorResponse, providers.AuthnProviderManager) bool); ok {
 		r0 = returnFunc(ctx, execResp, authnProvider)
 	} else {
 		r0 = ret.Get(0).(bool)
@@ -531,12 +531,12 @@ type ExecutorInterfaceMock_ValidatePrerequisites_Call struct {
 // ValidatePrerequisites is a helper method to define mock.On call
 //   - ctx *core.NodeContext
 //   - execResp *common.ExecutorResponse
-//   - authnProvider providers.AuthnProviderManagerInterface
+//   - authnProvider providers.AuthnProviderManager
 func (_e *ExecutorInterfaceMock_Expecter) ValidatePrerequisites(ctx interface{}, execResp interface{}, authnProvider interface{}) *ExecutorInterfaceMock_ValidatePrerequisites_Call {
 	return &ExecutorInterfaceMock_ValidatePrerequisites_Call{Call: _e.mock.On("ValidatePrerequisites", ctx, execResp, authnProvider)}
 }
 
-func (_c *ExecutorInterfaceMock_ValidatePrerequisites_Call) Run(run func(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManagerInterface)) *ExecutorInterfaceMock_ValidatePrerequisites_Call {
+func (_c *ExecutorInterfaceMock_ValidatePrerequisites_Call) Run(run func(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManager)) *ExecutorInterfaceMock_ValidatePrerequisites_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 *core.NodeContext
 		if args[0] != nil {
@@ -546,9 +546,9 @@ func (_c *ExecutorInterfaceMock_ValidatePrerequisites_Call) Run(run func(ctx *co
 		if args[1] != nil {
 			arg1 = args[1].(*common.ExecutorResponse)
 		}
-		var arg2 providers.AuthnProviderManagerInterface
+		var arg2 providers.AuthnProviderManager
 		if args[2] != nil {
-			arg2 = args[2].(providers.AuthnProviderManagerInterface)
+			arg2 = args[2].(providers.AuthnProviderManager)
 		}
 		run(
 			arg0,
@@ -564,7 +564,7 @@ func (_c *ExecutorInterfaceMock_ValidatePrerequisites_Call) Return(b bool) *Exec
 	return _c
 }
 
-func (_c *ExecutorInterfaceMock_ValidatePrerequisites_Call) RunAndReturn(run func(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManagerInterface) bool) *ExecutorInterfaceMock_ValidatePrerequisites_Call {
+func (_c *ExecutorInterfaceMock_ValidatePrerequisites_Call) RunAndReturn(run func(ctx *core.NodeContext, execResp *common.ExecutorResponse, authnProvider providers.AuthnProviderManager) bool) *ExecutorInterfaceMock_ValidatePrerequisites_Call {
 	_c.Call.Return(run)
 	return _c
 }

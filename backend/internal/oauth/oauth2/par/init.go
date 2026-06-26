@@ -36,11 +36,11 @@ import (
 // Returns the PARServiceInterface so the authorization endpoint can resolve request_uri parameters.
 func Initialize(
 	mux *http.ServeMux,
-	actorProvider providers.ActorProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
-	resourceService providers.ResourceProviderInterface,
+	resourceService providers.ResourceServerProvider,
 	dpopVerifier dpop.VerifierInterface,
 	cfg oauthconfig.Config,
 ) PARServiceInterface {
@@ -65,8 +65,8 @@ func initializePARStore(cfg oauthconfig.Config) parStoreInterface {
 func registerRoutes(
 	mux *http.ServeMux,
 	handler parHandlerInterface,
-	actorProvider providers.ActorProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 ) {

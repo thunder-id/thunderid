@@ -48,7 +48,7 @@ type openid4vpVerifier struct {
 	core.ExecutorInterface
 	service           openid4vpVerifierService
 	entityTypeService entitytype.EntityTypeServiceInterface
-	authnProvider     providers.AuthnProviderManagerInterface
+	authnProvider     providers.AuthnProviderManager
 	logger            *log.Logger
 }
 
@@ -58,7 +58,7 @@ type openid4vpVerifier struct {
 func newOpenID4VPVerifier(
 	flowFactory core.FlowFactoryInterface, service openid4vpVerifierService,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) core.ExecutorInterface {
 	base := flowFactory.CreateExecutor(
 		ExecutorNameOpenID4VPVerify, common.ExecutorTypeAuthentication, []common.Input{}, []common.Input{})

@@ -49,7 +49,7 @@ const (
 type ConsentExecutorTestSuite struct {
 	suite.Suite
 	mockConsentEnforcer *consentprovidermock.ConsentProviderMock
-	mockAuthnProvider   *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider   *managermock.AuthnProviderManagerMock
 	mockFlowFactory     *coremock.FlowFactoryInterfaceMock
 	executor            *consentExecutor
 }
@@ -60,7 +60,7 @@ func TestConsentExecutorTestSuite(t *testing.T) {
 
 func (suite *ConsentExecutorTestSuite) SetupTest() {
 	suite.mockConsentEnforcer = consentprovidermock.NewConsentProviderMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 
 	mockExec := createMockExecutorWithInputs(suite.T())

@@ -41,7 +41,7 @@ type actorProvider struct {
 func newActorProvider(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-) providers.ActorProviderInterface {
+) providers.ActorProvider {
 	return &actorProvider{
 		inboundClient:  inboundClient,
 		entityProvider: entityProvider,

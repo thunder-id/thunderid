@@ -254,7 +254,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		name           string
 		prerequisites  []common.Input
 		authUser       providers.AuthUser
-		setupMock      func(*managermock.AuthnProviderManagerInterfaceMock)
+		setupMock      func(*managermock.AuthnProviderManagerMock)
 		userInputs     map[string]string
 		runtimeData    map[string]string
 		forwardedData  map[string]interface{}
@@ -278,7 +278,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			"UserID prerequisite met via authenticated user",
 			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
 			providers.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
 					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-123"}, nil)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -379,7 +379,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			"UserID prerequisite met via authenticated user attributes",
 			[]common.Input{{Identifier: "email", Required: true}},
 			providers.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
 					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-123"}, nil)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -400,7 +400,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			"GetEntityReference fails - prerequisite not met",
 			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
 			providers.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
 					Return(providers.AuthUser{}, nil, &tidcommon.InternalServerError)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -417,7 +417,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			"GetUserAttributes fails - falls back to other sources",
 			[]common.Input{{Identifier: "email", Required: true}},
 			providers.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
 					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-123"}, nil)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -434,7 +434,7 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 			"Entity reference empty ID - attribute still checked",
 			[]common.Input{{Identifier: userAttributeUserID, Required: true}},
 			providers.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
 					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: ""}, nil)
 				m.EXPECT().GetUserAttributes(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -453,11 +453,11 @@ func (s *ExecutorTestSuite) TestValidatePrerequisites() {
 		s.Run(tt.name, func() {
 			exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, tt.prerequisites)
 
-			var authnProvider providers.AuthnProviderManagerInterface
+			var authnProvider providers.AuthnProviderManager
 			if tt.setupMock != nil {
 				authUser := s.newAuthenticatedAuthUser()
 				tt.authUser = authUser
-				mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+				mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 				tt.setupMock(mockProvider)
 				authnProvider = mockProvider
 			}
@@ -486,7 +486,7 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 	tests := []struct {
 		name           string
 		authUser       providers.AuthUser
-		setupMock      func(*managermock.AuthnProviderManagerInterfaceMock)
+		setupMock      func(*managermock.AuthnProviderManagerMock)
 		runtimeData    map[string]string
 		userInputs     map[string]string
 		expectedUserID string
@@ -502,7 +502,7 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 		{
 			"UserID from authenticated user via authn provider",
 			providers.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
 					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: "user-123"}, nil)
 			},
@@ -529,7 +529,7 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 		{
 			"GetEntityReference fails - returns empty",
 			providers.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
 					Return(providers.AuthUser{}, nil, &tidcommon.InternalServerError)
 			},
@@ -540,7 +540,7 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 		{
 			"Entity reference with empty ID - returns empty",
 			providers.AuthUser{},
-			func(m *managermock.AuthnProviderManagerInterfaceMock) {
+			func(m *managermock.AuthnProviderManagerMock) {
 				m.EXPECT().GetEntityReference(mock.Anything, mock.Anything).
 					Return(providers.AuthUser{}, &providers.EntityReference{EntityID: ""}, nil)
 			},
@@ -562,11 +562,11 @@ func (s *ExecutorTestSuite) TestGetUserIDFromContext() {
 		s.Run(tt.name, func() {
 			exec := newExecutor(testExecutorName, common.ExecutorTypeAuthentication, nil, nil)
 
-			var authnProvider providers.AuthnProviderManagerInterface
+			var authnProvider providers.AuthnProviderManager
 			if tt.setupMock != nil {
 				authUser := s.newAuthenticatedAuthUser()
 				tt.authUser = authUser
-				mockProvider := managermock.NewAuthnProviderManagerInterfaceMock(s.T())
+				mockProvider := managermock.NewAuthnProviderManagerMock(s.T())
 				tt.setupMock(mockProvider)
 				authnProvider = mockProvider
 			}

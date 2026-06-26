@@ -30,6 +30,6 @@ import (
 func Initialize(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
-) providers.ActorProviderInterface {
+) providers.ActorProvider {
 	return newActorProvider(inboundClient, entityProvider)
 }

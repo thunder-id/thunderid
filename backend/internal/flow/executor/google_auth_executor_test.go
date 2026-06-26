@@ -38,7 +38,7 @@ type GoogleAuthExecutorTestSuite struct {
 	mockIDPService    *idpmock.IDPServiceInterfaceMock
 	mockGoogleService *googlemock.GoogleOIDCAuthnServiceInterfaceMock
 	mockOIDCService   *oidcmock.OIDCAuthnCoreServiceInterfaceMock
-	mockAuthnProvider *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider *managermock.AuthnProviderManagerMock
 }
 
 func TestGoogleAuthExecutorTestSuite(t *testing.T) {
@@ -50,7 +50,7 @@ func (suite *GoogleAuthExecutorTestSuite) SetupTest() {
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockGoogleService = googlemock.NewGoogleOIDCAuthnServiceInterfaceMock(suite.T())
 	suite.mockOIDCService = oidcmock.NewOIDCAuthnCoreServiceInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 }
 
 func (suite *GoogleAuthExecutorTestSuite) TestNewGoogleOIDCAuthExecutor_Success() {

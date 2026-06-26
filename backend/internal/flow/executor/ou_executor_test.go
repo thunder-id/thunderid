@@ -44,7 +44,7 @@ type OUExecutorTestSuite struct {
 	suite.Suite
 	mockOUService         *oumock.OrganizationUnitServiceInterfaceMock
 	mockFlowFactory       *coremock.FlowFactoryInterfaceMock
-	mockAuthnProvider     *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider     *managermock.AuthnProviderManagerMock
 	mockEntityTypeService *entitytypemock.EntityTypeServiceInterfaceMock
 	executor              *ouExecutor
 }
@@ -56,7 +56,7 @@ func TestOUExecutorSuite(t *testing.T) {
 func (suite *OUExecutorTestSuite) SetupTest() {
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 
 	defaultInputs := []common.Input{
@@ -140,7 +140,7 @@ func (suite *OUExecutorTestSuite) TestNewOUExecutor() {
 		defaultInputs, []common.Input{}).
 		Return(newMockExecutor("OUExecutor", common.ExecutorTypeRegistration, defaultInputs, []common.Input{}))
 
-	mockAuthnProvider := managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	mockAuthnProvider := managermock.NewAuthnProviderManagerMock(suite.T())
 	mockEntityTypeService := entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 	executor := newOUExecutor(mockFlowFactory, mockOUService, mockAuthnProvider, mockEntityTypeService)
 
@@ -307,7 +307,7 @@ func (suite *OUExecutorTestSuite) TestExecute_PrerequisitesFailure() {
 		func(
 			ctx *core.NodeContext,
 			execResp *common.ExecutorResponse,
-			_ providers.AuthnProviderManagerInterface,
+			_ providers.AuthnProviderManager,
 		) bool {
 			for _, prerequisite := range prerequisites {
 				if _, ok := ctx.UserInputs[prerequisite.Identifier]; !ok {

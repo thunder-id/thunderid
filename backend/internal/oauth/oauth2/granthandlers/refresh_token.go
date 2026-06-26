@@ -46,7 +46,7 @@ type refreshTokenGrantHandler struct {
 	tokenBuilder     tokenservice.TokenBuilderInterface
 	tokenValidator   tokenservice.TokenValidatorInterface
 	attrCacheService attributecache.AttributeCacheServiceInterface
-	resourceService  providers.ResourceProviderInterface
+	resourceService  providers.ResourceServerProvider
 }
 
 // newRefreshTokenGrantHandler creates a new instance of RefreshTokenGrantHandler.
@@ -55,7 +55,7 @@ func newRefreshTokenGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	tokenValidator tokenservice.TokenValidatorInterface,
 	attrCacheService attributecache.AttributeCacheServiceInterface,
-	resourceService providers.ResourceProviderInterface,
+	resourceService providers.ResourceServerProvider,
 	cfg oauthconfig.Config,
 ) RefreshTokenGrantHandlerInterface {
 	return &refreshTokenGrantHandler{

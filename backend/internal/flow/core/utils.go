@@ -35,7 +35,7 @@ var placeholderPattern = regexp.MustCompile(`{{\s*context\.\s*(\w+)\s*}}`)
 // If no placeholder is found, the original value is returned.
 // If a placeholder is found but the key doesn't exist in any data source, the placeholder is kept as-is.
 func ResolvePlaceholder(ctx *NodeContext, value string, execResp *common.ExecutorResponse,
-	authnProvider providers.AuthnProviderManagerInterface, logger *log.Logger) string {
+	authnProvider providers.AuthnProviderManager, logger *log.Logger) string {
 	if ctx == nil {
 		return value
 	}
@@ -96,7 +96,7 @@ func ResolvePlaceholder(ctx *NodeContext, value string, execResp *common.Executo
 
 // fetchContextUserRef attempts to resolve the authenticated user's entity reference using the authn provider.
 func fetchContextUserRef(
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 	ctx *NodeContext,
 	execResp *common.ExecutorResponse,
 	logger *log.Logger,

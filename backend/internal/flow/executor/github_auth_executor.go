@@ -40,7 +40,7 @@ func newGithubOAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	idpService idp.IDPServiceInterface,
 	authService authngithub.GithubOAuthAuthnServiceInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) oAuthExecutorInterface {
 	oauthSvcCast, ok := authService.(authnoauth.OAuthAuthnCoreServiceInterface)
 	if !ok {

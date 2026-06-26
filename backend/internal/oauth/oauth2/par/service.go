@@ -50,14 +50,14 @@ type PARServiceInterface interface {
 // parService implements PARServiceInterface.
 type parService struct {
 	store           parStoreInterface
-	resourceService providers.ResourceProviderInterface
+	resourceService providers.ResourceServerProvider
 	cfg             oauthconfig.Config
 	logger          *log.Logger
 }
 
 // newPARService creates a new PAR service instance.
 func newPARService(
-	store parStoreInterface, resourceService providers.ResourceProviderInterface, cfg oauthconfig.Config,
+	store parStoreInterface, resourceService providers.ResourceServerProvider, cfg oauthconfig.Config,
 ) PARServiceInterface {
 	return &parService{
 		store:           store,

@@ -34,7 +34,7 @@ import (
 type ManagerTestSuite struct {
 	suite.Suite
 	mockProvider *providermock.AuthnProviderInterfaceMock
-	mgr          providers.AuthnProviderManagerInterface
+	mgr          providers.AuthnProviderManager
 }
 
 func TestManagerTestSuite(t *testing.T) {

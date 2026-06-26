@@ -69,8 +69,8 @@ type cibaService struct {
 	store           CIBARequestStoreInterface
 	flowExecService flowexec.FlowExecServiceInterface
 	jwtService      jwt.JWTServiceInterface
-	inboundClient   providers.ActorProviderInterface
-	resourceService providers.ResourceProviderInterface
+	inboundClient   providers.ActorProvider
+	resourceService providers.ResourceServerProvider
 	logger          *log.Logger
 }
 
@@ -79,8 +79,8 @@ func newCIBAService(
 	store CIBARequestStoreInterface,
 	flowExecService flowexec.FlowExecServiceInterface,
 	jwtService jwt.JWTServiceInterface,
-	actorProvider providers.ActorProviderInterface,
-	resourceService providers.ResourceProviderInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	return &cibaService{

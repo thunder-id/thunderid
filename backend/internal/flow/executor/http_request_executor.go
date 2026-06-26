@@ -82,7 +82,7 @@ type errorHandlingConfig struct {
 type httpRequestExecutor struct {
 	core.ExecutorInterface
 	ouService     ou.OrganizationUnitServiceInterface
-	authnProvider providers.AuthnProviderManagerInterface
+	authnProvider providers.AuthnProviderManager
 	logger        *log.Logger
 }
 
@@ -92,7 +92,7 @@ var _ core.ExecutorInterface = (*httpRequestExecutor)(nil)
 func newHTTPRequestExecutor(
 	flowFactory core.FlowFactoryInterface,
 	ouService ou.OrganizationUnitServiceInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *httpRequestExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpRequestLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameHTTPRequest))

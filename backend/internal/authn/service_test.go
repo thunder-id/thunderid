@@ -74,7 +74,7 @@ type AuthenticationServiceTestSuite struct {
 	mockIDPService      *idpmock.IDPServiceInterfaceMock
 	mockJWTService      *jwtmock.JWTServiceInterfaceMock
 	mockAssertGenerator *assertmock.AuthAssertGeneratorInterfaceMock
-	mockAuthnProvider   *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider   *managermock.AuthnProviderManagerMock
 	mockOTPService      *otpmock.OTPAuthnServiceInterfaceMock
 	mockOAuthService    *oauthmock.OAuthAuthnServiceInterfaceMock
 	mockOIDCService     *oidcmock.OIDCAuthnServiceInterfaceMock
@@ -124,7 +124,7 @@ func (suite *AuthenticationServiceTestSuite) SetupTest() {
 	suite.mockIDPService = idpmock.NewIDPServiceInterfaceMock(suite.T())
 	suite.mockJWTService = jwtmock.NewJWTServiceInterfaceMock(suite.T())
 	suite.mockAssertGenerator = &assertmock.AuthAssertGeneratorInterfaceMock{}
-	suite.mockAuthnProvider = &managermock.AuthnProviderManagerInterfaceMock{}
+	suite.mockAuthnProvider = &managermock.AuthnProviderManagerMock{}
 	suite.mockOTPService = &otpmock.OTPAuthnServiceInterfaceMock{}
 	suite.mockOAuthService = &oauthmock.OAuthAuthnServiceInterfaceMock{}
 	suite.mockOIDCService = &oidcmock.OIDCAuthnServiceInterfaceMock{}

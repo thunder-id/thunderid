@@ -42,7 +42,7 @@ type magicLinkExecutor struct {
 	identifyingExecutorInterface
 	entityProvider   entityprovider.EntityProviderInterface
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface
-	authnProvider    providers.AuthnProviderManagerInterface
+	authnProvider    providers.AuthnProviderManager
 	logger           *log.Logger
 }
 
@@ -62,7 +62,7 @@ func newMagicLinkExecutorResponse() *common.ExecutorResponse {
 func newMagicLinkExecutor(
 	flowFactory core.FlowFactoryInterface,
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 	entityProvider entityprovider.EntityProviderInterface,
 ) *magicLinkExecutor {
 	defaultInputs := []common.Input{{

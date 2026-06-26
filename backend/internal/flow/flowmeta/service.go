@@ -62,19 +62,19 @@ type FlowMetaServiceInterface interface {
 
 // flowMetaService is the implementation of FlowMetaServiceInterface.
 type flowMetaService struct {
-	actorProvider providers.ActorProviderInterface
+	actorProvider providers.ActorProvider
 	ouService     providers.OrganizationUnitProvider
-	designResolve providers.DesignResolveProviderInterface
-	i18nService   providers.I18nProviderInterface
+	designResolve providers.DesignProvider
+	i18nService   providers.I18nProvider
 	logger        *log.Logger
 }
 
 // newFlowMetaService creates a new instance of flowMetaService with injected dependencies.
 func newFlowMetaService(
-	actorProvider providers.ActorProviderInterface,
+	actorProvider providers.ActorProvider,
 	ouService providers.OrganizationUnitProvider,
-	designResolve providers.DesignResolveProviderInterface,
-	i18nService providers.I18nProviderInterface,
+	designResolve providers.DesignProvider,
+	i18nService providers.I18nProvider,
 ) FlowMetaServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	return &flowMetaService{

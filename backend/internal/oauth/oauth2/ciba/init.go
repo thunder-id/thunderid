@@ -38,11 +38,11 @@ import (
 func Initialize(
 	mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface,
-	actorProvider providers.ActorProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	flowExecService flowexec.FlowExecServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
-	resourceService providers.ResourceProviderInterface,
+	resourceService providers.ResourceServerProvider,
 	cfg oauthconfig.Config,
 ) CIBAServiceInterface {
 	store := newCIBAStore(cfg)
@@ -57,8 +57,8 @@ func Initialize(
 func registerRoutes(
 	mux *http.ServeMux,
 	cibaHandler CIBAHandlerInterface,
-	actorProvider providers.ActorProviderInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	actorProvider providers.ActorProvider,
+	authnProvider providers.AuthnProviderManager,
 	jwtService jwt.JWTServiceInterface,
 	discoveryService discovery.DiscoveryServiceInterface,
 ) {

@@ -37,7 +37,7 @@ type CredentialSetterTestSuite struct {
 	suite.Suite
 	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
 	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
-	mockAuthnProvider  *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerMock
 	mockBaseExecutor   *coremock.ExecutorInterfaceMock
 	executor           *credentialSetter
 }
@@ -45,7 +45,7 @@ type CredentialSetterTestSuite struct {
 func (suite *CredentialSetterTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockBaseExecutor = coremock.NewExecutorInterfaceMock(suite.T())
 
 	suite.mockFlowFactory.On("CreateExecutor",

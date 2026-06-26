@@ -56,7 +56,7 @@ type userInfoService struct {
 	jweService        jwe.JWEServiceInterface
 	jwksResolver      *jwksresolver.Resolver
 	tokenValidator    tokenservice.TokenValidatorInterface
-	inboundClient     providers.ActorProviderInterface
+	inboundClient     providers.ActorProvider
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface
 	dpopVerifier      dpop.VerifierInterface
 	logger            *log.Logger
@@ -68,7 +68,7 @@ func newUserInfoService(
 	jweService jwe.JWEServiceInterface,
 	resolver *jwksresolver.Resolver,
 	tokenValidator tokenservice.TokenValidatorInterface,
-	actorProvider providers.ActorProviderInterface,
+	actorProvider providers.ActorProvider,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	dpopVerifier dpop.VerifierInterface,
 	cfg oauthconfig.Config,

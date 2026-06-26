@@ -37,8 +37,8 @@ type clientCredentialsGrantHandler struct {
 	tokenBuilder    tokenservice.TokenBuilderInterface
 	ouService       providers.OrganizationUnitProvider
 	authzService    authz.AuthorizationServiceInterface
-	actorProvider   providers.ActorProviderInterface
-	resourceService providers.ResourceProviderInterface
+	actorProvider   providers.ActorProvider
+	resourceService providers.ResourceServerProvider
 }
 
 // newClientCredentialsGrantHandler creates a new instance of ClientCredentialsGrantHandler.
@@ -46,8 +46,8 @@ func newClientCredentialsGrantHandler(
 	tokenBuilder tokenservice.TokenBuilderInterface,
 	ouService providers.OrganizationUnitProvider,
 	authzService authz.AuthorizationServiceInterface,
-	actorProvider providers.ActorProviderInterface,
-	resourceService providers.ResourceProviderInterface,
+	actorProvider providers.ActorProvider,
+	resourceService providers.ResourceServerProvider,
 ) GrantHandlerInterface {
 	return &clientCredentialsGrantHandler{
 		tokenBuilder:    tokenBuilder,

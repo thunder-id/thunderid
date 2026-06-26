@@ -367,7 +367,7 @@ packages:
 
   github.com/thunder-id/thunderid/pkg/thunderidengine/providers:
     interfaces:
-      FlowProviderInterface:
+      FlowProvider:
         config:
           dir: internal/flow/flowexec
           structname: '{{.InterfaceName}}Mock'

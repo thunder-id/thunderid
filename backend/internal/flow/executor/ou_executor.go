@@ -41,7 +41,7 @@ const (
 type ouExecutor struct {
 	core.ExecutorInterface
 	ouService         ou.OrganizationUnitServiceInterface
-	authnProvider     providers.AuthnProviderManagerInterface
+	authnProvider     providers.AuthnProviderManager
 	entityTypeService entitytype.EntityTypeServiceInterface
 	logger            *log.Logger
 }
@@ -52,7 +52,7 @@ var _ core.ExecutorInterface = (*ouExecutor)(nil)
 func newOUExecutor(
 	flowFactory core.FlowFactoryInterface,
 	ouService ou.OrganizationUnitServiceInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 ) *ouExecutor {
 	defaultInputs := []common.Input{

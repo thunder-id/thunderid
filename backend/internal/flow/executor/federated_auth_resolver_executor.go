@@ -44,14 +44,14 @@ const (
 // GitHub) has already verified the user's identity.
 type federatedAuthResolverExecutor struct {
 	core.ExecutorInterface
-	authnProvider providers.AuthnProviderManagerInterface
+	authnProvider providers.AuthnProviderManager
 	logger        *log.Logger
 }
 
 // newFederatedAuthResolverExecutor creates a new instance of FederatedAuthResolverExecutor.
 func newFederatedAuthResolverExecutor(
 	flowFactory core.FlowFactoryInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *federatedAuthResolverExecutor {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, federatedAuthResolverLoggerComponentName),

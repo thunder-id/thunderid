@@ -41,7 +41,7 @@ import (
 type CredentialsAuthExecutorTestSuite struct {
 	suite.Suite
 	mockEntityProvider *entityprovidermock.EntityProviderInterfaceMock
-	mockAuthnProvider  *managermock.AuthnProviderManagerInterfaceMock
+	mockAuthnProvider  *managermock.AuthnProviderManagerMock
 	mockFlowFactory    *coremock.FlowFactoryInterfaceMock
 	executor           *credentialsAuthExecutor
 }
@@ -52,7 +52,7 @@ func TestCredentialsAuthExecutorSuite(t *testing.T) {
 
 func (suite *CredentialsAuthExecutorTestSuite) SetupTest() {
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 
 	defaultInputs := []common.Input{

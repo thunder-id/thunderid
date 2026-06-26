@@ -39,9 +39,9 @@ type ExecutorInterface interface {
 	GetPrerequisites() []common.Input
 	HasRequiredInputs(ctx *NodeContext, execResp *common.ExecutorResponse) bool
 	ValidatePrerequisites(ctx *NodeContext, execResp *common.ExecutorResponse,
-		authnProvider providers.AuthnProviderManagerInterface) bool
+		authnProvider providers.AuthnProviderManager) bool
 	GetUserIDFromContext(ctx *NodeContext, execResp *common.ExecutorResponse,
-		authnProvider providers.AuthnProviderManagerInterface) string
+		authnProvider providers.AuthnProviderManager) string
 	GetRequiredInputs(ctx *NodeContext) []common.Input
 	GetExecutionPolicy(mode string) *ExecutionPolicy
 }
@@ -118,7 +118,7 @@ func (e *executor) HasRequiredInputs(ctx *NodeContext, execResp *common.Executor
 // ValidatePrerequisites validates whether the prerequisites for the executor are met.
 // Returns true if all prerequisites are met, otherwise returns false and updates the executor response.
 func (e *executor) ValidatePrerequisites(ctx *NodeContext, execResp *common.ExecutorResponse,
-	authnProvider providers.AuthnProviderManagerInterface) bool {
+	authnProvider providers.AuthnProviderManager) bool {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "Executor"),
 		log.String(log.LoggerKeyExecutorName, e.GetName()),
 		log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -193,7 +193,7 @@ func (e *executor) ValidatePrerequisites(ctx *NodeContext, execResp *common.Exec
 
 // GetUserIDFromContext retrieves the user ID from the context.
 func (e *executor) GetUserIDFromContext(ctx *NodeContext, execResp *common.ExecutorResponse,
-	authnProvider providers.AuthnProviderManagerInterface) string {
+	authnProvider providers.AuthnProviderManager) string {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "Executor"),
 		log.String(log.LoggerKeyExecutorName, e.GetName()),
 		log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))

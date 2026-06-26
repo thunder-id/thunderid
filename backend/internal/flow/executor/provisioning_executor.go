@@ -51,7 +51,7 @@ type provisioningExecutor struct {
 	roleService           role.RoleServiceInterface
 	roleAssignmentService role.RoleAssignmentServiceInterface
 	entityTypeService     entitytype.EntityTypeServiceInterface
-	authnProvider         providers.AuthnProviderManagerInterface
+	authnProvider         providers.AuthnProviderManager
 	logger                *log.Logger
 }
 
@@ -66,7 +66,7 @@ func newProvisioningExecutor(
 	roleAssignmentService role.RoleAssignmentServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 ) *provisioningExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, ExecutorNameProvisioning),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameProvisioning))

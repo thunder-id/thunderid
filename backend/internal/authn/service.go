@@ -93,7 +93,7 @@ type authenticationService struct {
 	idpService             idp.IDPServiceInterface
 	jwtService             jwt.JWTServiceInterface
 	authAssertionGenerator assert.AuthAssertGeneratorInterface
-	authnProvider          providers.AuthnProviderManagerInterface
+	authnProvider          providers.AuthnProviderManager
 	otpService             otp.OTPAuthnServiceInterface
 	magicLinkService       magiclink.MagicLinkAuthnServiceInterface
 	oauthService           oauth.OAuthAuthnServiceInterface
@@ -108,7 +108,7 @@ func newAuthenticationService(
 	idpSvc idp.IDPServiceInterface,
 	jwtSvc jwt.JWTServiceInterface,
 	authAssertGen assert.AuthAssertGeneratorInterface,
-	authnProvider providers.AuthnProviderManagerInterface,
+	authnProvider providers.AuthnProviderManager,
 	otpAuthnSvc otp.OTPAuthnServiceInterface,
 	magicLinkSvc magiclink.MagicLinkAuthnServiceInterface,
 	oauthAuthnSvc oauth.OAuthAuthnServiceInterface,
