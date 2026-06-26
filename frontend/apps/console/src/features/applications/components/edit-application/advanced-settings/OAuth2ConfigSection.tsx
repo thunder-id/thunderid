@@ -315,10 +315,15 @@ export default function OAuth2ConfigSection({
           </Select>
           <Typography variant="caption" color="text.secondary" sx={{mt: 0.5}}>
             {isTokenMethodLocked
-              ? t(
-                  'applications:edit.advanced.tokenEndpointAuthMethod.lockedHint',
-                  'Locked to "none" because the client is public.',
-                )
+              ? tokenMethodConstraint?.readOnly
+                ? t(
+                    'applications:edit.advanced.tokenEndpointAuthMethod.templateLockedHint',
+                    'Locked by the template configuration.',
+                  )
+                : t(
+                    'applications:edit.advanced.tokenEndpointAuthMethod.lockedHint',
+                    'Locked to "none" because the client is public.',
+                  )
               : t(
                   'applications:edit.advanced.tokenEndpointAuthMethod.hint',
                   'Defines how the client authenticates at the token endpoint.',

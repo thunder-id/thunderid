@@ -43,13 +43,13 @@ export default function withConfig<P extends object>(WrappedComponent: Component
       ...(config.trusted_issuer ? {signInOptions: {resource: getServerUrl()}} : {}),
       // When the trusted issuer is a generic OIDC provider, suppress the SDK's
       // product-specific bootstrap calls that would otherwise 404 / be CORS-blocked
-      // at the external authorization server: flow metadata (`{baseUrl}/flow/meta`)
-      // and branding preferences. The user profile is already derived from ID token
+      // at the external authorization server: flow metadata (`{baseUrl}/flow/meta`).
+      // The user profile is already derived from ID token
       // claims under the ThunderID platform, so no additional profile configuration
       // is required.
       ...(genericOidc
         ? {
-            preferences: {resolveFromMeta: false, theme: {inheritFromBranding: false}},
+            preferences: {resolveFromMeta: false},
             // Generic OIDC authorization servers typically respond to the `/oauth/token`
             // endpoint with `access-control-allow-credentials: false`, so a credentialed
             // fetch from the browser is blocked by CORS and the SDK never sees the issued
