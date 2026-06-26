@@ -5,8 +5,6 @@ description: AI agents should use this file when creating and reviewing document
 
 # ThunderID Documentation Creation Instructions
 
-Follow these instructions when creating new documentation content for ThunderID. Adhere to all guidelines to ensure consistency, clarity, and quality.
-
 ## Scope and Boundaries
 
 
@@ -18,15 +16,12 @@ Follow these instructions when creating new documentation content for ThunderID.
 
 ### What You Must Do
 
-- Strictly adhere to the authoring standards outlined below.
 - Choose the appropriate navigation location for the new content based on its topic and relevance.
 - Create content that is clear, concise, and actionable for the intended audience.
 - Ensure all technical details are accurate and up-to-date.
 - Use the provided templates and formatting rules consistently.
 
 ## Authoring Standards
-
-You must follow these standards when creating documentation content for ThunderID.
 
 ### Voice and Tone
 
@@ -125,17 +120,7 @@ Reduce unnecessary use of:
 - was  
 - were  
 
-Prefer direct verbs.
-
-**Instead of:**
-
-> The configuration is located in `deployment.toml`.
-
-**Write:**
-
-> The configuration file is `deployment.toml`.  
-> Or:  
-> Find the configuration in `deployment.toml`.
+Prefer direct verbs, using “is” only when it improves clarity.
 
 **Instead of:**
 
@@ -144,8 +129,6 @@ Prefer direct verbs.
 **Write:**
 
 > The token authenticates requests.
-
-Use “is” only when it improves clarity.
 
 ### 7. Prefer Concrete Language
 
@@ -312,8 +295,6 @@ When Vale feedback is provided through CI checks:
 - If the latest CI run is clean, do not comment on earlier issues.
 
 ## Vocabulary Guidelines
-
-Strictly follow these vocabulary guidelines when writing ThunderID documentation.
 
 ### Use of "Multiple"
 
