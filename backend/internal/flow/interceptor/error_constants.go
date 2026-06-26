@@ -49,3 +49,17 @@ var ErrorChallengeTokenInvalid = tidcommon.ServiceError{
 		DefaultValue: "The challenge token is missing or invalid",
 	},
 }
+
+// ErrorCaptchaInvalid defines the error when a captcha token fails verification.
+var ErrorCaptchaInvalid = tidcommon.ServiceError{
+	Code: "ICS-1003",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.interceptor.captcha_invalid",
+		DefaultValue: "Invalid captcha",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.interceptor.captcha_invalid_description",
+		DefaultValue: "The captcha token could not be verified",
+	},
+}

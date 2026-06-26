@@ -393,6 +393,14 @@ packages:
       pkgname: interceptormock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/captcha:
+    config:
+      all: true
+      dir: tests/mocks/captchamock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: captchamock
+      filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/entitytype:
     config:
       all: true

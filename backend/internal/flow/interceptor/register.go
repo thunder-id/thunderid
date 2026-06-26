@@ -28,6 +28,7 @@ import (
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/captcha"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 )
@@ -110,7 +111,8 @@ func (r *interceptorRegistry) IsRegistered(name string) bool {
 
 // InterceptorDependencies holds the dependencies required for interceptor initialization.
 type InterceptorDependencies struct {
-	FlowFactory core.FlowFactoryInterface
+	FlowFactory    core.FlowFactoryInterface
+	CaptchaService captcha.CaptchaServiceInterface
 }
 
 // builtinRegistrars maps each built-in interceptor name to its registration function.
@@ -183,6 +185,18 @@ func registerChallengeTokenInterceptor(deps InterceptorDependencies, registry In
 		return fmt.Errorf("FlowFactory dependency is required for %s", ChallengeTokenInterceptor)
 	}
 	registry.RegisterInterceptor(ChallengeTokenInterceptor, newChallengeTokenInterceptor(deps.FlowFactory))
+	return nil
+}
+
+// registerCaptchaInterceptor registers the captcha interceptor in the registry.
+func registerCaptchaInterceptor(deps InterceptorDependencies, registry InterceptorRegistryInterface) error {
+	if deps.FlowFactory == nil {
+		return fmt.Errorf("FlowFactory dependency is required for %s", CaptchaInterceptor)
+	}
+	if deps.CaptchaService == nil {
+		return fmt.Errorf("CaptchaService dependency is required for %s", CaptchaInterceptor)
+	}
+	registry.RegisterInterceptor(CaptchaInterceptor, newCaptchaInterceptor(deps.FlowFactory, deps.CaptchaService))
 	return nil
 }
 

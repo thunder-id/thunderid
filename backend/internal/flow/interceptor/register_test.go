@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/thunder-id/thunderid/tests/mocks/captchamock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/interceptormock"
 )
@@ -284,4 +285,39 @@ func (s *InterceptorRegistryTestSuite) TestRegisterChallengeToken_ValidDeps_Regi
 
 	assert.NoError(s.T(), err)
 	assert.True(s.T(), registry.IsRegistered(ChallengeTokenInterceptor))
+}
+
+// --- registerCaptchaInterceptor ---
+
+func (s *InterceptorRegistryTestSuite) TestRegisterCaptcha_NilFlowFactory_ReturnsError() {
+	registry := newInterceptorRegistry()
+	deps := InterceptorDependencies{FlowFactory: nil, CaptchaService: captchamock.NewCaptchaServiceInterfaceMock(s.T())}
+
+	err := registerCaptchaInterceptor(deps, registry)
+
+	assert.Error(s.T(), err)
+	assert.Contains(s.T(), err.Error(), "FlowFactory dependency is required")
+}
+
+func (s *InterceptorRegistryTestSuite) TestRegisterCaptcha_NilCaptchaService_ReturnsError() {
+	registry := newInterceptorRegistry()
+	deps := InterceptorDependencies{FlowFactory: newCaptchaMockFlowFactory(s.T())}
+
+	err := registerCaptchaInterceptor(deps, registry)
+
+	assert.Error(s.T(), err)
+	assert.Contains(s.T(), err.Error(), "CaptchaService dependency is required")
+}
+
+func (s *InterceptorRegistryTestSuite) TestRegisterCaptcha_ValidDeps_Registers() {
+	registry := newInterceptorRegistry()
+	deps := InterceptorDependencies{
+		FlowFactory:    newCaptchaMockFlowFactory(s.T()),
+		CaptchaService: captchamock.NewCaptchaServiceInterfaceMock(s.T()),
+	}
+
+	err := registerCaptchaInterceptor(deps, registry)
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), registry.IsRegistered(CaptchaInterceptor))
 }
