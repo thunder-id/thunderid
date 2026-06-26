@@ -33,36 +33,73 @@ import (
 // --- DTOs that mirror the API contract (matching default_client.go expectations) ---
 
 type mockConsentElementDTO struct {
-	ID          string            `json:"id"`
+	ElementID   string            `json:"elementId"`
 	Name        string            `json:"name"`
-	Description string            `json:"description"`
+	Namespace   string            `json:"namespace,omitempty"`
 	Type        string            `json:"type"`
+	Version     string            `json:"version,omitempty"`
+	DisplayName string            `json:"displayName,omitempty"`
+	Description string            `json:"description,omitempty"`
 	Properties  map[string]string `json:"properties,omitempty"`
+	CreatedTime int64             `json:"createdTime,omitempty"`
 }
 
 type mockConsentElementCreateDTO struct {
 	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
+	Namespace   string            `json:"namespace,omitempty"`
 	Type        string            `json:"type"`
+	DisplayName string            `json:"displayName,omitempty"`
+	Description string            `json:"description,omitempty"`
 	Properties  map[string]string `json:"properties,omitempty"`
 }
 
+type mockConsentElementVersionDTO struct {
+	DisplayName string            `json:"displayName,omitempty"`
+	Description string            `json:"description,omitempty"`
+	Properties  map[string]string `json:"properties,omitempty"`
+}
+
+type mockBulkElementResultDTO struct {
+	Status  string                 `json:"status"`
+	Element *mockConsentElementDTO `json:"element,omitempty"`
+	Error   string                 `json:"error,omitempty"`
+}
+
+type mockElementsCreateResponseDTO struct {
+	Results []mockBulkElementResultDTO `json:"results"`
+}
+
 type mockConsentPurposeElementDTO struct {
-	Name        string `json:"name"`
-	IsMandatory bool   `json:"isMandatory"`
+	ElementID string `json:"elementId,omitempty"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace,omitempty"`
+	Version   string `json:"version,omitempty"`
+	Mandatory bool   `json:"mandatory"`
 }
 
 type mockConsentPurposeCreateDTO struct {
 	Name        string                         `json:"name"`
+	DisplayName string                         `json:"displayName,omitempty"`
 	Description string                         `json:"description,omitempty"`
+	Properties  map[string]string              `json:"properties,omitempty"`
+	Elements    []mockConsentPurposeElementDTO `json:"elements"`
+}
+
+type mockConsentPurposeVersionDTO struct {
+	DisplayName string                         `json:"displayName,omitempty"`
+	Description string                         `json:"description,omitempty"`
+	Properties  map[string]string              `json:"properties,omitempty"`
 	Elements    []mockConsentPurposeElementDTO `json:"elements"`
 }
 
 type mockConsentPurposeDTO struct {
-	ID          string                         `json:"id"`
+	PurposeID   string                         `json:"purposeId"`
 	Name        string                         `json:"name"`
+	GroupID     string                         `json:"groupId"`
+	Version     string                         `json:"version,omitempty"`
+	DisplayName string                         `json:"displayName,omitempty"`
 	Description string                         `json:"description"`
-	ClientID    string                         `json:"clientId"`
+	Properties  map[string]string              `json:"properties,omitempty"`
 	Elements    []mockConsentPurposeElementDTO `json:"elements"`
 	CreatedTime int64                          `json:"createdTime"`
 	UpdatedTime int64                          `json:"updatedTime"`
@@ -77,17 +114,9 @@ type mockConsentElement struct {
 // mockConsentPurpose is the internal storage type for a consent purpose in the mock server.
 type mockConsentPurpose = mockConsentPurposeDTO
 
-// MockConsentPurpose holds the in-memory state of a consent purpose for test inspection.
-type MockConsentPurpose struct {
-	ID       string
-	Name     string
-	ClientID string
-	Elements []mockConsentPurposeElementDTO
-}
-
-// MockConsentServer provides a lightweight mock of the default consent management REST API.
-// It stores consent elements and purposes in memory, allowing integration tests to verify
-// that server correctly syncs consent state on application lifecycle events.
+// MockConsentServer provides a lightweight mock of the default consent management
+// REST API. It stores consent elements and purposes in memory, allowing integration tests
+// to verify that the server correctly syncs consent state on application lifecycle events.
 type MockConsentServer struct {
 	server   *http.Server
 	port     int
@@ -117,36 +146,6 @@ func (s *MockConsentServer) GetURL() string {
 	return fmt.Sprintf("http://localhost:%d/api/v1", s.port)
 }
 
-// GetPurposesForClient returns all purposes stored for the given clientID (application ID).
-func (s *MockConsentServer) GetPurposesForClient(clientID string) []MockConsentPurpose {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var result []MockConsentPurpose
-	for _, p := range s.purposes {
-		if p.ClientID == clientID {
-			elements := make([]mockConsentPurposeElementDTO, len(p.Elements))
-			copy(elements, p.Elements)
-			result = append(result, MockConsentPurpose{
-				ID:       p.ID,
-				Name:     p.Name,
-				ClientID: p.ClientID,
-				Elements: elements,
-			})
-		}
-	}
-
-	return result
-}
-
-// GetTotalPurposeCount returns the total number of consent purposes currently stored.
-func (s *MockConsentServer) GetTotalPurposeCount() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return len(s.purposes)
-}
-
 // Reset clears all stored elements and purposes.
 func (s *MockConsentServer) Reset() {
 	s.mu.Lock()
@@ -161,8 +160,6 @@ func (s *MockConsentServer) Reset() {
 func (s *MockConsentServer) Start() error {
 	mux := http.NewServeMux()
 
-	// Register /validate before the subtree handler to ensure it takes precedence.
-	mux.HandleFunc("/api/v1/consent-elements/validate", s.handleElementsValidate)
 	mux.HandleFunc("/api/v1/consent-elements/", s.handleElementByID)
 	mux.HandleFunc("/api/v1/consent-elements", s.handleElements)
 	mux.HandleFunc("/api/v1/consent-purposes/", s.handlePurposeByID)
@@ -217,7 +214,7 @@ func (s *MockConsentServer) writeError(w http.ResponseWriter, status int, msg st
 
 // --- Consent Elements handlers ---
 
-// handleElements handles POST (batch create) and GET (list) on /api/v1/consent-elements.
+// handleElements handles POST (bulk create) and GET (list) on /api/v1/consent-elements.
 func (s *MockConsentServer) handleElements(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
@@ -230,7 +227,7 @@ func (s *MockConsentServer) handleElements(w http.ResponseWriter, r *http.Reques
 }
 
 // handleElementsCreate handles POST /api/v1/consent-elements.
-// Batch-creates consent elements; returns `elementsCreateResponseDTO`.
+// Bulk-creates consent elements and returns the v0.3.0 partial-success response shape.
 func (s *MockConsentServer) handleElementsCreate(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -245,26 +242,31 @@ func (s *MockConsentServer) handleElementsCreate(w http.ResponseWriter, r *http.
 	}
 
 	s.mu.Lock()
-	created := make([]mockConsentElementDTO, 0, len(inputs))
+	results := make([]mockBulkElementResultDTO, 0, len(inputs))
 	for _, inp := range inputs {
 		el := mockConsentElement{
 			mockConsentElementDTO: mockConsentElementDTO{
-				ID:          s.nextIDLocked(),
+				ElementID:   s.nextIDLocked(),
 				Name:        inp.Name,
-				Description: inp.Description,
+				Namespace:   inp.Namespace,
 				Type:        inp.Type,
+				Version:     "v1",
+				DisplayName: inp.DisplayName,
+				Description: inp.Description,
 				Properties:  inp.Properties,
+				CreatedTime: time.Now().UnixMilli(),
 			},
 		}
-		s.elements[el.ID] = &el
-		created = append(created, el.mockConsentElementDTO)
+		s.elements[el.ElementID] = &el
+		created := el.mockConsentElementDTO
+		results = append(results, mockBulkElementResultDTO{
+			Status:  "SUCCESS",
+			Element: &created,
+		})
 	}
 	s.mu.Unlock()
 
-	s.writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"data":    created,
-		"message": "Consent elements created successfully",
-	})
+	s.writeJSON(w, http.StatusOK, mockElementsCreateResponseDTO{Results: results})
 }
 
 // handleElementsList handles GET /api/v1/consent-elements with optional ?name= filter.
@@ -283,78 +285,44 @@ func (s *MockConsentServer) handleElementsList(w http.ResponseWriter, r *http.Re
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{"data": list})
 }
 
-// handleElementsValidate handles POST /api/v1/consent-elements/validate.
-// Accepts a list of element names and returns the subset that already exist.
-func (s *MockConsentServer) handleElementsValidate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "failed to read request body")
-		return
-	}
-
-	var names []string
-	if err := json.Unmarshal(body, &names); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	// Build a name lookup from existing elements.
-	s.mu.Lock()
-	existingNames := make(map[string]bool, len(s.elements))
-	for _, el := range s.elements {
-		existingNames[el.Name] = true
-	}
-	s.mu.Unlock()
-
-	// Return the intersection.
-	found := make([]string, 0, len(names))
-	for _, name := range names {
-		if existingNames[name] {
-			found = append(found, name)
-		}
-	}
-
-	if len(found) == 0 {
-		// The client treats 400 as "no elements matched" and returns an empty list.
-		s.writeError(w, http.StatusBadRequest, "no matching consent elements found")
-		return
-	}
-
-	s.writeJSON(w, http.StatusOK, found)
-}
-
-// handleElementByID handles PUT and DELETE on /api/v1/consent-elements/{id}.
+// handleElementByID routes requests under /api/v1/consent-elements/{id}.
+// Supports POST on /{id}/versions (update via new version) and DELETE on
+// /{id}/versions/{version}
 func (s *MockConsentServer) handleElementByID(w http.ResponseWriter, r *http.Request) {
-	elementID := strings.TrimPrefix(r.URL.Path, "/api/v1/consent-elements/")
-	if elementID == "" {
+	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/consent-elements/")
+	if rest == "" {
 		s.writeError(w, http.StatusBadRequest, "missing element ID")
 		return
 	}
 
-	switch r.Method {
-	case http.MethodPut:
-		s.handleElementUpdate(w, r, elementID)
-	case http.MethodDelete:
-		s.handleElementDelete(w, r, elementID)
+	parts := strings.SplitN(rest, "/", 3)
+	elementID := parts[0]
+	sub := ""
+	if len(parts) >= 2 {
+		sub = parts[1]
+	}
+
+	switch {
+	case sub == "versions" && len(parts) == 2 && r.Method == http.MethodPost:
+		s.handleElementVersionCreate(w, r, elementID)
+	case sub == "versions" && len(parts) == 3 && r.Method == http.MethodDelete:
+		s.handleElementDelete(w, elementID)
 	default:
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
 
-// handleElementUpdate handles PUT /api/v1/consent-elements/{id}.
-func (s *MockConsentServer) handleElementUpdate(w http.ResponseWriter, r *http.Request, elementID string) {
+// handleElementVersionCreate handles POST /api/v1/consent-elements/{id}/versions.
+// The mock collapses versioning into an in-place update — Thunder reads the latest as the
+// only version, which matches the previous edit-in-place semantics.
+func (s *MockConsentServer) handleElementVersionCreate(w http.ResponseWriter, r *http.Request, elementID string) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "failed to read request body")
 		return
 	}
 
-	var inp mockConsentElementCreateDTO
+	var inp mockConsentElementVersionDTO
 	if err := json.Unmarshal(body, &inp); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -368,18 +336,18 @@ func (s *MockConsentServer) handleElementUpdate(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	el.Name = inp.Name
+	el.DisplayName = inp.DisplayName
 	el.Description = inp.Description
-	el.Type = inp.Type
 	el.Properties = inp.Properties
+	el.Version = "v2"
 	resp := el.mockConsentElementDTO
 	s.mu.Unlock()
 
-	s.writeJSON(w, http.StatusOK, resp)
+	s.writeJSON(w, http.StatusCreated, resp)
 }
 
-// handleElementDelete handles DELETE /api/v1/consent-elements/{id}.
-func (s *MockConsentServer) handleElementDelete(w http.ResponseWriter, r *http.Request, elementID string) {
+// handleElementDelete handles DELETE /api/v1/consent-elements/{id}/versions/{version}.
+func (s *MockConsentServer) handleElementDelete(w http.ResponseWriter, elementID string) {
 	s.mu.Lock()
 	_, exists := s.elements[elementID]
 	if !exists {
@@ -409,7 +377,7 @@ func (s *MockConsentServer) handlePurposes(w http.ResponseWriter, r *http.Reques
 }
 
 // handlePurposeCreate handles POST /api/v1/consent-purposes.
-// The TPP-client-id header carries the application (group) ID.
+// The group-id header carries the application (group) ID per the v0.3.0 contract.
 func (s *MockConsentServer) handlePurposeCreate(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -423,34 +391,37 @@ func (s *MockConsentServer) handlePurposeCreate(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	clientID := r.Header.Get("TPP-client-id")
+	groupID := r.Header.Get("group-id")
 	now := time.Now().UnixMilli()
 
 	s.mu.Lock()
 	p := &mockConsentPurpose{
-		ID:          s.nextIDLocked(),
+		PurposeID:   s.nextIDLocked(),
 		Name:        inp.Name,
+		GroupID:     groupID,
+		Version:     "v1",
+		DisplayName: inp.DisplayName,
 		Description: inp.Description,
-		ClientID:    clientID,
+		Properties:  inp.Properties,
 		Elements:    inp.Elements,
 		CreatedTime: now,
 		UpdatedTime: now,
 	}
-	s.purposes[p.ID] = p
+	s.purposes[p.PurposeID] = p
 	resp := *p
 	s.mu.Unlock()
 
 	s.writeJSON(w, http.StatusCreated, resp)
 }
 
-// handlePurposesList handles GET /api/v1/consent-purposes with optional ?clientIds= filter.
+// handlePurposesList handles GET /api/v1/consent-purposes with optional ?groupIds= filter.
 func (s *MockConsentServer) handlePurposesList(w http.ResponseWriter, r *http.Request) {
-	clientIDFilter := r.URL.Query().Get("clientIds")
+	groupIDFilter := r.URL.Query().Get("groupIds")
 
 	s.mu.Lock()
 	list := make([]mockConsentPurposeDTO, 0, len(s.purposes))
 	for _, p := range s.purposes {
-		if clientIDFilter == "" || p.ClientID == clientIDFilter {
+		if groupIDFilter == "" || p.GroupID == groupIDFilter {
 			list = append(list, *p)
 		}
 	}
@@ -459,39 +430,63 @@ func (s *MockConsentServer) handlePurposesList(w http.ResponseWriter, r *http.Re
 	s.writeJSON(w, http.StatusOK, map[string]interface{}{"data": list})
 }
 
-// handlePurposeByID handles PUT and DELETE on /api/v1/consent-purposes/{id}.
+// handlePurposeByID routes requests under /api/v1/consent-purposes/{id}.
+// Supports GET on /{id} (single fetch) and POST on /{id}/versions (update via new version).
 func (s *MockConsentServer) handlePurposeByID(w http.ResponseWriter, r *http.Request) {
-	purposeID := strings.TrimPrefix(r.URL.Path, "/api/v1/consent-purposes/")
-	if purposeID == "" {
+	rest := strings.TrimPrefix(r.URL.Path, "/api/v1/consent-purposes/")
+	if rest == "" {
 		s.writeError(w, http.StatusBadRequest, "missing purpose ID")
 		return
 	}
 
-	switch r.Method {
-	case http.MethodPut:
-		s.handlePurposeUpdate(w, r, purposeID)
-	case http.MethodDelete:
-		s.handlePurposeDelete(w, r, purposeID)
+	parts := strings.SplitN(rest, "/", 2)
+	purposeID := parts[0]
+	sub := ""
+	if len(parts) == 2 {
+		sub = parts[1]
+	}
+
+	switch {
+	case sub == "" && r.Method == http.MethodGet:
+		s.handlePurposeGet(w, purposeID)
+	case sub == "versions" && r.Method == http.MethodPost:
+		s.handlePurposeVersionCreate(w, r, purposeID)
 	default:
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
 
-// handlePurposeUpdate handles PUT /api/v1/consent-purposes/{id}.
-func (s *MockConsentServer) handlePurposeUpdate(w http.ResponseWriter, r *http.Request, purposeID string) {
+// handlePurposeGet handles GET /api/v1/consent-purposes/{id}.
+func (s *MockConsentServer) handlePurposeGet(w http.ResponseWriter, purposeID string) {
+	s.mu.Lock()
+	p, exists := s.purposes[purposeID]
+	if !exists {
+		s.mu.Unlock()
+		s.writeError(w, http.StatusNotFound, "consent purpose not found")
+		return
+	}
+	resp := *p
+	s.mu.Unlock()
+
+	s.writeJSON(w, http.StatusOK, resp)
+}
+
+// handlePurposeVersionCreate handles POST /api/v1/consent-purposes/{id}/versions.
+// As with element versioning, the mock collapses this into an in-place update.
+func (s *MockConsentServer) handlePurposeVersionCreate(w http.ResponseWriter, r *http.Request, purposeID string) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "failed to read request body")
 		return
 	}
 
-	var inp mockConsentPurposeCreateDTO
+	var inp mockConsentPurposeVersionDTO
 	if err := json.Unmarshal(body, &inp); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	clientID := r.Header.Get("TPP-client-id")
+	groupID := r.Header.Get("group-id")
 
 	s.mu.Lock()
 	p, exists := s.purposes[purposeID]
@@ -501,51 +496,37 @@ func (s *MockConsentServer) handlePurposeUpdate(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	p.Name = inp.Name
+	p.DisplayName = inp.DisplayName
 	p.Description = inp.Description
+	p.Properties = inp.Properties
 	p.Elements = inp.Elements
+	p.Version = "v2"
 	p.UpdatedTime = time.Now().UnixMilli()
-	if clientID != "" {
-		p.ClientID = clientID
+	if groupID != "" {
+		p.GroupID = groupID
 	}
 	resp := *p
 	s.mu.Unlock()
 
-	s.writeJSON(w, http.StatusOK, resp)
-}
-
-// handlePurposeDelete handles DELETE /api/v1/consent-purposes/{id}.
-func (s *MockConsentServer) handlePurposeDelete(w http.ResponseWriter, r *http.Request, purposeID string) {
-	s.mu.Lock()
-	_, exists := s.purposes[purposeID]
-	if !exists {
-		s.mu.Unlock()
-		s.writeError(w, http.StatusNotFound, "consent purpose not found")
-		return
-	}
-
-	delete(s.purposes, purposeID)
-	s.mu.Unlock()
-
-	w.WriteHeader(http.StatusNoContent)
+	s.writeJSON(w, http.StatusCreated, resp)
 }
 
 // --- Test inspection endpoints (not part of OpenFGC API) ---
 
-// handleTestPurposes handles GET /test/purposes?clientIds=<appID>.
-// Returns all purposes stored for the given clientID so tests can verify state.
+// handleTestPurposes handles GET /test/purposes?groupIds=<appID>.
+// Returns all purposes stored for the given group ID so tests can verify state.
 func (s *MockConsentServer) handleTestPurposes(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		s.writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	clientIDFilter := r.URL.Query().Get("clientIds")
+	groupIDFilter := r.URL.Query().Get("groupIds")
 
 	s.mu.Lock()
 	list := make([]mockConsentPurposeDTO, 0)
 	for _, p := range s.purposes {
-		if clientIDFilter == "" || p.ClientID == clientIDFilter {
+		if groupIDFilter == "" || p.GroupID == groupIDFilter {
 			list = append(list, *p)
 		}
 	}
