@@ -120,7 +120,7 @@ func (suite *QueryBuilderTestSuite) TestBuildFilterQueryWithInvalidFilterKey() {
 	columnName := testColumnName
 	filters := map[string]interface{}{
 		"valid":              "value",
-		"invalid-filter-key": "value", // Contains invalid character '-'
+		"invalid;filter;key": "value", // Contains invalid character ';'
 	}
 
 	query, args, err := BuildFilterQuery(queryID, baseQuery, columnName, filters)
@@ -141,6 +141,9 @@ func (suite *QueryBuilderTestSuite) TestValidateKey() {
 		"with_underscore",
 		"_leading_underscore",
 		"trailing_underscore_",
+		"silver-mail",
+		"with-hyphen",
+		"a-b.c-d",
 	}
 
 	for _, key := range validKeys {
@@ -152,7 +155,6 @@ func (suite *QueryBuilderTestSuite) TestValidateKey() {
 func (suite *QueryBuilderTestSuite) TestValidateKeyInvalid() {
 	invalidKeys := []string{
 		"space key",
-		"hyphen-key",
 		"special!char",
 		"sql;injection",
 		"quote'test",

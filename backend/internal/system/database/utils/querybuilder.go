@@ -91,12 +91,13 @@ func BuildSQLiteJSONCondition(columnName, key string) string {
 	return fmt.Sprintf(" AND json_extract(%s, '$.%s') = ?", columnName, key)
 }
 
-// ValidateKey ensures that the provided key contains only safe characters (alphanumeric, underscores, and dots).
+// ValidateKey ensures that the provided key contains only safe characters
+// (alphanumeric, underscores, dots, and hyphens).
 // This validation prevents SQL injection by ensuring keys can be safely used in queries.
 func ValidateKey(key string) error {
 	for _, char := range key {
 		if !(char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' ||
-			char >= '0' && char <= '9' || char == '_' || char == '.') {
+			char >= '0' && char <= '9' || char == '_' || char == '.' || char == '-') {
 			return fmt.Errorf("key '%s' contains invalid characters", key)
 		}
 	}
