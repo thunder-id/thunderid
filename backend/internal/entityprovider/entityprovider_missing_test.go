@@ -127,7 +127,8 @@ func (suite *DefaultEntityProviderTestSuite) TestGetEntityList() {
 	}
 
 	// Test Success
-	suite.mockService.On("GetEntityList", mock.Anything, providers.EntityCategory("user"), 10, 0, filters).
+	suite.mockService.On("GetEntityList", mock.Anything, providers.EntityCategory("user"),
+		10, 0, filters).
 		Return(entities, nil).Once()
 
 	result, err := suite.provider.GetEntityList(providers.EntityCategoryUser, 10, 0, filters)
@@ -136,7 +137,8 @@ func (suite *DefaultEntityProviderTestSuite) TestGetEntityList() {
 	suite.Equal("id1", result[0].ID)
 
 	// Test Not Found
-	suite.mockService.On("GetEntityList", mock.Anything, providers.EntityCategory("user"), 10, 0, filters).
+	suite.mockService.On("GetEntityList", mock.Anything, providers.EntityCategory("user"),
+		10, 0, filters).
 		Return(nil, entity.ErrEntityNotFound).Once()
 
 	result, err = suite.provider.GetEntityList(providers.EntityCategoryUser, 10, 0, filters)
@@ -145,7 +147,8 @@ func (suite *DefaultEntityProviderTestSuite) TestGetEntityList() {
 	suite.Equal(ErrorCodeEntityNotFound, err.Code)
 
 	// Test System Error
-	suite.mockService.On("GetEntityList", mock.Anything, providers.EntityCategory("user"), 10, 0, filters).
+	suite.mockService.On("GetEntityList", mock.Anything, providers.EntityCategory("user"),
+		10, 0, filters).
 		Return(nil, errors.New("db error")).Once()
 
 	result, err = suite.provider.GetEntityList(providers.EntityCategoryUser, 10, 0, filters)

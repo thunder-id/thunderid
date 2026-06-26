@@ -86,7 +86,8 @@ func (suite *AgentServiceTestSuite) setupService() (
 		Maybe().Return(&providers.Entity{}, nil)
 	mockEntity.On("UpdateSystemCredentials", mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(nil)
-	mockEntity.On("GetEntityList", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("GetEntityList", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).
 		Maybe().Return([]providers.Entity{}, nil)
 	mockEntity.On("GetEntityListCount", mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(0, nil)

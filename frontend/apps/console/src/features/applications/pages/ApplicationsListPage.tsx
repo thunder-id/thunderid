@@ -19,15 +19,30 @@
 import {useLogger} from '@thunderid/logger/react';
 import {Stack, Button, TextField, InputAdornment, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus, Search} from '@wso2/oxygen-ui-icons-react';
-import type {JSX} from 'react';
+import {useEffect, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import ApplicationsList from '../components/ApplicationsList';
+
+const SEARCH_DEBOUNCE_MS = 300;
 
 export default function ApplicationsListPage(): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('ApplicationsListPage');
+
+  const [searchInput, setSearchInput] = useState<string>('');
+  const [search, setSearch] = useState<string>('');
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setSearch(searchInput.trim());
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(handle);
+    };
+  }, [searchInput]);
 
   return (
     <PageContent>
@@ -58,6 +73,10 @@ export default function ApplicationsListPage(): JSX.Element {
         <TextField
           placeholder={t('applications:listing.search.placeholder')}
           size="small"
+          value={searchInput}
+          onChange={(event) => {
+            setSearchInput(event.target.value);
+          }}
           sx={{flexGrow: 1, minWidth: 300}}
           slotProps={{
             input: {
@@ -70,7 +89,7 @@ export default function ApplicationsListPage(): JSX.Element {
           }}
         />
       </Stack>
-      <ApplicationsList />
+      <ApplicationsList search={search} />
     </PageContent>
   );
 }

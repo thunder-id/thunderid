@@ -286,7 +286,8 @@ func (s *ServiceTestSuite) TestGetEntityListCount_Delegates() {
 
 func (s *ServiceTestSuite) TestGetEntityList_Delegates() {
 	e := testEntity("le1")
-	s.store.On("GetEntityList", mock.Anything, "user", 10, 0, mock.Anything).Return([]providers.Entity{*e}, nil)
+	s.store.On("GetEntityList", mock.Anything, "user", 10, 0, mock.Anything).
+		Return([]providers.Entity{*e}, nil)
 	list, err := s.svc.GetEntityList(s.ctx, providers.EntityCategoryUser, 10, 0, nil)
 	s.NoError(err)
 	s.Len(list, 1)

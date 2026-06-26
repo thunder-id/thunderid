@@ -211,8 +211,10 @@ func (s *CompositeStoreTestSuite) TestGetEntityListCount_MergesStores() {
 	e3 := compEntity("e3", "ou1") // unique to file
 	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(2, nil)
 	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.dbStore.On("GetEntityList", mock.Anything, "user", 2, 0, mock.Anything).Return([]providers.Entity{e1, e2}, nil)
-	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e3}, nil)
+	s.dbStore.On("GetEntityList", mock.Anything, "user", 2, 0, mock.Anything).
+		Return([]providers.Entity{e1, e2}, nil)
+	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).
+		Return([]providers.Entity{e3}, nil)
 
 	count, err := s.store.GetEntityListCount(s.ctx, "user", nil)
 	s.NoError(err)
@@ -244,8 +246,10 @@ func (s *CompositeStoreTestSuite) TestGetEntityListCount_FileListError() {
 	e1 := compEntity("e1", "ou1")
 	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
 	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e1}, nil)
-	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return(nil, s.testErr)
+	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).
+		Return([]providers.Entity{e1}, nil)
+	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).
+		Return(nil, s.testErr)
 	_, err := s.store.GetEntityListCount(s.ctx, "user", nil)
 	s.Error(err)
 }
@@ -255,8 +259,10 @@ func (s *CompositeStoreTestSuite) TestGetEntityList_Success() {
 	e2 := compEntity("e2", "ou1")
 	s.dbStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
 	s.fileStore.On("GetEntityListCount", mock.Anything, "user", mock.Anything).Return(1, nil)
-	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e1}, nil)
-	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).Return([]providers.Entity{e2}, nil)
+	s.dbStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).
+		Return([]providers.Entity{e1}, nil)
+	s.fileStore.On("GetEntityList", mock.Anything, "user", 1, 0, mock.Anything).
+		Return([]providers.Entity{e2}, nil)
 
 	list, err := s.store.GetEntityList(s.ctx, "user", 10, 0, nil)
 	s.NoError(err)

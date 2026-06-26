@@ -25,6 +25,8 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/utils"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const (
@@ -394,7 +396,7 @@ func buildBulkEntityExistsQueryInOUs(
 	return query, args, nil
 }
 
-// buildEntityListQuery constructs a query to get entities with optional filtering.
+// buildEntityListQuery constructs a query to get entities with optional attribute filtering.
 func buildEntityListQuery(
 	category string, filters map[string]interface{}, limit, offset int, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
@@ -445,7 +447,7 @@ func buildEntityListQuery(
 	return QueryGetEntityList, []interface{}{limit, offset, deploymentID, category}, nil
 }
 
-// buildEntityCountQuery constructs a query to count entities with optional filtering.
+// buildEntityCountQuery constructs a query to count entities with optional attribute filtering.
 func buildEntityCountQuery(
 	category string, filters map[string]interface{}, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
@@ -465,6 +467,40 @@ func buildEntityCountQuery(
 	}
 
 	return QueryGetEntityCount, []interface{}{category, deploymentID}, nil
+}
+
+// escapeLikePattern escapes the special LIKE/ILIKE wildcard characters so that user input
+// is matched literally. The backslash is used as the escape character.
+func escapeLikePattern(s string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(s)
+}
+
+// buildAttributeSearchCondition builds the Postgres and SQLite conditions (and the bound argument)
+// for an AttributeSearch filter value, matching the attribute against both SYSTEM_ATTRIBUTES and
+// ATTRIBUTES with the requested operator (co = case-insensitive contains, eq = case-insensitive
+// exact). The same argument works for both dialects.
+func buildAttributeSearchCondition(
+	attribute string, search providers.AttributeSearch, paramIndex int,
+) (pgCond, sqCond string, arg interface{}, err error) {
+	pgCol := fmt.Sprintf("COALESCE(%s->>'%s', %s->>'%s', '')",
+		SystemAttributesColumn, attribute, AttributesColumn, attribute)
+	sqCol := fmt.Sprintf("COALESCE(json_extract(%s, '$.%s'), json_extract(%s, '$.%s'), '')",
+		SystemAttributesColumn, attribute, AttributesColumn, attribute)
+
+	switch search.Operator {
+	case tidcommon.OperatorContains:
+		arg = "%" + escapeLikePattern(strings.ToLower(search.Value)) + "%"
+		pgCond = fmt.Sprintf(` AND %s ILIKE $%d ESCAPE '\'`, pgCol, paramIndex)
+		sqCond = fmt.Sprintf(` AND LOWER(%s) LIKE ? ESCAPE '\'`, sqCol)
+	case tidcommon.OperatorEq:
+		arg = search.Value
+		pgCond = fmt.Sprintf(" AND LOWER(%s) = LOWER($%d)", pgCol, paramIndex)
+		sqCond = fmt.Sprintf(" AND LOWER(%s) = LOWER(?)", sqCol)
+	default:
+		return "", "", nil, fmt.Errorf("unsupported filter operator %q", search.Operator)
+	}
+	return pgCond, sqCond, arg, nil
 }
 
 // buildIdentifyQueryFromIdentifiers constructs a query to identify
@@ -671,6 +707,19 @@ func buildFilterQueryWithOffset(
 	sqliteQuery := strings.Replace(baseQuery, "$1", "?", 1)
 
 	for i, key := range keys {
+		// An AttributeSearch value opts into a case-insensitive contains/eq match over both
+		// SYSTEM_ATTRIBUTES and ATTRIBUTES; any other value keeps the default exact-equality
+		// match on ATTRIBUTES.
+		if search, ok := filters[key].(providers.AttributeSearch); ok {
+			pgCond, sqCond, arg, err := buildAttributeSearchCondition(key, search, paramOffset+i+1)
+			if err != nil {
+				return model.DBQuery{}, nil, err
+			}
+			postgresQuery += pgCond
+			sqliteQuery += sqCond
+			args = append(args, arg)
+			continue
+		}
 		postgresQuery += utils.BuildPostgresJSONCondition(columnName, key, paramOffset+i+1)
 		sqliteQuery += utils.BuildSQLiteJSONCondition(columnName, key)
 		args = append(args, filters[key])

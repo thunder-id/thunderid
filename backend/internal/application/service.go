@@ -50,7 +50,9 @@ type ApplicationServiceInterface interface {
 		ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO, *tidcommon.ServiceError)
 	ValidateApplication(ctx context.Context, app *model.ApplicationDTO) (
 		*model.ApplicationProcessedDTO, *providers.InboundAuthConfigWithSecret, *tidcommon.ServiceError)
-	GetApplicationList(ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError)
+	GetApplicationList(
+		ctx context.Context, limit, offset int,
+		filter *tidcommon.FilterGroup) (*model.ApplicationListResponse, *tidcommon.ServiceError)
 	GetOAuthApplication(
 		ctx context.Context, clientID string) (*providers.OAuthClient, *tidcommon.ServiceError)
 	GetApplication(ctx context.Context, appID string) (*providers.Application, *tidcommon.ServiceError)
@@ -267,17 +269,29 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 	return processedDTO, inboundAuthConfig, nil
 }
 
-// GetApplicationList list the applications.
+// GetApplicationList list the applications, optionally filtered by a search term
+// matched against the application name, client ID and description.
 func (as *applicationService) GetApplicationList(
-	ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
-	totalResults, epErr := as.entityProvider.GetEntityListCount(providers.EntityCategoryApp, nil)
+	ctx context.Context, limit, offset int,
+	filter *tidcommon.FilterGroup) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
+	if svcErr := validateApplicationFilter(filter); svcErr != nil {
+		return nil, svcErr
+	}
+
+	// The validated single-expression filter rides through the existing entity filters map as an
+	// AttributeSearch directive, so no dedicated search parameter is needed on the entity layer.
+	filters := applicationFilterToMap(filter)
+
+	totalResults, epErr := as.entityProvider.GetEntityListCount(providers.EntityCategoryApp, filters)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to count application entities", log.Error(epErr))
 		return nil, &tidcommon.InternalServerError
 	}
 
+	links := sysutils.BuildPaginationLinks(applicationListBasePath, limit, offset, totalResults, "")
+
 	entities, epErr := as.entityProvider.GetEntityList(
-		providers.EntityCategoryApp, serverconst.MaxCompositeStoreRecords, 0, nil)
+		providers.EntityCategoryApp, limit, offset, filters)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to list application entities", log.Error(epErr))
 		return nil, &tidcommon.InternalServerError
@@ -285,8 +299,10 @@ func (as *applicationService) GetApplicationList(
 	if len(entities) == 0 {
 		return &model.ApplicationListResponse{
 			TotalResults: totalResults,
+			StartIndex:   offset + 1,
 			Count:        0,
 			Applications: []model.BasicApplicationResponse{},
+			Links:        links,
 		}, nil
 	}
 
@@ -324,9 +340,50 @@ func (as *applicationService) GetApplicationList(
 
 	return &model.ApplicationListResponse{
 		TotalResults: totalResults,
+		StartIndex:   offset + 1,
 		Count:        len(applicationList),
 		Applications: applicationList,
+		Links:        links,
 	}, nil
+}
+
+// validateApplicationFilter ensures the filter is a single expression targeting a searchable
+// application attribute (name, clientId, description) with a supported operator (co, eq).
+// A nil/empty filter is valid. AND/OR connectors (multiple expressions) are not supported.
+func validateApplicationFilter(filter *tidcommon.FilterGroup) *tidcommon.ServiceError {
+	if filter == nil || len(filter.Clauses) == 0 {
+		return nil
+	}
+	if len(filter.Clauses) != 1 {
+		return &ErrorInvalidFilter
+	}
+	expr := filter.Clauses[0].Expr
+	switch expr.Attribute {
+	case fieldName, fieldClientID, fieldDescription:
+	default:
+		return &ErrorInvalidFilter
+	}
+	switch expr.Operator {
+	case tidcommon.OperatorContains, tidcommon.OperatorEq:
+	default:
+		return &ErrorInvalidFilter
+	}
+	return nil
+}
+
+// applicationFilterToMap converts a validated single-expression filter into an entity filters map
+// carrying an AttributeSearch directive. Returns nil when there is no filter.
+func applicationFilterToMap(filter *tidcommon.FilterGroup) map[string]interface{} {
+	if filter == nil || len(filter.Clauses) == 0 {
+		return nil
+	}
+	expr := filter.Clauses[0].Expr
+	return map[string]interface{}{
+		expr.Attribute: providers.AttributeSearch{
+			Operator: expr.Operator,
+			Value:    fmt.Sprintf("%v", expr.Value),
+		},
+	}
 }
 
 // GetOAuthApplication retrieves the OAuth application based on the client id.

@@ -22,6 +22,8 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -29,7 +31,9 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 
 	"github.com/thunder-id/thunderid/internal/application/model"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -147,13 +151,54 @@ func (ah *applicationHandler) HandleApplicationPostRequest(w http.ResponseWriter
 // HandleApplicationListRequest handles the application request.
 func (ah *applicationHandler) HandleApplicationListRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	listResponse, svcErr := ah.service.GetApplicationList(ctx)
+
+	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+	if limit == 0 {
+		limit = serverconst.DefaultPageSize
+	}
+
+	filterGroup, err := filter.ParseFilterParam(r.URL.Query())
+	if err != nil {
+		ah.handleError(ctx, w, r, &ErrorInvalidFilter)
+		return
+	}
+
+	listResponse, svcErr := ah.service.GetApplicationList(ctx, limit, offset, filterGroup)
 	if svcErr != nil {
 		ah.handleError(ctx, w, r, svcErr)
 		return
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, listResponse)
+}
+
+// parsePaginationParams reads and validates the limit and offset query parameters.
+// A missing limit is returned as 0 so the caller can apply the default page size.
+func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError) {
+	limit := 0
+	offset := 0
+
+	if limitStr := query.Get("limit"); limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil || parsedLimit <= 0 {
+			return 0, 0, &ErrorInvalidLimit
+		}
+		limit = parsedLimit
+	}
+
+	if offsetStr := query.Get("offset"); offsetStr != "" {
+		parsedOffset, err := strconv.Atoi(offsetStr)
+		if err != nil || parsedOffset < 0 {
+			return 0, 0, &ErrorInvalidOffset
+		}
+		offset = parsedOffset
+	}
+
+	return limit, offset, nil
 }
 
 // HandleApplicationGetRequest handles the application request.

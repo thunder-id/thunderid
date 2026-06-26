@@ -22,6 +22,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 type StoreConstantsTestSuite struct {
@@ -154,6 +157,62 @@ func (s *StoreConstantsTestSuite) TestBuildEntityCountQuery_WithFilters() {
 	s.NoError(err)
 	s.NotEmpty(q.Query)
 	s.NotEmpty(args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_WithContainsAttributeSearch() {
+	filters := map[string]interface{}{
+		"name": providers.AttributeSearch{Operator: tidcommon.OperatorContains, Value: "Foo"},
+	}
+	q, args, err := buildEntityListQuery("app", filters, 10, 0, testDeploymentID)
+	s.NoError(err)
+
+	// A single case-insensitive contains condition against both SYSTEM_ATTRIBUTES and ATTRIBUTES.
+	s.Contains(q.PostgresQuery, "COALESCE(SYSTEM_ATTRIBUTES->>'name', ATTRIBUTES->>'name', '') ILIKE $")
+	s.Contains(q.SQLiteQuery, "LOWER(COALESCE(json_extract(SYSTEM_ATTRIBUTES, '$.name')")
+	s.Contains(q.SQLiteQuery, "LIKE ?")
+
+	// category + one bound pattern + deployment id + limit + offset.
+	s.Len(args, 5)
+	s.Equal("%foo%", args[1])
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityCountQuery_WithContainsAttributeSearch() {
+	filters := map[string]interface{}{
+		"name": providers.AttributeSearch{Operator: tidcommon.OperatorContains, Value: "bar"},
+	}
+	q, args, err := buildEntityCountQuery("app", filters, testDeploymentID)
+	s.NoError(err)
+	s.Contains(q.PostgresQuery, "ILIKE $")
+	// category + one pattern + deployment id.
+	s.Len(args, 3)
+	s.Equal("%bar%", args[1])
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_EqAttributeSearch() {
+	filters := map[string]interface{}{
+		"name": providers.AttributeSearch{Operator: tidcommon.OperatorEq, Value: "Exact"},
+	}
+	q, args, err := buildEntityListQuery("app", filters, 10, 0, testDeploymentID)
+	s.NoError(err)
+	s.Contains(q.PostgresQuery, "LOWER(COALESCE(SYSTEM_ATTRIBUTES->>'name', ATTRIBUTES->>'name', '')) = LOWER($")
+	s.Equal("Exact", args[1])
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_AttributeSearchEscapesWildcards() {
+	filters := map[string]interface{}{
+		"name": providers.AttributeSearch{Operator: tidcommon.OperatorContains, Value: "50%_off"},
+	}
+	_, args, err := buildEntityListQuery("app", filters, 10, 0, testDeploymentID)
+	s.NoError(err)
+	s.Equal(`%50\%\_off%`, args[1])
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_UnsupportedAttributeSearchOperatorErrors() {
+	filters := map[string]interface{}{
+		"name": providers.AttributeSearch{Operator: tidcommon.OperatorGt, Value: "x"},
+	}
+	_, _, err := buildEntityListQuery("app", filters, 10, 0, testDeploymentID)
+	s.Error(err)
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_EmptyFilters() {

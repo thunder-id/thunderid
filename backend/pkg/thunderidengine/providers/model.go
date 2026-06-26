@@ -683,6 +683,16 @@ type EntityGroup struct {
 	OUID string `json:"ouId"`
 }
 
+// AttributeSearch is an entity filters-map value that opts a single attribute into a
+// case-insensitive match against both SYSTEM_ATTRIBUTES and ATTRIBUTES using the given operator
+// (OperatorContains for substring search, OperatorEq for exact match), instead of the default
+// exact-equality match on ATTRIBUTES. It lets a search expression ride through the existing
+// filters map without changing the shared entity list/count signatures.
+type AttributeSearch struct {
+	Operator common.Operator
+	Value    string
+}
+
 // IDPDTO represents the data transfer object for an identity provider.
 type IDPDTO struct {
 	ID                     string                  `yaml:"id"`

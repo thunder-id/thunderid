@@ -26,6 +26,7 @@ import (
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	entitystore "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -466,12 +467,39 @@ func matchesFilters(attributes json.RawMessage, filters map[string]interface{}) 
 
 	for key, expected := range filters {
 		value, ok := getNestedValue(attrsMap, key)
-		if !ok || !valuesEqual(value, expected) {
+		if !ok {
+			return false
+		}
+		// An AttributeSearch value opts into a case-insensitive contains/eq match; any other value
+		// keeps the default exact-equality match.
+		if search, isSearch := expected.(providers.AttributeSearch); isSearch {
+			if !matchesAttributeSearch(value, search) {
+				return false
+			}
+			continue
+		}
+		if !valuesEqual(value, expected) {
 			return false
 		}
 	}
 
 	return true
+}
+
+// matchesAttributeSearch evaluates an AttributeSearch directive against a single attribute value.
+func matchesAttributeSearch(value interface{}, search providers.AttributeSearch) bool {
+	str, ok := value.(string)
+	if !ok {
+		return false
+	}
+	switch search.Operator {
+	case tidcommon.OperatorContains:
+		return strings.Contains(strings.ToLower(str), strings.ToLower(search.Value))
+	case tidcommon.OperatorEq:
+		return strings.EqualFold(str, search.Value)
+	default:
+		return false
+	}
 }
 
 func getNestedValue(data map[string]interface{}, key string) (interface{}, bool) {

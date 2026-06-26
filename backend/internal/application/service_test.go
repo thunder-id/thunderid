@@ -518,13 +518,111 @@ func (suite *ServiceTestSuite) TestGetApplicationList_Success() {
 	mockStore.On("GetInboundClientList", mock.Anything).
 		Return([]inboundmodel.InboundClient{cfg1, cfg2}, nil)
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), 30, 0, nil)
 
 	assert.NotNil(suite.T(), result)
 	assert.Nil(suite.T(), svcErr)
 	assert.Equal(suite.T(), 2, result.TotalResults)
 	assert.Equal(suite.T(), 2, result.Count)
 	assert.Len(suite.T(), result.Applications, 2)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationList_ForwardsFilter() {
+	service, mockStore := suite.setupTestService()
+
+	sysAttrs, _ := json.Marshal(map[string]interface{}{"name": "Foo App"})
+	entities := []providers.Entity{
+		{ID: "app1", Category: providers.EntityCategoryApp, SystemAttributes: sysAttrs},
+	}
+
+	filterGroup := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+		{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorContains, Value: "foo"}},
+	}}
+	// The service converts the filter into a filters map carrying an AttributeSearch directive.
+	matchFilters := mock.MatchedBy(func(filters map[string]interface{}) bool {
+		s, ok := filters["name"].(providers.AttributeSearch)
+		return ok && s.Operator == tidcommon.OperatorContains && s.Value == "foo"
+	})
+
+	ep := resetEntityProviderMethod(service, "GetEntityList")
+	ep.On("GetEntityList", providers.EntityCategoryApp,
+		mock.AnythingOfType("int"), mock.AnythingOfType("int"), matchFilters).
+		Return(entities, (*entityprovider.EntityProviderError)(nil))
+	resetEntityProviderMethod(service, "GetEntityListCount").
+		On("GetEntityListCount", providers.EntityCategoryApp, matchFilters).
+		Return(1, (*entityprovider.EntityProviderError)(nil))
+
+	mockStore.On("GetInboundClientList", mock.Anything).
+		Return([]inboundmodel.InboundClient{{ID: "app1"}}, nil)
+
+	result, svcErr := service.GetApplicationList(context.Background(), 30, 0, filterGroup)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), 1, result.Count)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationList_PaginationForwardedWithLinks() {
+	service, mockStore := suite.setupTestService()
+
+	sysAttrs, _ := json.Marshal(map[string]interface{}{"name": "App"})
+	entities := []providers.Entity{
+		{ID: "app1", Category: providers.EntityCategoryApp, SystemAttributes: sysAttrs},
+	}
+
+	// Exact limit/offset matchers assert the values are forwarded to the entity provider.
+	ep := resetEntityProviderMethod(service, "GetEntityList")
+	ep.On("GetEntityList", providers.EntityCategoryApp, 10, 20, mock.Anything).
+		Return(entities, (*entityprovider.EntityProviderError)(nil))
+	resetEntityProviderMethod(service, "GetEntityListCount").
+		On("GetEntityListCount", providers.EntityCategoryApp, mock.Anything).
+		Return(100, (*entityprovider.EntityProviderError)(nil))
+
+	mockStore.On("GetInboundClientList", mock.Anything).
+		Return([]inboundmodel.InboundClient{{ID: "app1"}}, nil)
+
+	result, svcErr := service.GetApplicationList(context.Background(), 10, 20, nil)
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), 100, result.TotalResults)
+	assert.Equal(suite.T(), 21, result.StartIndex) // offset + 1
+	assert.Equal(suite.T(), 1, result.Count)
+	// With offset 20, limit 10 and 100 total: first, prev, next and last links are present.
+	rels := make([]string, 0, len(result.Links))
+	for _, l := range result.Links {
+		rels = append(rels, l.Rel)
+	}
+	assert.Subset(suite.T(), rels, []string{"prev", "next"})
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationList_RejectsAndOrFilter() {
+	service, _ := suite.setupTestService()
+
+	filterGroup := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+		{Expr: tidcommon.FilterExpression{Attribute: "name", Operator: tidcommon.OperatorContains, Value: "a"}},
+		{Connector: tidcommon.LogicalOr, Expr: tidcommon.FilterExpression{
+			Attribute: "clientId", Operator: tidcommon.OperatorContains, Value: "b"}},
+	}}
+
+	result, svcErr := service.GetApplicationList(context.Background(), 30, 0, filterGroup)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), ErrorInvalidFilter.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationList_RejectsUnsupportedFilterAttribute() {
+	service, _ := suite.setupTestService()
+
+	filterGroup := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+		{Expr: tidcommon.FilterExpression{Attribute: "unknownAttr", Operator: tidcommon.OperatorContains, Value: "x"}},
+	}}
+
+	result, svcErr := service.GetApplicationList(context.Background(), 30, 0, filterGroup)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), ErrorInvalidFilter.Code, svcErr.Code)
 }
 
 func (suite *ServiceTestSuite) TestGetApplicationList_ListError() {
@@ -539,7 +637,7 @@ func (suite *ServiceTestSuite) TestGetApplicationList_ListError() {
 		mock.AnythingOfType("int"), mock.AnythingOfType("int"), mock.Anything).
 		Return(([]providers.Entity)(nil), epErr)
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), 30, 0, nil)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), svcErr)
@@ -562,7 +660,7 @@ func (suite *ServiceTestSuite) TestGetApplicationList_InboundFetchError() {
 	mockStore.On("GetInboundClientList", mock.Anything).
 		Return(([]inboundmodel.InboundClient)(nil), errors.New("db error"))
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), 30, 0, nil)
 
 	assert.Nil(suite.T(), result)
 	assert.NotNil(suite.T(), svcErr)
@@ -3776,7 +3874,7 @@ func (suite *ServiceTestSuite) TestGetApplicationList_CountError() {
 		Return(0, entityprovider.NewEntityProviderError(
 			entityprovider.ErrorCodeSystemError, "count failed", ""))
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), 30, 0, nil)
 
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
@@ -3799,7 +3897,7 @@ func (suite *ServiceTestSuite) TestGetApplicationList_EntityWithoutInboundClient
 	mockStore.On("GetInboundClientList", mock.Anything).
 		Return([]inboundmodel.InboundClient{}, nil)
 
-	result, svcErr := service.GetApplicationList(context.Background())
+	result, svcErr := service.GetApplicationList(context.Background(), 30, 0, nil)
 
 	assert.Nil(suite.T(), svcErr)
 	assert.NotNil(suite.T(), result)

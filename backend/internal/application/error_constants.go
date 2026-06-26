@@ -500,6 +500,46 @@ var (
 			DefaultValue: "The provided recovery flow ID is invalid",
 		},
 	}
+	// ErrorInvalidLimit is the error returned when the limit query parameter is invalid.
+	ErrorInvalidLimit = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1039",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_limit_parameter",
+			DefaultValue: "Invalid pagination parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_limit_parameter_description",
+			DefaultValue: "The limit parameter must be a positive integer",
+		},
+	}
+	// ErrorInvalidOffset is the error returned when the offset query parameter is invalid.
+	ErrorInvalidOffset = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1040",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_offset_parameter",
+			DefaultValue: "Invalid pagination parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_offset_parameter_description",
+			DefaultValue: "The offset parameter must be a non-negative integer",
+		},
+	}
+	// ErrorInvalidFilter is the error returned when the filter query parameter is invalid.
+	ErrorInvalidFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1038",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.invalid_filter",
+			DefaultValue: "Invalid filter parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.applicationservice.invalid_filter_description",
+			DefaultValue: "The filter parameter is malformed or targets an unsupported attribute or operator. " +
+				"Supported attributes are name, clientId and description with the co or eq operators.",
+		},
+	}
 	// ErrorNativeFlowNotAllowedForSPA is returned when a public client (SPA) is configured for
 	// native (embedded) flow execution instead of a redirect-based authorization_code flow.
 	ErrorNativeFlowNotAllowedForSPA = tidcommon.ServiceError{
