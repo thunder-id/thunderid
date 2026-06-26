@@ -88,9 +88,9 @@ Visit [Get ThunderID](https://thunderid.dev/docs/next/guides/getting-started/get
 
 ## Contributing
 
-Please refer to the [Contributing Guide](https://thunderid.dev/docs/next/community/contributing/overview) for the different ways to contribute to this project and the relevant guidelines.
+Please refer to the [Contributing Guide](https://thunderid.dev/docs/next/community/overview/) for the different ways to contribute to this project and the relevant guidelines.
 
-For code contributions, refer to the [Contributing Code](https://thunderid.dev/docs/next/community/contributing/contributing-code/prerequisites) section for details on the prerequisites and instructions for running ThunderID in development mode.
+For code contributions, refer to the [Contributing Code](https://thunderid.dev/docs/next/community/contributing/contributing-code/prerequisites/) section for details on the prerequisites and instructions for running ThunderID in development mode.
 
 
 ## License
