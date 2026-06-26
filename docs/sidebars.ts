@@ -32,7 +32,6 @@ import reactSdkSidebar from './content/sdks/react/sidebar';
 import reactRouterSdkSidebar from './content/sdks/react-router/sidebar';
 import tanstackRouterSdkSidebar from './content/sdks/tanstack-router/sidebar';
 import vueSdkSidebar from './content/sdks/vue/sidebar';
-import productConfig from './docusaurus.product.config';
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
@@ -50,106 +49,38 @@ import productConfig from './docusaurus.product.config';
  */
 const sidebars: SidebarsConfig = {
   docsSidebar: [
-    {
-      type: 'doc',
-      id: 'index',
-      label: 'Home',
-      className: 'sidebar-doc-home',
-    },
     // Introduction Section
     {
       type: 'html',
       value:
-        '<div class="sidebar-section-label"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>Getting Started</span></div>',
+        '<div class="sidebar-section-label"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg><span>Get Started</span></div>',
       className: 'sidebar-html-section-header',
     },
     {
       type: 'category',
-      label: 'Getting Started',
+      label: 'Get Started',
       collapsed: false,
       collapsible: false,
       className: 'sidebar-section',
       items: [
-        {
-          type: 'doc',
-          id: 'guides/getting-started/what-is-thunderid',
-          label: `What is ${productConfig.project.name}?`,
-        },
-        {
-          type: 'doc',
-          id: 'guides/getting-started/get-thunderid',
-          label: `Get ${productConfig.project.name}`,
-        },
-        {
-          type: 'doc',
-          id: 'guides/getting-started/register-an-application',
-          label: 'Register an Application',
-        },
-        {
-          type: 'doc',
-          id: 'guides/getting-started/build-a-flow',
-          label: 'Build a Sign-In Flow',
-        },
+        {type: 'html', value: '<!-- connect-type-selector -->', className: 'connect-type-selector-wrapper'},
         {
           type: 'category',
-          label: 'Connect Your Application',
-          link: {
-            type: 'doc',
-            id: 'guides/getting-started/connect-your-application/index',
-          },
-          collapsed: true,
-          collapsible: true,
+          label: 'Application',
+          className: 'connect-section connect-section--app',
+          collapsed: false,
+          collapsible: false,
           items: [
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/react',
-              label: 'React',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/nextjs',
-              label: 'Next.js',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/express',
-              label: 'Express',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/vue',
-              label: 'Vue',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/nuxt',
-              label: 'Nuxt',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/node',
-              label: 'Node.js',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/browser',
-              label: 'Vanilla JavaScript',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/ios',
-              label: 'iOS',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/android',
-              label: 'Android',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/flutter',
-              label: 'Flutter',
-            },
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/react', label: 'React', customProps: {icon: 'react'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/nextjs', label: 'Next.js', customProps: {icon: 'next'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/express', label: 'Express', customProps: {icon: 'express'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/vue', label: 'Vue', customProps: {icon: 'vue'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/nuxt', label: 'Nuxt', customProps: {icon: 'nuxt'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/node', label: 'Node.js', customProps: {icon: 'node'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/browser', label: 'JavaScript', customProps: {icon: 'javascript'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/ios', label: 'iOS', customProps: {icon: 'ios'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/android', label: 'Android', customProps: {icon: 'android'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/flutter', label: 'Flutter', customProps: {icon: 'flutter'}},
           ],
         },
       ],
@@ -387,12 +318,14 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
-          label: 'Decentralised Identity',
+          label: 'Secure Token Service (STS)',
           collapsible: true,
           collapsed: true,
-          key: 'use-cases-did',
           items: [
-            {type: 'doc', id: 'use-cases/did/overview', label: 'Overview', key: 'did-overview'},
+            {type: 'doc', id: 'use-cases/sts/azure-apim', label: 'Protect APIs on Azure API Management'},
+            {type: 'doc', id: 'use-cases/sts/envoy', label: 'Protect APIs on Envoy'},
+            {type: 'doc', id: 'use-cases/sts/kong', label: 'Protect APIs on Kong Konnect'},
+            {type: 'doc', id: 'use-cases/sts/krakend', label: 'Protect APIs on KrakenD'},
           ],
         },
       ],
@@ -542,20 +475,6 @@ const sidebars: SidebarsConfig = {
                   id: 'guides/guides/notifications/sms-providers',
                   label: 'SMS Providers',
                 },
-              ],
-            },
-            {
-              type: 'category',
-              label: 'APIM Gateways',
-              collapsed: true,
-              collapsible: true,
-              items: [
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/overview', label: 'Overview'},
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/apisix', label: 'Apache APISIX'},
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/azure-apim', label: 'Azure API Management'},
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/envoy', label: 'Envoy'},
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/kong', label: 'Kong Konnect'},
-                {type: 'doc', id: 'guides/guides/integrations/apim-gateways/krakend', label: 'KrakenD'},
               ],
             },
           ],
@@ -925,6 +844,12 @@ const sidebars: SidebarsConfig = {
         },
       ],
     },
+    {
+      type: 'link',
+      href: 'https://thunderid.dev',
+      label: '← Back to thunderid.dev',
+      className: 'sidebar-back-to-home',
+    },
   ],
   expressSdkSidebar,
   nuxtSdkSidebar,
@@ -953,11 +878,7 @@ const sidebars: SidebarsConfig = {
       className: 'sidebar-section',
       collapsed: false,
       collapsible: false,
-      items: [
-        {type: 'doc', id: 'community/overview', label: 'Join the Community', key: 'community-overview'},
-        {type: 'doc', id: 'community/contributors', label: 'Contributors'},
-        {type: 'doc', id: 'community/code-of-conduct', label: 'Code of Conduct'},
-      ],
+      items: [{type: 'doc', id: 'community/overview', label: 'Join the Community', key: 'community-overview'}],
     },
 
     // Contribute Section
@@ -974,150 +895,95 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       collapsible: false,
       items: [
-        {type: 'doc', id: 'community/contributing/report-a-bug', label: 'Report a Bug'},
-        {type: 'doc', id: 'community/contributing/contribute-ideas', label: 'Contribute Ideas'},
+        {type: 'doc', id: 'community/contributing/overview', label: 'Contribute to ThunderID'},
+        {type: 'doc', id: 'community/contributing/sharing-ideas', label: 'Share Ideas'},
+        {type: 'doc', id: 'community/contributing/proposing-features', label: 'Propose Features'},
+        {type: 'doc', id: 'community/contributing/contributing-code/prerequisites', label: 'Prerequisites'},
+        {type: 'doc', id: 'community/contributing/contributing-code/configure-and-run', label: 'Configure and Run'},
+        {
+          type: 'doc',
+          id: 'community/contributing/contributing-code/development-pipeline',
+          label: 'Development Pipeline',
+          key: 'code-development-pipeline',
+        },
+        {type: 'doc', id: 'community/contributing/contributing-code/debugging', label: 'Debugging'},
         {
           type: 'category',
-          label: 'Contribute Code',
-          collapsed: false,
+          label: 'Backend Development',
+          collapsed: true,
           collapsible: true,
           items: [
-            {type: 'doc', id: 'community/contributing/contributing-code/prerequisites', label: 'Prerequisites'},
-            {type: 'doc', id: 'community/contributing/contributing-code/configure-and-run', label: 'Configure and Run'},
             {
-              type: 'category',
-              label: 'Optional Setup',
-              key: 'code-optional-setup',
-              collapsed: true,
-              collapsible: true,
-              items: [
-                {type: 'doc', id: 'community/contributing/contributing-code/optional-setup/build-the-project', label: 'Build the Project'},
-                {type: 'doc', id: 'community/contributing/contributing-code/optional-setup/useful-commands', label: 'Useful Commands'},
-                {type: 'doc', id: 'community/contributing/contributing-code/optional-setup/setup-and-data-seeding', label: 'Setup and Data Seeding'},
-                {type: 'doc', id: 'community/contributing/contributing-code/optional-setup/advanced-setup', label: 'Advanced Setup (Manual Mode)'},
-              ],
-            },
-            {type: 'doc', id: 'community/contributing/contributing-code/debugging', label: 'Debugging'},
-            {
-              type: 'category',
-              label: 'Backend Development',
-              collapsed: true,
-              collapsible: true,
-              items: [
-                {
-                  type: 'doc',
-                  id: 'community/contributing/contributing-code/backend-development/overview',
-                  label: 'Overview',
-                  key: 'backend-overview',
-                },
-                {
-                  type: 'doc',
-                  id: 'community/contributing/contributing-code/backend-development/observability',
-                  label: 'Observability',
-                },
-              ],
-            },
-            {
-              type: 'category',
-              label: 'Frontend Development',
-              collapsed: true,
-              collapsible: true,
-              items: [
-                {
-                  type: 'doc',
-                  id: 'community/contributing/contributing-code/frontend-development/overview',
-                  label: 'Overview',
-                  key: 'frontend-overview',
-                },
-                {
-                  type: 'doc',
-                  id: 'community/contributing/contributing-code/frontend-development/conventions',
-                  label: 'Conventions',
-                  key: 'frontend-conventions',
-                },
-                {
-                  type: 'doc',
-                  id: 'community/contributing/contributing-code/frontend-development/best-practices',
-                  label: 'Best Practices',
-                  key: 'frontend-best-practices',
-                },
-              ],
-            },
-            {
-              type: 'category',
-              label: 'SDK Development',
-              collapsed: true,
-              collapsible: true,
-              items: [
-                {
-                  type: 'doc',
-                  id: 'community/contributing/contributing-code/sdk-development/overview',
-                  label: 'Overview',
-                  key: 'sdk-overview',
-                },
-              ],
-            },
-            {
-              type: 'category',
-              label: 'Documentation Development',
-              collapsed: true,
-              collapsible: true,
-              items: [
-                {type: 'doc', id: 'community/contributing/documentation-guide/overview', label: 'Overview'},
-                {
-                  type: 'doc',
-                  id: 'community/contributing/documentation-guide/configure-and-run',
-                  label: 'Configure & Run',
-                },
-                {
-                  type: 'category',
-                  label: 'Optional Setup',
-                  key: 'docs-optional-setup',
-                  collapsed: true,
-                  collapsible: true,
-                  items: [
-                    {
-                      type: 'doc',
-                      id: 'community/contributing/documentation-guide/build-the-documentation',
-                      label: 'Build the Documentation',
-                    },
-                    {
-                      type: 'doc',
-                      id: 'community/contributing/documentation-guide/useful-commands',
-                      label: 'Useful Commands',
-                      key: 'docs-useful-commands',
-                    },
-                  ],
-                },
-                {
-                  type: 'doc',
-                  id: 'community/contributing/documentation-guide/style-guide',
-                  label: 'Style Guide',
-                },
-                {
-                  type: 'doc',
-                  id: 'community/contributing/documentation-guide/writing-guide',
-                  label: 'Writing Guide',
-                },
-                {
-                  type: 'doc',
-                  id: 'community/contributing/documentation-guide/advanced-topics',
-                  label: 'Advanced Topics',
-                },
-              ],
+              type: 'doc',
+              id: 'community/contributing/contributing-code/backend-development/overview',
+              label: 'Backend Overview',
+              key: 'backend-overview',
             },
             {
               type: 'doc',
-              id: 'community/contributing/contributing-code/pull-request-workflow',
-              label: 'Pull Request Workflow',
-              key: 'code-development-pipeline',
+              id: 'community/contributing/contributing-code/backend-development/observability',
+              label: 'Observability',
             },
           ],
         },
         {
-          type: 'doc',
-          id: 'community/contributing/documentation-guide/glossary',
-          label: 'Glossary',
+          type: 'category',
+          label: 'Frontend Development',
+          collapsed: true,
+          collapsible: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'community/contributing/contributing-code/frontend-development/overview',
+              label: 'Frontend Overview',
+              key: 'frontend-overview',
+            },
+            {
+              type: 'doc',
+              id: 'community/contributing/contributing-code/frontend-development/scaffolding-tool',
+              label: 'Scaffolding Tool',
+            },
+          ],
+        },
+        {
+          type: 'category',
+          label: 'Documentation Development',
+          collapsed: true,
+          collapsible: true,
+          items: [
+            {
+              type: 'doc',
+              id: 'community/contributing/contributing-code/documentation-development/overview',
+              label: 'Documentation Overview',
+              key: 'docs-overview',
+            },
+            {
+              type: 'doc',
+              id: 'community/contributing/contributing-code/documentation-development/development-pipeline',
+              label: 'Documentation Development Pipeline',
+              key: 'docs-development-pipeline',
+            },
+            {
+              type: 'doc',
+              id: 'community/contributing/contributing-code/documentation-development/writing-documentation',
+              label: 'Writing Documentation',
+            },
+            {
+              type: 'doc',
+              id: 'community/contributing/contributing-code/documentation-development/documentation-style-guide',
+              label: 'Style Guide',
+            },
+            {
+              type: 'doc',
+              id: 'community/contributing/contributing-code/documentation-development/advanced-topics',
+              label: 'Advanced Topics',
+            },
+            {
+              type: 'doc',
+              id: 'community/contributing/contributing-code/documentation-development/glossary',
+              label: 'Glossary',
+            },
+          ],
         },
       ],
     },

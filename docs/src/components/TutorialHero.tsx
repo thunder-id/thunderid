@@ -34,32 +34,34 @@ interface SectionData {
   content: ReactNode[];
 }
 
+const ICON_SIZE = 22;
+const ICON_CONTAINER_SIZE = 38;
+
+const iconContainerSx = {
+  alignItems: 'center',
+  borderRadius: 'var(--oxygen-shape-borderRadius)',
+  display: 'flex',
+  height: ICON_CONTAINER_SIZE,
+  justifyContent: 'center',
+  width: ICON_CONTAINER_SIZE,
+} as const;
+
+const iconInnerSx = {
+  alignItems: 'center',
+  color: 'primary.main',
+  display: 'flex',
+  height: ICON_SIZE,
+  justifyContent: 'center',
+  width: ICON_SIZE,
+} as const;
+
 // TutorialHeroItem component - used in MDX to pass custom icons
 export function TutorialHeroItem({icon = undefined, children}: TutorialHeroItemProps) {
   return (
     <ListItem sx={{}}>
-      <ListItemIcon sx={{minWidth: 40}}>
-        <Box
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            width: 32,
-            height: 32,
-            borderRadius: 'var(--oxygen-shape-borderRadius)',
-            backgroundColor: 'rgba(255, 143, 51, 0.15)',
-          }}
-        >
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 16,
-              height: 16,
-              color: 'primary.main',
-            }}
-          >
+      <ListItemIcon sx={{minWidth: ICON_CONTAINER_SIZE + 8}}>
+        <Box sx={iconContainerSx}>
+          <Box sx={iconInnerSx}>
             {icon ?? <Cube />}
           </Box>
         </Box>
