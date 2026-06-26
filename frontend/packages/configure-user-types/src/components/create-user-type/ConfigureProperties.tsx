@@ -42,6 +42,7 @@ import {useCallback, useEffect, useMemo, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {SchemaPropertyInput, UIPropertyType} from '../../types/user-types';
 import {invalidateI18nCache} from '../../utils/invalidateI18nCache';
+import {isValidPropertyName} from '../../utils/isValidPropertyName';
 
 /**
  * Props for the {@link ConfigureProperties} component.
@@ -116,11 +117,12 @@ export default function ConfigureProperties({
     }
   }, [eligibleDisplayProperties, displayAttribute, onDisplayAttributeChange]);
 
-  // Broadcast readiness - ready when at least one property has a name
+  // Broadcast readiness - ready when at least one property has a name and all names are valid
   useEffect((): void => {
     if (onReadyChange) {
-      const hasValidProperty = properties.some((prop) => prop.name.trim().length > 0);
-      onReadyChange(hasValidProperty);
+      const hasNamedProperty = properties.some((prop) => prop.name.trim().length > 0);
+      const allNamesValid = properties.every((prop) => prop.name.length === 0 || isValidPropertyName(prop.name));
+      onReadyChange(hasNamedProperty && allNamesValid);
     }
   }, [properties, onReadyChange]);
 
@@ -257,6 +259,12 @@ export default function ConfigureProperties({
                 onChange={(e) => handlePropertyChange(property.id, 'name', e.target.value)}
                 placeholder={t('userTypes:propertyNamePlaceholder')}
                 size="small"
+                error={property.name.length > 0 && !isValidPropertyName(property.name)}
+                helperText={
+                  property.name.length > 0 && !isValidPropertyName(property.name)
+                    ? t('userTypes:propertyNameInvalid')
+                    : undefined
+                }
               />
             </FormControl>
 
