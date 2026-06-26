@@ -210,6 +210,11 @@ const sidebars: SidebarsConfig = {
           collapsed: true,
           items: [
             {
+              type: 'doc',
+              id: 'use-cases/b2c/solution-patterns',
+              label: 'Solution Patterns',
+            },
+            {
               type: 'category',
               label: 'Architecture Decisions',
               link: {type: 'doc', id: 'use-cases/b2c/architecture-decisions'},
@@ -456,6 +461,11 @@ const sidebars: SidebarsConfig = {
               id: 'guides/guides/users/user-type-reference',
               label: 'User Type Reference',
             },
+            {
+              type: 'doc',
+              id: 'guides/guides/users/manage-roles',
+              label: 'Manage Roles',
+            },
           ],
         },
         {
@@ -468,6 +478,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'guides/guides/agents/manage-agents',
               label: 'Manage Agents',
+            },
+            {
+              type: 'doc',
+              id: 'guides/guides/agents/agent-authentication',
+              label: 'Agent Authentication',
             },
           ],
         },
@@ -607,6 +622,17 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'guides/guides/resource-servers',
           label: 'Resource Servers',
+        },
+        {
+          type: 'doc',
+          id: 'guides/guides/resource-indicators',
+          label: 'Resource Indicators',
+          key: 'resource-indicators-top-level',
+        },
+        {
+          type: 'doc',
+          id: 'guides/guides/resource-export',
+          label: 'Resource Export',
         },
         {
           type: 'category',
@@ -897,9 +923,14 @@ const sidebars: SidebarsConfig = {
           collapsed: true,
           items: [
             {
-              type: 'doc',
-              id: 'guides/deployment-patterns/docker',
+              type: 'category',
               label: 'Docker',
+              collapsible: true,
+              collapsed: true,
+              items: [
+                {type: 'doc', id: 'guides/deployment-patterns/docker', label: 'Docker Setup'},
+                {type: 'doc', id: 'guides/deployment-patterns/docker-production', label: 'Production Recommendations'},
+              ],
             },
             {
               type: 'doc',
@@ -922,6 +953,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'guides/deployment-patterns/production-guidelines',
           label: 'Production Guidelines',
+        },
+        {
+          type: 'doc',
+          id: 'guides/deployment-patterns/observability',
+          label: 'Observability',
         },
       ],
     },
