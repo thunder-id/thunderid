@@ -180,21 +180,6 @@ var (
 		},
 	}
 
-	// ErrorDeletingConsentPurposeWithAssociatedRecords is returned when attempting to delete a consent purpose that
-	// has associated consent records.
-	ErrorDeletingConsentPurposeWithAssociatedRecords = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "CSE-1012",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentservice.cannot_delete_purpose",
-			DefaultValue: "Cannot delete consent purpose",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentservice.delete_purpose_with_associated_records_description",
-			DefaultValue: "The consent purpose cannot be deleted as it is associated with one or more consent records",
-		},
-	}
-
 	// ErrorInvalidConsentRecordRequest is returned when the consent service rejects a consent request.
 	ErrorInvalidConsentRecordRequest = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

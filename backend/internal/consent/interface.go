@@ -37,10 +37,6 @@ type ConsentServiceInterface interface {
 	ListConsentElements(ctx context.Context, ouID string, ns Namespace, nameFilter string) (
 		[]ConsentElement, *tidcommon.ServiceError)
 
-	// UpdateConsentElement updates an existing consent element by ID
-	UpdateConsentElement(ctx context.Context, ouID, elementID string, element *ConsentElementInput) (
-		*ConsentElement, *tidcommon.ServiceError)
-
 	// DeleteConsentElement deletes a consent element by ID (idempotent)
 	DeleteConsentElement(ctx context.Context, ouID, elementID string) *tidcommon.ServiceError
 
@@ -59,9 +55,6 @@ type ConsentServiceInterface interface {
 	// UpdateConsentPurpose updates an existing consent purpose
 	UpdateConsentPurpose(ctx context.Context, ouID, purposeID string,
 		purpose *ConsentPurposeInput) (*ConsentPurpose, *tidcommon.ServiceError)
-
-	// DeleteConsentPurpose deletes a consent purpose by ID (idempotent)
-	DeleteConsentPurpose(ctx context.Context, ouID, purposeID string) *tidcommon.ServiceError
 
 	// CreateConsent creates a new consent record
 	CreateConsent(ctx context.Context, ouID string, consent *ConsentRequest) (
@@ -94,10 +87,6 @@ type consentClientInterface interface {
 	listConsentElements(ctx context.Context, ouID string, ns Namespace, nameFilter string) (
 		[]ConsentElement, *tidcommon.ServiceError)
 
-	// updateConsentElement updates an existing consent element by ID
-	updateConsentElement(ctx context.Context, ouID, elementID string, element *ConsentElementInput) (
-		*ConsentElement, *tidcommon.ServiceError)
-
 	// deleteConsentElement deletes a consent element by ID
 	deleteConsentElement(ctx context.Context, ouID, elementID string) *tidcommon.ServiceError
 
@@ -116,9 +105,6 @@ type consentClientInterface interface {
 	// updateConsentPurpose updates an existing consent purpose
 	updateConsentPurpose(ctx context.Context, ouID, purposeID string, purpose *ConsentPurposeInput) (
 		*ConsentPurpose, *tidcommon.ServiceError)
-
-	// deleteConsentPurpose deletes a consent purpose by ID
-	deleteConsentPurpose(ctx context.Context, ouID, purposeID string) *tidcommon.ServiceError
 
 	// createConsent creates a new consent record and returns the created consent with ID
 	createConsent(ctx context.Context, ouID string, req *ConsentRequest) (
