@@ -356,7 +356,7 @@ func (s *authzenService) getAllActions(
 	actions := make([]providers.Action, 0)
 	for offset := 0; ; {
 		actionList, svcErr := s.resourceService.GetActionList(
-			ctx, resourceServerID, resourceID, serverconst.MaxPageSize, offset)
+			ctx, resourceServerID, resourceID, "", serverconst.MaxPageSize, offset)
 		if svcErr != nil {
 			return nil, svcErr
 		}

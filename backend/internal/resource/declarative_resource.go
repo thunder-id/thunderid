@@ -109,7 +109,9 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		ID:          server.ID,
 		Name:        server.Name,
 		Description: server.Description,
+		Handle:      server.Handle,
 		Identifier:  server.Identifier,
+		Type:        server.Type,
 		OUID:        server.OUID,
 		Delimiter:   server.Delimiter,
 		Resources:   []providers.Resource{},
@@ -144,7 +146,7 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		// Get actions for this resource
 		actOffset := 0
 		for {
-			actions, actErr := e.service.GetActionList(ctx, id, &res.ID, serverconst.MaxPageSize, actOffset)
+			actions, actErr := e.service.GetActionList(ctx, id, &res.ID, "", serverconst.MaxPageSize, actOffset)
 			if actErr != nil {
 				return nil, "", actErr
 			}
@@ -156,6 +158,7 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 					Name:        action.Name,
 					Handle:      action.Handle,
 					Description: action.Description,
+					Kind:        action.Kind,
 				})
 			}
 			actOffset += len(actions.Actions)
@@ -282,6 +285,24 @@ func parseToResourceServer(data []byte) (*providers.ResourceServer, error) {
 		rs.Type = providers.ResourceServerTypeCustom
 	}
 
+	// Apply the action kind discriminator rules (mirrors the REST path). The kind is optional for all
+	// resource server types; MCP actions default to "tool" when omitted, and any provided kind must be
+	// one of the supported values (tool|resource).
+	for i := range rs.Resources {
+		for j := range rs.Resources[i].Actions {
+			action := &rs.Resources[i].Actions[j]
+			if rs.Type == providers.ResourceServerTypeMCP && action.Kind == "" {
+				action.Kind = providers.ActionKindTool
+			}
+			if action.Kind != "" && !action.Kind.IsValid() {
+				return nil, fmt.Errorf(
+					"action %q in resource server '%s' has invalid kind %q (allowed: tool|resource)",
+					action.Handle, rs.Name, action.Kind,
+				)
+			}
+		}
+	}
+
 	return &rs, nil
 }
 
@@ -314,6 +335,46 @@ func ProcessResourceServer(rs *providers.ResourceServer) error {
 	for i := range rs.Resources {
 		if err := processResource(&rs.Resources[i], resourceHandleMap, rs.Handle, delimiter); err != nil {
 			return err
+		}
+	}
+
+	// For MCP resource servers, a resource (group) and an action (tool/resource) in the same parent
+	// context can derive an identical permission string under exact-string RBAC, silently collapsing
+	// two distinct primitives. Mirror the REST cross-entity check (Rule 6) on the declarative path by
+	// failing on the first duplicate derived permission across all resources and their nested actions.
+	if rs.Type == providers.ResourceServerTypeMCP {
+		if err := checkDuplicateMCPPermissions(rs); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// checkDuplicateMCPPermissions detects duplicate derived permission strings across all resources
+// (groups) and their nested actions (tools/resources) for an MCP resource server. It returns an
+// error naming the colliding permission and handles on the first duplicate found.
+func checkDuplicateMCPPermissions(rs *providers.ResourceServer) error {
+	seen := make(map[string]string)
+	for i := range rs.Resources {
+		res := &rs.Resources[i]
+		if existing, ok := seen[res.Permission]; ok {
+			return fmt.Errorf(
+				"duplicate permission '%s' derived for handles '%s' and '%s' in resource server '%s'",
+				res.Permission, existing, res.Handle, rs.ID,
+			)
+		}
+		seen[res.Permission] = res.Handle
+
+		for j := range res.Actions {
+			action := &res.Actions[j]
+			if existing, ok := seen[action.Permission]; ok {
+				return fmt.Errorf(
+					"duplicate permission '%s' derived for handles '%s' and '%s' in resource server '%s'",
+					action.Permission, existing, action.Handle, rs.ID,
+				)
+			}
+			seen[action.Permission] = action.Handle
 		}
 	}
 

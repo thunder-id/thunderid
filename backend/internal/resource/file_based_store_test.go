@@ -396,21 +396,78 @@ func (s *FileBasedResourceStoreTestSuite) TestGetActionListAndCounts_WithData() 
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), rootActionID, action.ID)
 
-	actions, err := s.store.GetActionList(s.ctx, "rs-data", nil, 10, 0)
+	actions, err := s.store.GetActionList(s.ctx, "rs-data", nil, "", 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), actions, 2)
 
-	actions, err = s.store.GetActionList(s.ctx, "rs-data", &rootID, 10, 0)
+	actions, err = s.store.GetActionList(s.ctx, "rs-data", &rootID, "", 10, 0)
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), actions, 1)
 
-	count, err := s.store.GetActionListCount(s.ctx, "rs-data", nil)
+	count, err := s.store.GetActionListCount(s.ctx, "rs-data", nil, "")
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), 2, count)
 
-	count, err = s.store.GetActionListCount(s.ctx, "rs-data", &rootID)
+	count, err = s.store.GetActionListCount(s.ctx, "rs-data", &rootID, "")
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), 1, count)
+}
+
+func (s *FileBasedResourceStoreTestSuite) TestGetActionList_FilterByKind() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	assert.True(s.T(), ok)
+
+	rs := &providers.ResourceServer{
+		ID:        "rs-mcp",
+		Name:      "MCP Server",
+		OUID:      "ou1",
+		Delimiter: ":",
+		Resources: []providers.Resource{
+			{
+				Name:   "Root",
+				Handle: "root",
+				Actions: []providers.Action{
+					{Name: "Create User", Handle: "create_user", Kind: providers.ActionKindTool},
+					{Name: "User List", Handle: "user_list", Kind: providers.ActionKindResource},
+				},
+			},
+		},
+	}
+
+	err := fileStore.Create("rs-mcp", rs)
+	assert.NoError(s.T(), err)
+
+	// Empty kind returns all actions.
+	all, err := s.store.GetActionList(s.ctx, "rs-mcp", nil, "", 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), all, 2)
+
+	// Tool kind returns only the tool action.
+	tools, err := s.store.GetActionList(s.ctx, "rs-mcp", nil, providers.ActionKindTool, 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), tools, 1)
+	assert.Equal(s.T(), "create_user", tools[0].Handle)
+	assert.Equal(s.T(), providers.ActionKindTool, tools[0].Kind)
+
+	// Resource kind returns only the resource action.
+	resources, err := s.store.GetActionList(s.ctx, "rs-mcp", nil, providers.ActionKindResource, 10, 0)
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), resources, 1)
+	assert.Equal(s.T(), "user_list", resources[0].Handle)
+	assert.Equal(s.T(), providers.ActionKindResource, resources[0].Kind)
+
+	// The count honors the kind filter and matches the filtered list length.
+	allCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", nil, "")
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), len(all), allCount)
+
+	toolCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", nil, providers.ActionKindTool)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), len(tools), toolCount)
+
+	resourceCount, err := s.store.GetActionListCount(s.ctx, "rs-mcp", nil, providers.ActionKindResource)
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), len(resources), resourceCount)
 }
 
 func (s *FileBasedResourceStoreTestSuite) TestCheckActionHandleExists_WithData() {

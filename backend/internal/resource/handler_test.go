@@ -401,7 +401,7 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_Succe
 	}
 	var nilResourceID *string
 	suite.mockService.On("GetActionList", mock.Anything,
-		"rs-123", nilResourceID, 30, 0).Return(&ActionList{
+		"rs-123", nilResourceID, providers.ActionKind(""), 30, 0).Return(&ActionList{
 		TotalResults: 2,
 		StartIndex:   1,
 		Count:        2,
@@ -420,6 +420,83 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_Succe
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	suite.NoError(err)
 	suite.Equal(2, resp.TotalResults)
+}
+
+func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_WithKindFilter() {
+	var nilResourceID *string
+	suite.mockService.On("GetActionList", mock.Anything,
+		"rs-123", nilResourceID, providers.ActionKindTool, 30, 0).Return(&ActionList{
+		TotalResults: 1,
+		StartIndex:   1,
+		Count:        1,
+		Actions:      []providers.Action{{ID: "action-1", Name: "Tool 1", Kind: providers.ActionKindTool}},
+	}, nil)
+
+	req := httptest.NewRequest("GET", "/resource-servers/rs-123/actions?kind=tool", nil)
+	req.SetPathValue("rsId", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleActionListAtResourceServerRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	suite.mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_InvalidKind() {
+	req := httptest.NewRequest("GET", "/resource-servers/rs-123/actions?kind=bogus", nil)
+	req.SetPathValue("rsId", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleActionListAtResourceServerRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	suite.mockService.AssertNotCalled(suite.T(), "GetActionList")
+}
+
+func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_KindPromptRejected() {
+	req := httptest.NewRequest("GET", "/resource-servers/rs-123/actions?kind=prompt", nil)
+	req.SetPathValue("rsId", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleActionListAtResourceServerRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	suite.mockService.AssertNotCalled(suite.T(), "GetActionList")
+}
+
+func (suite *HandlerTestSuite) TestHandleActionListAtResourceRequest_WithKindFilter() {
+	resourceID := testResourceID
+	suite.mockService.On("GetActionList", mock.Anything,
+		"rs-123", &resourceID, providers.ActionKindResource, 30, 0).Return(&ActionList{
+		TotalResults: 1,
+		Actions:      []providers.Action{{ID: "action-1", Name: "Resource 1", Kind: providers.ActionKindResource}},
+	}, nil)
+
+	req := httptest.NewRequest(
+		"GET", "/resource-servers/rs-123/resources/res-123/actions?kind=resource", nil,
+	)
+	req.SetPathValue("rsId", "rs-123")
+	req.SetPathValue("resourceId", testResourceID)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleActionListAtResourceRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	suite.mockService.AssertExpectations(suite.T())
+}
+
+func (suite *HandlerTestSuite) TestHandleActionListAtResourceRequest_InvalidKind() {
+	req := httptest.NewRequest(
+		"GET", "/resource-servers/rs-123/resources/res-123/actions?kind=bogus", nil,
+	)
+	req.SetPathValue("rsId", "rs-123")
+	req.SetPathValue("resourceId", testResourceID)
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleActionListAtResourceRequest(w, req)
+
+	suite.Equal(http.StatusBadRequest, w.Code)
+	suite.mockService.AssertNotCalled(suite.T(), "GetActionList")
 }
 
 func (suite *HandlerTestSuite) TestHandleActionPostAtResourceServerRequest_Success() {
@@ -449,6 +526,40 @@ func (suite *HandlerTestSuite) TestHandleActionPostAtResourceServerRequest_Succe
 	suite.NoError(err)
 	suite.Equal("action-123", resp.ID)
 	suite.Equal("test-handle", resp.Handle)
+}
+
+func (suite *HandlerTestSuite) TestHandleActionPostAtResourceServerRequest_WithKind() {
+	reqBody := CreateActionRequest{
+		Name:   "test-tool",
+		Handle: "test-tool-handle",
+		Kind:   providers.ActionKindTool,
+	}
+
+	var nilResourceID *string
+	suite.mockService.On("CreateAction", mock.Anything,
+		"rs-123", nilResourceID, mock.MatchedBy(func(a providers.Action) bool {
+			return a.Kind == providers.ActionKindTool
+		})).Return(&providers.Action{
+		ID:     "action-123",
+		Name:   "test-tool",
+		Handle: "test-tool-handle",
+		Kind:   providers.ActionKindTool,
+	}, nil)
+
+	body, _ := json.Marshal(reqBody)
+	req := httptest.NewRequest("POST", "/resource-servers/rs-123/actions", bytes.NewReader(body))
+	req.SetPathValue("rsId", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleActionPostAtResourceServerRequest(w, req)
+
+	suite.Equal(http.StatusCreated, w.Code)
+	suite.Contains(w.Body.String(), `"kind":"tool"`)
+	var resp ActionResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	suite.NoError(err)
+	suite.Equal(providers.ActionKindTool, resp.Kind)
+	suite.mockService.AssertExpectations(suite.T())
 }
 
 func (suite *HandlerTestSuite) TestHandleActionGetAtResourceServerRequest_Success() {
@@ -517,7 +628,7 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceRequest_Success() {
 
 	resourceID := testResourceID
 	suite.mockService.On("GetActionList", mock.Anything,
-		"rs-123", &resourceID, 30, 0).Return(&ActionList{
+		"rs-123", &resourceID, providers.ActionKind(""), 30, 0).Return(&ActionList{
 		TotalResults: 1,
 		Actions:      actions,
 	}, nil)
@@ -1063,7 +1174,7 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_Inval
 func (suite *HandlerTestSuite) TestHandleActionListAtResourceServerRequest_ServiceError() {
 	var nilResourceID *string
 	suite.mockService.On("GetActionList", mock.Anything,
-		"rs-123", nilResourceID, 30, 0).Return(nil, &tidcommon.InternalServerError)
+		"rs-123", nilResourceID, providers.ActionKind(""), 30, 0).Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/actions", nil)
 	req.SetPathValue("rsId", "rs-123")
@@ -1201,7 +1312,7 @@ func (suite *HandlerTestSuite) TestHandleActionListAtResourceRequest_InvalidLimi
 func (suite *HandlerTestSuite) TestHandleActionListAtResourceRequest_ServiceError() {
 	resourceID := testResourceID
 	suite.mockService.On("GetActionList", mock.Anything,
-		"rs-123", &resourceID, 30, 0).
+		"rs-123", &resourceID, providers.ActionKind(""), 30, 0).
 		Return(nil, &tidcommon.InternalServerError)
 
 	req := httptest.NewRequest("GET", "/resource-servers/rs-123/resources/res-123/actions", nil)

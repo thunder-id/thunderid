@@ -1981,7 +1981,7 @@ func (suite *ResourceStoreTestSuite) TestCreateAction() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateAction, "action1", "rs1", resourceID,
-					"Test Action", "test-handle", "Test Description", "perm:act", "{}", "test-deployment").
+					"Test Action", "test-handle", "Test Description", "perm:act", nil, "test-deployment").
 					Return(int64(1), nil)
 			},
 			shouldErr: false,
@@ -2001,7 +2001,29 @@ func (suite *ResourceStoreTestSuite) TestCreateAction() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateAction, "action1", "rs1", (*string)(nil),
-					"Test Action", "test-handle", "Test Description", "perm:act", "{}", "test-deployment").
+					"Test Action", "test-handle", "Test Description", "perm:act", nil, "test-deployment").
+					Return(int64(1), nil)
+			},
+			shouldErr: false,
+		},
+		{
+			name:             "Success_WithKind",
+			actionID:         "action1",
+			resourceServerID: "rs1",
+			resourceID:       nil,
+			action: providers.Action{
+				Name:        "Test Action",
+				Handle:      "test-handle",
+				Description: "Test Description",
+				Permission:  "perm:act",
+				Kind:        providers.ActionKindTool,
+			},
+			setupMocks: func(resourceID *string) {
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("ExecuteContext", context.Background(),
+					queryCreateAction, "action1", "rs1", (*string)(nil),
+					"Test Action", "test-handle", "Test Description", "perm:act",
+					[]byte(`{"kind":"tool"}`), "test-deployment").
 					Return(int64(1), nil)
 			},
 			shouldErr: false,
@@ -2022,7 +2044,7 @@ func (suite *ResourceStoreTestSuite) TestCreateAction() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryCreateAction, "action1", "rs1", (*string)(nil),
-					"Test Action", "test-handle", "Test Description", "perm:act", "{}", "test-deployment").
+					"Test Action", "test-handle", "Test Description", "perm:act", nil, "test-deployment").
 					Return(int64(0), execError)
 			},
 			shouldErr: true,
@@ -2191,6 +2213,7 @@ func (suite *ResourceStoreTestSuite) TestGetActionList() {
 		name             string
 		resourceServerID string
 		resourceID       *string
+		kind             providers.ActionKind
 		limit            int
 		offset           int
 		setupMocks       func(*string, int, int)
@@ -2307,6 +2330,50 @@ func (suite *ResourceStoreTestSuite) TestGetActionList() {
 			},
 			shouldErr: true,
 		},
+		{
+			name:             "Success_WithKindFilter",
+			resourceServerID: "rs1",
+			resourceID:       nil,
+			kind:             providers.ActionKindTool,
+			limit:            testLimit,
+			offset:           testOffset,
+			setupMocks: func(resourceID *string, limit, offset int) {
+				var nilResID *string
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("QueryContext", context.Background(),
+					queryGetActionListByKind, "rs1", nilResID,
+					limit, offset, "tool", "test-deployment").Return([]map[string]interface{}{
+					{
+						"id":                 "action1",
+						"resource_server_id": "rs1",
+						"name":               "Tool Action",
+						"handle":             "tool-action",
+						"description":        "Tool Description",
+						"permission":         "perm:tool",
+						"properties":         `{"kind":"tool"}`,
+					},
+				}, nil)
+			},
+			expectedCount: 1,
+			shouldErr:     false,
+		},
+		{
+			name:             "QueryError_WithKindFilter",
+			resourceServerID: "rs1",
+			resourceID:       nil,
+			kind:             providers.ActionKindTool,
+			limit:            testLimit,
+			offset:           testOffset,
+			setupMocks: func(resourceID *string, limit, offset int) {
+				var nilResID *string
+				queryError := errors.New("query error")
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("QueryContext", context.Background(),
+					queryGetActionListByKind, "rs1", nilResID,
+					limit, offset, "tool", "test-deployment").Return(nil, queryError)
+			},
+			shouldErr: true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -2323,7 +2390,7 @@ func (suite *ResourceStoreTestSuite) TestGetActionList() {
 
 			actions, err := suite.store.GetActionList(context.Background(),
 
-				tc.resourceServerID, tc.resourceID, tc.limit, tc.offset)
+				tc.resourceServerID, tc.resourceID, tc.kind, tc.limit, tc.offset)
 
 			if tc.shouldErr {
 				suite.Error(err)
@@ -2347,6 +2414,7 @@ func (suite *ResourceStoreTestSuite) TestGetActionListCount() {
 		name             string
 		resourceServerID string
 		resourceID       *string
+		kind             providers.ActionKind
 		setupMocks       func(*string)
 		expectedCount    int
 		shouldErr        bool
@@ -2411,6 +2479,39 @@ func (suite *ResourceStoreTestSuite) TestGetActionListCount() {
 			expectedCount: 0,
 			shouldErr:     true,
 		},
+		{
+			name:             "Success_WithKindFilter",
+			resourceServerID: "rs1",
+			resourceID:       nil,
+			kind:             providers.ActionKindTool,
+			setupMocks: func(resourceID *string) {
+				var nilResID *string
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("QueryContext", context.Background(),
+					queryGetActionListCountByKind, "rs1", nilResID,
+					"tool", "test-deployment").Return([]map[string]interface{}{
+					{"total": int64(3)},
+				}, nil)
+			},
+			expectedCount: 3,
+			shouldErr:     false,
+		},
+		{
+			name:             "QueryError_WithKindFilter",
+			resourceServerID: "rs1",
+			resourceID:       nil,
+			kind:             providers.ActionKindTool,
+			setupMocks: func(resourceID *string) {
+				var nilResID *string
+				queryError := errors.New("query error")
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("QueryContext", context.Background(),
+					queryGetActionListCountByKind, "rs1", nilResID,
+					"tool", "test-deployment").Return(nil, queryError)
+			},
+			expectedCount: 0,
+			shouldErr:     true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -2425,7 +2526,7 @@ func (suite *ResourceStoreTestSuite) TestGetActionListCount() {
 
 			tc.setupMocks(tc.resourceID)
 			count, err := suite.store.GetActionListCount(context.Background(),
-				tc.resourceServerID, tc.resourceID)
+				tc.resourceServerID, tc.resourceID, tc.kind)
 
 			if tc.shouldErr {
 				suite.Error(err)
@@ -2462,7 +2563,7 @@ func (suite *ResourceStoreTestSuite) TestUpdateAction() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryUpdateAction, "Updated Action",
-					"Updated Description", "{}", "action1", "rs1", nilResID, "test-deployment").
+					"Updated Description", nil, "action1", "rs1", nilResID, "test-deployment").
 					Return(int64(1), nil)
 			},
 			shouldErr: false,
@@ -2480,7 +2581,28 @@ func (suite *ResourceStoreTestSuite) TestUpdateAction() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryUpdateAction, "Updated Action",
-					"Updated Description", "{}", "action1", "rs1", resourceID, "test-deployment").
+					"Updated Description", nil, "action1", "rs1", resourceID, "test-deployment").
+					Return(int64(1), nil)
+			},
+			shouldErr: false,
+		},
+		{
+			name:             "Success_WithKind",
+			actionID:         "action1",
+			resourceServerID: "rs1",
+			resourceID:       nil,
+			action: providers.Action{
+				Name:        "Updated Action",
+				Description: "Updated Description",
+				Kind:        providers.ActionKindTool,
+			},
+			setupMocks: func(resourceID *string) {
+				var nilResID *string
+				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+				suite.mockDBClient.On("ExecuteContext", context.Background(),
+					queryUpdateAction, "Updated Action",
+					"Updated Description", []byte(`{"kind":"tool"}`), "action1", "rs1", nilResID,
+					"test-deployment").
 					Return(int64(1), nil)
 			},
 			shouldErr: false,
@@ -2500,7 +2622,7 @@ func (suite *ResourceStoreTestSuite) TestUpdateAction() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", context.Background(),
 					queryUpdateAction, "Updated Action",
-					"Updated Description", "{}", "action1", "rs1", nilResID, "test-deployment").
+					"Updated Description", nil, "action1", "rs1", nilResID, "test-deployment").
 					Return(int64(0), execError)
 			},
 			shouldErr: true,
@@ -2535,6 +2657,33 @@ func (suite *ResourceStoreTestSuite) TestUpdateAction() {
 			}
 		})
 	}
+}
+
+func (suite *ResourceStoreTestSuite) TestActionProperties_RoundTrip() {
+	// tool -> JSON -> back
+	props := buildActionPropertiesJSON(providers.Action{Kind: providers.ActionKindTool})
+	suite.Equal([]byte(`{"kind":"tool"}`), props)
+	var toolAction providers.Action
+	resolveActionProperties(map[string]interface{}{"properties": props}, &toolAction)
+	suite.Equal(providers.ActionKindTool, toolAction.Kind)
+
+	// resource -> JSON -> back
+	resProps := buildActionPropertiesJSON(providers.Action{Kind: providers.ActionKindResource})
+	var resAction providers.Action
+	resolveActionProperties(map[string]interface{}{"properties": resProps}, &resAction)
+	suite.Equal(providers.ActionKindResource, resAction.Kind)
+
+	// empty kind (API/CUSTOM) -> NULL -> stays empty
+	empty := buildActionPropertiesJSON(providers.Action{Kind: ""})
+	suite.Nil(empty)
+	var emptyAction providers.Action
+	resolveActionProperties(map[string]interface{}{"properties": empty}, &emptyAction)
+	suite.Equal(providers.ActionKind(""), emptyAction.Kind)
+
+	// PROPERTIES stored as TEXT (SQLite) round-trips through the string branch
+	var fromString providers.Action
+	resolveActionProperties(map[string]interface{}{"properties": `{"kind":"tool"}`}, &fromString)
+	suite.Equal(providers.ActionKindTool, fromString.Kind)
 }
 
 func (suite *ResourceStoreTestSuite) TestDeleteAction() {

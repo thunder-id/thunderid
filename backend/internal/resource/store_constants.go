@@ -306,6 +306,25 @@ var (
 		        ORDER BY a.CREATED_AT DESC LIMIT $3 OFFSET $4`,
 	}
 
+	// queryGetActionListByKind retrieves actions filtered by kind (stored in PROPERTIES) with pagination.
+	queryGetActionListByKind = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-39",
+		PostgresQuery: `SELECT a.ID, a.NAME, a.HANDLE, a.DESCRIPTION, a.PERMISSION, a.PROPERTIES
+		        FROM "ACTION" a
+		        WHERE a.RESOURCE_SERVER_ID = $1
+		          AND (a.RESOURCE_ID = $2 OR (a.RESOURCE_ID IS NULL AND $2 IS NULL))
+		          AND a.PROPERTIES->>'kind' = $5
+		          AND a.DEPLOYMENT_ID = $6
+		        ORDER BY a.CREATED_AT DESC LIMIT $3 OFFSET $4`,
+		SQLiteQuery: `SELECT a.ID, a.NAME, a.HANDLE, a.DESCRIPTION, a.PERMISSION, a.PROPERTIES
+		        FROM "ACTION" a
+		        WHERE a.RESOURCE_SERVER_ID = $1
+		          AND (a.RESOURCE_ID = $2 OR (a.RESOURCE_ID IS NULL AND $2 IS NULL))
+		          AND json_extract(a.PROPERTIES, '$.kind') = $5
+		          AND a.DEPLOYMENT_ID = $6
+		        ORDER BY a.CREATED_AT DESC LIMIT $3 OFFSET $4`,
+	}
+
 	// queryGetActionListCount retrieves count of actions.
 	queryGetActionListCount = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-27",
@@ -314,6 +333,23 @@ var (
 		        WHERE a.RESOURCE_SERVER_ID = $1
 		          AND (a.RESOURCE_ID = $2 OR (a.RESOURCE_ID IS NULL AND $2 IS NULL))
 		          AND a.DEPLOYMENT_ID = $3`,
+	}
+
+	// queryGetActionListCountByKind retrieves count of actions filtered by kind (stored in PROPERTIES).
+	queryGetActionListCountByKind = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-40",
+		PostgresQuery: `SELECT COUNT(*) as total
+		        FROM "ACTION" a
+		        WHERE a.RESOURCE_SERVER_ID = $1
+		          AND (a.RESOURCE_ID = $2 OR (a.RESOURCE_ID IS NULL AND $2 IS NULL))
+		          AND a.PROPERTIES->>'kind' = $3
+		          AND a.DEPLOYMENT_ID = $4`,
+		SQLiteQuery: `SELECT COUNT(*) as total
+		        FROM "ACTION" a
+		        WHERE a.RESOURCE_SERVER_ID = $1
+		          AND (a.RESOURCE_ID = $2 OR (a.RESOURCE_ID IS NULL AND $2 IS NULL))
+		          AND json_extract(a.PROPERTIES, '$.kind') = $3
+		          AND a.DEPLOYMENT_ID = $4`,
 	}
 
 	// queryUpdateAction updates an action.

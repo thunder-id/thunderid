@@ -615,8 +615,8 @@ func (_c *ResourceServiceInterfaceMock_GetAction_Call) RunAndReturn(run func(ctx
 }
 
 // GetActionList provides a mock function for the type ResourceServiceInterfaceMock
-func (_mock *ResourceServiceInterfaceMock) GetActionList(ctx context.Context, resourceServerID string, resourceID *string, limit int, offset int) (*ActionList, *common.ServiceError) {
-	ret := _mock.Called(ctx, resourceServerID, resourceID, limit, offset)
+func (_mock *ResourceServiceInterfaceMock) GetActionList(ctx context.Context, resourceServerID string, resourceID *string, kind providers.ActionKind, limit int, offset int) (*ActionList, *common.ServiceError) {
+	ret := _mock.Called(ctx, resourceServerID, resourceID, kind, limit, offset)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetActionList")
@@ -624,18 +624,18 @@ func (_mock *ResourceServiceInterfaceMock) GetActionList(ctx context.Context, re
 
 	var r0 *ActionList
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, int, int) (*ActionList, *common.ServiceError)); ok {
-		return returnFunc(ctx, resourceServerID, resourceID, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, providers.ActionKind, int, int) (*ActionList, *common.ServiceError)); ok {
+		return returnFunc(ctx, resourceServerID, resourceID, kind, limit, offset)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, int, int) *ActionList); ok {
-		r0 = returnFunc(ctx, resourceServerID, resourceID, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, providers.ActionKind, int, int) *ActionList); ok {
+		r0 = returnFunc(ctx, resourceServerID, resourceID, kind, limit, offset)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*ActionList)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string, int, int) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, resourceServerID, resourceID, limit, offset)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string, providers.ActionKind, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, resourceServerID, resourceID, kind, limit, offset)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -653,13 +653,14 @@ type ResourceServiceInterfaceMock_GetActionList_Call struct {
 //   - ctx context.Context
 //   - resourceServerID string
 //   - resourceID *string
+//   - kind providers.ActionKind
 //   - limit int
 //   - offset int
-func (_e *ResourceServiceInterfaceMock_Expecter) GetActionList(ctx interface{}, resourceServerID interface{}, resourceID interface{}, limit interface{}, offset interface{}) *ResourceServiceInterfaceMock_GetActionList_Call {
-	return &ResourceServiceInterfaceMock_GetActionList_Call{Call: _e.mock.On("GetActionList", ctx, resourceServerID, resourceID, limit, offset)}
+func (_e *ResourceServiceInterfaceMock_Expecter) GetActionList(ctx interface{}, resourceServerID interface{}, resourceID interface{}, kind interface{}, limit interface{}, offset interface{}) *ResourceServiceInterfaceMock_GetActionList_Call {
+	return &ResourceServiceInterfaceMock_GetActionList_Call{Call: _e.mock.On("GetActionList", ctx, resourceServerID, resourceID, kind, limit, offset)}
 }
 
-func (_c *ResourceServiceInterfaceMock_GetActionList_Call) Run(run func(ctx context.Context, resourceServerID string, resourceID *string, limit int, offset int)) *ResourceServiceInterfaceMock_GetActionList_Call {
+func (_c *ResourceServiceInterfaceMock_GetActionList_Call) Run(run func(ctx context.Context, resourceServerID string, resourceID *string, kind providers.ActionKind, limit int, offset int)) *ResourceServiceInterfaceMock_GetActionList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -673,13 +674,17 @@ func (_c *ResourceServiceInterfaceMock_GetActionList_Call) Run(run func(ctx cont
 		if args[2] != nil {
 			arg2 = args[2].(*string)
 		}
-		var arg3 int
+		var arg3 providers.ActionKind
 		if args[3] != nil {
-			arg3 = args[3].(int)
+			arg3 = args[3].(providers.ActionKind)
 		}
 		var arg4 int
 		if args[4] != nil {
 			arg4 = args[4].(int)
+		}
+		var arg5 int
+		if args[5] != nil {
+			arg5 = args[5].(int)
 		}
 		run(
 			arg0,
@@ -687,6 +692,7 @@ func (_c *ResourceServiceInterfaceMock_GetActionList_Call) Run(run func(ctx cont
 			arg2,
 			arg3,
 			arg4,
+			arg5,
 		)
 	})
 	return _c
@@ -697,7 +703,7 @@ func (_c *ResourceServiceInterfaceMock_GetActionList_Call) Return(actionList *Ac
 	return _c
 }
 
-func (_c *ResourceServiceInterfaceMock_GetActionList_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, resourceID *string, limit int, offset int) (*ActionList, *common.ServiceError)) *ResourceServiceInterfaceMock_GetActionList_Call {
+func (_c *ResourceServiceInterfaceMock_GetActionList_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, resourceID *string, kind providers.ActionKind, limit int, offset int) (*ActionList, *common.ServiceError)) *ResourceServiceInterfaceMock_GetActionList_Call {
 	_c.Call.Return(run)
 	return _c
 }

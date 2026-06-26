@@ -127,6 +127,32 @@ func (t ResourceServerType) IsValid() bool {
 	return false
 }
 
+// ActionKind discriminates MCP primitives stored as actions.
+type ActionKind string
+
+const (
+	// ActionKindTool represents an MCP tool.
+	ActionKindTool ActionKind = "tool"
+	// ActionKindResource represents an MCP resource.
+	ActionKindResource ActionKind = "resource"
+)
+
+// supportedActionKinds lists all the supported action kinds.
+var supportedActionKinds = []ActionKind{
+	ActionKindTool,
+	ActionKindResource,
+}
+
+// IsValid reports whether the action kind is one of the supported values.
+func (k ActionKind) IsValid() bool {
+	for _, supported := range supportedActionKinds {
+		if k == supported {
+			return true
+		}
+	}
+	return false
+}
+
 // Consolidated resource models for YAML parsing, processing, and service layer
 // These models use:
 // - yaml tags for YAML parsing (serialize/deserialize)
@@ -140,6 +166,8 @@ type Action struct {
 	Handle      string `yaml:"handle"                json:"handle"`
 	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 	Permission  string `yaml:"-"                     json:"-"` // Computed permission string, not serialized to YAML
+	// Kind is empty ("") for API/CUSTOM actions; "tool"|"resource" for MCP actions.
+	Kind ActionKind `yaml:"kind,omitempty" json:"-"`
 }
 
 // Resource represents a resource in both declarative resources and service layer.

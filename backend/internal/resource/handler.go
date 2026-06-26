@@ -305,7 +305,13 @@ func (h *resourceHandler) HandleActionListAtResourceServerRequest(w http.Respons
 		return
 	}
 
-	result, svcErr := h.resourceService.GetActionList(ctx, rsID, nil, limit, offset)
+	kind, svcErr := parseActionKindParam(r.URL.Query())
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	result, svcErr := h.resourceService.GetActionList(ctx, rsID, nil, kind, limit, offset)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -335,6 +341,7 @@ func (h *resourceHandler) HandleActionPostAtResourceServerRequest(w http.Respons
 		Name:        sanitized.Name,
 		Handle:      sanitized.Handle,
 		Description: sanitized.Description,
+		Kind:        sanitized.Kind,
 	}
 
 	result, svcErr := h.resourceService.CreateAction(ctx, rsID, nil, serviceReq)
@@ -424,7 +431,13 @@ func (h *resourceHandler) HandleActionListAtResourceRequest(w http.ResponseWrite
 		return
 	}
 
-	result, svcErr := h.resourceService.GetActionList(ctx, rsID, &resourceID, limit, offset)
+	kind, svcErr := parseActionKindParam(r.URL.Query())
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	result, svcErr := h.resourceService.GetActionList(ctx, rsID, &resourceID, kind, limit, offset)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -456,6 +469,7 @@ func (h *resourceHandler) HandleActionPostAtResourceRequest(w http.ResponseWrite
 		Name:        sanitized.Name,
 		Handle:      sanitized.Handle,
 		Description: sanitized.Description,
+		Kind:        sanitized.Kind,
 	}
 
 	result, svcErr := h.resourceService.CreateAction(ctx, rsID, &resourceID, serviceReq)
@@ -556,6 +570,20 @@ func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError)
 	return limit, offset, nil
 }
 
+// parseActionKindParam parses the optional 'kind' query parameter for action-list endpoints.
+// An omitted parameter yields an empty kind (no filter); any value other than the supported action
+// kinds (tool|resource) is rejected with ErrorInvalidRequestFormat.
+func parseActionKindParam(query url.Values) (providers.ActionKind, *tidcommon.ServiceError) {
+	if !query.Has("kind") {
+		return "", nil
+	}
+	kind := providers.ActionKind(query.Get("kind"))
+	if !kind.IsValid() {
+		return "", &ErrorInvalidRequestFormat
+	}
+	return kind, nil
+}
+
 // handleError writes an error response based on the provided service error.
 func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
@@ -636,6 +664,7 @@ func sanitizeCreateActionRequest(req *CreateActionRequest) CreateActionRequest {
 		Name:        sysutils.SanitizeString(req.Name),
 		Handle:      sysutils.SanitizeString(req.Handle),
 		Description: sysutils.SanitizeString(req.Description),
+		Kind:        req.Kind,
 	}
 }
 
@@ -730,6 +759,7 @@ func toActionResponse(action *providers.Action) *ActionResponse {
 		Handle:      action.Handle,
 		Description: action.Description,
 		Permission:  action.Permission,
+		Kind:        action.Kind,
 	}
 }
 

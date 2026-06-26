@@ -1145,8 +1145,8 @@ func (_c *resourceStoreInterfaceMock_GetAction_Call) RunAndReturn(run func(ctx c
 }
 
 // GetActionList provides a mock function for the type resourceStoreInterfaceMock
-func (_mock *resourceStoreInterfaceMock) GetActionList(ctx context.Context, resServerID string, resID *string, limit int, offset int) ([]providers.Action, error) {
-	ret := _mock.Called(ctx, resServerID, resID, limit, offset)
+func (_mock *resourceStoreInterfaceMock) GetActionList(ctx context.Context, resServerID string, resID *string, kind providers.ActionKind, limit int, offset int) ([]providers.Action, error) {
+	ret := _mock.Called(ctx, resServerID, resID, kind, limit, offset)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetActionList")
@@ -1154,18 +1154,18 @@ func (_mock *resourceStoreInterfaceMock) GetActionList(ctx context.Context, resS
 
 	var r0 []providers.Action
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, int, int) ([]providers.Action, error)); ok {
-		return returnFunc(ctx, resServerID, resID, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, providers.ActionKind, int, int) ([]providers.Action, error)); ok {
+		return returnFunc(ctx, resServerID, resID, kind, limit, offset)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, int, int) []providers.Action); ok {
-		r0 = returnFunc(ctx, resServerID, resID, limit, offset)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, providers.ActionKind, int, int) []providers.Action); ok {
+		r0 = returnFunc(ctx, resServerID, resID, kind, limit, offset)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]providers.Action)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string, int, int) error); ok {
-		r1 = returnFunc(ctx, resServerID, resID, limit, offset)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string, providers.ActionKind, int, int) error); ok {
+		r1 = returnFunc(ctx, resServerID, resID, kind, limit, offset)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1181,13 +1181,14 @@ type resourceStoreInterfaceMock_GetActionList_Call struct {
 //   - ctx context.Context
 //   - resServerID string
 //   - resID *string
+//   - kind providers.ActionKind
 //   - limit int
 //   - offset int
-func (_e *resourceStoreInterfaceMock_Expecter) GetActionList(ctx interface{}, resServerID interface{}, resID interface{}, limit interface{}, offset interface{}) *resourceStoreInterfaceMock_GetActionList_Call {
-	return &resourceStoreInterfaceMock_GetActionList_Call{Call: _e.mock.On("GetActionList", ctx, resServerID, resID, limit, offset)}
+func (_e *resourceStoreInterfaceMock_Expecter) GetActionList(ctx interface{}, resServerID interface{}, resID interface{}, kind interface{}, limit interface{}, offset interface{}) *resourceStoreInterfaceMock_GetActionList_Call {
+	return &resourceStoreInterfaceMock_GetActionList_Call{Call: _e.mock.On("GetActionList", ctx, resServerID, resID, kind, limit, offset)}
 }
 
-func (_c *resourceStoreInterfaceMock_GetActionList_Call) Run(run func(ctx context.Context, resServerID string, resID *string, limit int, offset int)) *resourceStoreInterfaceMock_GetActionList_Call {
+func (_c *resourceStoreInterfaceMock_GetActionList_Call) Run(run func(ctx context.Context, resServerID string, resID *string, kind providers.ActionKind, limit int, offset int)) *resourceStoreInterfaceMock_GetActionList_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1201,13 +1202,17 @@ func (_c *resourceStoreInterfaceMock_GetActionList_Call) Run(run func(ctx contex
 		if args[2] != nil {
 			arg2 = args[2].(*string)
 		}
-		var arg3 int
+		var arg3 providers.ActionKind
 		if args[3] != nil {
-			arg3 = args[3].(int)
+			arg3 = args[3].(providers.ActionKind)
 		}
 		var arg4 int
 		if args[4] != nil {
 			arg4 = args[4].(int)
+		}
+		var arg5 int
+		if args[5] != nil {
+			arg5 = args[5].(int)
 		}
 		run(
 			arg0,
@@ -1215,6 +1220,7 @@ func (_c *resourceStoreInterfaceMock_GetActionList_Call) Run(run func(ctx contex
 			arg2,
 			arg3,
 			arg4,
+			arg5,
 		)
 	})
 	return _c
@@ -1225,14 +1231,14 @@ func (_c *resourceStoreInterfaceMock_GetActionList_Call) Return(actions []provid
 	return _c
 }
 
-func (_c *resourceStoreInterfaceMock_GetActionList_Call) RunAndReturn(run func(ctx context.Context, resServerID string, resID *string, limit int, offset int) ([]providers.Action, error)) *resourceStoreInterfaceMock_GetActionList_Call {
+func (_c *resourceStoreInterfaceMock_GetActionList_Call) RunAndReturn(run func(ctx context.Context, resServerID string, resID *string, kind providers.ActionKind, limit int, offset int) ([]providers.Action, error)) *resourceStoreInterfaceMock_GetActionList_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetActionListCount provides a mock function for the type resourceStoreInterfaceMock
-func (_mock *resourceStoreInterfaceMock) GetActionListCount(ctx context.Context, resServerID string, resID *string) (int, error) {
-	ret := _mock.Called(ctx, resServerID, resID)
+func (_mock *resourceStoreInterfaceMock) GetActionListCount(ctx context.Context, resServerID string, resID *string, kind providers.ActionKind) (int, error) {
+	ret := _mock.Called(ctx, resServerID, resID, kind)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetActionListCount")
@@ -1240,16 +1246,16 @@ func (_mock *resourceStoreInterfaceMock) GetActionListCount(ctx context.Context,
 
 	var r0 int
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string) (int, error)); ok {
-		return returnFunc(ctx, resServerID, resID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, providers.ActionKind) (int, error)); ok {
+		return returnFunc(ctx, resServerID, resID, kind)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string) int); ok {
-		r0 = returnFunc(ctx, resServerID, resID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, *string, providers.ActionKind) int); ok {
+		r0 = returnFunc(ctx, resServerID, resID, kind)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string) error); ok {
-		r1 = returnFunc(ctx, resServerID, resID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, *string, providers.ActionKind) error); ok {
+		r1 = returnFunc(ctx, resServerID, resID, kind)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1265,11 +1271,12 @@ type resourceStoreInterfaceMock_GetActionListCount_Call struct {
 //   - ctx context.Context
 //   - resServerID string
 //   - resID *string
-func (_e *resourceStoreInterfaceMock_Expecter) GetActionListCount(ctx interface{}, resServerID interface{}, resID interface{}) *resourceStoreInterfaceMock_GetActionListCount_Call {
-	return &resourceStoreInterfaceMock_GetActionListCount_Call{Call: _e.mock.On("GetActionListCount", ctx, resServerID, resID)}
+//   - kind providers.ActionKind
+func (_e *resourceStoreInterfaceMock_Expecter) GetActionListCount(ctx interface{}, resServerID interface{}, resID interface{}, kind interface{}) *resourceStoreInterfaceMock_GetActionListCount_Call {
+	return &resourceStoreInterfaceMock_GetActionListCount_Call{Call: _e.mock.On("GetActionListCount", ctx, resServerID, resID, kind)}
 }
 
-func (_c *resourceStoreInterfaceMock_GetActionListCount_Call) Run(run func(ctx context.Context, resServerID string, resID *string)) *resourceStoreInterfaceMock_GetActionListCount_Call {
+func (_c *resourceStoreInterfaceMock_GetActionListCount_Call) Run(run func(ctx context.Context, resServerID string, resID *string, kind providers.ActionKind)) *resourceStoreInterfaceMock_GetActionListCount_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1283,10 +1290,15 @@ func (_c *resourceStoreInterfaceMock_GetActionListCount_Call) Run(run func(ctx c
 		if args[2] != nil {
 			arg2 = args[2].(*string)
 		}
+		var arg3 providers.ActionKind
+		if args[3] != nil {
+			arg3 = args[3].(providers.ActionKind)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -1297,7 +1309,7 @@ func (_c *resourceStoreInterfaceMock_GetActionListCount_Call) Return(n int, err 
 	return _c
 }
 
-func (_c *resourceStoreInterfaceMock_GetActionListCount_Call) RunAndReturn(run func(ctx context.Context, resServerID string, resID *string) (int, error)) *resourceStoreInterfaceMock_GetActionListCount_Call {
+func (_c *resourceStoreInterfaceMock_GetActionListCount_Call) RunAndReturn(run func(ctx context.Context, resServerID string, resID *string, kind providers.ActionKind) (int, error)) *resourceStoreInterfaceMock_GetActionListCount_Call {
 	_c.Call.Return(run)
 	return _c
 }

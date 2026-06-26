@@ -483,7 +483,8 @@ func (f *fileBasedResourceStore) GetAction(
 }
 
 func (f *fileBasedResourceStore) GetActionList(
-	ctx context.Context, resServerID string, resID *string, limit, offset int) ([]providers.Action, error) {
+	ctx context.Context, resServerID string, resID *string, kind providers.ActionKind, limit, offset int,
+) ([]providers.Action, error) {
 	list, err := f.GenericFileBasedStore.List()
 	if err != nil {
 		return nil, err
@@ -510,6 +511,9 @@ func (f *fileBasedResourceStore) GetActionList(
 
 				// Add all actions from this resource
 				for _, action := range res.Actions {
+					if kind != "" && action.Kind != kind {
+						continue
+					}
 					actionID := fmt.Sprintf("%s_%s_%s", rs.ID, res.Handle, action.Handle)
 					actions = append(actions, providers.Action{
 						ID:          actionID,
@@ -517,6 +521,7 @@ func (f *fileBasedResourceStore) GetActionList(
 						Handle:      action.Handle,
 						Description: action.Description,
 						Permission:  action.Permission,
+						Kind:        action.Kind,
 					})
 				}
 			}
@@ -543,8 +548,8 @@ func (f *fileBasedResourceStore) GetActionList(
 }
 
 func (f *fileBasedResourceStore) GetActionListCount(
-	ctx context.Context, resServerID string, resID *string) (int, error) {
-	actions, err := f.GetActionList(ctx, resServerID, resID, 1000, 0)
+	ctx context.Context, resServerID string, resID *string, kind providers.ActionKind) (int, error) {
+	actions, err := f.GetActionList(ctx, resServerID, resID, kind, 1000, 0)
 	if err != nil {
 		return 0, err
 	}

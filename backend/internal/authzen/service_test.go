@@ -718,7 +718,8 @@ func (s *ServiceTestSuite) TestSearchActionsReturnsAuthorizedActions() {
 	s.mockResourceServerHandle("booking")
 	bookingResourceID := testBookingResourceID
 	invoiceResourceID := "invoice1"
-	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil), mock.Anything, 0).
+	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
+		providers.ActionKind(""), mock.Anything, 0).
 		Return(&resource.ActionList{
 			Actions: []providers.Action{
 				{Handle: "read", Permission: "booking:booking:read"},
@@ -732,13 +733,15 @@ func (s *ServiceTestSuite) TestSearchActionsReturnsAuthorizedActions() {
 				{ID: invoiceResourceID},
 			},
 		}, nil)
-	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, &bookingResourceID, mock.Anything, 0).
+	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, &bookingResourceID,
+		providers.ActionKind(""), mock.Anything, 0).
 		Return(&resource.ActionList{
 			Actions: []providers.Action{
 				{Handle: "delete", Permission: "booking:booking:delete"},
 			},
 		}, nil)
-	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, &invoiceResourceID, mock.Anything, 0).
+	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, &invoiceResourceID,
+		providers.ActionKind(""), mock.Anything, 0).
 		Return(&resource.ActionList{
 			Actions: []providers.Action{
 				{Handle: "approve", Permission: "invoice:invoice:approve"},
@@ -779,7 +782,8 @@ func (s *ServiceTestSuite) TestSearchActionsPaginatesResourceServerActions() {
 
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
 	s.mockResourceServerHandle("booking")
-	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil), serverconst.MaxPageSize, 0).
+	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
+		providers.ActionKind(""), serverconst.MaxPageSize, 0).
 		Return(&resource.ActionList{
 			TotalResults: serverconst.MaxPageSize + 1,
 			Count:        serverconst.MaxPageSize,
@@ -788,7 +792,7 @@ func (s *ServiceTestSuite) TestSearchActionsPaginatesResourceServerActions() {
 			},
 		}, nil)
 	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
-		serverconst.MaxPageSize, serverconst.MaxPageSize).
+		providers.ActionKind(""), serverconst.MaxPageSize, serverconst.MaxPageSize).
 		Return(&resource.ActionList{
 			TotalResults: serverconst.MaxPageSize + 1,
 			Count:        1,
@@ -829,7 +833,8 @@ func (s *ServiceTestSuite) TestSearchActionsReturnsEmptyResultsWhenDenied() {
 
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
 	s.mockResourceServerHandle("booking")
-	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil), mock.Anything, 0).
+	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
+		providers.ActionKind(""), mock.Anything, 0).
 		Return(&resource.ActionList{
 			Actions: []providers.Action{
 				{Handle: "read", Permission: "booking:booking:read"},
@@ -906,7 +911,8 @@ func (s *ServiceTestSuite) TestSearchActionsResourceServiceError() {
 
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
 	s.mockResourceServerHandle("booking")
-	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil), mock.Anything, 0).
+	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
+		providers.ActionKind(""), mock.Anything, 0).
 		Return((*resource.ActionList)(nil), &tidcommon.InternalServerError)
 
 	resp, svcErr := s.service.SearchActions(context.Background(), req)
@@ -924,7 +930,8 @@ func (s *ServiceTestSuite) TestSearchActionsAuthorizationServiceError() {
 
 	s.entityProviderMock.On("GetTransitiveEntityGroups", "user1").Return([]providers.EntityGroup{}, nil)
 	s.mockResourceServerHandle("booking")
-	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil), mock.Anything, 0).
+	s.resourceMock.On("GetActionList", mock.Anything, testResourceServerID, (*string)(nil),
+		providers.ActionKind(""), mock.Anything, 0).
 		Return(&resource.ActionList{
 			Actions: []providers.Action{
 				{Handle: "read", Permission: "booking:booking:read"},

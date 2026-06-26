@@ -416,8 +416,9 @@ func (c *compositeResourceStore) GetAction(
 
 // GetActionList returns a paginated, deduplicated action list from both stores.
 func (c *compositeResourceStore) GetActionList(
-	ctx context.Context, resServerID string, resID *string, limit, offset int) ([]providers.Action, error) {
-	merged, err := c.getMergedActions(ctx, resServerID, resID)
+	ctx context.Context, resServerID string, resID *string, kind providers.ActionKind, limit, offset int,
+) ([]providers.Action, error) {
+	merged, err := c.getMergedActions(ctx, resServerID, resID, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -435,10 +436,10 @@ func (c *compositeResourceStore) GetActionList(
 	return merged[start:end], nil
 }
 
-// GetActionListCount returns the deduplicated action count across both stores.
+// GetActionListCount returns the deduplicated action count across both stores, optionally filtered by kind.
 func (c *compositeResourceStore) GetActionListCount(
-	ctx context.Context, resServerID string, resID *string) (int, error) {
-	merged, err := c.getMergedActions(ctx, resServerID, resID)
+	ctx context.Context, resServerID string, resID *string, kind providers.ActionKind) (int, error) {
+	merged, err := c.getMergedActions(ctx, resServerID, resID, kind)
 	if err != nil {
 		return 0, err
 	}
@@ -513,18 +514,19 @@ func (c *compositeResourceStore) getMergedResourcesByParent(
 	)
 }
 
-// getMergedActions returns the deduplicated action list across both stores.
+// getMergedActions returns the deduplicated action list across both stores, optionally filtered by kind.
 func (c *compositeResourceStore) getMergedActions(
 	ctx context.Context,
 	resServerID string,
 	resID *string,
+	kind providers.ActionKind,
 ) ([]providers.Action, error) {
-	dbCount, err := c.dbStore.GetActionListCount(ctx, resServerID, resID)
+	dbCount, err := c.dbStore.GetActionListCount(ctx, resServerID, resID, kind)
 	if err != nil {
 		return nil, err
 	}
 
-	fileCount, err := c.fileStore.GetActionListCount(ctx, resServerID, resID)
+	fileCount, err := c.fileStore.GetActionListCount(ctx, resServerID, resID, kind)
 	if err != nil {
 		return nil, err
 	}
@@ -533,10 +535,10 @@ func (c *compositeResourceStore) getMergedActions(
 		dbCount,
 		fileCount,
 		func(count int) ([]providers.Action, error) {
-			return c.dbStore.GetActionList(ctx, resServerID, resID, count, 0)
+			return c.dbStore.GetActionList(ctx, resServerID, resID, kind, count, 0)
 		},
 		func(count int) ([]providers.Action, error) {
-			return c.fileStore.GetActionList(ctx, resServerID, resID, count, 0)
+			return c.fileStore.GetActionList(ctx, resServerID, resID, kind, count, 0)
 		},
 		mergeAndDeduplicateActions,
 	)

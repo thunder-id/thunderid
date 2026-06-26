@@ -738,6 +738,35 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_PreservesType() 
 	suite.mockStore.AssertExpectations(suite.T())
 }
 
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_MCPRejectsEmptyHandle() {
+	// Guards pre-existing handle-less MCP rows (legacy rows created before the handle
+	// requirement) per spec §8: updating such a row without supplying a handle must be
+	// rejected so an MCP RS can never end up with an empty handle.
+	rs := providers.ResourceServer{
+		Name: "updated-rs",
+		OUID: "ou-123",
+	}
+
+	existingRS := providers.ResourceServer{
+		ID:        "rs-123",
+		Name:      "old-name",
+		Handle:    "",
+		Type:      providers.ResourceServerTypeMCP,
+		OUID:      "ou-123",
+		Delimiter: ":",
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
+
+	result, err := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
+	suite.Equal(tidcommon.ClientErrorType, err.Type)
+}
+
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_NotFound() {
 	rs := providers.ResourceServer{
 		Name: "test-rs",
@@ -2790,6 +2819,245 @@ func (suite *ResourceServiceTestSuite) TestCreateActionAtResource_CheckResourceE
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+// TestCreateAction_KindHandling covers kind defaulting and acceptance across resource server types:
+// MCP defaults an omitted kind to "tool"; an explicit valid kind is preserved for any type; and an
+// omitted kind on API/CUSTOM stays empty.
+func (suite *ResourceServiceTestSuite) TestCreateAction_KindHandling() {
+	cases := []struct {
+		name         string
+		rsID         string
+		rsType       providers.ResourceServerType
+		mcpCrossEnt  bool
+		requestKind  providers.ActionKind
+		expectedKind providers.ActionKind
+	}{
+		{"MCP omitted defaults to tool", "rs-mcp", providers.ResourceServerTypeMCP, true,
+			"", providers.ActionKindTool},
+		{"MCP explicit tool preserved", "rs-mcp", providers.ResourceServerTypeMCP, true,
+			providers.ActionKindTool, providers.ActionKindTool},
+		{"MCP explicit resource preserved", "rs-mcp", providers.ResourceServerTypeMCP, true,
+			providers.ActionKindResource, providers.ActionKindResource},
+		{"API explicit tool allowed", "rs-api", providers.ResourceServerTypeAPI, false,
+			providers.ActionKindTool, providers.ActionKindTool},
+		{"API omitted stays empty", "rs-api", providers.ResourceServerTypeAPI, false,
+			"", ""},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockStore.On("GetResourceServer", mock.Anything, tc.rsID).
+				Return(providers.ResourceServer{Type: tc.rsType, Handle: "h-rs", Delimiter: ":"}, nil)
+			suite.mockStore.On("CheckActionHandleExists", mock.Anything, tc.rsID, (*string)(nil), "h").
+				Return(false, nil)
+			if tc.mcpCrossEnt {
+				suite.mockStore.On("CheckResourceHandleExists", mock.Anything, tc.rsID, "h", (*string)(nil)).
+					Return(false, nil)
+			}
+			expectedKind := tc.expectedKind
+			suite.mockStore.On("CreateAction", mock.Anything, mock.AnythingOfType("string"),
+				tc.rsID, (*string)(nil), mock.MatchedBy(func(a providers.Action) bool {
+					return a.Handle == "h" && a.Kind == expectedKind && a.Permission != ""
+				})).Return(nil)
+
+			result, err := suite.service.CreateAction(context.Background(), tc.rsID, nil,
+				providers.Action{Name: "n", Handle: "h", Kind: tc.requestKind})
+
+			suite.Nil(err)
+			suite.NotNil(result)
+			suite.Equal(tc.expectedKind, result.Kind)
+			suite.mockStore.AssertExpectations(suite.T())
+		})
+	}
+}
+
+// TestCreateAction_InvalidKindRejected verifies a provided-but-unsupported kind is rejected with a
+// 400 regardless of the resource server type.
+func (suite *ResourceServiceTestSuite) TestCreateAction_InvalidKindRejected() {
+	cases := []struct {
+		name   string
+		rsID   string
+		rsType providers.ResourceServerType
+	}{
+		{"MCP", "rs-mcp", providers.ResourceServerTypeMCP},
+		{"API", "rs-api", providers.ResourceServerTypeAPI},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockStore.On("GetResourceServer", mock.Anything, tc.rsID).
+				Return(providers.ResourceServer{Type: tc.rsType, Handle: "h-rs", Delimiter: ":"}, nil)
+
+			result, err := suite.service.CreateAction(context.Background(), tc.rsID, nil,
+				providers.Action{Name: "n", Handle: "h", Kind: providers.ActionKind("prompt")})
+
+			suite.Nil(result)
+			suite.NotNil(err)
+			suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateAction_MCP_ActionHandleCollidesWithGroup() {
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-mcp").
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Handle: "mcp", Delimiter: ":"}, nil)
+	suite.mockStore.On("CheckActionHandleExists", mock.Anything, "rs-mcp", (*string)(nil), "deploy").
+		Return(false, nil)
+	suite.mockStore.On("CheckResourceHandleExists", mock.Anything, "rs-mcp", "deploy", (*string)(nil)).
+		Return(true, nil)
+
+	result, err := suite.service.CreateAction(context.Background(), "rs-mcp", nil,
+		providers.Action{Name: "Deploy", Handle: "deploy", Kind: providers.ActionKindTool})
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorHandleConflict.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateAction_API_NoCrossEntityCheck() {
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-api").
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeAPI, Handle: "api", Delimiter: ":"}, nil)
+	suite.mockStore.On("CheckActionHandleExists", mock.Anything, "rs-api", (*string)(nil), "deploy").
+		Return(false, nil)
+	suite.mockStore.On("CreateAction", mock.Anything, mock.AnythingOfType("string"),
+		"rs-api", (*string)(nil), mock.MatchedBy(func(a providers.Action) bool {
+			return a.Handle == "deploy" && a.Permission != ""
+		})).Return(nil)
+
+	result, err := suite.service.CreateAction(context.Background(), "rs-api", nil,
+		providers.Action{Name: "Deploy", Handle: "deploy"})
+
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.mockStore.AssertNotCalled(suite.T(), "CheckResourceHandleExists",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	suite.mockStore.AssertExpectations(suite.T())
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResource_MCP_GroupHandleCollidesWithAction() {
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-mcp").
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Handle: "mcp", Delimiter: ":"}, nil)
+	suite.mockStore.On("CheckResourceHandleExists", mock.Anything, "rs-mcp", "deploy", (*string)(nil)).
+		Return(false, nil)
+	suite.mockStore.On("CheckActionHandleExists", mock.Anything, "rs-mcp", (*string)(nil), "deploy").
+		Return(true, nil)
+
+	result, err := suite.service.CreateResource(context.Background(), "rs-mcp",
+		providers.Resource{Name: "Deploy", Handle: "deploy"})
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorHandleConflict.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResource_API_NoCrossEntityCheck() {
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-api").
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeAPI, Handle: "api", Delimiter: ":"}, nil)
+	suite.mockStore.On("CheckResourceHandleExists", mock.Anything, "rs-api", "deploy", (*string)(nil)).
+		Return(false, nil)
+	suite.mockStore.On("CreateResource", mock.Anything, mock.AnythingOfType("string"),
+		"rs-api", (*string)(nil), mock.MatchedBy(func(r providers.Resource) bool {
+			return r.Handle == "deploy" && r.Permission != ""
+		})).Return(nil)
+
+	result, err := suite.service.CreateResource(context.Background(), "rs-api",
+		providers.Resource{Name: "Deploy", Handle: "deploy"})
+
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.mockStore.AssertNotCalled(suite.T(), "CheckActionHandleExists",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	suite.mockStore.AssertExpectations(suite.T())
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateAction_KindImmutable() {
+	resID := testParentResourceID
+	currentAction := providers.Action{
+		ID:         "act-1",
+		Name:       testOriginalName,
+		Handle:     testOriginalHandle,
+		Permission: "mcp:g:h",
+		Kind:       providers.ActionKindResource,
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-mcp").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-mcp").
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Handle: "mcp", Delimiter: ":"}, nil)
+	suite.mockStore.On("GetResource", mock.Anything, resID, "rs-mcp").Return(providers.Resource{}, nil)
+	suite.mockStore.On("GetAction", mock.Anything, "act-1", "rs-mcp", &resID).
+		Return(currentAction, nil)
+	suite.mockStore.On("UpdateAction", mock.Anything, "act-1", "rs-mcp", &resID,
+		mock.MatchedBy(func(a providers.Action) bool {
+			return a.Kind == providers.ActionKindResource && a.Name == testUpdatedName
+		})).Return(nil)
+
+	result, err := suite.service.UpdateAction(context.Background(), "rs-mcp", &resID, "act-1",
+		providers.Action{Name: testUpdatedName})
+
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Equal(providers.ActionKindResource, result.Kind)
+	suite.mockStore.AssertExpectations(suite.T())
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateAction_KindChangeRejected() {
+	resID := testParentResourceID
+	currentAction := providers.Action{
+		ID:         "act-1",
+		Name:       testOriginalName,
+		Handle:     testOriginalHandle,
+		Permission: "mcp:g:h",
+		Kind:       providers.ActionKindResource,
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-mcp").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-mcp").
+		Return(providers.ResourceServer{Type: providers.ResourceServerTypeMCP, Handle: "mcp", Delimiter: ":"}, nil)
+	suite.mockStore.On("GetResource", mock.Anything, resID, "rs-mcp").Return(providers.Resource{}, nil)
+	suite.mockStore.On("GetAction", mock.Anything, "act-1", "rs-mcp", &resID).
+		Return(currentAction, nil)
+
+	result, err := suite.service.UpdateAction(context.Background(), "rs-mcp", &resID, "act-1",
+		providers.Action{Name: testUpdatedName, Kind: providers.ActionKindTool})
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCP_RequiresHandle() {
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "x").Return(false, nil)
+
+	result, err := suite.service.CreateResourceServer(context.Background(),
+		providers.ResourceServer{Name: "x", OUID: "ou-123", Type: providers.ResourceServerTypeMCP, Handle: ""})
+
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCP_WithHandleSucceeds() {
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+		Return(providers.OrganizationUnit{ID: "ou-123"}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "x").Return(false, nil)
+	suite.mockStore.On("CheckResourceServerHandleExists", mock.Anything, "mcp").Return(false, nil)
+	suite.mockStore.On("CreateResourceServer", mock.Anything, mock.AnythingOfType("string"),
+		mock.MatchedBy(func(r providers.ResourceServer) bool {
+			return r.Type == providers.ResourceServerTypeMCP && r.Handle == "mcp"
+		})).Return(nil)
+
+	result, err := suite.service.CreateResourceServer(context.Background(),
+		providers.ResourceServer{Name: "x", OUID: "ou-123", Type: providers.ResourceServerTypeMCP, Handle: "mcp"})
+
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Equal(providers.ResourceServerTypeMCP, result.Type)
+	suite.mockStore.AssertExpectations(suite.T())
+}
+
 func (suite *ResourceServiceTestSuite) TestGetActionAtResourceServer_Success() {
 	expectedAction := providers.Action{
 		ID:   "action-123",
@@ -2857,11 +3125,11 @@ func (suite *ResourceServiceTestSuite) TestGetActionListAtResourceServer() {
 				suite.mockStore.On("GetResourceServer", mock.Anything,
 					"rs-123").Return(providers.ResourceServer{}, nil)
 				suite.mockStore.On("GetActionListCount", mock.Anything,
-					"rs-123", (*string)(nil)).Return(2, nil)
+					"rs-123", (*string)(nil), providers.ActionKind("")).Return(2, nil)
 				suite.mockStore.On("GetActionList", mock.Anything,
-					"rs-123", (*string)(nil), 30, 0).Return([]providers.Action{
-					{ID: "action-1", Name: "providers.Action 1"},
-					{ID: "action-2", Name: "providers.Action 2"},
+					"rs-123", (*string)(nil), providers.ActionKind(""), 30, 0).Return([]providers.Action{
+					{ID: "action-1", Name: "Action 1"},
+					{ID: "action-2", Name: "Action 2"},
 				}, nil)
 			},
 			expectedError: nil,
@@ -2916,7 +3184,7 @@ func (suite *ResourceServiceTestSuite) TestGetActionListAtResourceServer() {
 				suite.mockStore.On("GetResourceServer", mock.Anything,
 					"rs-123").Return(providers.ResourceServer{}, nil)
 				suite.mockStore.On("GetActionListCount", mock.Anything,
-					"rs-123", (*string)(nil)).Return(0, errors.New("database error"))
+					"rs-123", (*string)(nil), providers.ActionKind("")).Return(0, errors.New("database error"))
 			},
 			expectedError: &tidcommon.InternalServerError,
 		},
@@ -2930,9 +3198,9 @@ func (suite *ResourceServiceTestSuite) TestGetActionListAtResourceServer() {
 				suite.mockStore.On("GetResourceServer", mock.Anything,
 					"rs-123").Return(providers.ResourceServer{}, nil)
 				suite.mockStore.On("GetActionListCount", mock.Anything,
-					"rs-123", (*string)(nil)).Return(2, nil)
+					"rs-123", (*string)(nil), providers.ActionKind("")).Return(2, nil)
 				suite.mockStore.On("GetActionList", mock.Anything,
-					"rs-123", (*string)(nil), 30, 0).Return(nil, errors.New("database error"))
+					"rs-123", (*string)(nil), providers.ActionKind(""), 30, 0).Return(nil, errors.New("database error"))
 			},
 			expectedError: &tidcommon.InternalServerError,
 		},
@@ -2944,7 +3212,7 @@ func (suite *ResourceServiceTestSuite) TestGetActionListAtResourceServer() {
 			tc.setupMocks()
 
 			result, err := suite.service.GetActionList(
-				context.Background(), tc.resourceServerID, tc.resourceID, tc.limit, tc.offset,
+				context.Background(), tc.resourceServerID, tc.resourceID, "", tc.limit, tc.offset,
 			)
 
 			if tc.expectedError != nil {
@@ -3758,11 +4026,11 @@ func (suite *ResourceServiceTestSuite) TestGetActionListAtResource() {
 					testParentResourceID, "rs-123").Return(providers.Resource{}, nil)
 				resID := testParentResourceID
 				suite.mockStore.On("GetActionListCount", mock.Anything,
-					"rs-123", &resID).Return(2, nil)
+					"rs-123", &resID, providers.ActionKind("")).Return(2, nil)
 				suite.mockStore.On("GetActionList", mock.Anything,
-					"rs-123", &resID, 30, 0).Return([]providers.Action{
-					{ID: "action-1", Name: "providers.Action 1"},
-					{ID: "action-2", Name: "providers.Action 2"},
+					"rs-123", &resID, providers.ActionKind(""), 30, 0).Return([]providers.Action{
+					{ID: "action-1", Name: "Action 1"},
+					{ID: "action-2", Name: "Action 2"},
 				}, nil)
 			},
 			expectedError: nil,
@@ -3785,9 +4053,9 @@ func (suite *ResourceServiceTestSuite) TestGetActionListAtResource() {
 					testParentResourceID, "rs-123").Return(providers.Resource{}, nil)
 				resID := testParentResourceID
 				suite.mockStore.On("GetActionListCount", mock.Anything,
-					"rs-123", &resID).Return(0, nil)
+					"rs-123", &resID, providers.ActionKind("")).Return(0, nil)
 				suite.mockStore.On("GetActionList", mock.Anything,
-					"rs-123", &resID, 30, 0).Return([]providers.Action{}, nil)
+					"rs-123", &resID, providers.ActionKind(""), 30, 0).Return([]providers.Action{}, nil)
 			},
 			expectedError: nil,
 			validateResponse: func(result *ActionList) {
@@ -3876,7 +4144,7 @@ func (suite *ResourceServiceTestSuite) TestGetActionListAtResource() {
 					Return(providers.Resource{}, nil)
 				resID := testParentResourceID
 				suite.mockStore.On("GetActionListCount", mock.Anything,
-					"rs-123", &resID).
+					"rs-123", &resID, providers.ActionKind("")).
 					Return(0, errors.New("database error"))
 			},
 			expectedError: &tidcommon.InternalServerError,
@@ -3896,9 +4164,9 @@ func (suite *ResourceServiceTestSuite) TestGetActionListAtResource() {
 					Return(providers.Resource{}, nil)
 				resID := testParentResourceID
 				suite.mockStore.On("GetActionListCount", mock.Anything,
-					"rs-123", &resID).Return(2, nil)
+					"rs-123", &resID, providers.ActionKind("")).Return(2, nil)
 				suite.mockStore.On("GetActionList", mock.Anything,
-					"rs-123", &resID, 30, 0).
+					"rs-123", &resID, providers.ActionKind(""), 30, 0).
 					Return(nil, errors.New("database error"))
 			},
 			expectedError: &tidcommon.InternalServerError,
@@ -3911,7 +4179,7 @@ func (suite *ResourceServiceTestSuite) TestGetActionListAtResource() {
 			tc.setupMocks()
 
 			result, err := suite.service.GetActionList(
-				context.Background(), tc.resourceServerID, tc.resourceID, tc.limit, tc.offset,
+				context.Background(), tc.resourceServerID, tc.resourceID, "", tc.limit, tc.offset,
 			)
 
 			if tc.expectedError != nil {
@@ -4167,7 +4435,7 @@ func (suite *ResourceServiceTestSuite) TestListMethods_PaginationValidationError
 		suite.Run("GetActionList_"+tc.name, func() {
 			suite.SetupTest()
 
-			result, err := suite.service.GetActionList(context.Background(), "rs-123", nil, tc.limit, tc.offset)
+			result, err := suite.service.GetActionList(context.Background(), "rs-123", nil, "", tc.limit, tc.offset)
 
 			suite.Nil(result)
 			suite.NotNil(err)

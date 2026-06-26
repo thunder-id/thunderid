@@ -47,11 +47,12 @@ type ResourceResponse struct {
 
 // ActionResponse represents an action.
 type ActionResponse struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Handle      string `json:"handle"`
-	Description string `json:"description,omitempty"`
-	Permission  string `json:"permission"`
+	ID          string               `json:"id"`
+	Name        string               `json:"name"`
+	Handle      string               `json:"handle"`
+	Description string               `json:"description,omitempty"`
+	Permission  string               `json:"permission"`
+	Kind        providers.ActionKind `json:"kind,omitempty"`
 }
 
 // LinkResponse represents a pagination link.
@@ -123,9 +124,10 @@ type UpdateResourceRequest struct {
 
 // CreateActionRequest represents the request to create an action.
 type CreateActionRequest struct {
-	Name        string `json:"name"                  native:"required"`
-	Handle      string `json:"handle"                native:"required,max=50"`
-	Description string `json:"description,omitempty"`
+	Name        string               `json:"name"                  native:"required"`
+	Handle      string               `json:"handle"                native:"required,max=100"`
+	Description string               `json:"description,omitempty"`
+	Kind        providers.ActionKind `json:"kind,omitempty"`
 }
 
 // UpdateActionRequest represents the request to update an action.

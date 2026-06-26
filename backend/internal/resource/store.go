@@ -67,8 +67,12 @@ type resourceStoreInterface interface {
 	// Action operations
 	CreateAction(ctx context.Context, uuid string, resServerID string, resID *string, action providers.Action) error
 	GetAction(ctx context.Context, id string, resServerID string, resID *string) (providers.Action, error)
-	GetActionList(ctx context.Context, resServerID string, resID *string, limit, offset int) ([]providers.Action, error)
-	GetActionListCount(ctx context.Context, resServerID string, resID *string) (int, error)
+	GetActionList(
+		ctx context.Context, resServerID string, resID *string, kind providers.ActionKind, limit, offset int,
+	) ([]providers.Action, error)
+	GetActionListCount(
+		ctx context.Context, resServerID string, resID *string, kind providers.ActionKind,
+	) (int, error)
 	UpdateAction(ctx context.Context, id string, resServerID string, resID *string, action providers.Action) error
 	UpdateActionPermission(ctx context.Context, id string, resServerID string, resID *string, permission string) error
 	DeleteAction(ctx context.Context, id string, resServerID string, resID *string) error
@@ -89,6 +93,11 @@ type resourceStore struct {
 // resourceServerProperties represents the JSON structure of PROPERTIES column.
 type resourceServerProperties struct {
 	Delimiter string `json:"delimiter"`
+}
+
+// actionProperties represents the JSON structure of the ACTION.PROPERTIES column.
+type actionProperties struct {
+	Kind providers.ActionKind `json:"kind,omitempty"`
 }
 
 // newResourceStore creates a new instance of resourceStore.
@@ -643,15 +652,15 @@ func (s *resourceStore) CreateAction(
 		_, err := dbClient.ExecuteContext(
 			ctx,
 			queryCreateAction,
-			uuid,               // $1: ACTION_ID (UUID)
-			resServerID,        // $2: RESOURCE_SERVER_ID (UUID FK)
-			resID,              // $3: RESOURCE_ID (UUID FK or NULL)
-			action.Name,        // $4: NAME
-			action.Handle,      // $5: HANDLE
-			action.Description, // $6: DESCRIPTION
-			action.Permission,  // $7: PERMISSION
-			"{}",               // $8: PROPERTIES (empty JSON).
-			s.deploymentID,     // $9: DEPLOYMENT_ID
+			uuid,                              // $1: ACTION_ID (UUID)
+			resServerID,                       // $2: RESOURCE_SERVER_ID (UUID FK)
+			resID,                             // $3: RESOURCE_ID (UUID FK or NULL)
+			action.Name,                       // $4: NAME
+			action.Handle,                     // $5: HANDLE
+			action.Description,                // $6: DESCRIPTION
+			action.Permission,                 // $7: PERMISSION
+			buildActionPropertiesJSON(action), // $8: PROPERTIES (NULL when kind empty).
+			s.deploymentID,                    // $9: DEPLOYMENT_ID
 		)
 		if err != nil {
 			return fmt.Errorf("failed to create action: %w", err)
@@ -687,17 +696,26 @@ func (s *resourceStore) GetAction(
 	return action, err
 }
 
-// GetActionList retrieves actions with pagination.
+// GetActionList retrieves actions with pagination, optionally filtered by kind.
 func (s *resourceStore) GetActionList(
 	ctx context.Context,
-	resServerID string, resID *string, limit, offset int,
+	resServerID string, resID *string, kind providers.ActionKind, limit, offset int,
 ) ([]providers.Action, error) {
 	var actions []providers.Action
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(
-			ctx, queryGetActionList, resServerID, resID, limit, offset,
-			s.deploymentID,
-		)
+		var results []map[string]interface{}
+		var err error
+		if kind != "" {
+			results, err = dbClient.QueryContext(
+				ctx, queryGetActionListByKind, resServerID, resID, limit, offset,
+				string(kind), s.deploymentID,
+			)
+		} else {
+			results, err = dbClient.QueryContext(
+				ctx, queryGetActionList, resServerID, resID, limit, offset,
+				s.deploymentID,
+			)
+		}
 		if err != nil {
 			return fmt.Errorf("failed to get action list: %w", err)
 		}
@@ -719,15 +737,23 @@ func (s *resourceStore) GetActionList(
 	return actions, nil
 }
 
-// GetActionListCount retrieves count of actions.
+// GetActionListCount retrieves count of actions, optionally filtered by kind.
 func (s *resourceStore) GetActionListCount(
-	ctx context.Context, resServerID string, resID *string,
+	ctx context.Context, resServerID string, resID *string, kind providers.ActionKind,
 ) (int, error) {
 	var count int
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(
-			ctx, queryGetActionListCount, resServerID, resID, s.deploymentID,
-		)
+		var results []map[string]interface{}
+		var err error
+		if kind != "" {
+			results, err = dbClient.QueryContext(
+				ctx, queryGetActionListCountByKind, resServerID, resID, string(kind), s.deploymentID,
+			)
+		} else {
+			results, err = dbClient.QueryContext(
+				ctx, queryGetActionListCount, resServerID, resID, s.deploymentID,
+			)
+		}
 		if err != nil {
 			return fmt.Errorf("failed to get action count: %w", err)
 		}
@@ -747,13 +773,13 @@ func (s *resourceStore) UpdateAction(
 		_, err := dbClient.ExecuteContext(
 			ctx,
 			queryUpdateAction,
-			action.Name,        // $1: NAME
-			action.Description, // $2: DESCRIPTION
-			"{}",               // $3: PROPERTIES (empty JSON).
-			id,                 // $4: ACTION_ID
-			resServerID,        // $5: RESOURCE_SERVER_ID (UUID FK)
-			resID,              // $6: RESOURCE_ID (UUID FK or NULL)
-			s.deploymentID,     // $7: DEPLOYMENT_ID
+			action.Name,                       // $1: NAME
+			action.Description,                // $2: DESCRIPTION
+			buildActionPropertiesJSON(action), // $3: PROPERTIES (NULL when kind empty).
+			id,                                // $4: ACTION_ID
+			resServerID,                       // $5: RESOURCE_SERVER_ID (UUID FK)
+			resID,                             // $6: RESOURCE_ID (UUID FK or NULL)
+			s.deploymentID,                    // $7: DEPLOYMENT_ID
 		)
 		if err != nil {
 			return fmt.Errorf("failed to update action: %w", err)
@@ -1030,6 +1056,38 @@ func buildPropertiesJSON(rs providers.ResourceServer) interface{} {
 	return json.RawMessage("{}")
 }
 
+// resolveActionProperties extracts and sets the kind from the ACTION.PROPERTIES column.
+func resolveActionProperties(row map[string]interface{}, a *providers.Action) {
+	if propsVal, ok := row["properties"]; ok && propsVal != nil {
+		var props actionProperties
+		var propsBytes []byte
+
+		switch v := propsVal.(type) {
+		case string:
+			propsBytes = []byte(v)
+		case []byte:
+			propsBytes = v
+		}
+
+		if len(propsBytes) > 0 {
+			if err := json.Unmarshal(propsBytes, &props); err == nil {
+				a.Kind = props.Kind
+			}
+		}
+	}
+}
+
+// buildActionPropertiesJSON builds the PROPERTIES JSON for an Action, or NULL when kind is empty.
+func buildActionPropertiesJSON(a providers.Action) interface{} {
+	if a.Kind == "" {
+		return nil
+	}
+	if propsJSON, err := json.Marshal(actionProperties{Kind: a.Kind}); err == nil {
+		return propsJSON
+	}
+	return nil
+}
+
 // buildResourceServerFromResultRow builds a providers.ResourceServer from a database result row.
 func buildResourceServerFromResultRow(row map[string]interface{}) (providers.ResourceServer, error) {
 	rs := providers.ResourceServer{}
@@ -1142,7 +1200,7 @@ func buildActionFromResultRow(row map[string]interface{}) (providers.Action, err
 		action.Permission = permission
 	}
 
-	// PROPERTIES column exists in DB but not mapped to model (store as empty JSON)
+	resolveActionProperties(row, &action)
 
 	return action, nil
 }

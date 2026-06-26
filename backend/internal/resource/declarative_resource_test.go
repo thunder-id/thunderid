@@ -32,6 +32,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
 )
 
 // ResourceServerExporterTestSuite tests the resourceServerExporter.
@@ -159,6 +160,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 				Handle:      "read",
 				Description: "Read action",
 				Permission:  "test-server:resource1:read",
+				Kind:        providers.ActionKindTool,
 			},
 		},
 	}
@@ -166,7 +168,9 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 	resourceID := "res1"
 	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
 	s.mockService.EXPECT().GetAllResourceList(ctx, serverID).Return(resources, nil)
-	s.mockService.EXPECT().GetActionList(ctx, serverID, &resourceID, serverconst.MaxPageSize, 0).Return(actions, nil)
+	s.mockService.EXPECT().
+		GetActionList(ctx, serverID, &resourceID, providers.ActionKind(""), serverconst.MaxPageSize, 0).
+		Return(actions, nil)
 
 	result, name, err := s.exporter.GetResourceByID(ctx, serverID)
 
@@ -180,6 +184,73 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 	assert.Equal(s.T(), "Test Server", dto.Name)
 	assert.Len(s.T(), dto.Resources, 1)
 	assert.Len(s.T(), dto.Resources[0].Actions, 1)
+	assert.Equal(s.T(), providers.ActionKindTool, dto.Resources[0].Actions[0].Kind)
+}
+
+func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRoundTrip() {
+	ctx := context.Background()
+	serverID := "rs-mcp"
+
+	server := &providers.ResourceServer{
+		ID:         serverID,
+		Name:       "Booking MCP",
+		Handle:     "booking-mcp",
+		Identifier: "booking-mcp",
+		Type:       providers.ResourceServerTypeMCP,
+		OUID:       "ou1",
+		Delimiter:  ":",
+	}
+
+	resources := []providers.Resource{
+		{
+			ID:         "res1",
+			Name:       "User Management",
+			Handle:     "user-mgmt",
+			Parent:     nil,
+			Permission: "booking-mcp:user-mgmt",
+		},
+	}
+
+	actions := &ActionList{
+		TotalResults: 1,
+		Actions: []providers.Action{
+			{
+				ID:         "act1",
+				Name:       "Create User",
+				Handle:     "create_user",
+				Permission: "booking-mcp:user-mgmt:create_user",
+				Kind:       providers.ActionKindTool,
+			},
+		},
+	}
+
+	resourceID := "res1"
+	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockService.EXPECT().GetAllResourceList(ctx, serverID).Return(resources, nil)
+	s.mockService.EXPECT().
+		GetActionList(ctx, serverID, &resourceID, providers.ActionKind(""), serverconst.MaxPageSize, 0).
+		Return(actions, nil)
+
+	result, _, err := s.exporter.GetResourceByID(ctx, serverID)
+	assert.Nil(s.T(), err)
+
+	dto, ok := result.(*providers.ResourceServer)
+	assert.True(s.T(), ok)
+
+	// Marshal the exported DTO to YAML, then re-import it. This guards the export->import
+	// lossless guarantee: type and handle must survive so the kind-vs-type import validation
+	// accepts the nested action carrying a kind.
+	yamlBytes, marshalErr := yaml.Marshal(dto)
+	assert.NoError(s.T(), marshalErr)
+
+	imported, parseErr := parseToResourceServer(yamlBytes)
+	s.Require().NoError(parseErr)
+	s.Require().NotNil(imported)
+	assert.Equal(s.T(), providers.ResourceServerTypeMCP, imported.Type)
+	assert.Equal(s.T(), "booking-mcp", imported.Handle)
+	assert.Len(s.T(), imported.Resources, 1)
+	assert.Len(s.T(), imported.Resources[0].Actions, 1)
+	assert.Equal(s.T(), providers.ActionKindTool, imported.Resources[0].Actions[0].Kind)
 }
 
 func (s *ResourceServerExporterTestSuite) TestGetResourceByID_ServerNotFound() {
@@ -338,6 +409,119 @@ ouId: "ou1"
 	assert.Error(t, err)
 	assert.Nil(t, dto)
 	assert.Contains(t, err.Error(), "invalid type")
+}
+
+func TestParseToResourceServer_MCPActionDefaultsKindToTool(t *testing.T) {
+	yamlData := []byte(`
+id: "rs1"
+name: "Test Server"
+type: "MCP"
+ouId: "ou1"
+resources:
+  - name: "Users"
+    handle: "users"
+    actions:
+      - name: "Read"
+        handle: "read"
+`)
+
+	dto, err := parseToResourceServer(yamlData)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, dto)
+	assert.Equal(t, providers.ActionKindTool, dto.Resources[0].Actions[0].Kind)
+}
+
+func TestParseToResourceServer_MCPActionWithKindSucceeds(t *testing.T) {
+	yamlData := []byte(`
+id: "rs1"
+name: "Test Server"
+type: "MCP"
+ouId: "ou1"
+resources:
+  - name: "Users"
+    handle: "users"
+    actions:
+      - name: "Read"
+        handle: "read"
+        kind: "resource"
+      - name: "Create"
+        handle: "create"
+        kind: "tool"
+`)
+
+	dto, err := parseToResourceServer(yamlData)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, dto)
+	assert.Equal(t, providers.ActionKindResource, dto.Resources[0].Actions[0].Kind)
+	assert.Equal(t, providers.ActionKindTool, dto.Resources[0].Actions[1].Kind)
+}
+
+func TestParseToResourceServer_NonMCPActionAllowsKind(t *testing.T) {
+	yamlData := []byte(`
+id: "rs1"
+name: "Test Server"
+type: "API"
+ouId: "ou1"
+resources:
+  - name: "Users"
+    handle: "users"
+    actions:
+      - name: "Read"
+        handle: "read"
+        kind: "tool"
+`)
+
+	dto, err := parseToResourceServer(yamlData)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, dto)
+	assert.Equal(t, providers.ActionKindTool, dto.Resources[0].Actions[0].Kind)
+}
+
+func TestParseToResourceServer_NonMCPActionNoKindStaysEmpty(t *testing.T) {
+	yamlData := []byte(`
+id: "rs1"
+name: "Test Server"
+type: "CUSTOM"
+ouId: "ou1"
+resources:
+  - name: "Users"
+    handle: "users"
+    actions:
+      - name: "Read"
+        handle: "read"
+`)
+
+	dto, err := parseToResourceServer(yamlData)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, dto)
+	assert.Equal(t, providers.ActionKind(""), dto.Resources[0].Actions[0].Kind)
+}
+
+func TestParseToResourceServer_ActionInvalidKindRejected(t *testing.T) {
+	yamlData := []byte(`
+id: "rs1"
+name: "Test Server"
+type: "MCP"
+ouId: "ou1"
+resources:
+  - name: "Users"
+    handle: "users"
+    actions:
+      - name: "Read"
+        handle: "read"
+        kind: "prompt"
+`)
+
+	dto, err := parseToResourceServer(yamlData)
+
+	assert.Error(t, err)
+	assert.Nil(t, dto)
+	assert.Contains(t, err.Error(), "read")
+	assert.Contains(t, err.Error(), "invalid kind")
 }
 
 func TestParseAndValidateResourceServerWrapper_TypeMCP(t *testing.T) {
@@ -518,6 +702,135 @@ func TestProcessResourceServer_DuplicateHandle(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate resource handle")
 }
 
+func TestProcessResourceServer_MCPActionCollidesWithGroupPermission(t *testing.T) {
+	// An MCP resource server where a group (RESOURCE) nested under "ops" shares its handle with a
+	// tool (ACTION) nested under the same "ops" group: both derive "booking-mcp:ops:deploy".
+	rs := &providers.ResourceServer{
+		ID:     "rs-mcp",
+		Name:   "Booking MCP",
+		Handle: "booking-mcp",
+		OUID:   "ou1",
+		Type:   providers.ResourceServerTypeMCP,
+		Resources: []providers.Resource{
+			{
+				Name:   "Ops",
+				Handle: "ops",
+				Actions: []providers.Action{
+					{Name: "Deploy", Handle: "deploy", Kind: providers.ActionKindTool},
+				},
+			},
+			{
+				Name:         "Deploy Group",
+				Handle:       "deploy",
+				ParentHandle: "ops",
+			},
+		},
+	}
+
+	err := ProcessResourceServer(rs)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate permission")
+	assert.Contains(t, err.Error(), "booking-mcp:ops:deploy")
+}
+
+func TestProcessResourceServer_MCPActionCollidesWithNestedGroupPermission(t *testing.T) {
+	// A tool nested under group "a" derives "mcp:a:b". A child group "b" nested under "a" derives the
+	// same "mcp:a:b". The cross-entity collision is caught even though the two collide via different
+	// nesting paths rather than at the same level.
+	rs := &providers.ResourceServer{
+		ID:     "rs-mcp",
+		Name:   "Booking MCP",
+		Handle: "mcp",
+		OUID:   "ou1",
+		Type:   providers.ResourceServerTypeMCP,
+		Resources: []providers.Resource{
+			{
+				Name:   "Group A",
+				Handle: "a",
+				Actions: []providers.Action{
+					{Name: "Tool B", Handle: "b", Kind: providers.ActionKindTool},
+				},
+			},
+			{
+				Name:         "Group B",
+				Handle:       "b",
+				ParentHandle: "a",
+			},
+		},
+	}
+
+	err := ProcessResourceServer(rs)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate permission")
+	assert.Contains(t, err.Error(), "mcp:a:b")
+}
+
+func TestProcessResourceServer_MCPNoCollisionSucceeds(t *testing.T) {
+	rs := &providers.ResourceServer{
+		ID:     "rs-mcp",
+		Name:   "Booking MCP",
+		Handle: "booking-mcp",
+		OUID:   "ou1",
+		Type:   providers.ResourceServerTypeMCP,
+		Resources: []providers.Resource{
+			{
+				Name:   "Ops",
+				Handle: "ops",
+				Actions: []providers.Action{
+					{Name: "Deploy", Handle: "deploy", Kind: providers.ActionKindTool},
+					{Name: "Status", Handle: "status", Kind: providers.ActionKindResource},
+				},
+			},
+			{
+				Name:   "Users",
+				Handle: "users",
+				Actions: []providers.Action{
+					{Name: "Create", Handle: "create", Kind: providers.ActionKindTool},
+				},
+			},
+		},
+	}
+
+	err := ProcessResourceServer(rs)
+
+	assert.NoError(t, err)
+	assert.Equal(t, "booking-mcp:ops:deploy", rs.Resources[0].Actions[0].Permission)
+	assert.Equal(t, "booking-mcp:ops:status", rs.Resources[0].Actions[1].Permission)
+	assert.Equal(t, "booking-mcp:users:create", rs.Resources[1].Actions[0].Permission)
+}
+
+func TestProcessResourceServer_NonMCPSkipsPermissionCollisionCheck(t *testing.T) {
+	// An API resource server with the same structure that collides for MCP must still succeed,
+	// since Rule 6 (cross-entity permission collision) applies only to MCP-type resource servers.
+	rs := &providers.ResourceServer{
+		ID:     "rs-api",
+		Name:   "Booking API",
+		Handle: "booking-api",
+		OUID:   "ou1",
+		Type:   providers.ResourceServerTypeAPI,
+		Resources: []providers.Resource{
+			{
+				Name:   "Ops",
+				Handle: "ops",
+				Actions: []providers.Action{
+					{Name: "Deploy", Handle: "deploy"},
+				},
+			},
+			{
+				Name:         "Deploy Group",
+				Handle:       "deploy",
+				ParentHandle: "ops",
+			},
+		},
+	}
+
+	err := ProcessResourceServer(rs)
+
+	assert.NoError(t, err)
+}
+
 func TestProcessResource_SetsPermissions(t *testing.T) {
 	root := &providers.Resource{Handle: "root"}
 	resource := &providers.Resource{
@@ -576,6 +889,63 @@ resources:
 	assert.Equal(t, "test-api:users", rs.Resources[0].Permission)
 	assert.Equal(t, "test-api:users:read", rs.Resources[0].Actions[0].Permission)
 	assert.Equal(t, "test-api:users:profile", rs.Resources[1].Permission)
+}
+
+func TestParseAndValidateResourceServerWrapper_MCPPermissionCollisionRejected(t *testing.T) {
+	yamlData := []byte(`
+id: "rs-mcp"
+name: "Booking MCP"
+handle: "booking-mcp"
+type: "MCP"
+ouId: "ou1"
+resources:
+  - name: "Ops"
+    handle: "ops"
+    actions:
+      - name: "Deploy"
+        handle: "deploy"
+        kind: "tool"
+  - name: "Deploy Group"
+    handle: "deploy"
+    parent: "ops"
+`)
+
+	parser := parseAndValidateResourceServerWrapper(nil)
+	result, err := parser(yamlData)
+
+	assert.Error(t, err)
+	assert.Nil(t, result)
+	assert.Contains(t, err.Error(), "duplicate permission")
+	assert.Contains(t, err.Error(), "booking-mcp:ops:deploy")
+}
+
+func TestParseAndValidateResourceServerWrapper_MCPCleanSucceeds(t *testing.T) {
+	yamlData := []byte(`
+id: "rs-mcp"
+name: "Booking MCP"
+handle: "booking-mcp"
+type: "MCP"
+ouId: "ou1"
+resources:
+  - name: "Ops"
+    handle: "ops"
+    actions:
+      - name: "Deploy"
+        handle: "deploy"
+        kind: "tool"
+      - name: "Status"
+        handle: "status"
+        kind: "resource"
+`)
+
+	parser := parseAndValidateResourceServerWrapper(nil)
+	result, err := parser(yamlData)
+
+	assert.NoError(t, err)
+	rs, ok := result.(*providers.ResourceServer)
+	assert.True(t, ok)
+	assert.Equal(t, "booking-mcp:ops:deploy", rs.Resources[0].Actions[0].Permission)
+	assert.Equal(t, "booking-mcp:ops:status", rs.Resources[0].Actions[1].Permission)
 }
 
 func TestParseAndValidateResourceServerWrapper_InvalidYAML(t *testing.T) {

@@ -879,12 +879,41 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionList_MergesBothStores() {
 		{ID: "act-file1", Name: "File Action 1"},
 	}
 
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(len(dbActions), nil)
-	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(len(fileActions), nil)
-	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(dbActions, nil)
-	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(fileActions, nil)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).
+		Return(len(dbActions), nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).
+		Return(len(fileActions), nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(dbActions, nil)
+	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(fileActions, nil)
 
-	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, 10, 0)
+	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, "", 10, 0)
+
+	assert.NoError(s.T(), err)
+	assert.Len(s.T(), result, 2)
+	s.dbStoreMock.AssertExpectations(s.T())
+	s.fileStoreMock.AssertExpectations(s.T())
+}
+
+func (s *CompositeResourceStoreTestSuite) TestGetActionList_ThreadsKindToBothStores() {
+	dbActions := []providers.Action{
+		{ID: "act-db1", Name: "DB Tool", Kind: providers.ActionKindTool},
+	}
+	fileActions := []providers.Action{
+		{ID: "act-file1", Name: "File Tool", Kind: providers.ActionKindTool},
+	}
+
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool).
+		Return(len(dbActions), nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool).
+		Return(len(fileActions), nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool, mock.Anything, 0).
+		Return(dbActions, nil)
+	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool, mock.Anything, 0).
+		Return(fileActions, nil)
+
+	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, providers.ActionKindTool, 10, 0)
 
 	assert.NoError(s.T(), err)
 	assert.Len(s.T(), result, 2)
@@ -894,11 +923,12 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionList_MergesBothStores() {
 
 func (s *CompositeResourceStoreTestSuite) TestGetActionList_DBError() {
 	dbErr := errors.New("db error")
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(1, nil)
-	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(0, nil)
-	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(nil, dbErr)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(1, nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(0, nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(nil, dbErr)
 
-	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, 10, 0)
+	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, "", 10, 0)
 
 	assert.Error(s.T(), err)
 	assert.Nil(s.T(), result)
@@ -908,12 +938,14 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionList_DBError() {
 
 func (s *CompositeResourceStoreTestSuite) TestGetActionList_FileError() {
 	fileErr := errors.New("file error")
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(0, nil)
-	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(1, nil)
-	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return([]providers.Action{}, nil)
-	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(nil, fileErr)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(0, nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(1, nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return([]providers.Action{}, nil)
+	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(nil, fileErr)
 
-	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, 10, 0)
+	result, err := s.compositeStore.GetActionList(s.ctx, "rs1", nil, "", 10, 0)
 
 	assert.Error(s.T(), err)
 	assert.Nil(s.T(), result)
@@ -931,12 +963,16 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_SumsBothStores(
 		{ID: "act3", Name: "Action 3"},
 	}
 
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(len(dbActions), nil)
-	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(len(fileActions), nil)
-	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(dbActions, nil)
-	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), mock.Anything, 0).Return(fileActions, nil)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).
+		Return(len(dbActions), nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).
+		Return(len(fileActions), nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(dbActions, nil)
+	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKind(""), mock.Anything, 0).
+		Return(fileActions, nil)
 
-	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil)
+	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil, "")
 
 	assert.NoError(s.T(), err)
 	// Should return deduplicated count: act1, act2 (from db), act3
@@ -945,11 +981,36 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_SumsBothStores(
 	s.fileStoreMock.AssertExpectations(s.T())
 }
 
+func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_FilteredByKind() {
+	dbActions := []providers.Action{
+		{ID: "act1", Name: "DB Tool", Kind: providers.ActionKindTool},
+	}
+	fileActions := []providers.Action{
+		{ID: "act2", Name: "File Tool", Kind: providers.ActionKindTool},
+	}
+
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool).
+		Return(len(dbActions), nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool).
+		Return(len(fileActions), nil)
+	s.dbStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool, mock.Anything, 0).
+		Return(dbActions, nil)
+	s.fileStoreMock.On("GetActionList", s.ctx, "rs1", (*string)(nil), providers.ActionKindTool, mock.Anything, 0).
+		Return(fileActions, nil)
+
+	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil, providers.ActionKindTool)
+
+	assert.NoError(s.T(), err)
+	assert.Equal(s.T(), 2, count)
+	s.dbStoreMock.AssertExpectations(s.T())
+	s.fileStoreMock.AssertExpectations(s.T())
+}
+
 func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_DBError() {
 	dbErr := errors.New("db error")
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(0, dbErr)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(0, dbErr)
 
-	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil)
+	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil, "")
 
 	assert.Error(s.T(), err)
 	assert.Equal(s.T(), 0, count)
@@ -959,10 +1020,10 @@ func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_DBError() {
 
 func (s *CompositeResourceStoreTestSuite) TestGetActionListCount_FileError() {
 	fileErr := errors.New("file error")
-	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(0, nil)
-	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil)).Return(0, fileErr)
+	s.dbStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(0, nil)
+	s.fileStoreMock.On("GetActionListCount", s.ctx, "rs1", (*string)(nil), providers.ActionKind("")).Return(0, fileErr)
 
-	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil)
+	count, err := s.compositeStore.GetActionListCount(s.ctx, "rs1", nil, "")
 
 	assert.Error(s.T(), err)
 	assert.Equal(s.T(), 0, count)
