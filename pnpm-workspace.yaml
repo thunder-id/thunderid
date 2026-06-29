@@ -36,7 +36,7 @@ catalog:
   '@testing-library/jest-dom': 6.9.1
   '@testing-library/react': 16.3.0
   '@testing-library/user-event': 14.6.1
-  '@thunderid/react': 0.3.3
+  '@thunderid/react': 0.3.4
   '@thunderid/react-router': 0.2.1
   '@types/lodash-es': 4.17.12
   '@types/node': 24.7.2
@@ -154,7 +154,7 @@ auditConfig:
 
 minimumReleaseAgeExclude:
   - tmp@0.2.7
-  - '@thunderid/browser@0.3.1'
-  - '@thunderid/javascript@0.3.6'
+  - '@thunderid/browser@0.3.2'
+  - '@thunderid/javascript@0.3.7'
   - '@thunderid/react-router@0.2.1'
-  - '@thunderid/react@0.3.3'
+  - '@thunderid/react@0.3.4'
