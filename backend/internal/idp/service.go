@@ -207,7 +207,7 @@ func (is *idpService) UpdateIdentityProvider(ctx context.Context, idpID string, 
 	if strings.TrimSpace(idpID) == "" {
 		return nil, &ErrorInvalidIDPID
 	}
-	if svcErr := validateIDP(ctx, idp, logger); svcErr != nil {
+	if svcErr := validateIDPMeta(idp); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -223,6 +223,18 @@ func (is *idpService) UpdateIdentityProvider(ctx context.Context, idpID string, 
 			}
 			return err
 		}
+
+		// Carry over existing secret property values that are absent from the request,
+		// so callers are not required to re-supply secrets they cannot read from GET.
+		mergeSecretProperties(idp, existingIDP)
+
+		// Validate and apply defaults to the complete (merged) property set.
+		updatedProperties, propSvcErr := validateIDPProperties(txCtx, idp.Type, idp.Properties, logger)
+		if propSvcErr != nil {
+			svcErr = propSvcErr
+			return errors.New("property validation failed")
+		}
+		idp.Properties = updatedProperties
 
 		// If the name is being updated, check whether another IdP with the same name exists
 		if existingIDP.Name != idp.Name {

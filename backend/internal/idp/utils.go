@@ -48,20 +48,8 @@ func GetPropertyValue(properties []cmodels.Property, name string) string {
 
 // validateIDP validates the identity provider details.
 func validateIDP(ctx context.Context, idp *IDPDTO, logger *log.Logger) *serviceerror.ServiceError {
-	if idp == nil {
-		return &ErrorIDPNil
-	}
-	if strings.TrimSpace(idp.Name) == "" {
-		return &ErrorInvalidIDPName
-	}
-
-	// Validate identity provider type
-	if strings.TrimSpace(string(idp.Type)) == "" {
-		return &ErrorInvalidIDPType
-	}
-	isValidType := slices.Contains(supportedIDPTypes, idp.Type)
-	if !isValidType {
-		return &ErrorInvalidIDPType
+	if svcErr := validateIDPMeta(idp); svcErr != nil {
+		return svcErr
 	}
 
 	// Validate and apply default properties based on IDP type
@@ -72,6 +60,40 @@ func validateIDP(ctx context.Context, idp *IDPDTO, logger *log.Logger) *servicee
 	idp.Properties = updatedProperties
 
 	return nil
+}
+
+// validateIDPMeta validates the structural fields of an IDP (nil, name, type).
+func validateIDPMeta(idp *IDPDTO) *serviceerror.ServiceError {
+	if idp == nil {
+		return &ErrorIDPNil
+	}
+	if strings.TrimSpace(idp.Name) == "" {
+		return &ErrorInvalidIDPName
+	}
+	if strings.TrimSpace(string(idp.Type)) == "" {
+		return &ErrorInvalidIDPType
+	}
+	if !slices.Contains(supportedIDPTypes, idp.Type) {
+		return &ErrorInvalidIDPType
+	}
+	return nil
+}
+
+// mergeSecretProperties carries over secret property values from existing into incoming
+// for any secret property that is absent from the incoming update request.
+func mergeSecretProperties(incoming *IDPDTO, existing *IDPDTO) {
+	presentKeys := make(map[string]bool, len(incoming.Properties))
+	for _, prop := range incoming.Properties {
+		if prop.IsSecret() {
+			presentKeys[prop.GetName()] = true
+		}
+	}
+
+	for _, prop := range existing.Properties {
+		if prop.IsSecret() && !presentKeys[prop.GetName()] {
+			incoming.Properties = append(incoming.Properties, prop)
+		}
+	}
 }
 
 // validateIDPProperties validates the properties of the identity provider based on its type.

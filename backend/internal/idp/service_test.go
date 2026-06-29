@@ -617,6 +617,144 @@ func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_InvalidData() {
 	}
 }
 
+// TestUpdateIdentityProvider_SecretPropertyPreservedWhenAbsent tests that existing secret properties
+// are carried over when the update request omits them.
+func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_SecretPropertyPreservedWhenAbsent() {
+	secretProp, _ := cmodels.NewProperty("client_secret", "original-secret", true)
+	existingIDP := &IDPDTO{
+		ID:   "idp-123",
+		Name: "Test IDP",
+		Type: IDPTypeOIDC,
+		Properties: []cmodels.Property{
+			*secretProp,
+			func() cmodels.Property { p, _ := cmodels.NewProperty("client_id", "test-client", false); return *p }(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("redirect_uri", "http://localhost/callback", false)
+				return *p
+			}(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("authorization_endpoint", "http://idp/auth", false)
+				return *p
+			}(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("token_endpoint", "http://idp/token", false)
+				return *p
+			}(),
+		},
+	}
+
+	// Incoming update omits client_secret entirely.
+	updateIDP := &IDPDTO{
+		Name: "Test IDP",
+		Type: IDPTypeOIDC,
+		Properties: []cmodels.Property{
+			func() cmodels.Property { p, _ := cmodels.NewProperty("client_id", "test-client", false); return *p }(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("redirect_uri", "http://localhost/callback", false)
+				return *p
+			}(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("authorization_endpoint", "http://idp/auth", false)
+				return *p
+			}(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("token_endpoint", "http://idp/token", false)
+				return *p
+			}(),
+		},
+	}
+
+	s.mockStore.On("GetIdentityProvider", mock.Anything, "idp-123").Return(existingIDP, nil)
+	s.mockStore.On("UpdateIdentityProvider", mock.Anything, mock.MatchedBy(func(dto *IDPDTO) bool {
+		for _, prop := range dto.Properties {
+			if prop.GetName() == "client_secret" && prop.IsSecret() {
+				return true
+			}
+		}
+		return false
+	})).Return(nil)
+
+	result, svcErr := s.idpService.UpdateIdentityProvider(context.Background(), "idp-123", updateIDP)
+
+	s.Nil(svcErr)
+	s.NotNil(result)
+	var found bool
+	for _, prop := range result.Properties {
+		if prop.GetName() == "client_secret" && prop.IsSecret() {
+			found = true
+			break
+		}
+	}
+	s.True(found, "client_secret should be present in the updated IDP")
+	s.mockStore.AssertExpectations(s.T())
+}
+
+// TestUpdateIdentityProvider_SecretPropertyUpdatedWhenProvided tests that a secret property
+// is replaced when an explicit new value is included in the update request.
+func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_SecretPropertyUpdatedWhenProvided() {
+	existingSecret, _ := cmodels.NewProperty("client_secret", "original-secret", true)
+	existingIDP := &IDPDTO{
+		ID:   "idp-123",
+		Name: "Test IDP",
+		Type: IDPTypeOIDC,
+		Properties: []cmodels.Property{
+			*existingSecret,
+			func() cmodels.Property { p, _ := cmodels.NewProperty("client_id", "test-client", false); return *p }(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("redirect_uri", "http://localhost/callback", false)
+				return *p
+			}(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("authorization_endpoint", "http://idp/auth", false)
+				return *p
+			}(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("token_endpoint", "http://idp/token", false)
+				return *p
+			}(),
+		},
+	}
+
+	newSecret, _ := cmodels.NewProperty("client_secret", "new-secret", true)
+	updateIDP := &IDPDTO{
+		Name: "Test IDP",
+		Type: IDPTypeOIDC,
+		Properties: []cmodels.Property{
+			*newSecret,
+			func() cmodels.Property { p, _ := cmodels.NewProperty("client_id", "test-client", false); return *p }(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("redirect_uri", "http://localhost/callback", false)
+				return *p
+			}(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("authorization_endpoint", "http://idp/auth", false)
+				return *p
+			}(),
+			func() cmodels.Property {
+				p, _ := cmodels.NewProperty("token_endpoint", "http://idp/token", false)
+				return *p
+			}(),
+		},
+	}
+
+	s.mockStore.On("GetIdentityProvider", mock.Anything, "idp-123").Return(existingIDP, nil)
+	s.mockStore.On("UpdateIdentityProvider", mock.Anything, mock.MatchedBy(func(dto *IDPDTO) bool {
+		secretCount := 0
+		for _, prop := range dto.Properties {
+			if prop.GetName() == "client_secret" {
+				secretCount++
+			}
+		}
+		return secretCount == 1
+	})).Return(nil)
+
+	result, svcErr := s.idpService.UpdateIdentityProvider(context.Background(), "idp-123", updateIDP)
+
+	s.Nil(svcErr)
+	s.NotNil(result)
+	s.mockStore.AssertExpectations(s.T())
+}
+
 // TestUpdateIdentityProvider_GetStoreError tests store error when checking existing IDP
 func (s *IDPServiceTestSuite) TestUpdateIdentityProvider_GetStoreError() {
 	idp := &IDPDTO{Name: "Test", Type: IDPTypeOIDC, Properties: createOIDCProperties()}
