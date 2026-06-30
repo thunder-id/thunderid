@@ -95,12 +95,17 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const report = fs.existsSync('lychee-report.md')
+            const rawReport = fs.existsSync('lychee-report.md')
               ? fs.readFileSync('lychee-report.md', 'utf8')
               : 'Lychee reported broken links, but no report file was generated.';
+            const maxReportLength = 60000;
+            const report = rawReport.length > maxReportLength
+              ? `${rawReport.slice(0, maxReportLength)}\n\n_Report truncated. See the workflow run for the full lychee output._`
+              : rawReport;
             const title = '🔗 Documentation external link check failed';
+            const label = 'nightly-build-failure';
             const search = await github.rest.search.issuesAndPullRequests({
-              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open in:title "${title}"`,
+              q: `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open label:${label} in:title "${title}"`,
               per_page: 1
             });
             const body = `## Documentation external link check failed\n\nThe scheduled link check found broken external links in the documentation.\n\n**Workflow run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n**Commit:** ${context.sha}\n\n### Lychee report\n\n${report}`;
@@ -110,7 +115,8 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title,
-                body
+                body,
+                labels: [label]
               });
             } else {
               await github.rest.issues.createComment({
