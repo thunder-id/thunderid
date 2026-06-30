@@ -26,8 +26,9 @@ const (
 
 // Distribution URLs.
 const (
-	ReleasesURL = "https://thunderid.dev/data/releases.json"
-	GitHubAPI   = "https://api.github.com/repos/thunder-id/thunderid/releases/latest"
+	ReleasesURL      = "https://thunderid.dev/data/releases.json"
+	GitHubAPI        = "https://api.github.com/repos/thunder-id/thunderid/releases/latest"
+	GitHubArchiveURL = "https://codeload.github.com/thunder-id/thunderid/zip/refs/heads/main"
 )
 
 // Brand colors.

@@ -41,6 +41,7 @@ import BrowserLogo from '@site/src/components/icons/BrowserLogo';
 import ClaudeLogo from '@site/src/components/icons/ClaudeLogo';
 import CliLogo from '@site/src/components/icons/CliLogo';
 import CodexLogo from '@site/src/components/icons/CodexLogo';
+import DockerLogo from '@site/src/components/icons/DockerLogo';
 import ExpressLogo from '@site/src/components/icons/ExpressLogo';
 import FlutterLogo from '@site/src/components/icons/FlutterLogo';
 import GoLogo from '@site/src/components/icons/GoLogo';
@@ -62,6 +63,7 @@ import {ConsoleUrl, WayFinderSampleUrl, WayFinderMailUrl} from '@site/src/compon
 import {NextSteps, NextStepsCard} from '@site/src/components/NextSteps';
 import ProductName from '@site/src/components/ProductName';
 import RepoLink from '@site/src/components/RepoLink';
+import RunThunderID from '@site/src/components/RunThunderID';
 import SampleDownload from '@site/src/components/SampleDownload';
 import SDKCard from '@site/src/components/SDKCard';
 import Stepper from '@site/src/components/Stepper';
@@ -122,6 +124,7 @@ export default {
   WayFinderSampleUrl,
   WayFinderMailUrl,
   RepoLink,
+  RunThunderID,
   WayfinderCast,
   WayfinderArchitecture,
   WayfinderAgentOrganization,
@@ -155,6 +158,7 @@ export default {
   ClaudeLogo,
   CliLogo,
   CodexLogo,
+  DockerLogo,
   Html5Logo,
   SkillsLogo,
   // TODO: Heading styling is a bit off when oxygen-ui Typography is used.

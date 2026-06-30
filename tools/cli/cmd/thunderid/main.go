@@ -21,7 +21,6 @@ package main
 import (
 	"fmt"
 	"os"
-
 	"github.com/thunder-id/thunderid/tools/cli/internal/cli"
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/sample"
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/upgrade"
@@ -36,7 +35,7 @@ func main() {
 	// upgrade [--direct] — explicit upgrade with optional blue/green staging.
 	if len(args) > 0 && args[0] == "upgrade" {
 		verbose, direct := parseUpgradeFlags(args[1:])
-		if err := upgrade.Run(cli.BaseDir(), upgrade.Opts{Direct: direct, Verbose: verbose}); err != nil {
+		if _, err := upgrade.Run(cli.BaseDir(), upgrade.Opts{Direct: direct, Verbose: verbose}); err != nil {
 			os.Exit(1)
 		}
 		return
@@ -81,7 +80,6 @@ Commands:
   (none)               Install and start %s
   upgrade              Upgrade to the latest release (side-by-side by default)
   try <usecase>        Download and launch a use-case sample app
-  integrate <tech>     Configure a technology integration (coming soon)
 
 Flags:
   --verbose, -v        Show detailed output

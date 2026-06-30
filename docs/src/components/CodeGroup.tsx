@@ -87,7 +87,7 @@ export default function CodeGroup({
             label={
               (icon ? (
                 <span style={{display: 'flex', alignItems: 'center', gap: '0.5rem'}}>
-                  <img src={icon} alt={label} style={{width: '1em', height: '1em'}} />
+                  <img src={icon} alt={label} className="pkg-manager-icon" style={{width: '1em', height: '1em'}} />
                   {label}
                 </span>
               ) : (

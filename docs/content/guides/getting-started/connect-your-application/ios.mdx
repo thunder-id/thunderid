@@ -2,7 +2,7 @@
 title: iOS Quickstart
 sidebar_position: 8
 persona: app
-description: Quick start guide to integrate with an iOS application
+description: Add {{ProductName}} authentication to an iOS application using the ThunderID iOS SDK for SwiftUI.
 ---
 
 import {
@@ -18,7 +18,7 @@ import {
 
 # iOS Quickstart
 
-This is **step 4** of the getting started sequence. By the end you will have a working iOS app with sign-in and sign-out powered by <ProductName />.
+Use this guide to add <ProductName /> authentication to an iOS application using the ThunderID iOS SDK for SwiftUI.
 
 <TutorialHero>
 
@@ -32,7 +32,6 @@ This is **step 4** of the getting started sequence. By the end you will have a w
 ## Prerequisites
 
 <TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
-<TutorialHeroItem icon={<Server />}>Steps 1–3 complete: <ProductName /> running, an application registered, and a sign-in flow built. Start at <a href="../../get-thunderid">Get <ProductName /></a> if you haven't already.</TutorialHeroItem>
 <TutorialHeroItem icon={<Hexagon />}>Xcode 15 or later</TutorialHeroItem>
 <TutorialHeroItem icon={<FileCode />}>iOS 16+ deployment target</TutorialHeroItem>
 
@@ -43,6 +42,22 @@ Check out the complete <RepoLink path="/tree/main/sdks/ios/Samples/Quickstart">i
 :::
 
 <Stepper stepNode="h2" as="h2">
+
+## Run ThunderID
+
+Start a local ThunderID instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+
+## Create an Application
+
+Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
+
+1. Under **Application Type**, select **Mobile App**
+2. Enter a name (e.g. `My iOS App`) and click **Create**
+3. Copy the **Client ID**. You'll add the redirect URI in the next step after configuring your URL scheme
 
 ## Create an iOS App
 
@@ -92,7 +107,7 @@ Open your app's `Info.plist` and add a URL scheme under **URL Types**. For examp
 
 **2. Register the redirect URI in the <ProductName /> console**
 
-In the console, open the application you registered in step 2 and add the following as an **Allowed Redirect URI**:
+In the console, open your registered application and add the following as an **Allowed Redirect URI**:
 
 ```
 io.thunderid.b2c://callback
@@ -232,20 +247,15 @@ struct HomeView: View {
 
 In Xcode, select an iOS 16+ simulator and press **Run** (⌘R).
 
+:::note Test credentials
+You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.
+:::
+
 :::tip Success
-You should see the sign-in form. Enter the test user credentials you created in step 2 and tap **Submit**. After successful authentication, the home screen displays the user's name and a **Sign Out** button.
+You should see the sign-in form. Enter your test user credentials and tap **Submit**. After successful authentication, the home screen displays the user's name and a **Sign Out** button.
 :::
 
 </Stepper>
-
-## You're Done
-
-You have completed the full getting started sequence:
-
-1. ✅ <ProductName /> running
-2. ✅ Application registered with a Client ID
-3. ✅ Sign-in flow built in the Flow Designer
-4. ✅ iOS app integrated and authenticating
 
 ## What's Next
 

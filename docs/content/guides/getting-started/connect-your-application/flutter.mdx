@@ -2,7 +2,7 @@
 title: Flutter Quickstart
 sidebar_position: 9
 persona: app
-description: Quick start guide to integrate with a Flutter application
+description: Add {{ProductName}} authentication to a Flutter application using the thunderid_flutter package.
 ---
 
 import {
@@ -18,7 +18,7 @@ import {
 
 # Flutter Quickstart
 
-This is **step 4** of the getting started sequence. By the end you will have a working Flutter app with sign-in and sign-out powered by <ProductName /> on both iOS and Android.
+Use this guide to add <ProductName /> authentication to a Flutter application using the `thunderid_flutter` package.
 
 <TutorialHero>
 
@@ -32,7 +32,6 @@ This is **step 4** of the getting started sequence. By the end you will have a w
 ## Prerequisites
 
 <TutorialHeroItem icon={<Clock />}>About 20 minutes</TutorialHeroItem>
-<TutorialHeroItem icon={<Server />}>Steps 1–3 complete: <ProductName /> running, an application registered, and a sign-in flow built. Start at <a href="../../get-thunderid">Get <ProductName /></a> if you haven't already.</TutorialHeroItem>
 <TutorialHeroItem icon={<Hexagon />}>Flutter 3.16+ and Dart 3.2+</TutorialHeroItem>
 <TutorialHeroItem icon={<FileCode />}>iOS 16+ or Android API 26+ target device or simulator</TutorialHeroItem>
 
@@ -43,6 +42,22 @@ Check out the complete <RepoLink path="/tree/main/sdks/flutter/samples/quickstar
 :::
 
 <Stepper stepNode="h2" as="h2">
+
+## Run ThunderID
+
+Start a local ThunderID instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+
+## Create an Application
+
+Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
+
+1. Under **Application Type**, select **Mobile App**
+2. Enter a name (e.g. `My Flutter App`) and click **Create**
+3. Copy the **Client ID**. You'll add the redirect URI in the next step after configuring your URL scheme
 
 ## Create a Flutter App
 
@@ -109,7 +124,7 @@ Open `android/app/src/main/AndroidManifest.xml` and add an intent filter inside 
 
 ### Register the URIs in the console
 
-In the <ProductName /> console, open the application you registered in step 2 and add the following as an **Allowed Redirect URI**:
+In the <ProductName /> console, open your registered application and add the following as an **Allowed Redirect URI**:
 
 ```
 dev.thunderid.app://callback
@@ -310,20 +325,15 @@ Start an iOS simulator or connect an Android device, then run:
 flutter run
 ```
 
+:::note Test credentials
+You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.
+:::
+
 :::tip Success
-You should see the sign-in form. Enter the test user credentials you created in step 2 and tap **Submit**. After successful authentication, the home screen displays the user's name and a **Sign Out** button.
+You should see the sign-in form. Enter your test user credentials and tap **Submit**. After successful authentication, the home screen displays the user's name and a **Sign Out** button.
 :::
 
 </Stepper>
-
-## You're Done
-
-You have completed the full getting started sequence:
-
-1. ✅ <ProductName /> running
-2. ✅ Application registered with a Client ID
-3. ✅ Sign-in flow built in the Flow Designer
-4. ✅ Flutter app integrated and authenticating
 
 ## What's Next
 

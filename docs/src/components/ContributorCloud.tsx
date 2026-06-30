@@ -102,7 +102,7 @@ export default function ContributorCloud(): React.ReactElement | null {
       {remaining > 0 && (
         <Avatar
           component="a"
-          href="contributors"
+          href="../contributors"
           sx={{
             width: 40,
             height: 40,

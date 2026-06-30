@@ -2,7 +2,7 @@
 title: Nuxt Quickstart
 sidebar_position: 3
 persona: app
-description: Quick start guide to integrate with a Nuxt 3 application
+description: Add {{ProductName}} authentication to a Nuxt 3 application using the @thunderid/nuxt module.
 ---
 
 import {
@@ -18,7 +18,7 @@ import {
 
 # Nuxt Quickstart
 
-This is **step 4** of the getting started sequence. By the end you will have a working Nuxt 3 app with sign-in and sign-out powered by <ProductName />.
+Use this guide to add <ProductName /> authentication to a Nuxt 3 application using the `@thunderid/nuxt` module.
 
 <TutorialHero>
 
@@ -32,7 +32,6 @@ This is **step 4** of the getting started sequence. By the end you will have a w
 ## Prerequisites
 
 <TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
-<TutorialHeroItem icon={<Server />}>Steps 1–3 complete: <ProductName /> running, an application registered, and a sign-in flow built. Start at <a href="../../getting-started/get-thunderid">Get <ProductName /></a> if you haven't already.</TutorialHeroItem>
 <TutorialHeroItem icon={<Hexagon />}>Node.js 18.0 or later installed on your system</TutorialHeroItem>
 <TutorialHeroItem icon={<Package />}>npm, yarn, or pnpm</TutorialHeroItem>
 <TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
@@ -40,6 +39,23 @@ This is **step 4** of the getting started sequence. By the end you will have a w
 </TutorialHero>
 
 <Stepper stepNode="h2" as="h2">
+
+## Run ThunderID
+
+Start a local ThunderID instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+
+## Create an Application
+
+Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
+
+1. Under **Technology**, select **Nuxt**
+2. Enter a name (e.g. `My Nuxt App`) and click **Create**
+3. Under **Protocol**, set the **Allowed Redirect URI** to `http://localhost:3000/api/auth/callback`
+4. Copy both the **Client ID** and **Client Secret**. You'll need them for your environment variables
 
 ## Create a Nuxt App
 
@@ -97,7 +113,7 @@ export default defineNuxtConfig({
 });
 ```
 
-That's all the `nuxt.config.ts` change needed — the module reads all configuration from environment variables.
+That's all the `nuxt.config.ts` change needed. The module reads all configuration from environment variables.
 
 :::info
 The module automatically registers `/api/auth/callback` as a Nitro server route. Make sure the authorized redirect URL in your <ProductName /> application settings is set to `http://localhost:3000/api/auth/callback`. You do **not** need to create the callback route yourself.
@@ -123,7 +139,7 @@ openssl rand -base64 32
 :::
 
 :::warning Security
-`THUNDERID_CLIENT_SECRET` and `THUNDERID_SESSION_SECRET` have no `NUXT_PUBLIC_` prefix — Nuxt keeps them server-side only and never exposes them to the browser.
+`THUNDERID_CLIENT_SECRET` and `THUNDERID_SESSION_SECRET` have no `NUXT_PUBLIC_` prefix. Nuxt keeps them server-side only and never exposes them to the browser.
 :::
 
 | Variable | Description |
@@ -224,7 +240,7 @@ definePageMeta({ middleware: ['thunderIDMiddleware'] });
 </script>
 ```
 
-Unauthenticated users are automatically redirected to the sign-in page. For more control — such as requiring specific scopes or an organization context — use `defineThunderIDMiddleware`:
+Unauthenticated users are automatically redirected to the sign-in page. For more control (such as requiring specific scopes or an organization context), use `defineThunderIDMiddleware`:
 
 ```vue title="pages/admin.vue"
 <script setup>
@@ -253,20 +269,15 @@ Start the development server:
 
 Visit your app at [http://localhost:3000](http://localhost:3000)
 
+:::note Test credentials
+You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.
+:::
+
 :::tip Success
-You should see the sign-in button. Click it to open the <ProductName />-hosted sign-in page. Authenticate with the test user you created in step 2, and land back in your app with the user profile displayed.
+You should see the sign-in button. Click it to open the <ProductName />-hosted sign-in page. Authenticate with your test user, and land back in your app with the user profile displayed.
 :::
 
 </Stepper>
-
-## You're Done
-
-You have completed the full getting started sequence:
-
-1. ✅ <ProductName /> running
-2. ✅ Application registered with a Client ID and Client Secret
-3. ✅ Sign-in flow built in the Flow Designer
-4. ✅ Nuxt 3 app integrated and authenticating
 
 ## What's Next
 
@@ -275,7 +286,7 @@ You have completed the full getting started sequence:
   <a href="../../../guides/flows/what-are-flows" style={{textDecoration: 'none', color: 'inherit'}}>
     <div style={{border: '1px solid var(--ifm-color-emphasis-300)', borderRadius: '10px', padding: '1.25rem', cursor: 'pointer'}}>
       <div style={{fontSize: '1rem', fontWeight: '700', marginBottom: '0.4rem'}}>Upgrade the sign-in flow</div>
-      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add MFA, passkeys, or social login to your flow — no app code changes required.</div>
+      <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-emphasis-700)', marginBottom: '0.75rem'}}>Add MFA, passkeys, or social login to your flow. No app code changes required.</div>
       <div style={{fontSize: '0.875rem', color: 'var(--ifm-color-primary)', fontWeight: 600}}>Flow Designer →</div>
     </div>
   </a>

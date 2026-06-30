@@ -272,6 +272,36 @@ h5 {
   max-width: 100%;
 }
 
+/* Package manager tab label icons (npm, pnpm, yarn, bun) — greyscale, code content unaffected */
+.pkg-manager-icon {
+  filter: grayscale(1) opacity(0.7);
+}
+
+.tabs__item--active .pkg-manager-icon,
+.tabs__item:hover .pkg-manager-icon {
+  filter: grayscale(1) opacity(1);
+}
+
+/* ── Code block title (filename tab) ──────────────────────────────────── */
+[class*='codeBlockTitle'] {
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--ifm-color-primary) 5%, var(--ifm-color-emphasis-100));
+  border-bottom: 1px solid color-mix(in srgb, var(--ifm-color-primary) 15%, var(--ifm-color-emphasis-200));
+  color: var(--ifm-color-content-secondary);
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 0.45rem var(--ifm-pre-padding);
+}
+
+[data-theme='dark'] [class*='codeBlockTitle'] {
+  background: color-mix(in srgb, var(--ifm-color-primary) 8%, rgba(255, 255, 255, 0.04));
+  border-bottom-color: color-mix(in srgb, var(--ifm-color-primary) 20%, rgba(255, 255, 255, 0.06));
+  color: color-mix(in srgb, var(--ifm-color-primary) 40%, var(--ifm-color-emphasis-600));
+}
+
 /* ------------------------------ Inline code ---------------------------- */
 
 /* Inline code pills — subtle tinted border */
@@ -799,6 +829,21 @@ div[class*='tableOfContents'] {
   padding-left: 1rem;
 }
 
+/* When inside the snake wrapper, the sticky/scroll is handled by the wrapper */
+.toc-snake-root div[class*='tableOfContents'] {
+  max-height: unset !important;
+  overflow-y: unset !important;
+  padding-left: 0;
+  position: static !important;
+  top: unset !important;
+}
+
+/* Remove the default Docusaurus left border — replaced by the SVG snake */
+.toc-snake-root .table-of-contents__left-border,
+.toc-snake-root .table-of-contents {
+  border-left: none !important;
+}
+
 div[class*='col--3'],
 div[class*='col col--3'] {
   --ifm-col-width: calc(3 / 12 * 100%);
@@ -821,54 +866,8 @@ aside.theme-doc-sidebar-container {
   margin-top: 2rem;
 }
 
-.theme-doc-sidebar-container .menu > .menu__list > .theme-doc-sidebar-item-link:first-child > .menu__link,
-.sidebar-doc-home > .menu__link {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.95rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.35rem 0.75rem 0.6rem 0.75rem;
-  color: var(--ifm-font-color-base);
-  background: none;
-  cursor: pointer;
-  user-select: none;
-}
-
-[data-theme='dark'] .theme-doc-sidebar-container .menu > .menu__list > .theme-doc-sidebar-item-link:first-child > .menu__link,
-[data-theme='dark'] .sidebar-doc-home > .menu__link {
-  color: #ffffff;
-}
-
-.theme-doc-sidebar-container .menu > .menu__list > .theme-doc-sidebar-item-link:first-child > .menu__link:hover,
-.sidebar-doc-home > .menu__link:hover {
-  background: none;
-  color: var(--ifm-color-primary);
-  text-decoration: none;
-}
-
-.theme-doc-sidebar-container .menu > .menu__list > .theme-doc-sidebar-item-link:first-child > .menu__link--active,
-.sidebar-doc-home > .menu__link--active {
-  background: none;
-  color: var(--ifm-color-primary);
-}
-
-.theme-doc-sidebar-container .menu > .menu__list > .theme-doc-sidebar-item-link:first-child > .menu__link::before,
-.sidebar-doc-home > .menu__link::before {
-  content: '';
-  display: block;
-  width: 17px;
-  height: 17px;
-  flex-shrink: 0;
-  background-color: var(--ifm-color-emphasis-700);
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3Cpolyline points='9 22 9 12 15 12 15 22'/%3E%3C/svg%3E");
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3Cpolyline points='9 22 9 12 15 12 15 22'/%3E%3C/svg%3E");
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-size: contain;
-  mask-size: contain;
+.sidebar-doc-home {
+  display: none !important;
 }
 
 /* Spacing for HTML section header items */
@@ -880,6 +879,25 @@ aside.theme-doc-sidebar-container {
 /* First section after HOME still needs breathing room */
 .sidebar-html-section-header:first-child {
   margin-top: 1rem;
+}
+
+/* Tighter gap between Home and Getting Started */
+.sidebar-doc-home + .sidebar-html-section-header {
+  margin-top: 0.5rem;
+}
+
+/* Back to main site — subtle footer link at bottom of sidebar */
+.sidebar-back-to-home > .menu__link {
+  border-top: 1px solid var(--ifm-color-emphasis-200);
+  color: var(--ifm-color-content-secondary) !important;
+  font-size: 0.78rem;
+  margin-top: 1rem;
+  padding: 0.75rem var(--ifm-menu-link-padding-horizontal);
+}
+
+.sidebar-back-to-home > .menu__link:hover {
+  color: var(--ifm-color-primary) !important;
+  text-decoration: none;
 }
 
 /* Add bottom margin to the items list so space appears below last item too */
@@ -1429,6 +1447,114 @@ aside.theme-doc-sidebar-container {
   white-space: normal !important;
 }
 
+/* Hidden sidebar items — registered for sidebar association but not shown */
+.sidebar-hidden-item {
+  display: none !important;
+}
+
+/* ─── Connect type selector ──────────────────────────────────────────────── */
+.connect-type-selector-item {
+  list-style: none;
+}
+
+/* Panel entrance — referenced by name in sx */
+@keyframes connect-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Show/hide connect sections based on selected type */
+html:not([data-connect-type]) .connect-section--agent,
+html:not([data-connect-type]) .connect-section--mcp,
+html[data-connect-type='app'] .connect-section--agent,
+html[data-connect-type='app'] .connect-section--mcp {
+  display: none;
+}
+
+html[data-connect-type='agent'] .connect-section--app,
+html[data-connect-type='agent'] .connect-section--mcp {
+  display: none;
+}
+
+html[data-connect-type='mcp'] .connect-section--app,
+html[data-connect-type='mcp'] .connect-section--agent {
+  display: none;
+}
+
+/* Hide the auto-generated category label — keep only the items list */
+.connect-section > *:not(.menu__list) {
+  display: none !important;
+}
+
+/* Animate sidebar items into view when a connect section becomes visible */
+@keyframes connect-item-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.connect-section > .menu__list > li {
+  animation: connect-item-enter 0.22s ease both 0.05s;
+}
+
+/* Vertical accent line next to the tech list */
+.connect-section > .menu__list {
+  border-left: 2px solid color-mix(in srgb, var(--ifm-color-primary) 25%, transparent);
+  margin-left: 1.5rem;
+  padding-left: 0;
+}
+
+.connect-section > .menu__list .menu__link {
+  padding-bottom: 0.3rem;
+  padding-left: 0.75rem;
+  padding-top: 0.3rem;
+}
+
+/* Coming soon placeholder */
+.sidebar-coming-soon {
+  color: var(--ifm-color-content-secondary);
+  display: block;
+  font-size: 0.78rem;
+  font-style: italic;
+  padding: 0.3rem 0.75rem;
+}
+
+
+/* ─── Technology quickstart sidebar items ────────────────────────────────── */
+.sidebar-tech-label {
+  align-items: center;
+  display: inline-flex;
+  gap: 1rem;
+}
+
+.sidebar-tech-icon {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.sidebar-tech-icon svg,
+.sidebar-tech-icon img {
+  filter: grayscale(1);
+  height: 100%;
+  width: 100%;
+}
+
+/* Plugin docs article */
 .plugin-docs article {
   padding: 15px;
 }
@@ -1505,6 +1631,13 @@ nav.theme-doc-breadcrumbs {
 }
 
 /* Increase space between main content and right sidebar TOC */
+/* Hide overview sections from TOC — these are visual blocks, not navigable content */
+li:has(> .table-of-contents__link[href="#what-you-will-learn"]),
+li:has(> .table-of-contents__link[href="#prerequisites"]) {
+  display: none;
+}
+
+
 .theme-doc-toc-desktop {
   padding-left: 0.75rem;
   margin-top: 2.7rem;
@@ -3122,59 +3255,6 @@ a.connect-card {
   line-height: 1.45;
 }
 
-/* APIM Gateway tiles */
-.gw-tile-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  margin: 1rem 0 1.5rem;
-}
-
-.gw-tile {
-  display: flex;
-  flex-direction: column;
-  text-decoration: none !important;
-  border: 1px solid var(--ifm-color-emphasis-200);
-  border-radius: 12px;
-  overflow: hidden;
-  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-}
-
-.gw-tile:hover {
-  border-color: color-mix(in srgb, var(--ifm-color-primary) 60%, transparent);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
-  transform: translateY(-2px);
-  text-decoration: none !important;
-}
-
-.gw-tile__logo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem 1.25rem;
-}
-
-.gw-tile__logo svg {
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-
-.gw-tile__name {
-  padding: 0.55rem 1rem;
-  text-align: center;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--ifm-font-color-base);
-  border-top: 1px solid var(--ifm-color-emphasis-200);
-  background: color-mix(in srgb, var(--ifm-color-emphasis-100) 30%, transparent);
-}
-
-@media (max-width: 768px) {
-  .gw-tile-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 
 /* Styles for Connect Your Application page */
 .sdk-cards {
@@ -4370,12 +4450,3 @@ a.connect-card {
   fill: var(--ifm-color-emphasis-500);
 }
 
-
-/* Fix DocSearch sidepanel not appearing in production build.
-   The default transform is overridden by a conflicting style — !important ensures
-   the panel becomes visible when opened. */
-.DocSearch-Sidepanel-Container.floating.is-open,
-.DocSearch-Sidepanel-Container.inline.is-open {
-  opacity: 1;
-  transform: none !important;
-}

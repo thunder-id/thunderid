@@ -32,8 +32,6 @@ import reactSdkSidebar from './content/sdks/react/sidebar';
 import reactRouterSdkSidebar from './content/sdks/react-router/sidebar';
 import tanstackRouterSdkSidebar from './content/sdks/tanstack-router/sidebar';
 import vueSdkSidebar from './content/sdks/vue/sidebar';
-import productConfig from './docusaurus.product.config';
-
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 // TODO: Use `@wso2/oxygen-ui-icons` in the sidebar. Currently, there's only a React wrapper available, so we need to create custom SVG icons for the sidebar until we have a web component version of the icons.
@@ -60,96 +58,35 @@ const sidebars: SidebarsConfig = {
     {
       type: 'html',
       value:
-        '<div class="sidebar-section-label"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>Getting Started</span></div>',
+        '<div class="sidebar-section-label"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg><span>Get Started</span></div>',
       className: 'sidebar-html-section-header',
     },
     {
       type: 'category',
-      label: 'Getting Started',
+      label: 'Get Started',
       collapsed: false,
       collapsible: false,
       className: 'sidebar-section',
       items: [
-        {
-          type: 'doc',
-          id: 'guides/getting-started/what-is-thunderid',
-          label: `What is ${productConfig.project.name}?`,
-        },
-        {
-          type: 'doc',
-          id: 'guides/getting-started/get-thunderid',
-          label: `Get ${productConfig.project.name}`,
-        },
-        {
-          type: 'doc',
-          id: 'guides/getting-started/register-an-application',
-          label: 'Register an Application',
-        },
-        {
-          type: 'doc',
-          id: 'guides/getting-started/build-a-flow',
-          label: 'Build a Sign-In Flow',
-        },
+        {type: 'doc', id: 'guides/getting-started/get-thunderid', label: 'Get ThunderID'},
+        {type: 'html', value: '<!-- connect-type-selector -->', className: 'connect-type-selector-wrapper'},
         {
           type: 'category',
-          label: 'Connect Your Application',
-          link: {
-            type: 'doc',
-            id: 'guides/getting-started/connect-your-application/index',
-          },
-          collapsed: true,
-          collapsible: true,
+          label: 'Application',
+          className: 'connect-section connect-section--app',
+          collapsed: false,
+          collapsible: false,
           items: [
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/react',
-              label: 'React',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/nextjs',
-              label: 'Next.js',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/express',
-              label: 'Express',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/vue',
-              label: 'Vue',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/nuxt',
-              label: 'Nuxt',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/node',
-              label: 'Node.js',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/browser',
-              label: 'Vanilla JavaScript',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/ios',
-              label: 'iOS',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/android',
-              label: 'Android',
-            },
-            {
-              type: 'doc',
-              id: 'guides/getting-started/connect-your-application/flutter',
-              label: 'Flutter',
-            },
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/react', label: 'React', customProps: {icon: 'react'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/nextjs', label: 'Next.js', customProps: {icon: 'next'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/express', label: 'Express', customProps: {icon: 'express'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/vue', label: 'Vue', customProps: {icon: 'vue'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/nuxt', label: 'Nuxt', customProps: {icon: 'nuxt'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/node', label: 'Node.js', customProps: {icon: 'node'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/browser', label: 'JavaScript', customProps: {icon: 'javascript'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/ios', label: 'iOS', customProps: {icon: 'ios'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/android', label: 'Android', customProps: {icon: 'android'}},
+            {type: 'doc', id: 'guides/getting-started/connect-your-application/flutter', label: 'Flutter', customProps: {icon: 'flutter'}},
           ],
         },
       ],

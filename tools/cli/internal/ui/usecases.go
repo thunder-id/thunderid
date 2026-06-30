@@ -20,10 +20,12 @@ package ui
 // ConfigInput describes one value the user must supply before the sample runs.
 // If Choices is non-empty the TUI renders a list picker; otherwise a text input.
 type ConfigInput struct {
-	Key     string   // env var key written to the target .env, e.g. "LLM_PROVIDER"
-	Label   string   // prompt text shown to the user
-	Choices []Choice // non-empty → list picker; empty → text input
-	Secret  bool     // mask text input with EchoPassword
+	Key          string   // env var key written to the target .env, e.g. "LLM_PROVIDER"
+	Label        string   // prompt text shown to the user
+	Instructions []string // dimmed lines shown below the label, before the input
+	Choices      []Choice // non-empty → list picker; empty → text input
+	Secret       bool     // mask text input with EchoPassword
+	Optional     bool     // allow Enter with empty value to skip this step
 }
 
 // Choice is a single option in a ConfigInput list picker.

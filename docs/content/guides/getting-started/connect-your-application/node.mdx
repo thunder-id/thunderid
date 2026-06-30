@@ -2,7 +2,7 @@
 title: Node.js Quickstart
 sidebar_position: 5
 persona: app
-description: Quick start guide to integrate with a Node.js application
+description: Add {{ProductName}} authentication to a vanilla Node.js application using the @thunderid/node SDK.
 ---
 
 import {
@@ -18,7 +18,7 @@ import {
 
 # Node.js Quickstart
 
-Use this guide to add ThunderID authentication to a vanilla Node.js application using the `@thunderid/node` SDK and the built-in `http` module — no framework required.
+Use this guide to add <ProductName /> authentication to a vanilla Node.js application using the `@thunderid/node` SDK and the built-in `http` module. No framework required.
 
 <TutorialHero>
 
@@ -32,7 +32,6 @@ Use this guide to add ThunderID authentication to a vanilla Node.js application 
 ## Prerequisites
 
 <TutorialHeroItem icon={<Clock />}>About 15 minutes</TutorialHeroItem>
-<TutorialHeroItem icon={<Server />}>Steps 1–3 complete: <ProductName /> running, an application registered, and a sign-in flow built. Start at <a href="../../get-thunderid">Get <ProductName /></a> if you haven't already.</TutorialHeroItem>
 <TutorialHeroItem icon={<Hexagon />}>Node.js 18+ installed on your system</TutorialHeroItem>
 <TutorialHeroItem icon={<Package />}>npm, yarn, or pnpm</TutorialHeroItem>
 <TutorialHeroItem icon={<FileCode />}>Your preferred code editor</TutorialHeroItem>
@@ -40,6 +39,23 @@ Use this guide to add ThunderID authentication to a vanilla Node.js application 
 </TutorialHero>
 
 <Stepper stepNode="h2" as="h2">
+
+## Run ThunderID
+
+Start a local ThunderID instance. Pick the method that works best for you:
+
+<RunThunderID />
+
+Once it's running, the console is available at [https://localhost:8090](https://localhost:8090).
+
+## Create an Application
+
+Open the Console at <ConsoleUrl />, navigate to **Applications**, and click **Add Application**:
+
+1. Under **Technology**, select **Node.js**
+2. Enter a name (e.g. `My Node.js App`) and click **Create**
+3. Under **Protocol**, set the **Allowed Redirect URI** to `http://localhost:3000/callback`
+4. Copy both the **Client ID** and **Client Secret**. You'll need them when configuring the SDK
 
 ## Create a Node.js Project
 
@@ -202,9 +218,9 @@ Replace the `// routes added in the next step` comment with:
 
 **How the sign-in flow works:**
 
-1. `GET /login` — generates a session ID, stores it in a cookie, and calls `signIn` with an `authUrlCallback`. The callback receives the <ProductName /> authorization URL and redirects the user's browser there.
-2. `GET /callback` — <ProductName /> redirects back with `code` and `state` query parameters. Calling `signIn` again with those values exchanges the code for tokens and stores the session.
-3. `GET /logout` — calls `signOut` to get the OIDC end-session URL, clears the local cookie, then redirects the browser to complete the logout at <ProductName />.
+1. `GET /login`: generates a session ID, stores it in a cookie, and calls `signIn` with an `authUrlCallback`. The callback receives the <ProductName /> authorization URL and redirects the user's browser there.
+2. `GET /callback`: <ProductName /> redirects back with `code` and `state` query parameters. Calling `signIn` again with those values exchanges the code for tokens and stores the session.
+3. `GET /logout`: calls `signOut` to get the OIDC end-session URL, clears the local cookie, then redirects the browser to complete the logout at <ProductName />.
 
 ## Protect a Route and Display User Info
 
@@ -380,20 +396,15 @@ Start the server:
 
 Open [http://localhost:3000](http://localhost:3000).
 
+:::note Test credentials
+You'll need a user to sign in with. If you haven't created one yet, open <ConsoleUrl />, navigate to **Users**, and add a test user with an email and password.
+:::
+
 :::tip Success
 You should see the sign-in link. Click it to be redirected to the <ProductName />-hosted sign-in page. After authenticating with your test user, you'll return to the `/profile` route with your user profile displayed.
 :::
 
 </Stepper>
-
-## You're Done
-
-You have completed the full getting started sequence:
-
-1. ✅ <ProductName /> running
-2. ✅ Application registered with Client ID and Client Secret
-3. ✅ Sign-in flow built in the Flow Designer
-4. ✅ Node.js app integrated and authenticating
 
 ## What's Next
 
