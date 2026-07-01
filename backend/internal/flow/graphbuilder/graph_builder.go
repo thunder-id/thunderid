@@ -104,6 +104,20 @@ func (b *graphBuilder) GetGraph(ctx context.Context, flow *providers.CompleteFlo
 	return graph, nil
 }
 
+// ValidateGraph builds the graph from the flow definition without caching, used for validation at create/update time.
+func (b *graphBuilder) ValidateGraph(
+	ctx context.Context, flow *providers.CompleteFlowDefinition,
+) *tidcommon.ServiceError {
+	if _, err := b.buildGraph(ctx, flow); err != nil {
+		return tidcommon.CustomServiceError(errorGraphBuildFailure, tidcommon.I18nMessage{
+			Key:          "error.flow.graphbuilder.graph_validation_failure_description",
+			DefaultValue: err.Error(),
+		})
+	}
+
+	return nil
+}
+
 // InvalidateCache invalidates the cached graph for the given flow ID.
 func (b *graphBuilder) InvalidateCache(ctx context.Context, flowID string) {
 	if flowID == "" {

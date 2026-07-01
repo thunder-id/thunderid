@@ -258,3 +258,11 @@ const (
 	// InterceptorDataKeyChallengeTokenIn is the shared data key for the incoming challenge token.
 	InterceptorDataKeyChallengeTokenIn = "challengeTokenIn"
 )
+
+// ValidNodeTypes is the set of valid node type strings.
+var ValidNodeTypes = map[string]bool{
+	string(NodeTypeStart):         true,
+	string(NodeTypeEnd):           true,
+	string(NodeTypeTaskExecution): true,
+	string(NodeTypePrompt):        true,
+}

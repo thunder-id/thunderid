@@ -60,7 +60,7 @@ func newOUResolverExecutor(
 		{
 			Ref:        "ou_selection_input",
 			Identifier: ouIDKey,
-			Type:       "OU_SELECT",
+			Type:       providers.InputTypeOUSelect,
 			Required:   true,
 		},
 	}

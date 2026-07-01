@@ -44,8 +44,9 @@ var (
 		FlowType: "AUTHENTICATION",
 		Nodes: []NodeDefinition{
 			{
-				ID:   "START",
-				Type: "START",
+				ID:        "START",
+				Type:      "START",
+				OnSuccess: "credentials_auth",
 			},
 			{
 				ID:   "credentials_auth",
@@ -54,7 +55,6 @@ var (
 					Name: "CredentialsAuthExecutor",
 				},
 				OnSuccess: "END",
-				OnFailure: "END",
 			},
 			{
 				ID:   "END",
@@ -69,8 +69,9 @@ var (
 		FlowType: "AUTHENTICATION",
 		Nodes: []NodeDefinition{
 			{
-				ID:   "START",
-				Type: "START",
+				ID:        "START",
+				Type:      "START",
+				OnSuccess: "credentials_auth",
 			},
 			{
 				ID:   "credentials_auth",
@@ -79,7 +80,6 @@ var (
 					Name: "CredentialsAuthExecutor",
 				},
 				OnSuccess: "ou_node",
-				OnFailure: "END",
 			},
 			{
 				ID:   "ou_node",
@@ -93,7 +93,6 @@ var (
 					OnSkip: "END",
 				},
 				OnSuccess: "END",
-				OnFailure: "END",
 			},
 			{
 				ID:   "END",
@@ -108,8 +107,9 @@ var (
 		FlowType: "REGISTRATION",
 		Nodes: []NodeDefinition{
 			{
-				ID:   "START",
-				Type: "START",
+				ID:        "START",
+				Type:      "START",
+				OnSuccess: "user_type_resolver",
 			},
 			{
 				ID:   "user_type_resolver",
@@ -118,7 +118,6 @@ var (
 					Name: "UserTypeResolver",
 				},
 				OnSuccess: "provisioning",
-				OnFailure: "END",
 			},
 			{
 				ID:   "provisioning",
@@ -127,7 +126,6 @@ var (
 					Name: "ProvisioningExecutor",
 				},
 				OnSuccess: "END",
-				OnFailure: "END",
 			},
 			{
 				ID:   "END",
@@ -241,8 +239,9 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_WithLayout() {
 		FlowType: "AUTHENTICATION",
 		Nodes: []NodeDefinition{
 			{
-				ID:   "START",
-				Type: "START",
+				ID:        "START",
+				Type:      "START",
+				OnSuccess: "credentials_auth",
 				Layout: &NodeLayout{
 					Size: &NodeSize{
 						Width:  180,
@@ -271,7 +270,6 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_WithLayout() {
 					Name: "CredentialsAuthExecutor",
 				},
 				OnSuccess: "END",
-				OnFailure: "END",
 			},
 			{
 				ID:   "END",
@@ -490,8 +488,8 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_ValidationErrors() {
 					},
 				},
 			},
-			expectedStatus: http.StatusCreated,
-			expectedCode:   "",
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   "FLM-1024",
 		},
 		{
 			name: "Invalid node reference",
@@ -515,8 +513,8 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_ValidationErrors() {
 					},
 				},
 			},
-			expectedStatus: http.StatusCreated,
-			expectedCode:   "",
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   "FLM-1026",
 		},
 	}
 
@@ -629,7 +627,6 @@ func (suite *FlowMgtAPITestSuite) TestUpdateFlow_Success() {
 					Name: "CredentialsAuthExecutor",
 				},
 				OnSuccess: "END",
-				OnFailure: "END",
 			},
 			{
 				ID:   "END",

@@ -53,7 +53,7 @@ func (suite *OUResolverExecutorTestSuite) SetupTest() {
 		{
 			Ref:        "ou_selection_input",
 			Identifier: ouIDKey,
-			Type:       "OU_SELECT",
+			Type:       providers.InputTypeOUSelect,
 			Required:   true,
 		},
 	}
@@ -434,7 +434,7 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_Prompt_HasChildOUs_Request
 	assert.Equal(suite.T(), parentOUID, result.AdditionalData[common.DataRootOUID])
 	assert.NotEmpty(suite.T(), result.Inputs)
 	assert.Equal(suite.T(), ouIDKey, result.Inputs[0].Identifier)
-	assert.Equal(suite.T(), "OU_SELECT", result.Inputs[0].Type)
+	assert.Equal(suite.T(), providers.InputTypeOUSelect, result.Inputs[0].Type)
 	suite.mockOUService.AssertExpectations(suite.T())
 }
 
@@ -486,7 +486,7 @@ func (suite *OUResolverExecutorTestSuite) TestExecute_PromptAll_FirstInvocation_
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, result.Status)
 	assert.NotEmpty(suite.T(), result.Inputs)
 	assert.Equal(suite.T(), ouIDKey, result.Inputs[0].Identifier)
-	assert.Equal(suite.T(), "OU_SELECT", result.Inputs[0].Type)
+	assert.Equal(suite.T(), providers.InputTypeOUSelect, result.Inputs[0].Type)
 	// PromptAll should NOT set DataRootOUID (frontend shows full tree)
 	assert.Empty(suite.T(), result.AdditionalData[common.DataRootOUID])
 	suite.mockOUService.AssertNotCalled(suite.T(), "IsOrganizationUnitExists", mock.Anything, mock.Anything)

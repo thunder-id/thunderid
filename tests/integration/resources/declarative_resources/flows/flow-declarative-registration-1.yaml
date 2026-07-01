@@ -6,7 +6,37 @@ activeVersion: 1
 nodes:
   - id: start
     type: START
-  - id: login
-    type: BASIC_AUTHENTICATION
+    onSuccess: prompt_registration
+  - id: prompt_registration
+    type: PROMPT
+    prompts:
+      - inputs:
+          - ref: input_001
+            identifier: username
+            type: TEXT_INPUT
+            required: true
+          - ref: input_002
+            identifier: password
+            type: PASSWORD_INPUT
+            required: true
+        action:
+          ref: action_001
+          nextNode: credentials_auth
+  - id: credentials_auth
+    type: TASK_EXECUTION
+    executor:
+      name: CredentialsAuthExecutor
+    onSuccess: provisioning
+  - id: provisioning
+    type: TASK_EXECUTION
+    executor:
+      name: ProvisioningExecutor
+    onSuccess: auth_assert
+    onIncomplete: prompt_registration
+  - id: auth_assert
+    type: TASK_EXECUTION
+    executor:
+      name: AuthAssertExecutor
+    onSuccess: end
   - id: end
     type: END
