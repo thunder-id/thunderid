@@ -57,6 +57,8 @@ type InboundClientServiceInterface interface {
 	GetInboundClientByEntityID(ctx context.Context, entityID string) (*inboundmodel.InboundClient, error)
 	// GetInboundClientList returns all inbound clients.
 	GetInboundClientList(ctx context.Context) ([]inboundmodel.InboundClient, error)
+	// GetEntityIDsByThemeID returns paginated entity IDs of inbound clients referencing the given theme.
+	GetEntityIDsByThemeID(ctx context.Context, themeID string, limit, offset int) ([]string, int, error)
 	// UpdateInboundClient validates and persists updates to an inbound client, certificates, and OAuth config.
 	UpdateInboundClient(ctx context.Context, client *inboundmodel.InboundClient,
 		oauthProfile *providers.OAuthProfile, hasClientSecret bool, oauthClientID string, entityName string) error
@@ -187,6 +189,18 @@ func (s *inboundClientService) GetInboundClientByEntityID(
 // GetInboundClientList returns all inbound clients.
 func (s *inboundClientService) GetInboundClientList(ctx context.Context) ([]inboundmodel.InboundClient, error) {
 	return s.store.GetInboundClientList(ctx, serverconst.MaxCompositeStoreRecords)
+}
+
+// GetEntityIDsByThemeID returns paginated entity IDs of inbound clients referencing the given theme.
+func (s *inboundClientService) GetEntityIDsByThemeID(
+	ctx context.Context, themeID string, limit, offset int) ([]string, int, error) {
+	if limit < 0 {
+		return nil, 0, fmt.Errorf("invalid limit: must be non-negative, got %d", limit)
+	}
+	if offset < 0 {
+		return nil, 0, fmt.Errorf("invalid offset: must be non-negative, got %d", offset)
+	}
+	return s.store.GetEntityIDsByThemeID(ctx, themeID, limit, offset)
 }
 
 // UpdateInboundClient validates and persists updates to an inbound client, certificates, and OAuth config.

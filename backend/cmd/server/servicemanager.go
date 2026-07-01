@@ -94,6 +94,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/mcp"
 	"github.com/thunder-id/thunderid/internal/system/observability"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/services"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/template"
@@ -380,6 +381,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	}
 	exporters = append(exporters, agentExporter)
 
+	// Wire the dependency registry into the theme service (two-phase init to avoid cyclic imports).
+	registerDependencyRegistry(themeMgtService, applicationService, agentService)
+
 	// Initialize design resolve service for theme and layout resolution
 	designResolveService := resolve.Initialize(mux, themeMgtService, layoutMgtService, applicationService)
 
@@ -439,6 +443,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	services.NewHealthCheckService(mux, healthSvc)
 
 	return jwtService, runtimeCryptoSvc
+}
+
+// registerDependencyRegistry builds the dependency registry from the given providers and wires
+// it into the theme management service.
+func registerDependencyRegistry(
+	themeMgtService thememgt.ThemeMgtServiceInterface, providers ...resourcedependency.Provider,
+) {
+	themeMgtService.SetDependencyRegistry(resourcedependency.Initialize(providers...))
 }
 
 // unregisterServices unregisters all services that require cleanup during shutdown.

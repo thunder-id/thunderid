@@ -20,6 +20,7 @@ package inboundclient
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -261,4 +262,147 @@ func (suite *CompositeStoreTestSuite) TestMergeAndDeduplicate_SetsReadOnly() {
 	suite.False(byID["shared"].IsReadOnly)
 	suite.False(byID["dbonly"].IsReadOnly)
 	suite.True(byID["fileonly"].IsReadOnly)
+}
+
+// --- GetEntityIDsByThemeID composite store tests ---
+
+func (suite *CompositeStoreTestSuite) TestGetEntityIDsByThemeID_OnlyDB() {
+	ctx := context.Background()
+	suite.dbMock.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return([]string{"db-1", "db-2"}, 2, nil)
+
+	ids, total, err := suite.composite.GetEntityIDsByThemeID(ctx, "theme-1", 10, 0)
+	suite.NoError(err)
+	suite.Equal(2, total)
+	suite.ElementsMatch([]string{"db-1", "db-2"}, ids)
+}
+
+func (suite *CompositeStoreTestSuite) TestGetEntityIDsByThemeID_MergesDBAndFile() {
+	ctx := context.Background()
+	suite.Require().NoError(suite.fileStore.CreateInboundClient(ctx,
+		inboundmodel.InboundClient{ID: "file-1", ThemeID: "theme-1"}))
+
+	suite.dbMock.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return([]string{"db-1"}, 1, nil)
+
+	ids, total, err := suite.composite.GetEntityIDsByThemeID(ctx, "theme-1", 10, 0)
+	suite.NoError(err)
+	suite.Equal(2, total)
+	suite.ElementsMatch([]string{"db-1", "file-1"}, ids)
+}
+
+func (suite *CompositeStoreTestSuite) TestGetEntityIDsByThemeID_DeduplicatesOverlap() {
+	ctx := context.Background()
+	suite.Require().NoError(suite.fileStore.CreateInboundClient(ctx,
+		inboundmodel.InboundClient{ID: "shared", ThemeID: "theme-1"}))
+
+	suite.dbMock.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return([]string{"shared", "db-only"}, 2, nil)
+
+	ids, total, err := suite.composite.GetEntityIDsByThemeID(ctx, "theme-1", 10, 0)
+	suite.NoError(err)
+	suite.Equal(2, total)
+	suite.ElementsMatch([]string{"shared", "db-only"}, ids)
+}
+
+func (suite *CompositeStoreTestSuite) TestGetEntityIDsByThemeID_DBError() {
+	ctx := context.Background()
+	suite.dbMock.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return(nil, 0, errors.New("db error"))
+
+	_, _, err := suite.composite.GetEntityIDsByThemeID(ctx, "theme-1", 10, 0)
+	suite.Error(err)
+}
+
+func (suite *CompositeStoreTestSuite) TestGetEntityIDsByThemeID_Pagination() {
+	ctx := context.Background()
+	suite.dbMock.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return([]string{"db-1", "db-2", "db-3"}, 3, nil)
+
+	ids, total, err := suite.composite.GetEntityIDsByThemeID(ctx, "theme-1", 2, 1)
+	suite.NoError(err)
+	suite.Equal(3, total)
+	suite.Len(ids, 2)
+}
+
+func (suite *CompositeStoreTestSuite) TestGetEntityIDsByThemeID_OffsetBeyondTotal() {
+	ctx := context.Background()
+	suite.dbMock.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return([]string{"db-1"}, 1, nil)
+
+	ids, total, err := suite.composite.GetEntityIDsByThemeID(ctx, "theme-1", 10, 5)
+	suite.NoError(err)
+	suite.Equal(1, total)
+	suite.Empty(ids)
+}
+
+func (suite *CompositeStoreTestSuite) TestGetEntityIDsByThemeID_DBHitsCap() {
+	ctx := context.Background()
+	// Exactly MaxCompositeStoreRecords (1000) entries from DB triggers the limit error.
+	capIDs := make([]string, 1000)
+	for i := range capIDs {
+		capIDs[i] = "db-id"
+	}
+	suite.dbMock.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return(capIDs, 1000, nil)
+
+	ids, total, err := suite.composite.GetEntityIDsByThemeID(ctx, "theme-1", 10, 0)
+	suite.ErrorIs(err, ErrCompositeResultLimitExceeded)
+	suite.Nil(ids)
+	suite.Equal(0, total)
+}
+
+func (suite *CompositeStoreTestSuite) TestGetEntityIDsByThemeID_FileStoreError() {
+	ctx := context.Background()
+	// DB returns normally; file store fails — error must propagate.
+	// We use a file store populated with an entry that has the wrong theme so
+	// GetEntityIDsByThemeID returns an error via a mock on the composite's dbStore.
+	// Since fileStore is a real *fileBasedStore, we force an error by testing the
+	// composite store using a mock for the file side via a fresh compositeStore
+	// that wraps two mocks.
+	dbMock2 := newInboundClientStoreInterfaceMock(suite.T())
+	fileMock := newInboundClientStoreInterfaceMock(suite.T())
+	composite2 := &compositeStore{dbStore: dbMock2, fileStore: fileMock}
+
+	dbMock2.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return([]string{"db-1"}, 1, nil)
+	fileMock.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return(nil, 0, errors.New("file store error"))
+
+	ids, total, err := composite2.GetEntityIDsByThemeID(ctx, "theme-1", 10, 0)
+	suite.Error(err)
+	suite.Nil(ids)
+	suite.Equal(0, total)
+}
+
+func (suite *CompositeStoreTestSuite) TestGetEntityIDsByThemeID_FileHitsCap() {
+	ctx := context.Background()
+	capIDs := make([]string, 1000)
+	for i := range capIDs {
+		capIDs[i] = "file-id"
+	}
+	dbMock2 := newInboundClientStoreInterfaceMock(suite.T())
+	fileMock := newInboundClientStoreInterfaceMock(suite.T())
+	composite2 := &compositeStore{dbStore: dbMock2, fileStore: fileMock}
+
+	dbMock2.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return([]string{"db-1"}, 1, nil)
+	fileMock.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", mock.AnythingOfType("int"), 0).
+		Return(capIDs, 1000, nil)
+
+	ids, total, err := composite2.GetEntityIDsByThemeID(ctx, "theme-1", 10, 0)
+	suite.ErrorIs(err, ErrCompositeResultLimitExceeded)
+	suite.Nil(ids)
+	suite.Equal(0, total)
 }

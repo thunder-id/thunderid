@@ -71,6 +71,49 @@ func (c *compositeStore) GetInboundClientList(ctx context.Context, limit int) ([
 	return clients, nil
 }
 
+func (c *compositeStore) GetEntityIDsByThemeID(
+	ctx context.Context, themeID string, limit, offset int) ([]string, int, error) {
+	dbIDs, _, err := c.dbStore.GetEntityIDsByThemeID(ctx, themeID, serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(dbIDs) == serverconst.MaxCompositeStoreRecords {
+		return nil, 0, ErrCompositeResultLimitExceeded
+	}
+	fileIDs, _, err := c.fileStore.GetEntityIDsByThemeID(ctx, themeID, serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(fileIDs) == serverconst.MaxCompositeStoreRecords {
+		return nil, 0, ErrCompositeResultLimitExceeded
+	}
+
+	seen := make(map[string]struct{}, len(dbIDs)+len(fileIDs))
+	all := make([]string, 0, len(dbIDs)+len(fileIDs))
+	for _, id := range dbIDs {
+		if _, exists := seen[id]; !exists {
+			seen[id] = struct{}{}
+			all = append(all, id)
+		}
+	}
+	for _, id := range fileIDs {
+		if _, exists := seen[id]; !exists {
+			seen[id] = struct{}{}
+			all = append(all, id)
+		}
+	}
+
+	total := len(all)
+	if offset >= total {
+		return []string{}, total, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return all[offset:end], total, nil
+}
+
 func (c *compositeStore) CreateInboundClient(ctx context.Context, client inboundmodel.InboundClient) error {
 	return c.dbStore.CreateInboundClient(ctx, client)
 }

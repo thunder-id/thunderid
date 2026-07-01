@@ -39,7 +39,9 @@ import (
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
@@ -3318,6 +3320,141 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_FlowHandleResolutio
 
 	assert.NotNil(suite.T(), svcErr)
 	assert.Equal(suite.T(), ErrorInvalidRequestFormat.Code, svcErr.Code)
+}
+
+// --- GetResourceDependencies tests ---
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_UnknownResourceType() {
+	service, _ := suite.setupTestService()
+
+	result, err := service.GetResourceDependencies(context.Background(), "unknown", "id-1")
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_InboundClientError() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return(nil, 0, errors.New("store error"))
+
+	result, err := service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeTheme, "theme-1")
+	assert.Nil(suite.T(), result)
+	assert.Error(suite.T(), err)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_EmptyIDs() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{}, 0, nil)
+
+	result, err := service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeTheme, "theme-1")
+	assert.NoError(suite.T(), err)
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_EntityProviderError() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{"app-1"}, 1, nil)
+
+	ep := resetEntityProviderMethod(service, "GetEntitiesByIDs")
+	epErr := entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "error", "")
+	ep.On("GetEntitiesByIDs", []string{"app-1"}).Return([]providers.Entity{}, epErr)
+
+	result, err := service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeTheme, "theme-1")
+	assert.Nil(suite.T(), result)
+	assert.Error(suite.T(), err)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_Success() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{"app-1", "app-2"}, 2, nil)
+
+	sysAttrs1, _ := json.Marshal(map[string]interface{}{"name": "Portal App"})
+	sysAttrs2, _ := json.Marshal(map[string]interface{}{"name": "Admin App"})
+	ep := resetEntityProviderMethod(service, "GetEntitiesByIDs")
+	ep.On("GetEntitiesByIDs", []string{"app-1", "app-2"}).Return([]providers.Entity{
+		{ID: "app-1", Category: providers.EntityCategoryApp, SystemAttributes: sysAttrs1},
+		{ID: "app-2", Category: providers.EntityCategoryApp, SystemAttributes: sysAttrs2},
+	}, (*entityprovider.EntityProviderError)(nil))
+
+	result, err := service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeTheme, "theme-1")
+	assert.NoError(suite.T(), err)
+	require.Len(suite.T(), result, 2)
+	assert.Equal(suite.T(), resourcedependency.ResourceTypeApplication, result[0].ResourceType)
+	assert.Equal(suite.T(), resourcedependency.BehaviorFallback, result[0].BehaviorOnDelete)
+	assert.Equal(suite.T(), "app-1", result[0].ID)
+	assert.Equal(suite.T(), "Portal App", result[0].DisplayName)
+	assert.Equal(suite.T(), "app-2", result[1].ID)
+	assert.Equal(suite.T(), "Admin App", result[1].DisplayName)
+}
+
+// Agents share the inbound-client store; the application provider must skip non-app entities.
+func (suite *ServiceTestSuite) TestGetResourceDependencies_FiltersOutNonAppEntities() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{"app-1", "agent-1"}, 2, nil)
+
+	sysAttrs, _ := json.Marshal(map[string]interface{}{"name": "Portal App"})
+	ep := resetEntityProviderMethod(service, "GetEntitiesByIDs")
+	ep.On("GetEntitiesByIDs", []string{"app-1", "agent-1"}).Return([]providers.Entity{
+		{ID: "app-1", Category: providers.EntityCategoryApp, SystemAttributes: sysAttrs},
+		{ID: "agent-1", Category: providers.EntityCategoryAgent},
+	}, (*entityprovider.EntityProviderError)(nil))
+
+	result, err := service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeTheme, "theme-1")
+	assert.NoError(suite.T(), err)
+	require.Len(suite.T(), result, 1)
+	assert.Equal(suite.T(), "app-1", result[0].ID)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_NoSystemAttributes() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{"app-1"}, 1, nil)
+
+	ep := resetEntityProviderMethod(service, "GetEntitiesByIDs")
+	ep.On("GetEntitiesByIDs", []string{"app-1"}).Return([]providers.Entity{
+		{ID: "app-1", Category: providers.EntityCategoryApp},
+	}, (*entityprovider.EntityProviderError)(nil))
+
+	result, err := service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeTheme, "theme-1")
+	assert.NoError(suite.T(), err)
+	require.Len(suite.T(), result, 1)
+	assert.Equal(suite.T(), "app-1", result[0].ID)
+	assert.Equal(suite.T(), "", result[0].DisplayName)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_SystemAttributesWithoutName() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByThemeID(mock.Anything, "theme-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{"app-1"}, 1, nil)
+
+	sysAttrs, _ := json.Marshal(map[string]interface{}{"description": "some desc"})
+	ep := resetEntityProviderMethod(service, "GetEntitiesByIDs")
+	ep.On("GetEntitiesByIDs", []string{"app-1"}).Return([]providers.Entity{
+		{ID: "app-1", Category: providers.EntityCategoryApp, SystemAttributes: sysAttrs},
+	}, (*entityprovider.EntityProviderError)(nil))
+
+	result, err := service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeTheme, "theme-1")
+	assert.NoError(suite.T(), err)
+	require.Len(suite.T(), result, 1)
+	assert.Equal(suite.T(), "", result[0].DisplayName)
 }
 
 func (suite *ServiceTestSuite) TestCreateApplication_CreateInboundClientFailsAndCompensationFails() {
