@@ -34,7 +34,8 @@ type PresentationDefinitionDTO struct {
 	Handle          string   `json:"handle" yaml:"handle"`
 	OUID            string   `json:"ouId" yaml:"ouId,omitempty"`
 	OUHandle        string   `json:"ouHandle,omitempty" yaml:"ouHandle,omitempty"`
-	DisplayName     string   `json:"displayName,omitempty" yaml:"displayName,omitempty"`
+	Name            string   `json:"name,omitempty" yaml:"name,omitempty"`
+	Description     string   `json:"description,omitempty" yaml:"description,omitempty"`
 	VCT             string   `json:"vct" yaml:"vct"`
 	Format          string   `json:"format,omitempty" yaml:"format,omitempty"`
 	RequestedClaims []string `json:"requestedClaims,omitempty" yaml:"requestedClaims,omitempty"`
@@ -56,7 +57,8 @@ type presentationDefinitionRequest struct {
 	Handle               string              `json:"handle"`
 	OUID                 string              `json:"ouId"`
 	OUHandle             string              `json:"ouHandle"`
-	DisplayName          string              `json:"displayName"`
+	Name                 string              `json:"name"`
+	Description          string              `json:"description"`
 	VCT                  string              `json:"vct"`
 	Format               string              `json:"format"`
 	RequestedClaims      []string            `json:"requestedClaims"`
@@ -73,7 +75,8 @@ type presentationDefinitionResponse struct {
 	Handle               string              `json:"handle"`
 	OUID                 string              `json:"ouId"`
 	OUHandle             string              `json:"ouHandle,omitempty"`
-	DisplayName          string              `json:"displayName,omitempty"`
+	Name                 string              `json:"name,omitempty"`
+	Description          string              `json:"description,omitempty"`
 	VCT                  string              `json:"vct"`
 	Format               string              `json:"format"`
 	RequestedClaims      []string            `json:"requestedClaims,omitempty"`
@@ -92,24 +95,24 @@ func toResponse(dto PresentationDefinitionDTO) presentationDefinitionResponse {
 // PresentationDefinitionList is the minimal projection returned by the list
 // endpoint. It contains only the fields the management UI renders in the table.
 type PresentationDefinitionList struct {
-	ID          string `json:"id"`
-	Handle      string `json:"handle"`
-	OUID        string `json:"ouId"`
-	OUHandle    string `json:"ouHandle,omitempty"`
-	DisplayName string `json:"displayName,omitempty"`
-	VCT         string `json:"vct"`
-	Format      string `json:"format"`
+	ID       string `json:"id"`
+	Handle   string `json:"handle"`
+	OUID     string `json:"ouId"`
+	OUHandle string `json:"ouHandle,omitempty"`
+	Name     string `json:"name,omitempty"`
+	VCT      string `json:"vct"`
+	Format   string `json:"format"`
 }
 
 // toSummary projects a full DTO to a list summary.
 func toSummary(dto PresentationDefinitionDTO) PresentationDefinitionList {
 	return PresentationDefinitionList{
-		ID:          dto.ID,
-		Handle:      dto.Handle,
-		OUID:        dto.OUID,
-		OUHandle:    dto.OUHandle,
-		DisplayName: dto.DisplayName,
-		VCT:         dto.VCT,
-		Format:      dto.Format,
+		ID:       dto.ID,
+		Handle:   dto.Handle,
+		OUID:     dto.OUID,
+		OUHandle: dto.OUHandle,
+		Name:     dto.Name,
+		VCT:      dto.VCT,
+		Format:   dto.Format,
 	}
 }

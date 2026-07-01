@@ -289,7 +289,7 @@ func buildMetadata(cfg serviceConfig, creds []credential.CredentialConfiguration
 				},
 			},
 		}
-		if d := credentialDisplay(c.Display); d != nil {
+		if d := credentialDisplay(c.Name, c.Description, c.Display); d != nil {
 			entry["display"] = d
 		}
 		if cl := credentialClaims(c.Claims); cl != nil {
@@ -333,20 +333,23 @@ func credentialClaims(claims []credential.ClaimMapping) map[string]interface{} {
 	return out
 }
 
-// credentialDisplay maps a managed display to the metadata display array, or nil.
-func credentialDisplay(d *credential.CredentialDisplay) []interface{} {
-	if d == nil {
-		return nil
-	}
+// credentialDisplay builds the metadata display array from the configuration's
+// admin-facing name/description and its optional locale/logo, or nil if none are set.
+func credentialDisplay(name, description string, d *credential.CredentialDisplay) []interface{} {
 	entry := map[string]interface{}{}
-	if d.Name != "" {
-		entry["name"] = d.Name
+	if name != "" {
+		entry["name"] = name
 	}
-	if d.Locale != "" {
-		entry["locale"] = d.Locale
+	if description != "" {
+		entry["description"] = description
 	}
-	if d.LogoURI != "" {
-		entry["logo"] = map[string]interface{}{"uri": d.LogoURI}
+	if d != nil {
+		if d.Locale != "" {
+			entry["locale"] = d.Locale
+		}
+		if d.LogoURI != "" {
+			entry["logo"] = map[string]interface{}{"uri": d.LogoURI}
+		}
 	}
 	if len(entry) == 0 {
 		return nil

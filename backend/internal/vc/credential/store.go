@@ -64,7 +64,7 @@ func (s *credentialStore) CreateCredentialConfiguration(ctx context.Context, dto
 		return err
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreateConfiguration,
-		dto.ID, dto.Handle, dto.OUID, dto.Format, dto.VCT, claimsJSON, displayJSON,
+		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.Format, dto.VCT, claimsJSON, displayJSON,
 		nullableInt(dto.ValiditySeconds), s.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to create credential configuration: %w", err)
@@ -143,15 +143,9 @@ func (s *credentialStore) ListCredentialConfigurationSummaries(
 			ID:     columnString(row["id"]),
 			Handle: columnString(row["handle"]),
 			OUID:   columnString(row["ou_id"]),
+			Name:   columnString(row["name"]),
 			Format: columnString(row["format"]),
 			VCT:    columnString(row["vct"]),
-		}
-		if displayBytes := columnBytes(row["display"]); len(displayBytes) > 0 {
-			var d CredentialDisplay
-			if err := json.Unmarshal(displayBytes, &d); err != nil {
-				return nil, fmt.Errorf("failed to unmarshal display: %w", err)
-			}
-			summary.DisplayName = d.Name
 		}
 		summaries = append(summaries, summary)
 	}
@@ -169,7 +163,7 @@ func (s *credentialStore) UpdateCredentialConfiguration(ctx context.Context, dto
 		return err
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateConfiguration,
-		dto.ID, dto.Handle, dto.OUID, dto.Format, dto.VCT, claimsJSON, displayJSON,
+		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.Format, dto.VCT, claimsJSON, displayJSON,
 		nullableInt(dto.ValiditySeconds), s.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to update credential configuration: %w", err)
@@ -225,11 +219,13 @@ func nullableInt(v *int) interface{} {
 // buildConfigurationDTOFromRow reconstructs a DTO from a result row.
 func buildConfigurationDTOFromRow(row map[string]interface{}) (*CredentialConfigurationDTO, error) {
 	dto := &CredentialConfigurationDTO{
-		ID:     columnString(row["id"]),
-		Handle: columnString(row["handle"]),
-		OUID:   columnString(row["ou_id"]),
-		Format: columnString(row["format"]),
-		VCT:    columnString(row["vct"]),
+		ID:          columnString(row["id"]),
+		Handle:      columnString(row["handle"]),
+		OUID:        columnString(row["ou_id"]),
+		Name:        columnString(row["name"]),
+		Description: columnString(row["description"]),
+		Format:      columnString(row["format"]),
+		VCT:         columnString(row["vct"]),
 	}
 	if claimsBytes := columnBytes(row["claims"]); len(claimsBytes) > 0 {
 		if err := json.Unmarshal(claimsBytes, &dto.Claims); err != nil {

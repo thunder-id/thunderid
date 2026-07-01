@@ -54,7 +54,7 @@ export default function PresentationDefinitionSelect({
       >
         {options.map((vp) => (
           <MenuItem key={vp.id} value={vp.handle}>
-            {vp.displayName ?? vp.handle}
+            {vp.name ?? vp.handle}
           </MenuItem>
         ))}
       </TextField>

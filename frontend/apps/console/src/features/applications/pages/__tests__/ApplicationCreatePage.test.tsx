@@ -289,6 +289,9 @@ vi.mock('../../components/create-application/ConfigureStack', async () => {
         setSelectedPlatform('WALLET');
         setSelectedTemplateConfig({
           id: 'wallet',
+          creationFlow: {
+            steps: ['STACK', 'NAME', 'ORGANIZATION_UNIT', 'CONFIGURE', 'DESIGN', 'OPTIONS', 'EXPERIENCE', 'COMPLETE'],
+          },
           defaults: {
             inboundAuthConfig: [
               {
@@ -899,8 +902,15 @@ describe('ApplicationCreatePage', () => {
       // STACK → NAME
       await user.click(screen.getByRole('button', {name: /continue/i}));
       await user.type(screen.getByTestId('app-name-input'), 'My App');
-      // NAME → DESIGN
+      // NAME → CONFIGURE (wallet platform only) or DESIGN
       await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      // The wallet platform's creation flow orders CONFIGURE right after NAME.
+      if (screen.queryByTestId('application-configure-details')) {
+        // CONFIGURE → DESIGN
+        await user.click(screen.getByRole('button', {name: /continue/i}));
+      }
+
       // DESIGN → OPTIONS
       await user.click(screen.getByRole('button', {name: /continue/i}));
 
@@ -922,6 +932,24 @@ describe('ApplicationCreatePage', () => {
       await goToExperienceStep();
 
       expect(screen.getByTestId('allow-embedded-approach')).toHaveTextContent('true');
+    });
+
+    it('should show the CONFIGURE step right after NAME for the wallet platform', async () => {
+      renderWithProviders();
+
+      await user.click(screen.getByTestId('select-wallet-platform'));
+      // STACK → NAME
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      // NAME → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('application-configure-design')).not.toBeInTheDocument();
+      // No branding has been configured yet at this point in the wallet flow, so the preview is hidden.
+      expect(screen.queryByTestId('preview')).not.toBeInTheDocument();
     });
 
     it('should not offer the embedded approach for browser-based SPAs', async () => {

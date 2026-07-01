@@ -232,7 +232,7 @@ func (s *DefinitionHandlerTestSuite) TestRequestToDTOSanitizes() {
 	dto := requestToDTO(&presentationDefinitionRequest{
 		Handle:               "  eudi-pid  ",
 		OUID:                 "ou-1",
-		DisplayName:          "  EUDI  ",
+		Name:                 "  EUDI  ",
 		VCT:                  " v ",
 		Format:               DefaultCredentialFormat,
 		RequestedClaims:      []string{" given_name ", "family_name"},
@@ -243,7 +243,7 @@ func (s *DefinitionHandlerTestSuite) TestRequestToDTOSanitizes() {
 	})
 
 	s.Equal("eudi-pid", dto.Handle)
-	s.Equal("EUDI", dto.DisplayName)
+	s.Equal("EUDI", dto.Name)
 	s.Equal("v", dto.VCT)
 	s.Equal([]string{"given_name", "family_name"}, dto.RequestedClaims)
 	s.Equal([]string{"DE", "AT"}, dto.ClaimValues["address.country"])

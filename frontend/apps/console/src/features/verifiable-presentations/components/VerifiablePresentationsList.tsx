@@ -67,34 +67,12 @@ export default function VerifiablePresentationsList(): JSX.Element {
   const columns: DataGrid.GridColDef<VerifiablePresentationSummary>[] = useMemo(
     () => [
       {
-        field: 'displayName',
+        field: 'name',
         headerName: t('verifiable-presentations:listing.columns.name'),
         flex: 1,
         minWidth: 180,
         renderCell: (params: DataGrid.GridRenderCellParams<VerifiablePresentationSummary>): JSX.Element => (
-          <Typography variant="body2">{params.row.displayName ?? '-'}</Typography>
-        ),
-      },
-      {
-        field: 'handle',
-        headerName: t('verifiable-presentations:listing.columns.handle'),
-        flex: 1,
-        minWidth: 180,
-        renderCell: (params: DataGrid.GridRenderCellParams<VerifiablePresentationSummary>): JSX.Element => (
-          <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
-            {params.row.handle}
-          </Typography>
-        ),
-      },
-      {
-        field: 'vct',
-        headerName: t('verifiable-presentations:listing.columns.vct'),
-        flex: 1.5,
-        minWidth: 240,
-        renderCell: (params: DataGrid.GridRenderCellParams<VerifiablePresentationSummary>): JSX.Element => (
-          <Typography variant="body2" sx={{fontFamily: 'monospace', fontSize: '0.875rem'}}>
-            {params.row.vct}
-          </Typography>
+          <Typography variant="body2">{params.row.name ?? '-'}</Typography>
         ),
       },
       {

@@ -26,7 +26,8 @@ export interface VerifiablePresentation {
   handle: string;
   ouId: string;
   ouHandle?: string;
-  displayName?: string;
+  name?: string;
+  description?: string;
   vct: string;
   format: string;
   mandatoryClaims?: string[];
@@ -57,7 +58,7 @@ export interface VerifiablePresentationSummary {
   handle: string;
   ouId: string;
   ouHandle?: string;
-  displayName?: string;
+  name?: string;
   vct: string;
   format: string;
 }

@@ -22,6 +22,8 @@ import type {ClaimMapping, CredentialDisplay} from './vc';
 export interface CreateVerifiableCredentialRequest {
   handle: string;
   ouId: string;
+  name?: string;
+  description?: string;
   format?: string;
   vct: string;
   claims?: ClaimMapping[];

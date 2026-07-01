@@ -71,6 +71,8 @@ func rowFromConfig(t *testing.T, dto CredentialConfigurationDTO) map[string]inte
 		"id":               dto.ID,
 		"handle":           dto.Handle,
 		"ou_id":            dto.OUID,
+		"name":             dto.Name,
+		"description":      dto.Description,
 		"format":           dto.Format,
 		"vct":              dto.VCT,
 		"claims":           claims,
@@ -96,7 +98,6 @@ func (suite *CredentialStoreTestSuite) TestRoundTripClaimsAndDisplay() {
 			{Name: "family_name", DisplayName: "Family Name"},
 		},
 		Display: &CredentialDisplay{
-			Name:    "EUDI PID",
 			Locale:  "en-US",
 			LogoURI: logoURI,
 		},
@@ -108,7 +109,7 @@ func (suite *CredentialStoreTestSuite) TestRoundTripClaimsAndDisplay() {
 	suite.Equal(original.ID, got.ID)
 	suite.Equal(original.Claims, got.Claims)
 	suite.Require().NotNil(got.Display)
-	suite.Equal("EUDI PID", got.Display.Name)
+	suite.Equal("en-US", got.Display.Locale)
 	suite.Equal(logoURI, got.Display.LogoURI)
 	suite.Require().NotNil(got.ValiditySeconds)
 	suite.Equal(validity, *got.ValiditySeconds)
@@ -206,7 +207,7 @@ func (suite *CredentialStoreTestSuite) TestCreate() {
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateConfiguration,
-					"cfg-1", "eudi-pid", "ou-1", DefaultCredentialFormat, "urn:eudi:pid:de:1",
+					"cfg-1", "eudi-pid", "ou-1", "", "", DefaultCredentialFormat, "urn:eudi:pid:de:1",
 					mock.Anything, nil, nil, testDeploymentID,
 				).Return(int64(1), nil)
 			},
@@ -217,8 +218,8 @@ func (suite *CredentialStoreTestSuite) TestCreate() {
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateConfiguration,
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 				).Return(int64(0), errors.New("insert failed"))
 			},
 			shouldErr: true,
@@ -467,38 +468,26 @@ func (suite *CredentialStoreTestSuite) TestListSummaries() {
 		shouldErr     bool
 	}{
 		{
-			name: "ReturnsSummariesWithDisplayName",
+			name: "ReturnsSummariesWithName",
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("QueryContext", mock.Anything, queryListConfigurationSummaries, testDeploymentID).
 					Return([]map[string]interface{}{
 						{
-							"id": "cfg-1", "handle": "h1", "ou_id": "ou-1", "format": DefaultCredentialFormat,
-							"vct": "v1", "display": `{"name":"EUDI PID"}`,
+							"id": "cfg-1", "handle": "h1", "ou_id": "ou-1", "name": "EUDI PID",
+							"format": DefaultCredentialFormat, "vct": "v1",
 						},
 						{
-							"id": "cfg-2", "handle": "h2", "ou_id": "ou-2", "format": DefaultCredentialFormat,
-							"vct": "v2", "display": nil,
+							"id": "cfg-2", "handle": "h2", "ou_id": "ou-2", "name": nil,
+							"format": DefaultCredentialFormat, "vct": "v2",
 						},
 					}, nil)
 			},
 			expectedCount: 2,
 			checkResult: func(summaries []CredentialConfigurationList) {
-				suite.Equal("EUDI PID", summaries[0].DisplayName)
-				suite.Empty(summaries[1].DisplayName)
+				suite.Equal("EUDI PID", summaries[0].Name)
+				suite.Empty(summaries[1].Name)
 			},
-		},
-		{
-			name: "InvalidDisplayJSON",
-			setupMocks: func() {
-				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("QueryContext", mock.Anything, queryListConfigurationSummaries, testDeploymentID).
-					Return([]map[string]interface{}{
-						{"id": "cfg-1", "handle": "h1", "format": DefaultCredentialFormat, "vct": "v1",
-							"display": `{not-json`},
-					}, nil)
-			},
-			shouldErr: true,
 		},
 		{
 			name: "QueryError",
@@ -553,7 +542,7 @@ func (suite *CredentialStoreTestSuite) TestUpdate() {
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateConfiguration,
-					"cfg-1", "new-handle", "ou-1", DefaultCredentialFormat, "urn:eudi:pid:de:1",
+					"cfg-1", "new-handle", "ou-1", "", "", DefaultCredentialFormat, "urn:eudi:pid:de:1",
 					nil, nil, nil, testDeploymentID,
 				).Return(int64(1), nil)
 			},
@@ -564,8 +553,8 @@ func (suite *CredentialStoreTestSuite) TestUpdate() {
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateConfiguration,
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 				).Return(int64(0), errors.New("update failed"))
 			},
 			shouldErr: true,

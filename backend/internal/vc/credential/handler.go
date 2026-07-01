@@ -120,6 +120,8 @@ func requestToDTO(req *credentialConfigurationRequest) *CredentialConfigurationD
 		Handle:          sysutils.SanitizeString(req.Handle),
 		OUID:            sysutils.SanitizeString(req.OUID),
 		OUHandle:        sysutils.SanitizeString(req.OUHandle),
+		Name:            sysutils.SanitizeString(req.Name),
+		Description:     sysutils.SanitizeString(req.Description),
 		Format:          sysutils.SanitizeString(req.Format),
 		VCT:             sysutils.SanitizeString(req.VCT),
 		Claims:          sanitizeClaims(req.Claims),
@@ -150,11 +152,10 @@ func sanitizeDisplay(in *CredentialDisplay) *CredentialDisplay {
 		return nil
 	}
 	d := CredentialDisplay{
-		Name:    sysutils.SanitizeString(in.Name),
 		Locale:  sysutils.SanitizeString(in.Locale),
 		LogoURI: sysutils.SanitizeString(in.LogoURI),
 	}
-	if d.Name == "" && d.Locale == "" && d.LogoURI == "" {
+	if d.Locale == "" && d.LogoURI == "" {
 		return nil
 	}
 	return &d

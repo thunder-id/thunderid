@@ -80,7 +80,7 @@ func (s *definitionStore) CreatePresentationDefinition(ctx context.Context, dto 
 		return err
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreateDefinition,
-		dto.ID, dto.Handle, dto.OUID, dto.DisplayName, dto.VCT, dto.Format, claimsJSON,
+		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.VCT, dto.Format, claimsJSON,
 		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, s.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to create presentation definition: %w", err)
@@ -156,12 +156,12 @@ func (s *definitionStore) ListPresentationDefinitionSummaries(
 	summaries := make([]PresentationDefinitionList, 0, len(results))
 	for _, row := range results {
 		summaries = append(summaries, PresentationDefinitionList{
-			ID:          columnString(row["id"]),
-			Handle:      columnString(row["handle"]),
-			OUID:        columnString(row["ou_id"]),
-			DisplayName: columnString(row["display_name"]),
-			VCT:         columnString(row["vct"]),
-			Format:      columnString(row["format"]),
+			ID:     columnString(row["id"]),
+			Handle: columnString(row["handle"]),
+			OUID:   columnString(row["ou_id"]),
+			Name:   columnString(row["name"]),
+			VCT:    columnString(row["vct"]),
+			Format: columnString(row["format"]),
 		})
 	}
 	return summaries, nil
@@ -182,7 +182,7 @@ func (s *definitionStore) UpdatePresentationDefinition(ctx context.Context, dto 
 		return err
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateDefinition,
-		dto.ID, dto.Handle, dto.OUID, dto.DisplayName, dto.VCT, dto.Format, claimsJSON,
+		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.VCT, dto.Format, claimsJSON,
 		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, s.deploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to update presentation definition: %w", err)
@@ -249,7 +249,8 @@ func buildDefinitionDTOFromRow(row map[string]interface{}) (*PresentationDefinit
 		ID:          columnString(row["id"]),
 		Handle:      columnString(row["handle"]),
 		OUID:        columnString(row["ou_id"]),
-		DisplayName: columnString(row["display_name"]),
+		Name:        columnString(row["name"]),
+		Description: columnString(row["description"]),
 		VCT:         columnString(row["vct"]),
 		Format:      columnString(row["format"]),
 	}

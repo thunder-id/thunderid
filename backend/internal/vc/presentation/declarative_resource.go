@@ -122,7 +122,8 @@ func (e *definitionExporter) GetResourceRules() *declarativeresource.ResourceRul
 type definitionRequestWithID struct {
 	ID                   string              `yaml:"id"`
 	Handle               string              `yaml:"handle"`
-	DisplayName          string              `yaml:"displayName"`
+	Name                 string              `yaml:"name"`
+	Description          string              `yaml:"description"`
 	VCT                  string              `yaml:"vct"`
 	Format               string              `yaml:"format"`
 	RequestedClaims      []string            `yaml:"requestedClaims"`
@@ -173,7 +174,8 @@ func buildDefinitionDTOFromRequest(req definitionRequestWithID) *PresentationDef
 	return &PresentationDefinitionDTO{
 		ID:                   req.ID,
 		Handle:               req.Handle,
-		DisplayName:          req.DisplayName,
+		Name:                 req.Name,
+		Description:          req.Description,
 		VCT:                  req.VCT,
 		Format:               req.Format,
 		RequestedClaims:      req.RequestedClaims,

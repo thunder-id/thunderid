@@ -22,6 +22,7 @@ import {
   Box,
   Button,
   FormControl,
+  FormHelperText,
   FormLabel,
   IconButton,
   InputAdornment,
@@ -54,6 +55,12 @@ import type {VerifiableCredential} from '../models/vc';
 
 export interface VerifiableCredentialFormProps {
   initial?: VerifiableCredential;
+  /** Name, edited inline in the page header rather than in this form. */
+  name: string;
+  /** Description, edited inline in the page header rather than in this form. */
+  description: string;
+  onNameChange: (name: string) => void;
+  onDescriptionChange: (description: string) => void;
   submitting: boolean;
   submitLabel: string;
   onSubmit: (data: CreateVerifiableCredentialRequest) => void;
@@ -80,6 +87,10 @@ function TabPanel({children, value, index}: TabPanelProps): JSX.Element {
  */
 export default function VerifiableCredentialForm({
   initial = undefined,
+  name,
+  description,
+  onNameChange,
+  onDescriptionChange,
   submitting,
   submitLabel,
   onSubmit,
@@ -94,13 +105,12 @@ export default function VerifiableCredentialForm({
   const [ouId, setOuId] = useState<string>(initial?.ouId ?? '');
   const [vct, setVct] = useState<string>(initial?.vct ?? '');
   const [format, setFormat] = useState<string>(initial?.format ?? 'dc+sd-jwt');
-  const [displayName, setDisplayName] = useState<string>(initial?.display?.name ?? '');
   const [locale, setLocale] = useState<string>(initial?.display?.locale ?? '');
   const [logoUri, setLogoUri] = useState<string>(initial?.display?.logoUri ?? '');
   const [claims, setClaims] = useState<ClaimRow[]>(credentialToClaimRows(initial));
 
   const configurationId = initial?.id;
-  const [copied, setCopied] = useState<boolean>(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -110,13 +120,13 @@ export default function VerifiableCredentialForm({
     },
     [],
   );
-  const handleCopy = useCallback(async (value: string): Promise<void> => {
+  const handleCopy = useCallback(async (value: string, field: string): Promise<void> => {
     await navigator.clipboard.writeText(value);
-    setCopied(true);
+    setCopiedField(field);
     if (copyTimeoutRef.current) {
       clearTimeout(copyTimeoutRef.current);
     }
-    copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+    copyTimeoutRef.current = setTimeout(() => setCopiedField(null), 2000);
   }, []);
 
   // In a single-OU deployment the sole OU is used implicitly; otherwise the picker drives ouId.
@@ -126,9 +136,8 @@ export default function VerifiableCredentialForm({
 
   const buildRequest = (): CreateVerifiableCredentialRequest => {
     const display =
-      displayName.trim() || locale.trim() || logoUri.trim()
+      locale.trim() || logoUri.trim()
         ? {
-            name: displayName.trim() || undefined,
             locale: locale.trim() || undefined,
             logoUri: logoUri.trim() || undefined,
           }
@@ -136,6 +145,8 @@ export default function VerifiableCredentialForm({
     return {
       handle: handle.trim(),
       ouId: effectiveOuId,
+      name: name.trim() || undefined,
+      description: description.trim() || undefined,
       vct: vct.trim(),
       format: format.trim() || undefined,
       claims: claimRowsToRequest(claims),
@@ -145,17 +156,17 @@ export default function VerifiableCredentialForm({
 
   const snapshot = (req: CreateVerifiableCredentialRequest): string => JSON.stringify(req);
   const initialSnapshot = useMemo(() => {
-    const dn = (initial?.display?.name ?? '').trim();
     const loc = (initial?.display?.locale ?? '').trim();
     const logo = (initial?.display?.logoUri ?? '').trim();
     return snapshot({
       handle: (initial?.handle ?? '').trim(),
       ouId: initial?.ouId ?? '',
+      name: (initial?.name ?? '').trim() || undefined,
+      description: (initial?.description ?? '').trim() || undefined,
       vct: (initial?.vct ?? '').trim(),
       format: (initial?.format ?? '').trim() || undefined,
       claims: claimRowsToRequest(credentialToClaimRows(initial)),
-      display:
-        dn || loc || logo ? {name: dn || undefined, locale: loc || undefined, logoUri: logo || undefined} : undefined,
+      display: loc || logo ? {locale: loc || undefined, logoUri: logo || undefined} : undefined,
     });
   }, [initial]);
   const dirty = snapshot(buildRequest()) !== initialSnapshot;
@@ -163,9 +174,10 @@ export default function VerifiableCredentialForm({
   const handleReset = (): void => {
     setHandle(initial?.handle ?? '');
     setOuId(initial?.ouId ?? '');
+    onNameChange(initial?.name ?? '');
+    onDescriptionChange(initial?.description ?? '');
     setVct(initial?.vct ?? '');
     setFormat(initial?.format ?? 'dc+sd-jwt');
-    setDisplayName(initial?.display?.name ?? '');
     setLocale(initial?.display?.locale ?? '');
     setLogoUri(initial?.display?.logoUri ?? '');
     setClaims(credentialToClaimRows(initial));
@@ -178,6 +190,7 @@ export default function VerifiableCredentialForm({
     setValue: (v: string) => void,
     placeholder?: string,
     required?: boolean,
+    helperText?: string,
   ): JSX.Element => (
     <FormControl fullWidth required={required}>
       <FormLabel htmlFor={id}>{label}</FormLabel>
@@ -186,6 +199,7 @@ export default function VerifiableCredentialForm({
         id={id}
         value={value}
         placeholder={placeholder}
+        helperText={helperText}
         onChange={(e: ChangeEvent<HTMLInputElement>): void => setValue(e.target.value)}
       />
     </FormControl>
@@ -193,12 +207,9 @@ export default function VerifiableCredentialForm({
 
   return (
     <Stack spacing={3}>
-      <Tabs
-        value={tab}
-        onChange={(_e: SyntheticEvent, v: number): void => setTab(v)}
-        aria-label="credential configuration"
-      >
+      <Tabs value={tab} onChange={(_e: SyntheticEvent, v: number): void => setTab(v)} aria-label="credential template">
         <Tab label={t('form.tabs.general')} />
+        <Tab label={t('form.tabs.protocolSettings')} />
         <Tab label={t('form.tabs.claims')} />
       </Tabs>
 
@@ -206,46 +217,71 @@ export default function VerifiableCredentialForm({
         <Stack spacing={3}>
           {configurationId && (
             <SettingsCard title={t('form.quickCopy.title')} description={t('form.quickCopy.description')}>
-              <FormControl fullWidth>
-                <FormLabel htmlFor="vc-id">{t('form.id.label')}</FormLabel>
-                <TextField
-                  fullWidth
-                  id="vc-id"
-                  value={configurationId}
-                  InputProps={{
-                    readOnly: true,
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <Tooltip title={copied ? t('common:actions.copied') : t('form.copyId')}>
-                          <IconButton
-                            aria-label={t('form.copyId')}
-                            edge="end"
-                            onClick={(): void => {
-                              handleCopy(configurationId).catch(() => null);
-                            }}
+              <Stack spacing={3}>
+                <FormControl fullWidth>
+                  <FormLabel htmlFor="vc-id">{t('form.id.label')}</FormLabel>
+                  <TextField
+                    fullWidth
+                    id="vc-id"
+                    value={configurationId}
+                    InputProps={{
+                      readOnly: true,
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Tooltip title={copiedField === 'id' ? t('common:actions.copied') : t('form.copyId')}>
+                            <IconButton
+                              aria-label={t('form.copyId')}
+                              edge="end"
+                              onClick={(): void => {
+                                handleCopy(configurationId, 'id').catch(() => null);
+                              }}
+                            >
+                              {copiedField === 'id' ? <Check size={16} /> : <Copy size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                    }}
+                    helperText={t('form.quickCopy.idHint')}
+                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                  />
+                </FormControl>
+                <FormControl fullWidth>
+                  <FormLabel htmlFor="vc-handle">{t('form.handle.label')}</FormLabel>
+                  <TextField
+                    fullWidth
+                    id="vc-handle"
+                    value={handle}
+                    InputProps={{
+                      readOnly: true,
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Tooltip
+                            title={copiedField === 'handle' ? t('common:actions.copied') : t('common:actions.copy')}
                           >
-                            {copied ? <Check size={16} /> : <Copy size={16} />}
-                          </IconButton>
-                        </Tooltip>
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                />
-              </FormControl>
+                            <IconButton
+                              aria-label={t('common:actions.copy')}
+                              edge="end"
+                              onClick={(): void => {
+                                handleCopy(handle, 'handle').catch(() => null);
+                              }}
+                            >
+                              {copiedField === 'handle' ? <Check size={16} /> : <Copy size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                    }}
+                    helperText={t('form.handle.hint')}
+                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                  />
+                </FormControl>
+              </Stack>
             </SettingsCard>
           )}
 
-          <SettingsCard title={t('form.details.title')} description={t('form.details.description')}>
+          <SettingsCard title={t('form.organizationUnit.title')} description={t('form.organizationUnit.description')}>
             <Stack spacing={3}>
-              {text('vc-handle', t('form.handle.label'), handle, setHandle, 'eudi-pid', true)}
-              {text('vc-vct', t('form.vct.label'), vct, setVct, 'urn:eudi:pid:de:1', true)}
-              <FormControl fullWidth>
-                <FormLabel htmlFor="vc-format">{t('form.format.label')}</FormLabel>
-                <Select id="vc-format" value={format} onChange={(e): void => setFormat(e.target.value)}>
-                  <MenuItem value="dc+sd-jwt">{t('form.format.sdJwt')}</MenuItem>
-                </Select>
-              </FormControl>
               {!initial && hasMultipleOUs && (
                 <FormControl fullWidth required>
                   <FormLabel>{t('form.organizationUnit.label')}</FormLabel>
@@ -254,30 +290,76 @@ export default function VerifiableCredentialForm({
                     value={effectiveOuId}
                     onChange={setOuId}
                     maxHeight={320}
+                    helperText={t('form.organizationUnit.pickerHint')}
                   />
                 </FormControl>
               )}
               {initial && (
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="vc-ou">{t('form.organizationUnit.label')}</FormLabel>
-                  <TextField
-                    id="vc-ou"
-                    fullWidth
-                    size="small"
-                    value={initial.ouHandle ?? initial.ouId}
-                    slotProps={{input: {readOnly: true}}}
-                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                  />
-                </FormControl>
+                <>
+                  <FormControl fullWidth>
+                    <FormLabel htmlFor="vc-ou-handle">{t('form.organizationUnit.handleLabel')}</FormLabel>
+                    <TextField
+                      id="vc-ou-handle"
+                      fullWidth
+                      size="small"
+                      value={initial.ouHandle ?? '-'}
+                      InputProps={{
+                        readOnly: true,
+                        endAdornment: initial.ouHandle ? (
+                          <InputAdornment position="end">
+                            <Tooltip
+                              title={copiedField === 'ouHandle' ? t('common:actions.copied') : t('common:actions.copy')}
+                            >
+                              <IconButton
+                                aria-label={t('common:actions.copy')}
+                                edge="end"
+                                onClick={(): void => {
+                                  handleCopy(initial.ouHandle!, 'ouHandle').catch(() => null);
+                                }}
+                              >
+                                {copiedField === 'ouHandle' ? <Check size={16} /> : <Copy size={16} />}
+                              </IconButton>
+                            </Tooltip>
+                          </InputAdornment>
+                        ) : undefined,
+                      }}
+                      helperText={t('form.organizationUnit.handleHint')}
+                      sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                    />
+                  </FormControl>
+                  <FormControl fullWidth>
+                    <FormLabel htmlFor="vc-ou-id">{t('form.organizationUnit.idLabel')}</FormLabel>
+                    <TextField
+                      id="vc-ou-id"
+                      fullWidth
+                      size="small"
+                      value={initial.ouId}
+                      InputProps={{
+                        readOnly: true,
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <Tooltip
+                              title={copiedField === 'ouId' ? t('common:actions.copied') : t('common:actions.copy')}
+                            >
+                              <IconButton
+                                aria-label={t('common:actions.copy')}
+                                edge="end"
+                                onClick={(): void => {
+                                  handleCopy(initial.ouId, 'ouId').catch(() => null);
+                                }}
+                              >
+                                {copiedField === 'ouId' ? <Check size={16} /> : <Copy size={16} />}
+                              </IconButton>
+                            </Tooltip>
+                          </InputAdornment>
+                        ),
+                      }}
+                      helperText={t('form.organizationUnit.idHint')}
+                      sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                    />
+                  </FormControl>
+                </>
               )}
-            </Stack>
-          </SettingsCard>
-
-          <SettingsCard title={t('form.display.title')} description={t('form.display.description')}>
-            <Stack spacing={3}>
-              {text('vc-display-name', t('form.display.name'), displayName, setDisplayName, 'EUDI Wallet PID')}
-              {text('vc-locale', t('form.display.locale'), locale, setLocale, 'en-US')}
-              {text('vc-logo', t('form.display.logo'), logoUri, setLogoUri, 'https://…/logo.png')}
             </Stack>
           </SettingsCard>
 
@@ -298,6 +380,39 @@ export default function VerifiableCredentialForm({
       </TabPanel>
 
       <TabPanel value={tab} index={1}>
+        <SettingsCard title={t('form.protocol.title')} description={t('form.protocol.description')}>
+          <Stack spacing={3}>
+            {text('vc-vct', t('form.vct.label'), vct, setVct, 'urn:eudi:pid:de:1', true, t('form.vct.hint'))}
+            <FormControl fullWidth>
+              <FormLabel htmlFor="vc-format">{t('form.format.label')}</FormLabel>
+              <Select id="vc-format" value={format} onChange={(e): void => setFormat(e.target.value)}>
+                <MenuItem value="dc+sd-jwt">{t('form.format.sdJwt')}</MenuItem>
+              </Select>
+              <FormHelperText>{t('form.format.hint')}</FormHelperText>
+            </FormControl>
+            {text(
+              'vc-locale',
+              t('form.display.locale'),
+              locale,
+              setLocale,
+              'en-US',
+              false,
+              t('form.display.localeHint'),
+            )}
+            {text(
+              'vc-logo',
+              t('form.display.logo'),
+              logoUri,
+              setLogoUri,
+              'https://example.com/logo.png',
+              false,
+              t('form.display.logoHint'),
+            )}
+          </Stack>
+        </SettingsCard>
+      </TabPanel>
+
+      <TabPanel value={tab} index={2}>
         <ClaimsEditor claims={claims} onChange={setClaims} />
       </TabPanel>
 

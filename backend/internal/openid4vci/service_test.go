@@ -163,11 +163,12 @@ func (s *MetadataTestSuite) TestBuildMetadataFull() {
 			Handle: "eudi-pid",
 			VCT:    "urn:eudi:pid:1",
 			Format: "",
+			Name:   "PID",
 			Claims: []credential.ClaimMapping{
 				{Name: "given_name", DisplayName: "Given Name"},
 				{Name: "no_display"},
 			},
-			Display: &credential.CredentialDisplay{Name: "PID", Locale: "en", LogoURI: "https://logo"},
+			Display: &credential.CredentialDisplay{Locale: "en", LogoURI: "https://logo"},
 		},
 	}
 
@@ -220,13 +221,16 @@ func (s *MetadataTestSuite) TestCredentialClaims() {
 }
 
 func (s *MetadataTestSuite) TestCredentialDisplay() {
-	s.Nil(credentialDisplay(nil))
-	s.Nil(credentialDisplay(&credential.CredentialDisplay{}))
+	s.Nil(credentialDisplay("", "", nil))
+	s.Nil(credentialDisplay("", "", &credential.CredentialDisplay{}))
 
-	out := credentialDisplay(&credential.CredentialDisplay{Name: "PID", Locale: "en", LogoURI: "https://logo"})
+	out := credentialDisplay(
+		"PID", "A PID credential", &credential.CredentialDisplay{Locale: "en", LogoURI: "https://logo"},
+	)
 	s.Require().Len(out, 1)
 	entry := out[0].(map[string]interface{})
 	s.Equal("PID", entry["name"])
+	s.Equal("A PID credential", entry["description"])
 	s.Equal("en", entry["locale"])
 	s.Equal(map[string]interface{}{"uri": "https://logo"}, entry["logo"])
 }

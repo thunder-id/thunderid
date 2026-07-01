@@ -201,7 +201,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreatePersists() {
 
 	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle:          "eudi-pid",
-		DisplayName:     "EUDI PID",
+		Name:            "EUDI PID",
 		VCT:             "urn:eudi:pid:de:1",
 		MandatoryClaims: []string{"given_name", "family_name"},
 		OptionalClaims:  []string{"birthdate"},

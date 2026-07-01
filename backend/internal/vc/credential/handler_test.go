@@ -209,16 +209,18 @@ func (s *ConfigurationHandlerTestSuite) TestHandleDelete_ServiceError() {
 func (s *ConfigurationHandlerTestSuite) TestRequestToDTOSanitizes() {
 	validity := 120
 	req := &credentialConfigurationRequest{
-		Handle:   "  eudi-pid  ",
-		OUID:     " ou-1 ",
-		OUHandle: " default ",
-		Format:   " dc+sd-jwt ",
-		VCT:      " v ",
+		Handle:      "  eudi-pid  ",
+		OUID:        " ou-1 ",
+		OUHandle:    " default ",
+		Name:        " EUDI PID ",
+		Description: " A PID credential ",
+		Format:      " dc+sd-jwt ",
+		VCT:         " v ",
 		Claims: []ClaimMapping{
 			{Name: "  given_name  ", DisplayName: "  Given Name  "},
 			{Name: "   ", DisplayName: "dropped"},
 		},
-		Display:         &CredentialDisplay{Name: " EUDI ", Locale: " en-US ", LogoURI: " uri "},
+		Display:         &CredentialDisplay{Locale: " en-US ", LogoURI: " uri "},
 		ValiditySeconds: &validity,
 	}
 
@@ -226,13 +228,15 @@ func (s *ConfigurationHandlerTestSuite) TestRequestToDTOSanitizes() {
 	s.Equal("eudi-pid", dto.Handle)
 	s.Equal("ou-1", dto.OUID)
 	s.Equal("default", dto.OUHandle)
+	s.Equal("EUDI PID", dto.Name)
+	s.Equal("A PID credential", dto.Description)
 	s.Equal("dc+sd-jwt", dto.Format)
 	s.Equal("v", dto.VCT)
 	s.Require().Len(dto.Claims, 1)
 	s.Equal("given_name", dto.Claims[0].Name)
 	s.Equal("Given Name", dto.Claims[0].DisplayName)
 	s.Require().NotNil(dto.Display)
-	s.Equal("EUDI", dto.Display.Name)
+	s.Equal("en-US", dto.Display.Locale)
 	s.Equal(120, *dto.ValiditySeconds)
 }
 
@@ -246,7 +250,7 @@ func (s *ConfigurationHandlerTestSuite) TestSanitizeDisplayNil() {
 }
 
 func (s *ConfigurationHandlerTestSuite) TestSanitizeDisplayAllEmpty() {
-	s.Nil(sanitizeDisplay(&CredentialDisplay{Name: " ", Locale: " ", LogoURI: " "}))
+	s.Nil(sanitizeDisplay(&CredentialDisplay{Locale: " ", LogoURI: " "}))
 }
 
 func (s *ConfigurationHandlerTestSuite) TestWriteConfigurationErrorServerError() {

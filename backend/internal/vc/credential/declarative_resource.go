@@ -113,6 +113,8 @@ func (e *configurationExporter) GetResourceRules() *declarativeresource.Resource
 type configurationRequestWithID struct {
 	ID              string             `yaml:"id"`
 	Handle          string             `yaml:"handle"`
+	Name            string             `yaml:"name"`
+	Description     string             `yaml:"description"`
 	Format          string             `yaml:"format"`
 	VCT             string             `yaml:"vct"`
 	Claims          []ClaimMapping     `yaml:"claims"`
@@ -147,6 +149,8 @@ func parseToConfigurationDTOWrapper(data []byte) (interface{}, error) {
 	return &CredentialConfigurationDTO{
 		ID:              req.ID,
 		Handle:          req.Handle,
+		Name:            req.Name,
+		Description:     req.Description,
 		Format:          req.Format,
 		VCT:             req.VCT,
 		Claims:          req.Claims,

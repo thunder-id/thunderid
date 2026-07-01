@@ -70,12 +70,13 @@ func rowFromDTO(t *testing.T, dto PresentationDefinitionDTO) map[string]interfac
 	authorities, err := marshalTrustedAuthorities(dto.TrustedAuthorities)
 	require.NoError(t, err)
 	row := map[string]interface{}{
-		"id":           dto.ID,
-		"handle":       dto.Handle,
-		"display_name": dto.DisplayName,
-		"vct":          dto.VCT,
-		"format":       dto.Format,
-		"claims":       claimsJSON,
+		"id":          dto.ID,
+		"handle":      dto.Handle,
+		"name":        dto.Name,
+		"description": dto.Description,
+		"vct":         dto.VCT,
+		"format":      dto.Format,
+		"claims":      claimsJSON,
 	}
 	if dto.EnforceTrustedIssuer != nil {
 		row["enforce_trusted_issuer"] = *dto.EnforceTrustedIssuer
@@ -142,13 +143,13 @@ func (suite *DefinitionStoreTestSuite) TestCreate() {
 			name: "Success",
 			dto: PresentationDefinitionDTO{
 				ID: "def-1", Handle: "eudi-pid", OUID: "ou-1",
-				DisplayName: "EUDI PID", VCT: "urn:eudi:pid:de:1", Format: "dc+sd-jwt",
+				Name: "EUDI PID", VCT: "urn:eudi:pid:de:1", Format: "dc+sd-jwt",
 				MandatoryClaims: []string{"given_name"},
 			},
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateDefinition,
-					"def-1", "eudi-pid", "ou-1", "EUDI PID", "urn:eudi:pid:de:1", "dc+sd-jwt",
+					"def-1", "eudi-pid", "ou-1", "EUDI PID", "", "urn:eudi:pid:de:1", "dc+sd-jwt",
 					mock.Anything, nil, nil, testDeploymentID,
 				).Return(int64(1), nil)
 			},
@@ -159,7 +160,7 @@ func (suite *DefinitionStoreTestSuite) TestCreate() {
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateDefinition,
-					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 				).Return(int64(0), errors.New("insert failed"))
 			},
@@ -429,11 +430,11 @@ func (suite *DefinitionStoreTestSuite) TestListSummaries() {
 					Return([]map[string]interface{}{
 						{
 							"id": "def-1", "handle": "h1", "ou_id": "ou-1",
-							"display_name": "D1", "vct": "v1", "format": "dc+sd-jwt",
+							"name": "D1", "vct": "v1", "format": "dc+sd-jwt",
 						},
 						{
 							"id": "def-2", "handle": "h2", "ou_id": "ou-2",
-							"display_name": "D2", "vct": "v2", "format": "dc+sd-jwt",
+							"name": "D2", "vct": "v2", "format": "dc+sd-jwt",
 						},
 					}, nil)
 			},
@@ -491,7 +492,7 @@ func (suite *DefinitionStoreTestSuite) TestUpdate() {
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateDefinition,
-					"def-1", "new-handle", "ou-1", "", "urn:eudi:pid:de:1", "dc+sd-jwt",
+					"def-1", "new-handle", "ou-1", "", "", "urn:eudi:pid:de:1", "dc+sd-jwt",
 					mock.Anything, nil, nil, testDeploymentID,
 				).Return(int64(1), nil)
 			},
@@ -502,7 +503,7 @@ func (suite *DefinitionStoreTestSuite) TestUpdate() {
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateDefinition,
-					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 				).Return(int64(0), errors.New("update failed"))
 			},

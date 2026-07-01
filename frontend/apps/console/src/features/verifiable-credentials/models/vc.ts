@@ -22,9 +22,8 @@ export interface ClaimMapping {
   displayName?: string;
 }
 
-/** Wallet-facing presentation of a credential configuration. */
+/** Wallet-facing display metadata with no admin-facing equivalent (name/description come from the config itself). */
 export interface CredentialDisplay {
-  name?: string;
   locale?: string;
   logoUri?: string;
 }
@@ -38,6 +37,8 @@ export interface VerifiableCredential {
   handle: string;
   ouId: string;
   ouHandle?: string;
+  name?: string;
+  description?: string;
   format: string;
   vct: string;
   claims?: ClaimMapping[];
@@ -56,7 +57,7 @@ export interface VerifiableCredentialSummary {
   ouHandle?: string;
   format: string;
   vct: string;
-  displayName?: string;
+  name?: string;
 }
 
 /** The list endpoint returns a plain array of credential configuration summaries. */

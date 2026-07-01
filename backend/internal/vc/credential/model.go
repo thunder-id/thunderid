@@ -31,9 +31,9 @@ type ClaimMapping struct {
 	DisplayName string `json:"displayName,omitempty" yaml:"displayName,omitempty"`
 }
 
-// CredentialDisplay is the wallet-facing presentation of a credential configuration.
+// CredentialDisplay holds wallet-facing display metadata with no admin-facing
+// equivalent; name and description come from the configuration's own fields.
 type CredentialDisplay struct {
-	Name    string `json:"name,omitempty" yaml:"name,omitempty"`
 	Locale  string `json:"locale,omitempty" yaml:"locale,omitempty"`
 	LogoURI string `json:"logoUri,omitempty" yaml:"logoUri,omitempty"`
 }
@@ -47,6 +47,8 @@ type CredentialConfigurationDTO struct {
 	Handle          string             `json:"handle" yaml:"handle"`
 	OUID            string             `json:"ouId" yaml:"ouId,omitempty"`
 	OUHandle        string             `json:"ouHandle,omitempty" yaml:"ouHandle,omitempty"`
+	Name            string             `json:"name,omitempty" yaml:"name,omitempty"`
+	Description     string             `json:"description,omitempty" yaml:"description,omitempty"`
 	Format          string             `json:"format,omitempty" yaml:"format,omitempty"`
 	VCT             string             `json:"vct" yaml:"vct"`
 	Claims          []ClaimMapping     `json:"claims,omitempty" yaml:"claims,omitempty"`
@@ -59,6 +61,8 @@ type credentialConfigurationRequest struct {
 	Handle          string             `json:"handle"`
 	OUID            string             `json:"ouId"`
 	OUHandle        string             `json:"ouHandle"`
+	Name            string             `json:"name"`
+	Description     string             `json:"description"`
 	Format          string             `json:"format"`
 	VCT             string             `json:"vct"`
 	Claims          []ClaimMapping     `json:"claims"`
@@ -72,6 +76,8 @@ type credentialConfigurationResponse struct {
 	Handle          string             `json:"handle"`
 	OUID            string             `json:"ouId"`
 	OUHandle        string             `json:"ouHandle,omitempty"`
+	Name            string             `json:"name,omitempty"`
+	Description     string             `json:"description,omitempty"`
 	Format          string             `json:"format"`
 	VCT             string             `json:"vct"`
 	Claims          []ClaimMapping     `json:"claims,omitempty"`
@@ -87,28 +93,24 @@ func toResponse(dto CredentialConfigurationDTO) credentialConfigurationResponse 
 // CredentialConfigurationList is the minimal projection returned by the list
 // endpoint. It contains only the fields the management UI renders in the table.
 type CredentialConfigurationList struct {
-	ID          string `json:"id"`
-	Handle      string `json:"handle"`
-	OUID        string `json:"ouId"`
-	OUHandle    string `json:"ouHandle,omitempty"`
-	Format      string `json:"format"`
-	VCT         string `json:"vct"`
-	DisplayName string `json:"displayName,omitempty"`
+	ID       string `json:"id"`
+	Handle   string `json:"handle"`
+	OUID     string `json:"ouId"`
+	OUHandle string `json:"ouHandle,omitempty"`
+	Format   string `json:"format"`
+	VCT      string `json:"vct"`
+	Name     string `json:"name,omitempty"`
 }
 
 // toConfigSummary projects a full DTO to a list summary.
 func toConfigSummary(dto CredentialConfigurationDTO) CredentialConfigurationList {
-	displayName := ""
-	if dto.Display != nil {
-		displayName = dto.Display.Name
-	}
 	return CredentialConfigurationList{
-		ID:          dto.ID,
-		Handle:      dto.Handle,
-		OUID:        dto.OUID,
-		OUHandle:    dto.OUHandle,
-		Format:      dto.Format,
-		VCT:         dto.VCT,
-		DisplayName: displayName,
+		ID:       dto.ID,
+		Handle:   dto.Handle,
+		OUID:     dto.OUID,
+		OUHandle: dto.OUHandle,
+		Format:   dto.Format,
+		VCT:      dto.VCT,
+		Name:     dto.Name,
 	}
 }

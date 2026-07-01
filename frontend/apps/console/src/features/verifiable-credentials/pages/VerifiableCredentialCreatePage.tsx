@@ -24,6 +24,7 @@ import {
   Breadcrumbs,
   Button,
   FormControl,
+  FormHelperText,
   FormLabel,
   IconButton,
   LinearProgress,
@@ -39,10 +40,11 @@ import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import useCreateVerifiableCredential from '../api/useCreateVerifiableCredential';
 import ClaimsEditor from '../components/ClaimsEditor';
+import ConfigureName from '../components/create-verifiable-credential/ConfigureName';
 import {claimRowsToRequest, credentialToClaimRows, type ClaimRow} from '../models/claims';
 
-type Step = 'DETAILS' | 'CLAIMS';
-const STEP_ORDER: Step[] = ['DETAILS', 'CLAIMS'];
+type Step = 'NAME' | 'DETAILS' | 'CLAIMS';
+const STEP_ORDER: Step[] = ['NAME', 'DETAILS', 'CLAIMS'];
 
 const LIST_URL = '/verifiable-credentials';
 
@@ -54,25 +56,26 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
 
   const {hasMultipleOUs, ouList} = useHasMultipleOUs();
 
-  const [step, setStep] = useState<Step>('DETAILS');
+  const [step, setStep] = useState<Step>('NAME');
+  const [name, setName] = useState<string>('');
   const [handle, setHandle] = useState<string>('');
+  const [handleEdited, setHandleEdited] = useState<boolean>(false);
   const [ouId, setOuId] = useState<string>('');
   const [vct, setVct] = useState<string>('');
   const [format, setFormat] = useState<string>('dc+sd-jwt');
-  const [displayName, setDisplayName] = useState<string>('');
-  const [locale, setLocale] = useState<string>('');
-  const [logoUri, setLogoUri] = useState<string>('');
   const [claims, setClaims] = useState<ClaimRow[]>(credentialToClaimRows(undefined));
 
   const effectiveOuId: string = ouId !== '' ? ouId : !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
 
   const stepLabels: Record<Step, string> = {
+    NAME: t('createWizard.steps.name'),
     DETAILS: t('create.steps.details'),
     CLAIMS: t('create.steps.claims'),
   };
 
   const stepReady: Record<Step, boolean> = {
-    DETAILS: handle.trim() !== '' && vct.trim() !== '' && effectiveOuId !== '',
+    NAME: name.trim() !== '' && handle.trim() !== '',
+    DETAILS: vct.trim() !== '' && effectiveOuId !== '',
     CLAIMS: claims.some((c) => c.name.trim() !== ''),
   };
 
@@ -84,24 +87,14 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
     void navigate(LIST_URL);
   };
 
-  const buildRequest = () => {
-    const display =
-      displayName.trim() || locale.trim() || logoUri.trim()
-        ? {
-            name: displayName.trim() || undefined,
-            locale: locale.trim() || undefined,
-            logoUri: logoUri.trim() || undefined,
-          }
-        : undefined;
-    return {
-      handle: handle.trim(),
-      ouId: effectiveOuId,
-      vct: vct.trim(),
-      format: format.trim() || undefined,
-      claims: claimRowsToRequest(claims),
-      display,
-    };
-  };
+  const buildRequest = () => ({
+    handle: handle.trim(),
+    ouId: effectiveOuId,
+    name: name.trim() || undefined,
+    vct: vct.trim(),
+    format: format.trim() || undefined,
+    claims: claimRowsToRequest(claims),
+  });
 
   const handleCreate = (): void => {
     createVC.mutate(buildRequest(), {
@@ -136,6 +129,7 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
     setValue: (v: string) => void,
     placeholder?: string,
     required?: boolean,
+    helperText?: string,
   ): JSX.Element => (
     <FormControl fullWidth required={required}>
       <FormLabel htmlFor={id}>{label}</FormLabel>
@@ -144,30 +138,46 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
         id={id}
         value={value}
         placeholder={placeholder}
+        helperText={helperText}
         onChange={(e: ChangeEvent<HTMLInputElement>): void => setValue(e.target.value)}
       />
     </FormControl>
   );
 
   const renderStep = (): JSX.Element => {
+    if (step === 'NAME') {
+      return (
+        <ConfigureName
+          name={name}
+          handle={handle}
+          handleEdited={handleEdited}
+          onNameChange={setName}
+          onHandleChange={setHandle}
+          onHandleEditedChange={setHandleEdited}
+        />
+      );
+    }
     if (step === 'DETAILS') {
       return (
         <Stack spacing={3}>
-          {textField('vc-handle', t('form.handle.label'), handle, setHandle, 'eudi-pid', true)}
-          {textField('vc-vct', t('form.vct.label'), vct, setVct, 'urn:eudi:pid:de:1', true)}
+          {textField('vc-vct', t('form.vct.label'), vct, setVct, 'urn:eudi:pid:de:1', true, t('form.vct.hint'))}
           <FormControl fullWidth>
             <FormLabel htmlFor="vc-format">{t('form.format.label')}</FormLabel>
             <Select id="vc-format" value={format} onChange={(e): void => setFormat(e.target.value)}>
               <MenuItem value="dc+sd-jwt">{t('form.format.sdJwt')}</MenuItem>
             </Select>
+            <FormHelperText>{t('form.format.hint')}</FormHelperText>
           </FormControl>
-          {textField('vc-display-name', t('form.display.name'), displayName, setDisplayName, 'EUDI Wallet PID')}
-          {textField('vc-locale', t('form.display.locale'), locale, setLocale, 'en-US')}
-          {textField('vc-logo', t('form.display.logo'), logoUri, setLogoUri, 'https://…/logo.png')}
           {hasMultipleOUs && (
             <FormControl fullWidth required>
               <FormLabel>{t('form.organizationUnit.label')}</FormLabel>
-              <OrganizationUnitTreePicker id="vc-ou-picker" value={effectiveOuId} onChange={setOuId} maxHeight={320} />
+              <OrganizationUnitTreePicker
+                id="vc-ou-picker"
+                value={effectiveOuId}
+                onChange={setOuId}
+                maxHeight={320}
+                helperText={t('form.organizationUnit.pickerHint')}
+              />
             </FormControl>
           )}
         </Stack>

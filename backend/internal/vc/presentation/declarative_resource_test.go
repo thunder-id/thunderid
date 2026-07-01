@@ -150,7 +150,7 @@ func (s *DefinitionExporterTestSuite) TestParseToDefinitionDTO() {
 	yamlDoc := []byte(`
 id: def-1
 handle: eudi-pid
-displayName: EUDI PID
+name: EUDI PID
 vct: urn:eudi:pid:de:1
 format: dc+sd-jwt
 mandatoryClaims:
@@ -208,7 +208,7 @@ func (s *DefinitionExporterTestSuite) TestExportImportRoundTrip() {
 	original := &PresentationDefinitionDTO{
 		ID:                   "def-1",
 		Handle:               "eudi-pid",
-		DisplayName:          "EUDI PID",
+		Name:                 "EUDI PID",
 		VCT:                  "urn:eudi:pid:de:1",
 		Format:               DefaultCredentialFormat,
 		RequestedClaims:      []string{"given_name"},
