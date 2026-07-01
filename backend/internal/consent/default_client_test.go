@@ -123,7 +123,12 @@ func (s *DefaultClientTestSuite) TestCreateConsentElements_Success() {
 	c := newTestClient(s.T(), httpMock)
 
 	respBody := elementsCreateResponseDTO{
-		Data: []elementResponseDTO{{ID: "e1", Name: "email", Type: "basic"}},
+		Results: []bulkElementResultDTO{
+			{
+				Status:  bulkResultStatusSuccess,
+				Element: &elementResponseDTO{ElementID: "e1", Name: "email", Type: "basic"},
+			},
+		},
 	}
 	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
 		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
@@ -136,13 +141,74 @@ func (s *DefaultClientTestSuite) TestCreateConsentElements_Success() {
 	s.Equal("email", result[0].Name)
 }
 
+func (s *DefaultClientTestSuite) TestCreateConsentElements_PartialFailureReturnsConflict() {
+	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
+	c := newTestClient(s.T(), httpMock)
+
+	respBody := elementsCreateResponseDTO{
+		Results: []bulkElementResultDTO{
+			{Status: bulkResultStatusSuccess, Element: &elementResponseDTO{
+				ElementID: "e1", Name: "email", Type: "basic",
+			}},
+			{Status: bulkResultStatusFailed,
+				Error: "element with name 'phone' and namespace 'default' already exists"},
+		},
+	}
+	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
+		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
+
+	result, svcErr := c.createConsentElements(context.Background(), "ou1", []ConsentElementInput{
+		{Name: "email"}, {Name: "phone"},
+	})
+
+	s.Nil(result)
+	s.Equal(&ErrorConsentElementAlreadyExists, svcErr)
+}
+
+func (s *DefaultClientTestSuite) TestCreateConsentElements_PartialFailureReturnsInvalidElement() {
+	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
+	c := newTestClient(s.T(), httpMock)
+
+	respBody := elementsCreateResponseDTO{
+		Results: []bulkElementResultDTO{
+			{Status: bulkResultStatusFailed, Error: "name too long"},
+		},
+	}
+	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
+		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
+
+	result, svcErr := c.createConsentElements(context.Background(), "ou1", []ConsentElementInput{{Name: "x"}})
+
+	s.Nil(result)
+	s.Equal(&ErrorInvalidConsentElementRequest, svcErr)
+}
+
+func (s *DefaultClientTestSuite) TestCreateConsentElements_SuccessMissingElementReturnsInternalError() {
+	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
+	c := newTestClient(s.T(), httpMock)
+
+	respBody := elementsCreateResponseDTO{
+		Results: []bulkElementResultDTO{{Status: bulkResultStatusSuccess}},
+	}
+	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
+		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
+
+	result, svcErr := c.createConsentElements(context.Background(), "ou1", []ConsentElementInput{{Name: "x"}})
+
+	s.Nil(result)
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+}
+
 func (s *DefaultClientTestSuite) TestDoRequest_PropagatesCorrelationID() {
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newTestClient(s.T(), httpMock)
 
 	var gotCorrelationID string
 	respBody := elementsCreateResponseDTO{
-		Data: []elementResponseDTO{{ID: "e1", Name: "email", Type: "basic"}},
+		Results: []bulkElementResultDTO{{
+			Status:  bulkResultStatusSuccess,
+			Element: &elementResponseDTO{ElementID: "e1", Name: "email", Type: "basic"},
+		}},
 	}
 	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
 		RunAndReturn(func(req *http.Request) (*http.Response, error) {
@@ -220,7 +286,7 @@ func (s *DefaultClientTestSuite) TestListConsentElements_Success() {
 	c := newTestClient(s.T(), httpMock)
 
 	respBody := elementListResponseDTO{
-		Data: []elementResponseDTO{{ID: "e1", Name: "email", Type: "basic"}},
+		Data: []elementResponseDTO{{ElementID: "e1", Name: "email", Type: "basic"}},
 	}
 	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
 		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
@@ -258,65 +324,6 @@ func (s *DefaultClientTestSuite) TestListConsentElements_ServerError() {
 
 	s.Nil(result)
 	s.Equal(&tidcommon.InternalServerError, svcErr)
-}
-
-// ----- updateConsentElement -----
-
-func (s *DefaultClientTestSuite) TestUpdateConsentElement_Success() {
-	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
-	c := newTestClient(s.T(), httpMock)
-
-	respBody := elementResponseDTO{ID: "e1", Name: "updated-email", Type: "basic"}
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
-
-	input := &ConsentElementInput{Name: "updated-email"}
-	result, svcErr := c.updateConsentElement(context.Background(), "ou1", "e1", input)
-
-	s.Nil(svcErr)
-	s.Equal("updated-email", result.Name)
-}
-
-func (s *DefaultClientTestSuite) TestUpdateConsentElement_NotFound() {
-	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
-	c := newTestClient(s.T(), httpMock)
-
-	errBody := consentBackendErrorDTO{Code: "CE-404"}
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(buildHTTPResponse(s.T(), http.StatusNotFound, errBody), nil)
-
-	result, svcErr := c.updateConsentElement(context.Background(), "ou1", "missing", &ConsentElementInput{Name: "x"})
-
-	s.Nil(result)
-	s.Equal(&ErrorConsentElementNotFound, svcErr)
-}
-
-func (s *DefaultClientTestSuite) TestUpdateConsentElement_BadRequest() {
-	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
-	c := newTestClient(s.T(), httpMock)
-
-	errBody := consentBackendErrorDTO{Code: "CE-400"}
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(buildHTTPResponse(s.T(), http.StatusBadRequest, errBody), nil)
-
-	result, svcErr := c.updateConsentElement(context.Background(), "ou1", "e1", &ConsentElementInput{Name: "x"})
-
-	s.Nil(result)
-	s.Equal(&ErrorInvalidConsentElementRequest, svcErr)
-}
-
-func (s *DefaultClientTestSuite) TestUpdateConsentElement_Conflict() {
-	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
-	c := newTestClient(s.T(), httpMock)
-
-	errBody := consentBackendErrorDTO{Code: "CE-409"}
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(buildHTTPResponse(s.T(), http.StatusConflict, errBody), nil)
-
-	result, svcErr := c.updateConsentElement(context.Background(), "ou1", "e1", &ConsentElementInput{Name: "dup"})
-
-	s.Nil(result)
-	s.Equal(&ErrorConsentElementAlreadyExists, svcErr)
 }
 
 // ----- deleteConsentElement -----
@@ -377,13 +384,27 @@ func (s *DefaultClientTestSuite) TestDeleteConsentElement_Unauthorized() {
 
 // ----- validateConsentElements -----
 
-func (s *DefaultClientTestSuite) TestValidateConsentElements_Success() {
+// validateElementsMockResponse returns a list response containing exactly one element
+// matching `name` (when matched == true), or an empty list otherwise.
+func validateElementsMockResponse(t *testing.T, name string, matched bool) *http.Response {
+	t.Helper()
+	body := elementListResponseDTO{Data: []elementResponseDTO{}}
+	if matched {
+		body.Data = []elementResponseDTO{{ElementID: "e-" + name, Name: name, Type: "basic"}}
+	}
+	return buildHTTPResponse(t, http.StatusOK, body)
+}
+
+func (s *DefaultClientTestSuite) TestValidateConsentElements_AllMatch() {
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newTestClient(s.T(), httpMock)
 
-	respBody := []string{"email", "phone"}
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
+	httpMock.EXPECT().Do(mock.MatchedBy(func(req *http.Request) bool {
+		return req.Method == http.MethodGet && req.URL.Query().Get("name") == "email"
+	})).Return(validateElementsMockResponse(s.T(), "email", true), nil).Once()
+	httpMock.EXPECT().Do(mock.MatchedBy(func(req *http.Request) bool {
+		return req.Method == http.MethodGet && req.URL.Query().Get("name") == "phone"
+	})).Return(validateElementsMockResponse(s.T(), "phone", true), nil).Once()
 
 	result, svcErr := c.validateConsentElements(context.Background(), "ou1", []string{"email", "phone"})
 
@@ -391,18 +412,52 @@ func (s *DefaultClientTestSuite) TestValidateConsentElements_Success() {
 	s.Equal([]string{"email", "phone"}, result)
 }
 
-func (s *DefaultClientTestSuite) TestValidateConsentElements_BadRequestReturnsEmpty() {
+func (s *DefaultClientTestSuite) TestValidateConsentElements_NoneMatchReturnsEmpty() {
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newTestClient(s.T(), httpMock)
 
-	errBody := consentBackendErrorDTO{Code: "CE-400", Message: "no elements found"}
 	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(buildHTTPResponse(s.T(), http.StatusBadRequest, errBody), nil)
+		Return(validateElementsMockResponse(s.T(), "nonexistent", false), nil).Once()
 
 	result, svcErr := c.validateConsentElements(context.Background(), "ou1", []string{"nonexistent"})
 
 	s.Nil(svcErr)
 	s.Equal([]string{}, result)
+}
+
+// TestValidateConsentElements_PartialMatchIsExactFiltered confirms that the upstream
+// partial-match behavior (returning items whose name contains the query) is filtered to
+// only exact name matches.
+func (s *DefaultClientTestSuite) TestValidateConsentElements_PartialMatchIsExactFiltered() {
+	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
+	c := newTestClient(s.T(), httpMock)
+
+	respBody := elementListResponseDTO{Data: []elementResponseDTO{
+		{ElementID: "e1", Name: "user_email_v2", Type: "basic"},
+		{ElementID: "e2", Name: "user_email_alt", Type: "basic"},
+	}}
+	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
+		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil).Once()
+
+	result, svcErr := c.validateConsentElements(context.Background(), "ou1", []string{"user_email"})
+
+	s.Nil(svcErr)
+	s.Equal([]string{}, result)
+}
+
+func (s *DefaultClientTestSuite) TestValidateConsentElements_DeduplicatesInput() {
+	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
+	c := newTestClient(s.T(), httpMock)
+
+	httpMock.EXPECT().Do(mock.MatchedBy(func(req *http.Request) bool {
+		return req.Method == http.MethodGet && req.URL.Query().Get("name") == "email"
+	})).Return(validateElementsMockResponse(s.T(), "email", true), nil).Once()
+
+	result, svcErr := c.validateConsentElements(context.Background(), "ou1",
+		[]string{"email", "email", ""})
+
+	s.Nil(svcErr)
+	s.Equal([]string{"email"}, result)
 }
 
 func (s *DefaultClientTestSuite) TestValidateConsentElements_ServerError() {
@@ -426,10 +481,10 @@ func (s *DefaultClientTestSuite) TestCreateConsentPurpose_Success() {
 	c := newTestClient(s.T(), httpMock)
 
 	respBody := purposeResponseDTO{
-		ID:       "p1",
-		Name:     "Login Purpose",
-		ClientID: "app-1",
-		Elements: []purposeElementDTO{{Name: "email", IsMandatory: false}},
+		PurposeID: "p1",
+		Name:      "Login Purpose",
+		GroupID:   "app-1",
+		Elements:  []purposeElementDTO{{Name: "email", Mandatory: false}},
 	}
 	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
 		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
@@ -480,17 +535,28 @@ func (s *DefaultClientTestSuite) TestListConsentPurposes_Success() {
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newTestClient(s.T(), httpMock)
 
-	respBody := purposeListResponseDTO{
-		Data: []purposeResponseDTO{{ID: "p1", Name: "Login", ClientID: "app-1"}},
+	listBody := purposeListResponseDTO{
+		Data: []purposeResponseDTO{{PurposeID: "p1", Name: "Login", GroupID: "app-1"}},
 	}
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
+	httpMock.EXPECT().Do(mock.MatchedBy(func(req *http.Request) bool {
+		return req.URL.Path == "/consent-purposes"
+	})).Return(buildHTTPResponse(s.T(), http.StatusOK, listBody), nil).Once()
+
+	fullBody := purposeResponseDTO{
+		PurposeID: "p1", Name: "Login", GroupID: "app-1",
+		Elements: []purposeElementDTO{{Name: "email", Mandatory: false}},
+	}
+	httpMock.EXPECT().Do(mock.MatchedBy(func(req *http.Request) bool {
+		return req.URL.Path == "/consent-purposes/p1"
+	})).Return(buildHTTPResponse(s.T(), http.StatusOK, fullBody), nil).Once()
 
 	result, svcErr := c.listConsentPurposes(context.Background(), "ou1", "app-1")
 
 	s.Nil(svcErr)
 	s.Len(result, 1)
 	s.Equal("Login", result[0].Name)
+	s.Len(result[0].Elements, 1)
+	s.Equal("email", result[0].Elements[0].Name)
 }
 
 func (s *DefaultClientTestSuite) TestListConsentPurposes_ServerError() {
@@ -513,7 +579,7 @@ func (s *DefaultClientTestSuite) TestUpdateConsentPurpose_Success() {
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newTestClient(s.T(), httpMock)
 
-	respBody := purposeResponseDTO{ID: "p1", Name: "Updated", ClientID: "app-1"}
+	respBody := purposeResponseDTO{PurposeID: "p1", Name: "Updated", GroupID: "app-1"}
 	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
 		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
 
@@ -566,46 +632,6 @@ func (s *DefaultClientTestSuite) TestUpdateConsentPurpose_Conflict() {
 	s.Equal(&ErrorConsentPurposeAlreadyExists, svcErr)
 }
 
-// ----- deleteConsentPurpose -----
-
-func (s *DefaultClientTestSuite) TestDeleteConsentPurpose_Success() {
-	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
-	c := newTestClient(s.T(), httpMock)
-
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(buildHTTPResponse(s.T(), http.StatusNoContent, nil), nil)
-
-	svcErr := c.deleteConsentPurpose(context.Background(), "ou1", "p1")
-
-	s.Nil(svcErr)
-}
-
-func (s *DefaultClientTestSuite) TestDeleteConsentPurpose_NotFound() {
-	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
-	c := newTestClient(s.T(), httpMock)
-
-	errBody := consentBackendErrorDTO{Code: "CE-404"}
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(buildHTTPResponse(s.T(), http.StatusNotFound, errBody), nil)
-
-	svcErr := c.deleteConsentPurpose(context.Background(), "ou1", "missing")
-
-	s.Equal(&ErrorConsentPurposeNotFound, svcErr)
-}
-
-func (s *DefaultClientTestSuite) TestDeleteConsentPurpose_ConflictDueToAssociatedRecords() {
-	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
-	c := newTestClient(s.T(), httpMock)
-
-	errBody := consentBackendErrorDTO{Code: "CE-409", Message: "purpose has associated records"}
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(buildHTTPResponse(s.T(), http.StatusConflict, errBody), nil)
-
-	svcErr := c.deleteConsentPurpose(context.Background(), "ou1", "p1")
-
-	s.Equal(&ErrorDeletingConsentPurposeWithAssociatedRecords, svcErr)
-}
-
 // ----- createConsent -----
 
 func (s *DefaultClientTestSuite) TestCreateConsent_Success() {
@@ -613,10 +639,10 @@ func (s *DefaultClientTestSuite) TestCreateConsent_Success() {
 	c := newTestClient(s.T(), httpMock)
 
 	respBody := consentResponseDTO{
-		ID:       "c1",
-		Type:     "authentication",
-		ClientID: "app-1",
-		Status:   "ACTIVE",
+		ID:      "c1",
+		Type:    "authentication",
+		GroupID: "app-1",
+		Status:  "ACTIVE",
 	}
 	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
 		Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
@@ -708,7 +734,7 @@ func (s *DefaultClientTestSuite) TestSearchConsents_EmptyFilter_Success() {
 		ConsentStatuses: []providers.ConsentStatus{providers.ConsentStatusActive},
 		GroupIDs:        []string{"app-1"},
 		UserIDs:         []string{"user-1"},
-		PurposeNames:    []string{"login"},
+		PurposeName:     "login",
 		Limit:           10,
 		Offset:          5,
 	})
@@ -726,15 +752,15 @@ func (s *DefaultClientTestSuite) TestSearchConsents_ExpiredStatusFilter_Validity
 		{
 			name: "converts active consent to expired when validity time has elapsed",
 			data: []consentResponseDTO{
-				{ID: "c-expired", Type: "authentication", Status: "ACTIVE", ValidityTime: nowUnix - 60},
-				{ID: "c-active", Type: "authentication", Status: "ACTIVE", ValidityTime: nowUnix + 3600},
+				{ID: "c-expired", Type: "authentication", Status: "ACTIVE", ExpirationTime: nowUnix - 60},
+				{ID: "c-active", Type: "authentication", Status: "ACTIVE", ExpirationTime: nowUnix + 3600},
 			},
 		},
 		{
 			name: "does not convert non-active consent status",
 			data: []consentResponseDTO{
-				{ID: "c-revoked", Type: "authentication", Status: "REVOKED", ValidityTime: nowUnix - 60},
-				{ID: "c-expired", Type: "authentication", Status: "ACTIVE", ValidityTime: nowUnix - 60},
+				{ID: "c-revoked", Type: "authentication", Status: "REVOKED", ExpirationTime: nowUnix - 60},
+				{ID: "c-expired", Type: "authentication", Status: "ACTIVE", ExpirationTime: nowUnix - 60},
 			},
 		},
 	}
@@ -824,16 +850,16 @@ func (s *DefaultClientTestSuite) TestUpdateConsent_Success() {
 	c := newTestClient(s.T(), httpMock)
 
 	respBody := consentResponseDTO{
-		ID:       "c1",
-		Type:     "authentication",
-		ClientID: "app-1",
-		Status:   "ACTIVE",
+		ID:      "c1",
+		Type:    "authentication",
+		GroupID: "app-1",
+		Status:  "ACTIVE",
 		Purposes: []purposeItemResponseDTO{
 			{
 				Name: "login",
 				Elements: []elementApprovalResponseDTO{
-					{Name: "email", IsUserApproved: true},
-					{Name: "family_name", IsUserApproved: false},
+					{Name: "email", Approved: true},
+					{Name: "family_name", Approved: false},
 				},
 			},
 		},
@@ -1050,7 +1076,7 @@ func (s *DefaultClientTestSuite) TestBuildConsentSearchURL_AllFilters() {
 		ConsentStatuses: []providers.ConsentStatus{providers.ConsentStatusActive},
 		GroupIDs:        []string{"app-1"},
 		UserIDs:         []string{"user-1"},
-		PurposeNames:    []string{"login"},
+		PurposeName:     "login",
 		Limit:           10,
 		Offset:          5,
 	}
@@ -1063,9 +1089,9 @@ func (s *DefaultClientTestSuite) TestBuildConsentSearchURL_AllFilters() {
 	s.Contains(u, "?")
 	s.Contains(u, "consentTypes=")
 	s.Contains(u, "consentStatuses=")
-	s.Contains(u, "clientIds=")
+	s.Contains(u, "groupIds=")
 	s.Contains(u, "userIds=")
-	s.Contains(u, "purposeNames=")
+	s.Contains(u, "purposeName=")
 	s.Contains(u, "limit=")
 	s.Contains(u, "offset=")
 }
@@ -1125,19 +1151,6 @@ func (s *DefaultClientTestSuite) TestListConsentElements_HTTPError_ReturnsIntern
 		Return(nil, errors.New("network failure"))
 
 	result, svcErr := c.listConsentElements(context.Background(), "ou1", providers.NamespaceAttribute, "email")
-
-	s.Nil(result)
-	s.Equal(&tidcommon.InternalServerError, svcErr)
-}
-
-func (s *DefaultClientTestSuite) TestUpdateConsentElement_HTTPError_ReturnsInternalError() {
-	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
-	c := newTestClient(s.T(), httpMock)
-
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(nil, errors.New("network failure"))
-
-	result, svcErr := c.updateConsentElement(context.Background(), "ou1", "e1", &ConsentElementInput{Name: "email"})
 
 	s.Nil(result)
 	s.Equal(&tidcommon.InternalServerError, svcErr)
@@ -1362,18 +1375,6 @@ func (s *DefaultClientTestSuite) TestListConsentElements_InvalidJSON_ReturnsInte
 	s.Equal(&tidcommon.InternalServerError, svcErr)
 }
 
-func (s *DefaultClientTestSuite) TestUpdateConsentElement_InvalidJSON_ReturnsInternalError() {
-	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
-	c := newTestClient(s.T(), httpMock)
-
-	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).Return(buildInvalidJSONResponse(), nil)
-
-	result, svcErr := c.updateConsentElement(context.Background(), "ou1", "e1", &ConsentElementInput{Name: "email"})
-
-	s.Nil(result)
-	s.Equal(&tidcommon.InternalServerError, svcErr)
-}
-
 func (s *DefaultClientTestSuite) TestValidateConsentElements_InvalidJSON_ReturnsInternalError() {
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newTestClient(s.T(), httpMock)
@@ -1472,8 +1473,8 @@ func (s *DefaultClientTestSuite) TestCreateConsent_WithPurposesAndElements_Succe
 			{
 				Name: "login",
 				Elements: []elementApprovalResponseDTO{
-					{Name: "email", IsUserApproved: true},
-					{Name: "phone", IsUserApproved: false},
+					{Name: "email", Approved: true},
+					{Name: "phone", Approved: false},
 				},
 			},
 		},
@@ -1521,7 +1522,7 @@ func (s *DefaultClientTestSuite) TestSearchConsents_WithPurposesAndElements_Succ
 					{
 						Name: "profile",
 						Elements: []elementApprovalResponseDTO{
-							{Name: "given_name", IsUserApproved: true},
+							{Name: "given_name", Approved: true},
 						},
 					},
 				},
@@ -1651,13 +1652,17 @@ func (s *DefaultClientTestSuite) TestDoRequest_NetworkErrorRetry_SucceedsOnSecon
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newTestClientWithConfig(s.T(), httpMock, 1, 1) // maxRetries=1 → 2 attempts
 
-	successResp := buildHTTPResponse(s.T(), http.StatusOK,
-		purposeListResponseDTO{Data: []purposeResponseDTO{{ID: "p1", Name: "Login"}}})
+	listResp := buildHTTPResponse(s.T(), http.StatusOK,
+		purposeListResponseDTO{Data: []purposeResponseDTO{{PurposeID: "p1", Name: "Login"}}})
+	fullResp := buildHTTPResponse(s.T(), http.StatusOK,
+		purposeResponseDTO{PurposeID: "p1", Name: "Login"})
 
 	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
 		Return(nil, errors.New("transient error")).Once()
 	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
-		Return(successResp, nil).Once()
+		Return(listResp, nil).Once()
+	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).
+		Return(fullResp, nil).Once()
 
 	result, svcErr := c.listConsentPurposes(context.Background(), "ou1", "")
 
@@ -1689,8 +1694,8 @@ func (s *DefaultClientTestSuite) TestHandleClientError_InvalidJSONBody_ReturnsPr
 	}
 	httpMock.EXPECT().Do(mock.AnythingOfType("*http.Request")).Return(resp, nil)
 
-	result, svcErr := c.updateConsentElement(context.Background(), "ou1", "e1",
-		&ConsentElementInput{Name: "email"})
+	result, svcErr := c.createConsentElements(context.Background(), "ou1",
+		[]ConsentElementInput{{Name: "email"}})
 
 	s.Nil(result)
 	s.Equal(&ErrorInvalidConsentElementRequest, svcErr)
@@ -1725,19 +1730,23 @@ func (s *DefaultClientTestSuite) TestBuildConsentSearchURL_NilFilter_ReturnsBase
 	s.NotContains(u, "?")
 }
 
-// ----- listConsentPurposes uses clientIds query param (not name) -----
+// ----- listConsentPurposes uses groupIds query param (not name) -----
 
-func (s *DefaultClientTestSuite) TestListConsentPurposes_WithGroupID_UsesClientIdsParam() {
+func (s *DefaultClientTestSuite) TestListConsentPurposes_WithGroupID_UsesGroupIdsParam() {
 	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
 	c := newTestClient(s.T(), httpMock)
 
-	respBody := purposeListResponseDTO{
-		Data: []purposeResponseDTO{{ID: "p1", Name: "Login", ClientID: "app-99"}},
+	listBody := purposeListResponseDTO{
+		Data: []purposeResponseDTO{{PurposeID: "p1", Name: "Login", GroupID: "app-99"}},
 	}
 	httpMock.EXPECT().Do(mock.MatchedBy(func(req *http.Request) bool {
-		query := req.URL.RawQuery
-		return query != "" && req.URL.Query().Get("clientIds") == "app-99"
-	})).Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
+		return req.URL.Query().Get("groupIds") == "app-99"
+	})).Return(buildHTTPResponse(s.T(), http.StatusOK, listBody), nil).Once()
+
+	fullBody := purposeResponseDTO{PurposeID: "p1", Name: "Login", GroupID: "app-99"}
+	httpMock.EXPECT().Do(mock.MatchedBy(func(req *http.Request) bool {
+		return req.URL.Path == "/consent-purposes/p1"
+	})).Return(buildHTTPResponse(s.T(), http.StatusOK, fullBody), nil).Once()
 
 	result, svcErr := c.listConsentPurposes(context.Background(), "ou1", "app-99")
 
@@ -1774,4 +1783,73 @@ func (s *DefaultClientTestSuite) TestFilterAttributePurposes() {
 	s.Len(got, 2)
 	s.Equal("1", got[0].ID)
 	s.Equal("4", got[1].ID)
+}
+
+// ----- v0.3.0 endpoint/header/body wire assertions -----
+
+// TestUpdateConsentPurpose_PostsToVersionsEndpoint verifies that updateConsentPurpose
+// translates to POST /consent-purposes/{id}/versions (v0.3.0 replaces PUT-edit-in-place
+// with immutable-version creation).
+func (s *DefaultClientTestSuite) TestUpdateConsentPurpose_PostsToVersionsEndpoint() {
+	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
+	c := newTestClient(s.T(), httpMock)
+
+	respBody := purposeResponseDTO{PurposeID: "p1", Name: "Login", GroupID: "app-1", Version: "v2"}
+	httpMock.EXPECT().Do(mock.MatchedBy(func(req *http.Request) bool {
+		return req.Method == http.MethodPost && req.URL.Path == "/consent-purposes/p1/versions"
+	})).Return(buildHTTPResponse(s.T(), http.StatusCreated, respBody), nil)
+
+	_, svcErr := c.updateConsentPurpose(context.Background(), "ou1", "p1",
+		&ConsentPurposeInput{Name: "Login", GroupID: "app-1"})
+
+	s.Nil(svcErr)
+}
+
+// TestRevokeConsent_UsesPostAndSendsActionBy verifies that revokeConsent issues a POST and
+// populates the v0.3.0-required actionBy field.
+func (s *DefaultClientTestSuite) TestRevokeConsent_UsesPostAndSendsActionBy() {
+	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
+	c := newTestClient(s.T(), httpMock)
+
+	httpMock.EXPECT().Do(mock.MatchedBy(func(req *http.Request) bool {
+		if req.Method != http.MethodPost || req.URL.Path != "/consents/c1/revoke" {
+			return false
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return false
+		}
+		req.Body = io.NopCloser(bytes.NewReader(body))
+		var dto consentRevokeDTO
+		if err := json.Unmarshal(body, &dto); err != nil {
+			return false
+		}
+		return dto.ActionBy == revokeActionBy && dto.RevocationReason == "user asked"
+	})).Return(buildHTTPResponse(s.T(), http.StatusOK, nil), nil)
+
+	svcErr := c.revokeConsent(context.Background(), "ou1", "c1",
+		&ConsentRevokeRequest{Reason: "user asked"})
+
+	s.Nil(svcErr)
+}
+
+// TestSetCommonHeaders_UsesGroupIdHeader verifies the v0.3.0 header rename from
+// `TPP-client-id` to `group-id`.
+func (s *DefaultClientTestSuite) TestSetCommonHeaders_UsesGroupIdHeader() {
+	httpMock := httpmock.NewHTTPClientInterfaceMock(s.T())
+	c := newTestClient(s.T(), httpMock)
+
+	respBody := consentResponseDTO{ID: "c1", Status: "ACTIVE"}
+	httpMock.EXPECT().Do(mock.MatchedBy(func(req *http.Request) bool {
+		return req.Header.Get("group-id") == "app-1" &&
+			req.Header.Get("org-id") == "ou1" &&
+			req.Header.Get("TPP-client-id") == ""
+	})).Return(buildHTTPResponse(s.T(), http.StatusOK, respBody), nil)
+
+	_, svcErr := c.createConsent(context.Background(), "ou1", &ConsentRequest{
+		Type:    providers.ConsentTypeAuthentication,
+		GroupID: "app-1",
+	})
+
+	s.Nil(svcErr)
 }

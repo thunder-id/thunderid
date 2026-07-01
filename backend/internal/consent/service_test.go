@@ -179,48 +179,6 @@ func (s *ConsentServiceTestSuite) TestListConsentElements_ClientError() {
 	s.NotNil(svcErr)
 }
 
-// ----- UpdateConsentElement -----
-
-func (s *ConsentServiceTestSuite) TestUpdateConsentElement_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	input := &ConsentElementInput{Name: "email-updated"}
-	expected := &ConsentElement{ID: "elem-1", Name: "email-updated"}
-	clientMock.EXPECT().updateConsentElement(mock.Anything, "ou1", "elem-1", input).Return(expected, nil)
-
-	result, svcErr := svc.UpdateConsentElement(context.Background(), "ou1", "elem-1", input)
-
-	s.Nil(svcErr)
-	s.Equal(expected, result)
-}
-
-func (s *ConsentServiceTestSuite) TestUpdateConsentElement_NotFound() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	input := &ConsentElementInput{Name: "missing"}
-	clientMock.EXPECT().updateConsentElement(mock.Anything, "ou1", "elem-99", input).
-		Return(nil, &ErrorConsentElementNotFound)
-
-	result, svcErr := svc.UpdateConsentElement(context.Background(), "ou1", "elem-99", input)
-
-	s.Nil(result)
-	s.Equal(&ErrorConsentElementNotFound, svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestUpdateConsentElement_NilInput() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	// Client should not be called when input is nil
-	result, svcErr := svc.UpdateConsentElement(context.Background(), "ou1", "elem-1", nil)
-
-	s.Nil(result)
-	s.NotNil(svcErr)
-	s.Equal(&ErrorInvalidRequestFormat, svcErr)
-}
-
 // ----- DeleteConsentElement -----
 
 func (s *ConsentServiceTestSuite) TestDeleteConsentElement_Success() {
@@ -410,45 +368,6 @@ func (s *ConsentServiceTestSuite) TestUpdateConsentPurpose_NilInput() {
 	s.Nil(result)
 	s.NotNil(svcErr)
 	s.Equal(&ErrorInvalidRequestFormat, svcErr)
-}
-
-// ----- DeleteConsentPurpose -----
-
-func (s *ConsentServiceTestSuite) TestDeleteConsentPurpose_Success() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	clientMock.EXPECT().deleteConsentPurpose(mock.Anything, "ou1", "purpose-1").Return(
-		(*tidcommon.ServiceError)(nil))
-
-	svcErr := svc.DeleteConsentPurpose(context.Background(), "ou1", "purpose-1")
-
-	s.Nil(svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestDeleteConsentPurpose_NotFoundIsIdempotent() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	clientMock.EXPECT().deleteConsentPurpose(mock.Anything, "ou1", "missing").
-		Return(&ErrorConsentPurposeNotFound)
-
-	svcErr := svc.DeleteConsentPurpose(context.Background(), "ou1", "missing")
-
-	s.Nil(svcErr)
-}
-
-func (s *ConsentServiceTestSuite) TestDeleteConsentPurpose_OtherErrorPropagated() {
-	clientMock := newConsentClientInterfaceMock(s.T())
-	svc := newServiceWithMockClient(s.T(), true, clientMock)
-
-	clientMock.EXPECT().deleteConsentPurpose(mock.Anything, "ou1", "purpose-1").
-		Return(&ErrorDeletingConsentPurposeWithAssociatedRecords)
-
-	svcErr := svc.DeleteConsentPurpose(context.Background(), "ou1", "purpose-1")
-
-	s.NotNil(svcErr)
-	s.Equal(&ErrorDeletingConsentPurposeWithAssociatedRecords, svcErr)
 }
 
 // ----- CreateConsent -----

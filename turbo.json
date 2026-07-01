@@ -5,6 +5,11 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**", "build/**", "modules/**"]
     },
+    "@thunderid/docs#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["build/**"],
+      "env": ["DOCUSAURUS_URL", "DOCUSAURUS_BASE_URL"]
+    },
     "@thunderid/eslint-plugin#build": {
       "dependsOn": [],
       "outputs": ["dist/**"]

@@ -42,11 +42,28 @@ import (
 
 // External service endpoints.
 const (
-	consentElementsEndpoint         = "/consent-elements"
-	consentElementsValidateEndpoint = "/consent-elements/validate"
-	consentPurposesEndpoint         = "/consent-purposes"
-	consentsEndpoint                = "/consents"
-	consentValidateEndpoint         = "/consents/validate"
+	consentElementsEndpoint = "/consent-elements"
+	consentPurposesEndpoint = "/consent-purposes"
+	consentsEndpoint        = "/consents"
+	consentValidateEndpoint = "/consents/validate"
+)
+
+// revokeActionBy is the value sent in the revoke payload's required actionBy field. The
+// internal ConsentRevokeRequest does not carry actor identity yet; once the
+// interface gains an actor field, source it from there instead.
+const revokeActionBy = "user"
+
+// elementTypeBasic is the consent server wire type for elements with simple string values.
+// only `basic` is used currently; `json` and `xml` types are not used.
+const elementTypeBasic = "basic"
+
+// The `versions` path segment is used in the consent service API to create a new version
+const versions = "versions"
+
+// Statuses in bulk element-create results.
+const (
+	bulkResultStatusSuccess = "SUCCESS"
+	bulkResultStatusFailed  = "FAILED"
 )
 
 // clientConfig holds configuration for the consent client.
@@ -78,50 +95,91 @@ func newDefaultClient(httpClient httpservice.HTTPClientInterface) consentClientI
 // elementCreateDTO represents the request body for creating a consent element.
 type elementCreateDTO struct {
 	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
+	Namespace   string            `json:"namespace,omitempty"`
 	Type        string            `json:"type"`
+	DisplayName string            `json:"displayName,omitempty"`
+	Description string            `json:"description,omitempty"`
 	Properties  map[string]string `json:"properties,omitempty"`
 }
 
 // elementResponseDTO represents the response body for a consent element.
 type elementResponseDTO struct {
-	ID          string            `json:"id"`
+	ElementID   string            `json:"elementId"`
 	Name        string            `json:"name"`
-	Description string            `json:"description"`
+	Namespace   string            `json:"namespace"`
 	Type        string            `json:"type"`
+	Version     string            `json:"version"`
+	DisplayName string            `json:"displayName"`
+	Description string            `json:"description"`
 	Properties  map[string]string `json:"properties"`
+	CreatedTime int64             `json:"createdTime"`
 }
 
-// elementsCreateResponseDTO represents the response body for creating consent elements in batch.
+// bulkElementResultDTO is one entry in the elements bulk-create results array. On
+// status=="SUCCESS", Element is populated; on status=="FAILED", Error carries a
+// free-form message from the consent service.
+type bulkElementResultDTO struct {
+	Status  string              `json:"status"`
+	Element *elementResponseDTO `json:"element,omitempty"`
+	Error   string              `json:"error,omitempty"`
+}
+
+// elementsCreateResponseDTO represents the partial-success bulk-create response.
 type elementsCreateResponseDTO struct {
-	Data    []elementResponseDTO `json:"data"`
-	Message string               `json:"message"`
+	Results []bulkElementResultDTO `json:"results"`
+}
+
+// listMetadataDTO is the pagination metadata block on list responses.
+type listMetadataDTO struct {
+	Total  int `json:"total"`
+	Offset int `json:"offset"`
+	Count  int `json:"count"`
+	Limit  int `json:"limit"`
 }
 
 // elementListResponseDTO represents the response body for listing consent elements.
 type elementListResponseDTO struct {
-	Data []elementResponseDTO `json:"data"`
+	Data     []elementResponseDTO `json:"data"`
+	Metadata listMetadataDTO      `json:"metadata"`
 }
 
 // purposeElementDTO represents a consent element reference within a consent purpose.
 type purposeElementDTO struct {
-	Name        string `json:"name"`
-	IsMandatory bool   `json:"isMandatory"`
+	ElementID string `json:"elementId,omitempty"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace,omitempty"`
+	Version   string `json:"version,omitempty"`
+	Mandatory bool   `json:"mandatory"`
 }
 
-// purposeCreateDTO represents the request body for creating a consent purpose.
+// purposeCreateDTO represents the request body for creating a consent purpose. GroupID is
+// not in the body — it is carried in the group-id header.
 type purposeCreateDTO struct {
 	Name        string              `json:"name"`
+	DisplayName string              `json:"displayName,omitempty"`
 	Description string              `json:"description,omitempty"`
+	Properties  map[string]string   `json:"properties,omitempty"`
+	Elements    []purposeElementDTO `json:"elements"`
+}
+
+// purposeVersionCreateDTO represents the request body for creating a new version of an
+// existing consent purpose. Name is immutable and is therefore omitted from the body.
+type purposeVersionCreateDTO struct {
+	DisplayName string              `json:"displayName,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Properties  map[string]string   `json:"properties,omitempty"`
 	Elements    []purposeElementDTO `json:"elements"`
 }
 
 // purposeResponseDTO represents the response body for a consent purpose.
 type purposeResponseDTO struct {
-	ID          string              `json:"id"`
+	PurposeID   string              `json:"purposeId"`
 	Name        string              `json:"name"`
+	GroupID     string              `json:"groupId"`
+	Version     string              `json:"version"`
+	DisplayName string              `json:"displayName"`
 	Description string              `json:"description"`
-	ClientID    string              `json:"clientId"`
+	Properties  map[string]string   `json:"properties"`
 	Elements    []purposeElementDTO `json:"elements"`
 	CreatedTime int64               `json:"createdTime"`
 	UpdatedTime int64               `json:"updatedTime"`
@@ -129,7 +187,8 @@ type purposeResponseDTO struct {
 
 // purposeListResponseDTO represents the response body for listing consent purposes.
 type purposeListResponseDTO struct {
-	Data []purposeResponseDTO `json:"data"`
+	Data     []purposeResponseDTO `json:"data"`
+	Metadata listMetadataDTO      `json:"metadata"`
 }
 
 // authorizationRequestDTO represents an authorization entry in the consent create/update request.
@@ -142,20 +201,21 @@ type authorizationRequestDTO struct {
 // purposeItemRequestDTO represents a consent purpose item in the consent create/update request.
 type purposeItemRequestDTO struct {
 	Name     string                      `json:"name"`
+	Version  string                      `json:"version,omitempty"`
 	Elements []elementApprovalRequestDTO `json:"elements"`
 }
 
 // elementApprovalRequestDTO represents a consent element approval entry in the consent create/update request.
 type elementApprovalRequestDTO struct {
-	Name           string   `json:"name"`
-	IsUserApproved bool     `json:"isUserApproved"`
-	Value          struct{} `json:"value"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace,omitempty"`
+	Approved  bool   `json:"approved"`
 }
 
 // consentCreateDTO represents the request body for creating a consent record.
 type consentCreateDTO struct {
 	Type                       string                    `json:"type"`
-	ValidityTime               int64                     `json:"validityTime"`
+	ExpirationTime             int64                     `json:"expirationTime"`
 	RecurringIndicator         bool                      `json:"recurringIndicator"`
 	DataAccessValidityDuration int64                     `json:"dataAccessValidityDuration"`
 	Frequency                  int32                     `json:"frequency"`
@@ -174,24 +234,28 @@ type authorizationResponseDTO struct {
 
 // elementApprovalResponseDTO represents a consent element approval entry in the consent response.
 type elementApprovalResponseDTO struct {
-	Name           string `json:"name"`
-	IsUserApproved bool   `json:"isUserApproved"`
-	IsMandatory    bool   `json:"isMandatory"`
+	ElementID string `json:"elementId"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Approved  bool   `json:"approved"`
+	Mandatory bool   `json:"mandatory"`
 }
 
 // purposeItemResponseDTO represents a consent purpose item in the consent response.
 type purposeItemResponseDTO struct {
-	Name     string                       `json:"name"`
-	Elements []elementApprovalResponseDTO `json:"elements"`
+	PurposeID string                       `json:"purposeId"`
+	Name      string                       `json:"name"`
+	Version   string                       `json:"version"`
+	Elements  []elementApprovalResponseDTO `json:"elements"`
 }
 
 // consentResponseDTO represents the response body for a consent record.
 type consentResponseDTO struct {
 	ID                         string                     `json:"id"`
 	Type                       string                     `json:"type"`
-	ClientID                   string                     `json:"clientId"`
+	GroupID                    string                     `json:"groupId"`
 	Status                     string                     `json:"status"`
-	ValidityTime               int64                      `json:"validityTime"`
+	ExpirationTime             int64                      `json:"expirationTime"`
 	RecurringIndicator         bool                       `json:"recurringIndicator"`
 	DataAccessValidityDuration int64                      `json:"dataAccessValidityDuration"`
 	Frequency                  int32                      `json:"frequency"`
@@ -203,7 +267,8 @@ type consentResponseDTO struct {
 
 // consentSearchResponseDTO represents the response body for searching consent records.
 type consentSearchResponseDTO struct {
-	Data []consentResponseDTO `json:"data"`
+	Data     []consentResponseDTO `json:"data"`
+	Metadata listMetadataDTO      `json:"metadata"`
 }
 
 // consentValidateRequestDTO represents the request body for validating a consent record.
@@ -221,7 +286,8 @@ type consentValidateResponseDTO struct {
 
 // consentRevokeDTO represents the request body for revoking a consent record.
 type consentRevokeDTO struct {
-	Reason string `json:"reason,omitempty"`
+	ActionBy         string `json:"actionBy"`
+	RevocationReason string `json:"revocationReason,omitempty"`
 }
 
 // consentBackendErrorDTO represents the structured error body returned by the consent service.
@@ -269,12 +335,34 @@ func (c *defaultClient) createConsentElements(ctx context.Context, ouID string, 
 		return nil, &tidcommon.InternalServerError
 	}
 
-	out := make([]ConsentElement, 0, len(result.Data))
-	for _, dto := range result.Data {
-		out = append(out, c.dtoToConsentElement(&dto))
+	out := make([]ConsentElement, 0, len(result.Results))
+	for i, r := range result.Results {
+		if r.Status == bulkResultStatusFailed {
+			c.logger.Debug(ctx, "Consent service rejected element in bulk-create",
+				log.Int("index", i),
+				log.String("error", r.Error))
+			return nil, bulkResultErrorToServiceError(r.Error)
+		}
+		if r.Element == nil {
+			c.logger.Error(ctx, "Bulk-create result missing element for SUCCESS item",
+				log.Int("index", i))
+			return nil, &tidcommon.InternalServerError
+		}
+		out = append(out, c.dtoToConsentElement(r.Element))
 	}
 
 	return out, nil
+}
+
+// bulkResultErrorToServiceError maps a per-item bulk failure to a Thunder service error.
+// The consent service returns a free-form message — substrings indicating a duplicate
+// element map to the conflict error; everything else falls back to the generic
+// invalid-element-request error.
+func bulkResultErrorToServiceError(msg string) *tidcommon.ServiceError {
+	if strings.Contains(msg, "already exists") {
+		return &ErrorConsentElementAlreadyExists
+	}
+	return &ErrorInvalidConsentElementRequest
 }
 
 // listConsentElements retrieves consent elements filtered by optional name.
@@ -310,48 +398,10 @@ func (c *defaultClient) listConsentElements(
 	return out, nil
 }
 
-// updateConsentElement updates a consent element by ID.
-func (c *defaultClient) updateConsentElement(ctx context.Context, ouID, elementID string,
-	element *ConsentElementInput) (*ConsentElement, *tidcommon.ServiceError) {
-	u, svcErr := c.buildServiceEndpoint(ctx, consentElementsEndpoint, elementID)
-	if svcErr != nil {
-		return nil, svcErr
-	}
-
-	dto := c.consentElementInputToDTO(element)
-	resp, svcErr := c.doRequest(ctx, http.MethodPut, u, ouID, "", dto)
-	if svcErr != nil {
-		return nil, svcErr
-	}
-	defer c.closeBody(ctx, resp)
-
-	switch resp.StatusCode {
-	case http.StatusBadRequest:
-		return nil, c.handleClientError(ctx, resp, &ErrorInvalidConsentElementRequest)
-	case http.StatusNotFound:
-		return nil, c.handleClientError(ctx, resp, &ErrorConsentElementNotFound)
-	case http.StatusConflict:
-		return nil, c.handleClientError(ctx, resp, &ErrorConsentElementAlreadyExists)
-	}
-
-	if svcErr := c.checkStatus(ctx, resp); svcErr != nil {
-		return nil, svcErr
-	}
-
-	result, err := sysutils.DecodeJSONResponse[elementResponseDTO](resp)
-	if err != nil {
-		c.logger.Error(ctx, "Failed to decode update-element response", log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-	el := c.dtoToConsentElement(result)
-
-	return &el, nil
-}
-
 // deleteConsentElement deletes a consent element by ID.
 func (c *defaultClient) deleteConsentElement(ctx context.Context,
 	ouID, elementID string) *tidcommon.ServiceError {
-	u, svcErr := c.buildServiceEndpoint(ctx, consentElementsEndpoint, elementID)
+	u, svcErr := c.buildServiceEndpoint(ctx, consentElementsEndpoint, elementID, versions, "v1")
 	if svcErr != nil {
 		return svcErr
 	}
@@ -372,38 +422,62 @@ func (c *defaultClient) deleteConsentElement(ctx context.Context,
 // validateConsentElements validates a list of consent element names.
 func (c *defaultClient) validateConsentElements(ctx context.Context, ouID string, names []string) (
 	[]string, *tidcommon.ServiceError) {
-	u, svcErr := c.buildServiceEndpoint(ctx, consentElementsValidateEndpoint)
-	if svcErr != nil {
-		return nil, svcErr
+	valid := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+
+		matched, svcErr := c.elementNameExists(ctx, ouID, name)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if matched {
+			valid = append(valid, name)
+		}
 	}
 
-	resp, svcErr := c.doRequest(ctx, http.MethodPost, u, ouID, "", names)
+	return valid, nil
+}
+
+// elementNameExists returns true if at least one consent element in the organization has
+// the given exact name.
+func (c *defaultClient) elementNameExists(ctx context.Context, ouID, name string) (
+	bool, *tidcommon.ServiceError) {
+	u, svcErr := c.buildSearchURL(ctx, name, consentElementsEndpoint)
 	if svcErr != nil {
-		return nil, svcErr
+		return false, svcErr
+	}
+
+	resp, svcErr := c.doRequest(ctx, http.MethodGet, u, ouID, "", nil)
+	if svcErr != nil {
+		return false, svcErr
 	}
 	defer c.closeBody(ctx, resp)
 
-	// A 400 Bad Request indicates no elements matched (or empty array).
-	// We handle it gracefully by returning an empty list as expected.
-	if resp.StatusCode == http.StatusBadRequest {
-		return []string{}, nil
-	}
-
 	if svcErr := c.checkStatus(ctx, resp); svcErr != nil {
-		return nil, svcErr
+		return false, svcErr
 	}
 
-	result, err := sysutils.DecodeJSONResponse[[]string](resp)
+	result, err := sysutils.DecodeJSONResponse[elementListResponseDTO](resp)
 	if err != nil {
-		c.logger.Error(ctx, "Failed to decode validate-elements response", log.Error(err))
-		return nil, &tidcommon.InternalServerError
+		c.logger.Error(ctx, "Failed to decode list-elements response during validate",
+			log.Error(err))
+		return false, &tidcommon.InternalServerError
 	}
 
-	if result == nil {
-		return []string{}, nil
+	for _, dto := range result.Data {
+		if dto.Name == name {
+			return true, nil
+		}
 	}
-
-	return *result, nil
+	return false, nil
 }
 
 // createConsentPurpose creates a consent purpose.
@@ -452,7 +526,7 @@ func (c *defaultClient) listConsentPurposes(ctx context.Context, ouID, groupID s
 	}
 
 	if groupID != "" {
-		u += "?clientIds=" + url.QueryEscape(groupID)
+		u += "?groupIds=" + url.QueryEscape(groupID)
 	}
 
 	resp, svcErr := c.doRequest(ctx, http.MethodGet, u, ouID, "", nil)
@@ -471,24 +545,59 @@ func (c *defaultClient) listConsentPurposes(ctx context.Context, ouID, groupID s
 		return nil, &tidcommon.InternalServerError
 	}
 
+	// v0.3.0 list omits per-purpose elements; fetch each by ID to populate them. Callers
+	// (consent prompt building, attribute-purpose sync) compare against Elements, so an
+	// empty slice would silently break those flows.
 	out := make([]ConsentPurpose, 0, len(result.Data))
 	for _, dto := range result.Data {
-		out = append(out, c.dtoToConsentPurpose(&dto))
+		full, svcErr := c.fetchConsentPurpose(ctx, ouID, dto.PurposeID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		out = append(out, c.dtoToConsentPurpose(full))
 	}
 
 	return out, nil
 }
 
-// updateConsentPurpose updates a consent purpose by ID.
-func (c *defaultClient) updateConsentPurpose(ctx context.Context, ouID, purposeID string,
-	purpose *ConsentPurposeInput) (*ConsentPurpose, *tidcommon.ServiceError) {
+// fetchConsentPurpose retrieves a single consent purpose by ID, including its elements.
+func (c *defaultClient) fetchConsentPurpose(ctx context.Context, ouID, purposeID string) (
+	*purposeResponseDTO, *tidcommon.ServiceError) {
 	u, svcErr := c.buildServiceEndpoint(ctx, consentPurposesEndpoint, purposeID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 
-	dto := c.consentPurposeInputToDTO(purpose)
-	resp, svcErr := c.doRequest(ctx, http.MethodPut, u, ouID, purpose.GroupID, dto)
+	resp, svcErr := c.doRequest(ctx, http.MethodGet, u, ouID, "", nil)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	defer c.closeBody(ctx, resp)
+
+	if svcErr := c.checkStatus(ctx, resp); svcErr != nil {
+		return nil, svcErr
+	}
+
+	result, err := sysutils.DecodeJSONResponse[purposeResponseDTO](resp)
+	if err != nil {
+		c.logger.Error(ctx, "Failed to decode get-purpose response", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return result, nil
+}
+
+// updateConsentPurpose updates a consent purpose by ID. In v0.3.0 the underlying call
+// creates a new immutable version (POST /consent-purposes/{id}/versions) — Thunder callers
+// see the new version as the latest, preserving previous edit-in-place read semantics.
+func (c *defaultClient) updateConsentPurpose(ctx context.Context, ouID, purposeID string,
+	purpose *ConsentPurposeInput) (*ConsentPurpose, *tidcommon.ServiceError) {
+	u, svcErr := c.buildServiceEndpoint(ctx, consentPurposesEndpoint, purposeID, versions)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	dto := c.consentPurposeInputToVersionDTO(purpose)
+	resp, svcErr := c.doRequest(ctx, http.MethodPost, u, ouID, purpose.GroupID, dto)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -515,33 +624,6 @@ func (c *defaultClient) updateConsentPurpose(ctx context.Context, ouID, purposeI
 	p := c.dtoToConsentPurpose(result)
 
 	return &p, nil
-}
-
-// deleteConsentPurpose deletes a consent purpose by ID.
-func (c *defaultClient) deleteConsentPurpose(ctx context.Context,
-	ouID, purposeID string) *tidcommon.ServiceError {
-	u, svcErr := c.buildServiceEndpoint(ctx, consentPurposesEndpoint, purposeID)
-	if svcErr != nil {
-		return svcErr
-	}
-
-	resp, svcErr := c.doRequest(ctx, http.MethodDelete, u, ouID, "", nil)
-	if svcErr != nil {
-		return svcErr
-	}
-	defer c.closeBody(ctx, resp)
-
-	if resp.StatusCode == http.StatusNotFound {
-		return c.handleClientError(ctx, resp, &ErrorConsentPurposeNotFound)
-	}
-
-	// Handle conflict error for consent purpose deletion due to it being associated with
-	// consent records as a client error
-	if resp.StatusCode == http.StatusConflict {
-		return c.handleClientError(ctx, resp, &ErrorDeletingConsentPurposeWithAssociatedRecords)
-	}
-
-	return c.checkStatus(ctx, resp)
 }
 
 // createConsent creates a consent record for a user and resource.
@@ -719,12 +801,12 @@ func (c *defaultClient) revokeConsent(ctx context.Context, ouID, consentID strin
 		return svcErr
 	}
 
-	dto := consentRevokeDTO{}
+	dto := consentRevokeDTO{ActionBy: revokeActionBy}
 	if payload != nil && payload.Reason != "" {
-		dto.Reason = payload.Reason
+		dto.RevocationReason = payload.Reason
 	}
 
-	resp, svcErr := c.doRequest(ctx, http.MethodPut, u, ouID, "", dto)
+	resp, svcErr := c.doRequest(ctx, http.MethodPost, u, ouID, "", dto)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -817,13 +899,13 @@ func (c *defaultClient) buildConsentSearchURL(ctx context.Context, filter *Conse
 		params.Set("consentStatuses", strings.Join(consentStatusStrs, ","))
 	}
 	if len(filter.GroupIDs) > 0 {
-		params.Set("clientIds", strings.Join(filter.GroupIDs, ","))
+		params.Set("groupIds", strings.Join(filter.GroupIDs, ","))
 	}
 	if len(filter.UserIDs) > 0 {
 		params.Set("userIds", strings.Join(filter.UserIDs, ","))
 	}
-	if len(filter.PurposeNames) > 0 {
-		params.Set("purposeNames", strings.Join(filter.PurposeNames, ","))
+	if filter.PurposeName != "" {
+		params.Set("purposeName", filter.PurposeName)
 	}
 	if filter.Limit > 0 {
 		params.Set("limit", fmt.Sprintf("%d", filter.Limit))
@@ -841,41 +923,59 @@ func (c *defaultClient) buildConsentSearchURL(ctx context.Context, filter *Conse
 
 // consentElementInputToDTO converts a ConsentElementInput to elementCreateDTO for API requests.
 func (c *defaultClient) consentElementInputToDTO(el *ConsentElementInput) elementCreateDTO {
-	// TODO: Map namespace when the support is implemented in consent service
 	return elementCreateDTO{
 		Name:        el.Name,
+		Namespace:   string(el.Namespace),
+		Type:        elementTypeBasic,
+		DisplayName: el.Description,
 		Description: el.Description,
-		Type:        "basic",
 		Properties:  el.Properties,
 	}
 }
 
 // dtoToConsentElement converts an elementResponseDTO from the API response to a ConsentElement.
 func (c *defaultClient) dtoToConsentElement(dto *elementResponseDTO) ConsentElement {
-	// TODO: Map namespace when the support is implemented in consent service
 	return ConsentElement{
-		ID:          dto.ID,
+		ID:          dto.ElementID,
 		Name:        dto.Name,
 		Description: dto.Description,
+		Namespace:   providers.Namespace(dto.Namespace),
 		Properties:  dto.Properties,
 	}
 }
 
 // consentPurposeInputToDTO converts a ConsentPurposeInput to purposeCreateDTO for API requests.
 func (c *defaultClient) consentPurposeInputToDTO(p *ConsentPurposeInput) purposeCreateDTO {
-	elements := make([]purposeElementDTO, 0, len(p.Elements))
-	for _, el := range p.Elements {
-		elements = append(elements, purposeElementDTO{
-			Name:        el.Name,
-			IsMandatory: el.IsMandatory,
-		})
-	}
-
 	return purposeCreateDTO{
 		Name:        p.Name,
+		DisplayName: p.Description,
 		Description: p.Description,
-		Elements:    elements,
+		Elements:    c.purposeElementsInputToDTO(p.Elements),
 	}
+}
+
+// consentPurposeInputToVersionDTO converts a ConsentPurposeInput to purposeVersionCreateDTO
+// for the POST /consent-purposes/{id}/versions endpoint. Name is immutable and is not sent
+// in the body.
+func (c *defaultClient) consentPurposeInputToVersionDTO(p *ConsentPurposeInput) purposeVersionCreateDTO {
+	return purposeVersionCreateDTO{
+		DisplayName: p.Description,
+		Description: p.Description,
+		Elements:    c.purposeElementsInputToDTO(p.Elements),
+	}
+}
+
+// purposeElementsInputToDTO maps the Thunder PurposeElement slice to the wire shape.
+func (c *defaultClient) purposeElementsInputToDTO(in []PurposeElement) []purposeElementDTO {
+	out := make([]purposeElementDTO, 0, len(in))
+	for _, el := range in {
+		out = append(out, purposeElementDTO{
+			Name:      el.Name,
+			Namespace: string(el.Namespace),
+			Mandatory: el.IsMandatory,
+		})
+	}
+	return out
 }
 
 // dtoToConsentPurpose converts a purposeResponseDTO from the API response to a ConsentPurpose.
@@ -884,15 +984,16 @@ func (c *defaultClient) dtoToConsentPurpose(dto *purposeResponseDTO) ConsentPurp
 	for _, el := range dto.Elements {
 		elements = append(elements, PurposeElement{
 			Name:        el.Name,
-			IsMandatory: el.IsMandatory,
+			Namespace:   providers.Namespace(el.Namespace),
+			IsMandatory: el.Mandatory,
 		})
 	}
 
 	return ConsentPurpose{
-		ID:          dto.ID,
+		ID:          dto.PurposeID,
 		Name:        dto.Name,
 		Description: dto.Description,
-		GroupID:     dto.ClientID,
+		GroupID:     dto.GroupID,
 		Namespace:   NamespaceFromPurposeName(dto.Name),
 		Elements:    elements,
 		CreatedTime: dto.CreatedTime,
@@ -968,8 +1069,9 @@ func (c *defaultClient) consentRequestToDTO(req *ConsentRequest) consentCreateDT
 		elements := make([]elementApprovalRequestDTO, 0, len(p.Elements))
 		for _, el := range p.Elements {
 			elements = append(elements, elementApprovalRequestDTO{
-				Name:           el.Name,
-				IsUserApproved: el.IsUserApproved,
+				Name:      el.Name,
+				Namespace: string(el.Namespace),
+				Approved:  el.IsUserApproved,
 			})
 		}
 
@@ -986,7 +1088,7 @@ func (c *defaultClient) consentRequestToDTO(req *ConsentRequest) consentCreateDT
 
 	return consentCreateDTO{
 		Type:           string(req.Type),
-		ValidityTime:   req.ValidityTime,
+		ExpirationTime: req.ValidityTime,
 		Purposes:       purposes,
 		Authorizations: auths,
 	}
@@ -1012,7 +1114,8 @@ func (c *defaultClient) dtoToConsent(dto *consentResponseDTO) providers.Consent 
 		for _, el := range p.Elements {
 			elements = append(elements, providers.ConsentElementApproval{
 				Name:           el.Name,
-				IsUserApproved: el.IsUserApproved,
+				Namespace:      providers.Namespace(el.Namespace),
+				IsUserApproved: el.Approved,
 			})
 		}
 
@@ -1030,9 +1133,9 @@ func (c *defaultClient) dtoToConsent(dto *consentResponseDTO) providers.Consent 
 	return providers.Consent{
 		ID:             dto.ID,
 		Type:           providers.ConsentType(dto.Type),
-		GroupID:        dto.ClientID,
+		GroupID:        dto.GroupID,
 		Status:         providers.ConsentStatus(dto.Status),
-		ValidityTime:   dto.ValidityTime,
+		ValidityTime:   dto.ExpirationTime,
 		Purposes:       purposes,
 		Authorizations: auths,
 		CreatedTime:    dto.CreatedTime,
@@ -1057,7 +1160,7 @@ func (c *defaultClient) dtoToValidationResult(dto *consentValidateResponseDTO) *
 func (c *defaultClient) setCommonHeaders(req *http.Request, ouID, groupID string) {
 	req.Header.Set("org-id", ouID)
 	if groupID != "" {
-		req.Header.Set("TPP-client-id", groupID)
+		req.Header.Set("group-id", groupID)
 	}
 }
 

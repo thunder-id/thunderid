@@ -134,8 +134,8 @@ type ConsentSearchFilter struct {
 	GroupIDs []string
 	// UserIDs is an optional list of user IDs to filter by
 	UserIDs []string
-	// PurposeNames is an optional list of purpose names to filter by
-	PurposeNames []string
+	// PurposeName is an optional purpose name to filter by
+	PurposeName string
 	// Limit is the maximum number of results to return
 	Limit int
 	// Offset is the number of results to skip

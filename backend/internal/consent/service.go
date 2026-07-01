@@ -73,15 +73,6 @@ func (s *consentService) ListConsentElements(ctx context.Context, ouID string, n
 	return s.client.listConsentElements(ctx, ouID, ns, nameFilter)
 }
 
-// UpdateConsentElement updates an existing consent element by ID.
-func (s *consentService) UpdateConsentElement(ctx context.Context, ouID string,
-	elementID string, element *ConsentElementInput) (*ConsentElement, *tidcommon.ServiceError) {
-	if element == nil {
-		return nil, &ErrorInvalidRequestFormat
-	}
-	return s.client.updateConsentElement(ctx, ouID, elementID, element)
-}
-
 // DeleteConsentElement deletes a consent element by ID.
 // Returns nil if the element does not exist (idempotent).
 func (s *consentService) DeleteConsentElement(ctx context.Context, ouID string,
@@ -126,19 +117,6 @@ func (s *consentService) UpdateConsentPurpose(ctx context.Context, ouID, purpose
 		return nil, &ErrorInvalidRequestFormat
 	}
 	return s.client.updateConsentPurpose(ctx, ouID, purposeID, purpose)
-}
-
-// DeleteConsentPurpose deletes a consent purpose by ID.
-// Returns nil if the purpose does not exist (idempotent).
-func (s *consentService) DeleteConsentPurpose(ctx context.Context, ouID string,
-	purposeID string) *tidcommon.ServiceError {
-	svcErr := s.client.deleteConsentPurpose(ctx, ouID, purposeID)
-	if svcErr != nil && svcErr.Code == ErrorConsentPurposeNotFound.Code {
-		s.logger.Debug(ctx, "Consent purpose not found during delete, skipping",
-			log.String("purposeID", purposeID))
-		return nil
-	}
-	return svcErr
 }
 
 // CreateConsent creates a new consent record.

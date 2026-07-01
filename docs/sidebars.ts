@@ -327,9 +327,9 @@ const sidebars: SidebarsConfig = {
           label: 'Decentralised Identity',
           collapsible: true,
           collapsed: true,
-          key: 'use-cases-did',
+          key: 'use-cases-vc',
           items: [
-            {type: 'doc', id: 'use-cases/did/overview', label: 'Overview', key: 'did-overview'},
+            {type: 'doc', id: 'use-cases/vc/overview', label: 'Overview', key: 'vc-overview'},
           ],
         },
       ],

@@ -2247,55 +2247,11 @@ func (suite *InboundClientServiceTestSuite) TestValidate_RejectsInvalidUserAttri
 	assert.ErrorIs(suite.T(), err, ErrInvalidUserAttribute)
 }
 
-// ----- syncConsentOnDelete deletes both attribute and permission purposes -----
-
 func newInboundClientServiceWithConsent(consentSvc consent.ConsentServiceInterface) *inboundClientService {
 	svc := newInboundClientService(
 		nil, transaction.NewNoOpTransactioner(), nil, nil, nil, nil, nil, nil, consentSvc,
 	)
 	return svc.(*inboundClientService)
-}
-
-func (suite *InboundClientServiceTestSuite) TestSyncDeleteConsent_DeletesBothAttributeAndPermissionPurposes() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().ListConsentPurposes(mock.Anything, "default", "app1").Return([]consent.ConsentPurpose{
-		{ID: "attr-p", Namespace: providers.NamespaceAttribute},
-		{ID: "perm-p", Namespace: providers.NamespacePermission},
-	}, nil)
-	cm.EXPECT().DeleteConsentPurpose(mock.Anything, "default", "attr-p").Return(nil)
-	cm.EXPECT().DeleteConsentPurpose(mock.Anything, "default", "perm-p").Return(nil)
-
-	svc := newInboundClientServiceWithConsent(cm)
-	assert.NoError(suite.T(), svc.syncConsentOnDelete(context.Background(), "app1"))
-}
-
-func (suite *InboundClientServiceTestSuite) TestSyncDeleteConsent_SkipsPurposesAssociatedWithRecords() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().ListConsentPurposes(mock.Anything, "default", "app1").Return([]consent.ConsentPurpose{
-		{ID: "attr-p", Namespace: providers.NamespaceAttribute},
-		{ID: "perm-p", Namespace: providers.NamespacePermission},
-	}, nil)
-	cm.EXPECT().DeleteConsentPurpose(mock.Anything, "default", "attr-p").
-		Return(&consent.ErrorDeletingConsentPurposeWithAssociatedRecords)
-	cm.EXPECT().DeleteConsentPurpose(mock.Anything, "default", "perm-p").Return(nil)
-
-	svc := newInboundClientServiceWithConsent(cm)
-	assert.NoError(suite.T(), svc.syncConsentOnDelete(context.Background(), "app1"))
-}
-
-func (suite *InboundClientServiceTestSuite) TestSyncDeleteConsent_PropagatesOtherDeleteErrors() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().ListConsentPurposes(mock.Anything, "default", "app1").Return([]consent.ConsentPurpose{
-		{ID: "attr-p", Namespace: providers.NamespaceAttribute},
-	}, nil)
-	cm.EXPECT().DeleteConsentPurpose(mock.Anything, "default", "attr-p").
-		Return(&tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "X"})
-
-	svc := newInboundClientServiceWithConsent(cm)
-	err := svc.syncConsentOnDelete(context.Background(), "app1")
-	assert.Error(suite.T(), err)
-	var ce *ConsentSyncError
-	assert.True(suite.T(), errors.As(err, &ce))
 }
 
 // ----- syncConsentOnUpdate filters to attribute purposes only -----

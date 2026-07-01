@@ -184,12 +184,28 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 		return nil, &tidcommon.InternalServerError
 	}
 
+	// Fetch the current purpose definitions so the persisted decisions can be filtered against
+	// the live definition (purposes may have been re-versioned to remove elements since the
+	// consent session token was issued).
+	currentPurposes, svcErr := s.consentService.ListConsentPurposes(ctx, ouID, appID)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ClientErrorType {
+			logger.Debug(ctx, "Client error from consent service when listing purposes for merge",
+				log.Any("error", svcErr))
+			return nil, &ErrorConsentPurposeFetchFailed
+		}
+		logger.Error(ctx, "Failed to list consent purposes for merge", log.Any("error", svcErr))
+		return nil, &tidcommon.InternalServerError
+	}
+	validElements := buildPurposeElementSet(currentPurposes)
+
 	var consentRecord *providers.Consent
 	if len(existingConsents) > 0 {
 		consentRecord, svcErr = s.updateExistingConsent(ctx, ouID, appID, userID,
-			existingConsents, newPurposeItems, validityTime)
+			existingConsents, newPurposeItems, validElements, validityTime)
 	} else {
-		consentRecord, svcErr = s.createNewConsent(ctx, ouID, appID, userID, newPurposeItems, validityTime)
+		consentRecord, svcErr = s.createNewConsent(ctx, ouID, appID, userID,
+			newPurposeItems, validElements, validityTime)
 	}
 	if svcErr != nil {
 		return nil, svcErr
@@ -208,7 +224,8 @@ func (s *consentEnforcerService) RecordConsent(ctx context.Context, ouID, appID,
 // The existing record's approved elements are preserved, and new decisions override.
 // Returns the updated consent record.
 func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, ouID, appID, userID string,
-	existingConsents []providers.Consent, newPurposeItems []providers.ConsentPurposeItem, validityTime int64,
+	existingConsents []providers.Consent, newPurposeItems []providers.ConsentPurposeItem,
+	validElements map[string]map[string]bool, validityTime int64,
 ) (*providers.Consent, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID),
 		log.Int("existingConsentCount", len(existingConsents)))
@@ -228,9 +245,10 @@ func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, ouID
 		},
 	}
 
-	// Merge new decisions into the existing consent record
+	// Merge new decisions into the existing consent record, filtering elements no longer in
+	// their purpose definition.
 	existing := &existingConsents[0]
-	req.Purposes = mergeConsentPurposes(existing.Purposes, newPurposeItems)
+	req.Purposes = mergeConsentPurposes(existing.Purposes, newPurposeItems, validElements)
 
 	updated, svcErr := s.consentService.UpdateConsent(ctx, ouID, existing.ID, req)
 	if svcErr != nil {
@@ -248,8 +266,12 @@ func (s *consentEnforcerService) updateExistingConsent(ctx context.Context, ouID
 }
 
 // createNewConsent creates a new consent record with the given purpose items and validity time.
+// Element decisions for purposes or elements no longer in the current purpose definition are
+// dropped before persisting (purposes may have been re-versioned to remove elements since the
+// consent session token was issued).
 func (s *consentEnforcerService) createNewConsent(ctx context.Context, ouID, appID, userID string,
-	newPurposeItems []providers.ConsentPurposeItem, validityTime int64) (
+	newPurposeItems []providers.ConsentPurposeItem,
+	validElements map[string]map[string]bool, validityTime int64) (
 	*providers.Consent, *tidcommon.ServiceError) {
 	logger := s.logger.With(log.String("appID", appID), log.MaskedString(log.LoggerKeyUserID, userID))
 	logger.Debug(ctx, "Creating new consent record")
@@ -267,7 +289,7 @@ func (s *consentEnforcerService) createNewConsent(ctx context.Context, ouID, app
 			},
 		},
 	}
-	req.Purposes = newPurposeItems
+	req.Purposes = mergeConsentPurposes(nil, newPurposeItems, validElements)
 
 	created, svcErr := s.consentService.CreateConsent(ctx, ouID, req)
 	if svcErr != nil {
@@ -476,9 +498,9 @@ func buildAttributePurposePrompt(purpose consent.ConsentPurpose,
 	essential := make([]providers.PromptElement, 0, len(purpose.Elements))
 	optional := make([]providers.PromptElement, 0, len(purpose.Elements))
 	for _, elem := range purpose.Elements {
-		// Skip non required elements if essential/ optional attributes are specified
-		if (len(essentialAttributes) > 0 || len(optionalAttributes) > 0) &&
-			(!slices.Contains(essentialAttributes, elem.Name) && !slices.Contains(optionalAttributes, elem.Name)) {
+		// Skip elements not in the request's essential/optional sets
+		if !slices.Contains(essentialAttributes, elem.Name) &&
+			!slices.Contains(optionalAttributes, elem.Name) {
 			continue
 		}
 
@@ -579,75 +601,104 @@ func computePermissionParents(permissions []string) map[string]string {
 	return parents
 }
 
-// mergeConsentPurposes merges existing consent purposes with new decisions.
-// For each purpose in the new set: elements in the new set override the existing ones, and elements present
-// only in the existing record are preserved unchanged. Purposes present only in the existing record are
-// carried forward as-is.
-func mergeConsentPurposes(existing, incoming []providers.ConsentPurposeItem) []providers.ConsentPurposeItem {
-	// Build a map from existing purposes keyed by name
+// mergeConsentPurposes merges existing consent purposes with new decisions, filtered against
+// the current purpose definitions. Element names that are no longer part of their purpose
+// (e.g. dropped in a re-versioned purpose) are removed, and purposes that no longer exist at
+// all are dropped entirely. For surviving purposes, incoming decisions override existing ones
+// by element name; output keeps existing-order first, then any newly added elements.
+func mergeConsentPurposes(existing, incoming []providers.ConsentPurposeItem,
+	validElements map[string]map[string]bool) []providers.ConsentPurposeItem {
 	existingMap := make(map[string]*providers.ConsentPurposeItem, len(existing))
 	for i := range existing {
 		existingMap[existing[i].Name] = &existing[i]
 	}
-
-	// Track which existing purposes are covered by the incoming set
 	coveredPurposes := make(map[string]bool, len(incoming))
 
-	// Merge purposes: for each incoming purpose, merge with existing if present; otherwise add as new
 	merged := make([]providers.ConsentPurposeItem, 0, len(existing)+len(incoming))
 	for _, newPurpose := range incoming {
 		coveredPurposes[newPurpose.Name] = true
 
-		existPurpose, exists := existingMap[newPurpose.Name]
-		if !exists {
-			// New purpose not in existing record — add as-is
-			merged = append(merged, newPurpose)
+		valid, validOK := validElements[newPurpose.Name]
+		if !validOK {
+			// Purpose no longer exists upstream — drop the decisions for it.
 			continue
 		}
 
-		// Build a map of existing elements for this purpose
-		existElemMap := make(map[string]providers.ConsentElementApproval, len(existPurpose.Elements))
-		for _, e := range existPurpose.Elements {
-			existElemMap[e.Name] = e
-		}
+		existPurpose, hasExisting := existingMap[newPurpose.Name]
 
-		// Start with new elements (they override existing)
-		mergedElemMap := make(map[string]providers.ConsentElementApproval,
-			len(existPurpose.Elements)+len(newPurpose.Elements))
-		for name, e := range existElemMap {
-			mergedElemMap[name] = e
+		mergedElemMap := make(map[string]providers.ConsentElementApproval)
+		order := make([]string, 0, len(newPurpose.Elements))
+
+		if hasExisting {
+			for _, e := range existPurpose.Elements {
+				if !valid[e.Name] {
+					continue
+				}
+				mergedElemMap[e.Name] = e
+				order = append(order, e.Name)
+			}
 		}
 		for _, e := range newPurpose.Elements {
+			if !valid[e.Name] {
+				continue
+			}
+			if _, seen := mergedElemMap[e.Name]; !seen {
+				order = append(order, e.Name)
+			}
 			mergedElemMap[e.Name] = e
 		}
 
-		// Build stable output order: existing order first, then new elements
-		mergedElements := make([]providers.ConsentElementApproval, 0, len(mergedElemMap))
-		seen := make(map[string]bool, len(mergedElemMap))
-		for _, e := range existPurpose.Elements {
-			mergedElements = append(mergedElements, mergedElemMap[e.Name])
-			seen[e.Name] = true
-		}
-		for _, e := range newPurpose.Elements {
-			if !seen[e.Name] {
-				mergedElements = append(mergedElements, mergedElemMap[e.Name])
-			}
+		if len(mergedElemMap) == 0 {
+			continue
 		}
 
+		mergedElements := make([]providers.ConsentElementApproval, 0, len(mergedElemMap))
+		for _, name := range order {
+			mergedElements = append(mergedElements, mergedElemMap[name])
+		}
 		merged = append(merged, providers.ConsentPurposeItem{
 			Name:     newPurpose.Name,
 			Elements: mergedElements,
 		})
 	}
 
-	// Carry forward purposes that exist in the old record but not in the new decisions
+	// Carry forward existing purposes that aren't in the incoming decisions, after filtering
+	// their elements against the current purpose definition.
 	for _, ep := range existing {
-		if !coveredPurposes[ep.Name] {
-			merged = append(merged, ep)
+		if coveredPurposes[ep.Name] {
+			continue
 		}
+		valid, validOK := validElements[ep.Name]
+		if !validOK {
+			continue
+		}
+		filtered := make([]providers.ConsentElementApproval, 0, len(ep.Elements))
+		for _, e := range ep.Elements {
+			if valid[e.Name] {
+				filtered = append(filtered, e)
+			}
+		}
+		if len(filtered) == 0 {
+			continue
+		}
+		merged = append(merged, providers.ConsentPurposeItem{Name: ep.Name, Elements: filtered})
 	}
 
 	return merged
+}
+
+// buildPurposeElementSet indexes a list of current consent purposes into purposeName →
+// set of valid element names. Used to filter stale element decisions during merge.
+func buildPurposeElementSet(purposes []consent.ConsentPurpose) map[string]map[string]bool {
+	result := make(map[string]map[string]bool, len(purposes))
+	for _, p := range purposes {
+		elems := make(map[string]bool, len(p.Elements))
+		for _, e := range p.Elements {
+			elems[e.Name] = true
+		}
+		result[p.Name] = elems
+	}
+	return result
 }
 
 // buildConsentElementApprovals converts the user's consent decisions into ConsentPurposeItem

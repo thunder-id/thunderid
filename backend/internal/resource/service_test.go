@@ -5367,67 +5367,11 @@ func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionDelete_NoopWhe
 	require.NoError(suite.T(), svc.syncConsentOnPermissionDelete(context.Background(), "p"))
 }
 
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionUpdate_UpdatesWhenChanged() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().IsEnabled().Return(true)
-	cm.EXPECT().
-		ListConsentElements(mock.Anything, "default", providers.NamespacePermission, "p").
-		Return([]consent.ConsentElement{{ID: "el-1", Name: "p", Description: "old"}}, nil)
-	cm.EXPECT().
-		UpdateConsentElement(mock.Anything, "default", "el-1", &consent.ConsentElementInput{
-			Name:        "p",
-			Description: "new",
-			Namespace:   providers.NamespacePermission,
-		}).
-		Return(&consent.ConsentElement{ID: "el-1"}, nil)
-
-	svc := newSyncTestService(suite.T(), cm)
-	require.NoError(suite.T(), svc.syncConsentOnPermissionUpdate(context.Background(), "p", "new"))
-}
-
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionUpdate_NoopWhenDescriptionUnchanged() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	cm.EXPECT().IsEnabled().Return(true)
-	cm.EXPECT().
-		ListConsentElements(mock.Anything, "default", providers.NamespacePermission, "p").
-		Return([]consent.ConsentElement{{ID: "el-1", Name: "p", Description: "same"}}, nil)
-
-	svc := newSyncTestService(suite.T(), cm)
-	require.NoError(suite.T(), svc.syncConsentOnPermissionUpdate(context.Background(), "p", "same"))
-}
-
-func (suite *ResourceServiceTestSuite) TestSyncConsentOnPermissionUpdate_LazilyCreatesWhenMissing() {
-	cm := consentmock.NewConsentServiceInterfaceMock(suite.T())
-	// Update's first lookup is by ID via ListConsentElements; element is missing so update
-	// delegates to syncConsentOnPermissionCreate.
-	cm.EXPECT().IsEnabled().Return(true)
-	cm.EXPECT().
-		ListConsentElements(mock.Anything, "default", providers.NamespacePermission, "p").
-		Return([]consent.ConsentElement{}, nil)
-
-	// syncConsentOnPermissionCreate then validates and creates the missing element.
-	cm.EXPECT().IsEnabled().Return(true)
-	cm.EXPECT().
-		ValidateConsentElements(mock.Anything, "default", []string{"p"}).
-		Return([]string{}, nil)
-	cm.EXPECT().
-		CreateConsentElements(mock.Anything, "default", []consent.ConsentElementInput{{
-			Name:        "p",
-			Description: "desc",
-			Namespace:   providers.NamespacePermission,
-		}}).
-		Return([]consent.ConsentElement{{ID: "el-1"}}, nil)
-
-	svc := newSyncTestService(suite.T(), cm)
-	require.NoError(suite.T(), svc.syncConsentOnPermissionUpdate(context.Background(), "p", "desc"))
-}
-
 // Ensure consentService=nil receivers are tolerated (declarative paths or partial setups).
 func (suite *ResourceServiceTestSuite) TestSyncHelpers_TolerateNilConsentService() {
 	svc := newSyncTestService(suite.T(), nil)
 	require.NoError(suite.T(), svc.syncConsentOnPermissionCreate(context.Background(), "p", ""))
 	require.NoError(suite.T(), svc.syncConsentOnPermissionDelete(context.Background(), "p"))
-	require.NoError(suite.T(), svc.syncConsentOnPermissionUpdate(context.Background(), "p", ""))
 }
 
 func (suite *ResourceServiceTestSuite) TestWrapConsentServiceError_NilPassthrough() {
@@ -5669,29 +5613,6 @@ func (suite *ResourceServiceTestSuite) TestCreateResource_ConsentSyncError() {
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
-func (suite *ResourceServiceTestSuite) TestUpdateResource_ConsentSyncError() {
-	cm := suite.newEnabledConsentServiceMock()
-	serverErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "CE-9999"}
-	cm.On("ListConsentElements", mock.Anything, "default", providers.NamespacePermission, "perm-x").
-		Return([]consent.ConsentElement(nil), serverErr)
-	svc := suite.newServiceWithConsent(cm)
-
-	res := providers.Resource{Name: testUpdatedName, Description: testNewDescription}
-	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
-	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
-		Return(providers.ResourceServer{ID: "rs-123"}, nil)
-	suite.mockStore.On("GetResource", mock.Anything, "res-123", "rs-123").
-		Return(providers.Resource{ID: "res-123", Handle: testOriginalHandle, Permission: "perm-x"}, nil)
-	suite.mockStore.On("UpdateResource", mock.Anything,
-		"res-123", "rs-123", mock.AnythingOfType("providers.Resource")).Return(nil)
-
-	result, err := svc.UpdateResource(context.Background(), "rs-123", "res-123", res)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
 func (suite *ResourceServiceTestSuite) TestDeleteResource_ConsentSyncError() {
 	cm := suite.newEnabledConsentServiceMock()
 	serverErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "CE-9999"}
@@ -5730,29 +5651,6 @@ func (suite *ResourceServiceTestSuite) TestCreateAction_ConsentSyncError() {
 		mock.AnythingOfType("string"), "rs-123", (*string)(nil), matchAction(action)).Return(nil)
 
 	result, err := svc.CreateAction(context.Background(), "rs-123", nil, action)
-
-	suite.Nil(result)
-	suite.NotNil(err)
-	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
-}
-
-func (suite *ResourceServiceTestSuite) TestUpdateAction_ConsentSyncError() {
-	cm := suite.newEnabledConsentServiceMock()
-	serverErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "CE-9999"}
-	cm.On("ListConsentElements", mock.Anything, "default", providers.NamespacePermission, "perm-x").
-		Return([]consent.ConsentElement(nil), serverErr)
-	svc := suite.newServiceWithConsent(cm)
-
-	action := providers.Action{Name: testUpdatedName, Description: testNewDescription}
-	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
-	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
-		Return(providers.ResourceServer{ID: "rs-123"}, nil)
-	suite.mockStore.On("GetAction", mock.Anything, "action-123", "rs-123", (*string)(nil)).
-		Return(providers.Action{ID: "action-123", Handle: testOriginalHandle, Permission: "perm-x"}, nil)
-	suite.mockStore.On("UpdateAction", mock.Anything,
-		"action-123", "rs-123", (*string)(nil), mock.AnythingOfType("providers.Action")).Return(nil)
-
-	result, err := svc.UpdateAction(context.Background(), "rs-123", nil, "action-123", action)
 
 	suite.Nil(result)
 	suite.NotNil(err)

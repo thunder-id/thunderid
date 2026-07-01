@@ -834,13 +834,6 @@ func (rs *resourceService) UpdateResource(
 			return err
 		}
 
-		if err := rs.syncConsentOnPermissionUpdate(
-			txCtx, currentResource.Permission, updateResource.Description,
-		); err != nil {
-			rs.logger.Error(ctx, "Failed to sync consent element for resource", log.Error(err))
-			return err
-		}
-
 		updatedResource = &providers.Resource{
 			ID:          id,
 			Name:        updateResource.Name,
@@ -1208,13 +1201,6 @@ func (rs *resourceService) UpdateAction(
 			txCtx, id, resourceServerID, resID, updateAction,
 		); err != nil {
 			rs.logger.Error(ctx, "Failed to update action", log.Error(err))
-			return err
-		}
-
-		if err := rs.syncConsentOnPermissionUpdate(
-			txCtx, currentAction.Permission, updateAction.Description,
-		); err != nil {
-			rs.logger.Error(ctx, "Failed to sync consent element for action", log.Error(err))
 			return err
 		}
 
@@ -1696,40 +1682,6 @@ func (rs *resourceService) syncConsentOnPermissionDelete(ctx context.Context, pe
 			return nil
 		}
 		return rs.wrapConsentServiceError(ctx, delErr)
-	}
-	return nil
-}
-
-// syncConsentOnPermissionUpdate refreshes the description of the consent element associated with
-// the given permission string. When the element is missing it is created lazily so callers do not
-// have to coordinate creates and updates.
-func (rs *resourceService) syncConsentOnPermissionUpdate(
-	ctx context.Context, permission, description string,
-) error {
-	if rs.consentService == nil || !rs.consentService.IsEnabled() || permission == "" {
-		return nil
-	}
-	// TODO: Replace with the resource server's actual OU when multi-OU consent is supported.
-	const ouID = "default"
-
-	existing, err := rs.consentService.ListConsentElements(ctx, ouID, providers.NamespacePermission, permission)
-	if err != nil {
-		return rs.wrapConsentServiceError(ctx, err)
-	}
-	if len(existing) == 0 {
-		return rs.syncConsentOnPermissionCreate(ctx, permission, description)
-	}
-	if existing[0].Description == description {
-		return nil
-	}
-
-	if _, updErr := rs.consentService.UpdateConsentElement(ctx, ouID, existing[0].ID,
-		&consent.ConsentElementInput{
-			Name:        permission,
-			Description: description,
-			Namespace:   providers.NamespacePermission,
-		}); updErr != nil {
-		return rs.wrapConsentServiceError(ctx, updErr)
 	}
 	return nil
 }
