@@ -70,6 +70,7 @@ export default [
       'import/no-extraneous-dependencies': 'off',
       'import-x/extensions': 'off',
       '@thunderid/copyright-header': ['error', {allowShebang: true}],
+      'no-console': 'off',
     },
   },
   {
