@@ -31,7 +31,7 @@ func TestToResponse(t *testing.T) {
 		Handle:               "eudi-pid",
 		OUID:                 "ou-1",
 		OUHandle:             "default",
-		DisplayName:          "EUDI PID",
+		Name:                 "EUDI PID",
 		VCT:                  "urn:eudi:pid:1",
 		Format:               DefaultCredentialFormat,
 		RequestedClaims:      []string{"given_name"},
@@ -48,7 +48,7 @@ func TestToResponse(t *testing.T) {
 	assert.Equal(t, dto.Handle, resp.Handle)
 	assert.Equal(t, dto.OUID, resp.OUID)
 	assert.Equal(t, dto.OUHandle, resp.OUHandle)
-	assert.Equal(t, dto.DisplayName, resp.DisplayName)
+	assert.Equal(t, dto.Name, resp.Name)
 	assert.Equal(t, dto.VCT, resp.VCT)
 	assert.Equal(t, dto.Format, resp.Format)
 	assert.Equal(t, dto.RequestedClaims, resp.RequestedClaims)
@@ -65,7 +65,7 @@ func TestToSummary(t *testing.T) {
 		Handle:          "eudi-pid",
 		OUID:            "ou-1",
 		OUHandle:        "default",
-		DisplayName:     "EUDI PID",
+		Name:            "EUDI PID",
 		VCT:             "urn:eudi:pid:1",
 		Format:          DefaultCredentialFormat,
 		MandatoryClaims: []string{"family_name"},
@@ -74,12 +74,12 @@ func TestToSummary(t *testing.T) {
 	summary := toSummary(dto)
 
 	assert.Equal(t, PresentationDefinitionList{
-		ID:          "def-1",
-		Handle:      "eudi-pid",
-		OUID:        "ou-1",
-		OUHandle:    "default",
-		DisplayName: "EUDI PID",
-		VCT:         "urn:eudi:pid:1",
-		Format:      DefaultCredentialFormat,
+		ID:       "def-1",
+		Handle:   "eudi-pid",
+		OUID:     "ou-1",
+		OUHandle: "default",
+		Name:     "EUDI PID",
+		VCT:      "urn:eudi:pid:1",
+		Format:   DefaultCredentialFormat,
 	}, summary)
 }

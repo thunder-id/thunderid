@@ -184,6 +184,9 @@ export interface ConfigureDetailsProps {
    */
   onClientIdChange?: (clientId: string) => void;
 
+  /** Client IDs already in use, so the wallet step can flag a duplicate before submission. */
+  existingClientIds?: string[];
+
   /**
    * Callback function to notify parent component whether this step is ready to proceed
    */
@@ -278,6 +281,7 @@ export default function ConfigureDetails({
   userTypes = [],
   selectedUserTypes = [],
   onUserTypesChange = () => null,
+  existingClientIds = [],
 }: ConfigureDetailsProps): JSX.Element {
   const {t} = useTranslation();
   const logger = useLogger('ConfigureDetails');
@@ -319,6 +323,11 @@ export default function ConfigureDetails({
   const [customClientId, setCustomClientId] = useState<string>('');
   const isWalletCustom: boolean = walletVendor === CUSTOM_WALLET_VENDOR;
   const selectedVendor = WALLET_VENDORS.find((v) => v.id === walletVendor);
+
+  // The client id this wallet would be created with (custom entry or the vendor's fixed id), flagged if already taken.
+  const effectiveWalletClientId: string = (isWalletCustom ? customClientId : (selectedVendor?.clientId ?? '')).trim();
+  const isDuplicateWalletClientId: boolean =
+    isWallet && effectiveWalletClientId !== '' && existingClientIds.includes(effectiveWalletClientId);
 
   // Known wallets present a fixed client id + redirect URI, so selecting one
   // prefills both; "Custom" lets the admin enter them for any other wallet.
@@ -461,9 +470,10 @@ export default function ConfigureDetails({
       return;
     }
 
-    // For deeplink config, need valid deeplink
+    // For deeplink config, need valid deeplink. For wallets, also block if the resolved client
+    // id is already taken by another application (would otherwise fail only on submit).
     if (configurationType === ApplicationCreateFlowConfiguration.DEEPLINK) {
-      onReadyChange(!!deeplink && !errors.deeplink);
+      onReadyChange(!!deeplink && !errors.deeplink && !isDuplicateWalletClientId);
       return;
     }
 
@@ -481,6 +491,7 @@ export default function ConfigureDetails({
     errors,
     onReadyChange,
     selectedTemplateConfig,
+    isDuplicateWalletClientId,
   ]);
 
   // For platforms that don't require configuration AND no passkey configuration needed
@@ -504,13 +515,18 @@ export default function ConfigureDetails({
     <Stack spacing={3} data-testid="application-configure-details">
       <Stack direction="column" spacing={1}>
         <Typography variant="h1" gutterBottom>
-          {t('applications:onboarding.configure.details.title')}
+          {isWallet
+            ? t('applications:onboarding.configure.details.wallet.title')
+            : t('applications:onboarding.configure.details.title')}
         </Typography>
         {configurationType !== ApplicationCreateFlowConfiguration.NONE && (
           <Typography variant="subtitle1" gutterBottom>
-            {configurationType === ApplicationCreateFlowConfiguration.DEEPLINK
-              ? t('applications:onboarding.configure.details.mobile.description')
-              : t('applications:onboarding.configure.details.description')}
+            {(() => {
+              if (isWallet) return t('applications:onboarding.configure.details.wallet.description');
+              if (configurationType === ApplicationCreateFlowConfiguration.DEEPLINK)
+                return t('applications:onboarding.configure.details.mobile.description');
+              return t('applications:onboarding.configure.details.description');
+            })()}
           </Typography>
         )}
       </Stack>
@@ -604,7 +620,7 @@ export default function ConfigureDetails({
                 </Select>
               </FormControl>
 
-              <FormControl fullWidth required>
+              <FormControl fullWidth>
                 <FormLabel htmlFor="wallet-client-id-input">
                   {t('applications:onboarding.configure.details.wallet.clientId.label')}
                 </FormLabel>
@@ -613,6 +629,7 @@ export default function ConfigureDetails({
                   id="wallet-client-id-input"
                   value={isWalletCustom ? customClientId : (selectedVendor?.clientId ?? '')}
                   disabled={!isWalletCustom}
+                  error={isDuplicateWalletClientId}
                   placeholder={t('applications:onboarding.configure.details.wallet.clientId.placeholder')}
                   helperText={
                     isWalletCustom
@@ -622,6 +639,16 @@ export default function ConfigureDetails({
                   onChange={(e): void => applyCustomClientId(e.target.value)}
                 />
               </FormControl>
+
+              {isDuplicateWalletClientId && (
+                <Alert severity="warning" data-testid="wallet-duplicate-client-id-alert">
+                  {isWalletCustom
+                    ? t('applications:onboarding.configure.details.wallet.duplicate.custom')
+                    : t('applications:onboarding.configure.details.wallet.duplicate.known', {
+                        vendor: selectedVendor?.label ?? '',
+                      })}
+                </Alert>
+              )}
 
               <FormControl fullWidth required>
                 <FormLabel htmlFor="wallet-deeplink-input">

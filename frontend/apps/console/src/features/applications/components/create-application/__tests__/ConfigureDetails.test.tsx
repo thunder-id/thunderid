@@ -55,6 +55,14 @@ const createTemplate = (name: string, redirectUris?: string[]): ApplicationTempl
   },
 });
 
+// The Heidi wallet vendor's fixed client id (see constants/wallet-vendors.ts).
+const HEIDI_CLIENT_ID = 'c3ce7a6c-2bbb-4abe-909c-41bc9463d3c5';
+
+const createWalletTemplate = (): ApplicationTemplate => ({
+  id: 'wallet',
+  ...createTemplate('Digital Wallet', []),
+});
+
 const renderWithContext = (
   props: Parameters<typeof ConfigureDetails>[0],
   contextOverrides: Partial<ApplicationCreateContextType> = {},
@@ -681,5 +689,76 @@ describe('ConfigureDetails', () => {
     expect(screen.getByPlaceholderText('e.g., example.com')).toBeInTheDocument();
     expect(screen.getByText('Relying Party Name')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('e.g., My App')).toBeInTheDocument();
+  });
+
+  it('warns and blocks the step when a known wallet vendor is already connected', async () => {
+    const onReadyChange = vi.fn();
+    const user = userEvent.setup();
+
+    renderWithContext(
+      {
+        technology: TechnologyApplicationTemplate.OTHER,
+        platform: PlatformApplicationTemplate.WALLET,
+        onHostingUrlChange: vi.fn(),
+        onCallbackUrlChange: vi.fn(),
+        onReadyChange,
+        existingClientIds: [HEIDI_CLIENT_ID],
+      },
+      {selectedTemplateConfig: createWalletTemplate()},
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', {name: 'Heidi'}));
+
+    expect(await screen.findByTestId('wallet-duplicate-client-id-alert')).toBeInTheDocument();
+    await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it('warns and blocks the step when a custom client id is already in use', async () => {
+    const onReadyChange = vi.fn();
+    const user = userEvent.setup();
+
+    renderWithContext(
+      {
+        technology: TechnologyApplicationTemplate.OTHER,
+        platform: PlatformApplicationTemplate.WALLET,
+        onHostingUrlChange: vi.fn(),
+        onCallbackUrlChange: vi.fn(),
+        onReadyChange,
+        existingClientIds: ['taken-client-id'],
+      },
+      {selectedTemplateConfig: createWalletTemplate()},
+    );
+
+    const clientIdInput = screen.getByPlaceholderText(
+      'applications:onboarding.configure.details.wallet.clientId.placeholder',
+    );
+    await user.type(clientIdInput, 'taken-client-id');
+
+    expect(await screen.findByTestId('wallet-duplicate-client-id-alert')).toBeInTheDocument();
+    await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+  });
+
+  it('does not warn when the selected wallet client id is not already in use', async () => {
+    const onReadyChange = vi.fn();
+    const user = userEvent.setup();
+
+    renderWithContext(
+      {
+        technology: TechnologyApplicationTemplate.OTHER,
+        platform: PlatformApplicationTemplate.WALLET,
+        onHostingUrlChange: vi.fn(),
+        onCallbackUrlChange: vi.fn(),
+        onReadyChange,
+        existingClientIds: ['a-different-client-id'],
+      },
+      {selectedTemplateConfig: createWalletTemplate()},
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByRole('option', {name: 'Heidi'}));
+
+    expect(screen.queryByTestId('wallet-duplicate-client-id-alert')).not.toBeInTheDocument();
+    await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(true));
   });
 });

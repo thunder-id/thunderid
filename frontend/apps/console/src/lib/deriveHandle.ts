@@ -16,20 +16,11 @@
  * under the License.
  */
 
-/** Request body for creating a presentation definition. */
-export interface CreateVerifiablePresentationRequest {
-  handle: string;
-  ouId: string;
-  name?: string;
-  description?: string;
-  vct: string;
-  format?: string;
-  mandatoryClaims?: string[];
-  optionalClaims?: string[];
-  claimValues?: Record<string, string[]>;
-  enforceTrustedIssuer?: boolean;
-  trustedAuthorities?: string[];
+/** Slugifies a display name into a lowercase, hyphen-delimited handle. */
+export default function deriveHandle(name: string): string {
+  return name
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .join('-');
 }
-
-/** Request body for updating a presentation definition. */
-export type UpdateVerifiablePresentationRequest = CreateVerifiablePresentationRequest;

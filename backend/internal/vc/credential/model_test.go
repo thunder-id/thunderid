@@ -43,7 +43,7 @@ func (s *ModelTestSuite) TestToResponse() {
 		VCT:      "urn:eudi:pid:de:1",
 		Claims:   []ClaimMapping{{Name: "given_name", DisplayName: "Given Name"}},
 		Display: &CredentialDisplay{
-			Name: "EUDI PID", Locale: "en-US", LogoURI: "https://example.com/logo.png",
+			Locale: "en-US", LogoURI: "https://example.com/logo.png",
 		},
 		ValiditySeconds: &validity,
 	}
@@ -57,7 +57,7 @@ func (s *ModelTestSuite) TestToResponse() {
 	s.Equal("urn:eudi:pid:de:1", resp.VCT)
 	s.Require().Len(resp.Claims, 1)
 	s.Require().NotNil(resp.Display)
-	s.Equal("EUDI PID", resp.Display.Name)
+	s.Equal("en-US", resp.Display.Locale)
 	s.Require().NotNil(resp.ValiditySeconds)
 	s.Equal(3600, *resp.ValiditySeconds)
 }
@@ -68,9 +68,9 @@ func (s *ModelTestSuite) TestToConfigSummaryWithDisplay() {
 		Handle:   "eudi-pid",
 		OUID:     "ou-1",
 		OUHandle: "default",
+		Name:     "EUDI PID",
 		Format:   DefaultCredentialFormat,
 		VCT:      "urn:eudi:pid:de:1",
-		Display:  &CredentialDisplay{Name: "EUDI PID"},
 	}
 
 	summary := toConfigSummary(dto)
@@ -80,11 +80,11 @@ func (s *ModelTestSuite) TestToConfigSummaryWithDisplay() {
 	s.Equal("default", summary.OUHandle)
 	s.Equal(DefaultCredentialFormat, summary.Format)
 	s.Equal("urn:eudi:pid:de:1", summary.VCT)
-	s.Equal("EUDI PID", summary.DisplayName)
+	s.Equal("EUDI PID", summary.Name)
 }
 
-func (s *ModelTestSuite) TestToConfigSummaryWithoutDisplay() {
+func (s *ModelTestSuite) TestToConfigSummaryWithoutName() {
 	summary := toConfigSummary(CredentialConfigurationDTO{ID: "cfg-2", Handle: "h", VCT: "v"})
 	s.Equal("cfg-2", summary.ID)
-	s.Empty(summary.DisplayName)
+	s.Empty(summary.Name)
 }

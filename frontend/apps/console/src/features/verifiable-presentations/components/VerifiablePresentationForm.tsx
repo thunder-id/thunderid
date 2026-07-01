@@ -61,6 +61,12 @@ import type {TrustAnchor, VerifiablePresentation} from '../models/vp';
 
 export interface VerifiablePresentationFormProps {
   initial?: VerifiablePresentation;
+  /** Name, edited inline in the page header rather than in this form. */
+  name: string;
+  /** Description, edited inline in the page header rather than in this form. */
+  description: string;
+  onNameChange: (name: string) => void;
+  onDescriptionChange: (description: string) => void;
   submitting: boolean;
   submitLabel: string;
   onSubmit: (data: CreateVerifiablePresentationRequest) => void;
@@ -88,6 +94,10 @@ function TabPanel({children, value, index}: TabPanelProps): JSX.Element {
  */
 export default function VerifiablePresentationForm({
   initial = undefined,
+  name,
+  description,
+  onNameChange,
+  onDescriptionChange,
   submitting,
   submitLabel,
   onSubmit,
@@ -100,7 +110,6 @@ export default function VerifiablePresentationForm({
   const [tab, setTab] = useState<number>(0);
   const [handle, setHandle] = useState<string>(initial?.handle ?? '');
   const [ouId, setOuId] = useState<string>(initial?.ouId ?? '');
-  const [displayName, setDisplayName] = useState<string>(initial?.displayName ?? '');
   const [vct, setVct] = useState<string>(initial?.vct ?? '');
   const [format, setFormat] = useState<string>(initial?.format ?? 'dc+sd-jwt');
   const [claims, setClaims] = useState<ClaimRow[]>(definitionToClaimRows(initial));
@@ -115,7 +124,7 @@ export default function VerifiablePresentationForm({
   // spuriously cleared during the initial fetch.
   const noTrustAnchors = !trustAnchorsLoading && trustAnchors.length === 0;
 
-  const [copied, setCopied] = useState<boolean>(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
     () => () => {
@@ -125,13 +134,13 @@ export default function VerifiablePresentationForm({
     },
     [],
   );
-  const handleCopy = useCallback(async (value: string): Promise<void> => {
+  const handleCopy = useCallback(async (value: string, field: string): Promise<void> => {
     await navigator.clipboard.writeText(value);
-    setCopied(true);
+    setCopiedField(field);
     if (copyTimeoutRef.current) {
       clearTimeout(copyTimeoutRef.current);
     }
-    copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+    copyTimeoutRef.current = setTimeout(() => setCopiedField(null), 2000);
   }, []);
 
   const definitionId = initial?.id;
@@ -144,7 +153,8 @@ export default function VerifiablePresentationForm({
   const snapshot = (
     h: string,
     o: string,
-    dn: string,
+    n: string,
+    d: string,
     v: string,
     f: string,
     cl: ClaimRow[],
@@ -154,7 +164,8 @@ export default function VerifiablePresentationForm({
     JSON.stringify({
       handle: h.trim(),
       ouId: o,
-      displayName: dn.trim(),
+      name: n.trim(),
+      description: d.trim(),
       vct: v.trim(),
       format: f.trim(),
       ...claimRowsToRequest(cl),
@@ -166,7 +177,8 @@ export default function VerifiablePresentationForm({
       snapshot(
         initial?.handle ?? '',
         initial?.ouId ?? '',
-        initial?.displayName ?? '',
+        initial?.name ?? '',
+        initial?.description ?? '',
         initial?.vct ?? '',
         initial?.format ?? 'dc+sd-jwt',
         definitionToClaimRows(initial),
@@ -178,14 +190,15 @@ export default function VerifiablePresentationForm({
   // Never enforce issuer trust when no anchors exist (it would reject everything).
   const effectiveEnforce = enforceTrustedIssuer && !noTrustAnchors;
   const dirty =
-    snapshot(handle, effectiveOuId, displayName, vct, format, claims, effectiveEnforce, trustedAuthorities) !==
+    snapshot(handle, effectiveOuId, name, description, vct, format, claims, effectiveEnforce, trustedAuthorities) !==
     initialSnapshot;
 
   const handleSubmit = (): void => {
     onSubmit({
       handle: handle.trim(),
       ouId: effectiveOuId,
-      displayName: displayName.trim() || undefined,
+      name: name.trim() || undefined,
+      description: description.trim() || undefined,
       vct: vct.trim(),
       format: format.trim() || undefined,
       ...claimRowsToRequest(claims),
@@ -197,7 +210,8 @@ export default function VerifiablePresentationForm({
   const handleReset = (): void => {
     setHandle(initial?.handle ?? '');
     setOuId(initial?.ouId ?? '');
-    setDisplayName(initial?.displayName ?? '');
+    onNameChange(initial?.name ?? '');
+    onDescriptionChange(initial?.description ?? '');
     setVct(initial?.vct ?? '');
     setFormat(initial?.format ?? 'dc+sd-jwt');
     setClaims(definitionToClaimRows(initial));
@@ -212,6 +226,7 @@ export default function VerifiablePresentationForm({
     setValue: (v: string) => void,
     placeholder?: string,
     required?: boolean,
+    helperText?: string,
   ): JSX.Element => (
     <FormControl fullWidth required={required}>
       <FormLabel htmlFor={id}>{label}</FormLabel>
@@ -220,6 +235,7 @@ export default function VerifiablePresentationForm({
         id={id}
         value={value}
         placeholder={placeholder}
+        helperText={helperText}
         onChange={(e: ChangeEvent<HTMLInputElement>): void => setValue(e.target.value)}
       />
     </FormControl>
@@ -233,6 +249,7 @@ export default function VerifiablePresentationForm({
         aria-label="presentation definition"
       >
         <Tab label={t('form.tabs.general')} />
+        <Tab label={t('form.tabs.protocolSettings')} />
         <Tab label={t('form.tabs.claims')} />
         <Tab label={t('form.tabs.issuerTrust')} />
       </Tabs>
@@ -241,47 +258,71 @@ export default function VerifiablePresentationForm({
         <Stack spacing={3}>
           {definitionId && (
             <SettingsCard title={t('form.quickCopy.title')} description={t('form.quickCopy.description')}>
-              <FormControl fullWidth>
-                <FormLabel htmlFor="vp-id">{t('form.id.label')}</FormLabel>
-                <TextField
-                  fullWidth
-                  id="vp-id"
-                  value={definitionId}
-                  InputProps={{
-                    readOnly: true,
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <Tooltip title={copied ? t('common:actions.copied') : t('form.copyId')}>
-                          <IconButton
-                            aria-label={t('form.copyId')}
-                            edge="end"
-                            onClick={(): void => {
-                              handleCopy(definitionId).catch(() => null);
-                            }}
+              <Stack spacing={3}>
+                <FormControl fullWidth>
+                  <FormLabel htmlFor="vp-id">{t('form.id.label')}</FormLabel>
+                  <TextField
+                    fullWidth
+                    id="vp-id"
+                    value={definitionId}
+                    InputProps={{
+                      readOnly: true,
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Tooltip title={copiedField === 'id' ? t('common:actions.copied') : t('form.copyId')}>
+                            <IconButton
+                              aria-label={t('form.copyId')}
+                              edge="end"
+                              onClick={(): void => {
+                                handleCopy(definitionId, 'id').catch(() => null);
+                              }}
+                            >
+                              {copiedField === 'id' ? <Check size={16} /> : <Copy size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                    }}
+                    helperText={t('form.quickCopy.idHint')}
+                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                  />
+                </FormControl>
+                <FormControl fullWidth>
+                  <FormLabel htmlFor="vp-handle">{t('form.handle.label')}</FormLabel>
+                  <TextField
+                    fullWidth
+                    id="vp-handle"
+                    value={handle}
+                    InputProps={{
+                      readOnly: true,
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Tooltip
+                            title={copiedField === 'handle' ? t('common:actions.copied') : t('common:actions.copy')}
                           >
-                            {copied ? <Check size={16} /> : <Copy size={16} />}
-                          </IconButton>
-                        </Tooltip>
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                />
-              </FormControl>
+                            <IconButton
+                              aria-label={t('common:actions.copy')}
+                              edge="end"
+                              onClick={(): void => {
+                                handleCopy(handle, 'handle').catch(() => null);
+                              }}
+                            >
+                              {copiedField === 'handle' ? <Check size={16} /> : <Copy size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                    }}
+                    helperText={t('form.handle.hint')}
+                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                  />
+                </FormControl>
+              </Stack>
             </SettingsCard>
           )}
 
-          <SettingsCard title={t('form.details.title')} description={t('form.details.description')}>
+          <SettingsCard title={t('form.organizationUnit.title')} description={t('form.organizationUnit.description')}>
             <Stack spacing={3}>
-              {text('vp-handle', t('form.handle.label'), handle, setHandle, 'eudi-pid', true)}
-              {text('vp-display-name', t('form.displayName.label'), displayName, setDisplayName, 'EUDI Wallet PID')}
-              {text('vp-vct', t('form.vct.label'), vct, setVct, 'urn:eudi:pid:de:1', true)}
-              <FormControl fullWidth>
-                <FormLabel htmlFor="vp-format">{t('form.format.label')}</FormLabel>
-                <Select id="vp-format" value={format} onChange={(e): void => setFormat(e.target.value)}>
-                  <MenuItem value="dc+sd-jwt">{t('form.format.sdJwt')}</MenuItem>
-                </Select>
-              </FormControl>
               {!definitionId && hasMultipleOUs && (
                 <FormControl fullWidth required>
                   <FormLabel>{t('form.organizationUnit.label')}</FormLabel>
@@ -290,21 +331,75 @@ export default function VerifiablePresentationForm({
                     value={effectiveOuId}
                     onChange={setOuId}
                     maxHeight={320}
+                    helperText={t('form.organizationUnit.pickerHint')}
                   />
                 </FormControl>
               )}
               {definitionId && (
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="vp-ou">{t('form.organizationUnit.label')}</FormLabel>
-                  <TextField
-                    id="vp-ou"
-                    fullWidth
-                    size="small"
-                    value={initial?.ouHandle ?? initial?.ouId ?? ''}
-                    slotProps={{input: {readOnly: true}}}
-                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                  />
-                </FormControl>
+                <>
+                  <FormControl fullWidth>
+                    <FormLabel htmlFor="vp-ou-handle">{t('form.organizationUnit.handleLabel')}</FormLabel>
+                    <TextField
+                      id="vp-ou-handle"
+                      fullWidth
+                      size="small"
+                      value={initial?.ouHandle ?? '-'}
+                      InputProps={{
+                        readOnly: true,
+                        endAdornment: initial?.ouHandle ? (
+                          <InputAdornment position="end">
+                            <Tooltip
+                              title={copiedField === 'ouHandle' ? t('common:actions.copied') : t('common:actions.copy')}
+                            >
+                              <IconButton
+                                aria-label={t('common:actions.copy')}
+                                edge="end"
+                                onClick={(): void => {
+                                  handleCopy(initial.ouHandle!, 'ouHandle').catch(() => null);
+                                }}
+                              >
+                                {copiedField === 'ouHandle' ? <Check size={16} /> : <Copy size={16} />}
+                              </IconButton>
+                            </Tooltip>
+                          </InputAdornment>
+                        ) : undefined,
+                      }}
+                      helperText={t('form.organizationUnit.handleHint')}
+                      sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                    />
+                  </FormControl>
+                  <FormControl fullWidth>
+                    <FormLabel htmlFor="vp-ou-id">{t('form.organizationUnit.idLabel')}</FormLabel>
+                    <TextField
+                      id="vp-ou-id"
+                      fullWidth
+                      size="small"
+                      value={initial?.ouId ?? ''}
+                      InputProps={{
+                        readOnly: true,
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <Tooltip
+                              title={copiedField === 'ouId' ? t('common:actions.copied') : t('common:actions.copy')}
+                            >
+                              <IconButton
+                                aria-label={t('common:actions.copy')}
+                                edge="end"
+                                onClick={(): void => {
+                                  handleCopy(initial?.ouId ?? '', 'ouId').catch(() => null);
+                                }}
+                              >
+                                {copiedField === 'ouId' ? <Check size={16} /> : <Copy size={16} />}
+                              </IconButton>
+                            </Tooltip>
+                          </InputAdornment>
+                        ),
+                      }}
+                      helperText={t('form.organizationUnit.idHint')}
+                      sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                    />
+                  </FormControl>
+                </>
               )}
             </Stack>
           </SettingsCard>
@@ -326,10 +421,25 @@ export default function VerifiablePresentationForm({
       </TabPanel>
 
       <TabPanel value={tab} index={1}>
-        <ClaimsEditor claims={claims} onChange={setClaims} />
+        <SettingsCard title={t('form.protocol.title')} description={t('form.protocol.description')}>
+          <Stack spacing={3}>
+            {text('vp-vct', t('form.vct.label'), vct, setVct, 'urn:eudi:pid:de:1', true, t('form.vct.hint'))}
+            <FormControl fullWidth>
+              <FormLabel htmlFor="vp-format">{t('form.format.label')}</FormLabel>
+              <Select id="vp-format" value={format} onChange={(e): void => setFormat(e.target.value)}>
+                <MenuItem value="dc+sd-jwt">{t('form.format.sdJwt')}</MenuItem>
+              </Select>
+              <FormHelperText>{t('form.format.hint')}</FormHelperText>
+            </FormControl>
+          </Stack>
+        </SettingsCard>
       </TabPanel>
 
       <TabPanel value={tab} index={2}>
+        <ClaimsEditor claims={claims} onChange={setClaims} />
+      </TabPanel>
+
+      <TabPanel value={tab} index={3}>
         <SettingsCard title={t('form.issuerTrust.title')} description={t('form.issuerTrust.description')}>
           <Stack spacing={3}>
             <Box>

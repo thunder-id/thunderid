@@ -192,7 +192,7 @@ func newTestServiceWithDefs(
 		testDefinitionID: {
 			ID:              testDefinitionID,
 			Handle:          testDefinitionID,
-			DisplayName:     "Test PID",
+			Name:            "Test PID",
 			VCT:             testVCT,
 			Format:          presentation.DefaultCredentialFormat,
 			RequestedClaims: []string{"given_name", "family_name", "birthdate"},

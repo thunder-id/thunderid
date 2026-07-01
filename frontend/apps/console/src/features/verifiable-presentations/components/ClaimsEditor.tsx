@@ -123,6 +123,7 @@ export default function ClaimsEditor({claims, onChange}: ClaimsEditorProps): JSX
               </Select>
             </FormControl>
           </Box>
+          <FormHelperText>{t('claims.nameHint')}</FormHelperText>
 
           <FormControl fullWidth sx={{mt: 2}}>
             <FormLabel>{t('claims.values')}</FormLabel>

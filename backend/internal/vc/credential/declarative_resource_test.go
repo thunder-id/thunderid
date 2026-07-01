@@ -180,6 +180,7 @@ func (s *ConfigurationExporterTestSuite) TestParseToConfigurationDTO() {
 	yamlDoc := []byte(`
 id: cfg-1
 handle: eudi-pid
+name: EUDI PID
 format: dc+sd-jwt
 vct: urn:eudi:pid:de:1
 claims:
@@ -188,7 +189,6 @@ claims:
   - name: family_name
     displayName: Family Name
 display:
-  name: EUDI PID
   locale: en-US
   logoUri: https://example.com/logo.png
 validitySeconds: 3600
@@ -204,8 +204,9 @@ validitySeconds: 3600
 	s.Equal(DefaultCredentialFormat, dto.Format)
 	s.Require().Len(dto.Claims, 2)
 	s.Equal("given_name", dto.Claims[0].Name)
+	s.Equal("EUDI PID", dto.Name)
 	s.Require().NotNil(dto.Display)
-	s.Equal("EUDI PID", dto.Display.Name)
+	s.Equal("en-US", dto.Display.Locale)
 	s.Require().NotNil(dto.ValiditySeconds)
 	s.Equal(3600, *dto.ValiditySeconds)
 }
@@ -238,6 +239,7 @@ func (s *ConfigurationExporterTestSuite) TestExportImportRoundTrip() {
 	original := &CredentialConfigurationDTO{
 		ID:     "cfg-1",
 		Handle: "eudi-pid",
+		Name:   "EUDI PID",
 		VCT:    "urn:eudi:pid:de:1",
 		Format: DefaultCredentialFormat,
 		Claims: []ClaimMapping{
@@ -245,7 +247,6 @@ func (s *ConfigurationExporterTestSuite) TestExportImportRoundTrip() {
 			{Name: "family_name", DisplayName: "Family Name"},
 		},
 		Display: &CredentialDisplay{
-			Name:    "EUDI PID",
 			Locale:  "en-US",
 			LogoURI: "https://example.com/logo.png",
 		},
