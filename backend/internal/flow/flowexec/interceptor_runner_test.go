@@ -460,6 +460,7 @@ func newTestInterceptorUnitMock(t interface {
 	m.On("GetMode").Return(mode).Maybe()
 	m.On("GetScope").Return(scope).Maybe()
 	m.On("GetApplyTo").Return(applyTo).Maybe()
+	m.On("GetProperties").Return(map[string]any(nil)).Maybe()
 
 	var ic core.InterceptorInterface
 	m.On("GetInterceptor").Return(func() core.InterceptorInterface { return ic }).Maybe()

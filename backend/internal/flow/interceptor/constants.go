@@ -30,6 +30,17 @@ const (
 const (
 	// ChallengeTokenInterceptor is the registered name of the challenge token interceptor.
 	ChallengeTokenInterceptor = "ChallengeTokenInterceptor"
+	// CaptchaInterceptor is the registered name of the captcha interceptor.
+	CaptchaInterceptor = "CaptchaInterceptor"
+)
+
+// Interceptor property key constants.
+const (
+	// Captcha Interceptor property key constants.
+	// propertyKeyFieldKey is the interceptor property naming the user-input field that carries the captcha token.
+	propertyKeyFieldKey = "fieldKey"
+	// defaultCaptchaFieldKey is the user-input field read when the fieldKey property is unset.
+	defaultCaptchaFieldKey = "captcha_token"
 )
 
 // Interceptor shared data key constants.

@@ -134,7 +134,7 @@ func (s *interceptorRunner) executeInterceptors(
 		ic := b.GetInterceptor()
 		name := ic.GetName()
 
-		result, svcErr := s.executeInterceptor(ic, name, mode, execCtx, logger)
+		result, svcErr := s.executeInterceptor(ic, name, mode, b.GetProperties(), execCtx, logger)
 		if svcErr != nil {
 			return nil, svcErr
 		}
@@ -168,6 +168,7 @@ func (s *interceptorRunner) executeInterceptor(
 	ic core.InterceptorInterface,
 	name string,
 	mode providers.InterceptorMode,
+	properties map[string]any,
 	execCtx *InterceptorRunnerContext,
 	logger *log.Logger,
 ) (*common.InterceptorResponse, *tidcommon.ServiceError) {
@@ -191,6 +192,7 @@ func (s *interceptorRunner) executeInterceptor(
 		CurrentNodeInputs:   execCtx.CurrentNodeInputs,
 		ForwardedData:       execCtx.ForwardedData,
 		AdditionalData:      execCtx.AdditionalData,
+		Properties:          properties,
 		SharedData:          execCtx.SharedData,
 	}
 	if ctx.SharedData == nil {
