@@ -3,6 +3,9 @@ info:
   title: Group Management API
   version: "1.0"
   description: Create and manage groups for organizing users. Groups can be assigned roles and permissions and are used as the primary unit for access control delegation.
+  contact:
+    name: ThunderID Maintainers
+    url: https://github.com/thunder-id/thunderid
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
@@ -29,7 +32,9 @@ paths:
     get:
       tags:
         - Groups
+      operationId: listGroups
       summary: List groups
+      description: Retrieve a paginated list of groups using offset-based pagination (limit, offset).
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -105,7 +110,9 @@ paths:
     post:
       tags:
         - Groups
+      operationId: createGroup
       summary: Create a new group
+      description: Create a new group within an organization unit. Fails with 409 if the name conflicts under the same OU.
       requestBody:
         required: true
         content:
@@ -218,7 +225,9 @@ paths:
     get:
       tags:
         - Groups
+      operationId: getGroup
       summary: Get a group by id
+      description: Retrieve a single group by its unique identifier.
       parameters:
         - in: path
           name: id
@@ -278,7 +287,9 @@ paths:
     put:
       tags:
         - Groups
+      operationId: updateGroup
       summary: Update a group by id
+      description: Update the mutable attributes of an existing group identified by its id.
       parameters:
         - in: path
           name: id
@@ -384,7 +395,9 @@ paths:
     delete:
       tags:
         - Groups
+      operationId: deleteGroup
       summary: Delete a group by id
+      description: Delete a group by its id. Fails if the group still has child groups.
       parameters:
         - in: path
           name: id
@@ -448,7 +461,9 @@ paths:
     get:
       tags:
         - Groups
+      operationId: listGroupMembers
       summary: List members in group
+      description: Retrieve a paginated list of the members of a group using offset-based pagination.
       parameters:
         - in: path
           name: id
@@ -531,7 +546,9 @@ paths:
     post:
       tags:
         - Groups
+      operationId: addGroupMembers
       summary: Add members to a group
+      description: Add one or more members (users or groups) to an existing group.
       parameters:
         - in: path
           name: id
@@ -646,7 +663,9 @@ paths:
     post:
       tags:
         - Groups
+      operationId: removeGroupMembers
       summary: Remove members from a group
+      description: Remove one or more members from an existing group.
       parameters:
         - in: path
           name: id
@@ -759,7 +778,9 @@ paths:
     get:
       tags:
         - groups-by-path
+      operationId: listGroupsByPath
       summary: List groups in organization unit specified by handle path
+      description: Retrieve a paginated list of groups within the organization unit identified by its handle path.
       parameters:
         - in: path
           name: path
@@ -862,7 +883,9 @@ paths:
     post:
       tags:
         - groups-by-path
+      operationId: createGroupByPath
       summary: Create a new group under the organization unit specified by the handle path
+      description: Create a new group under the organization unit identified by its handle path. Fails with 409 on a name conflict.
       parameters:
         - in: path
           name: path

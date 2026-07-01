@@ -1,0 +1,91 @@
+openapi: 3.0.3
+info:
+  title: Sample (compliant) API
+  version: 1.0.0
+  description: A fully compliant sample used by scripts/selftest.sh to prove the ruleset passes clean.
+  contact:
+    name: ThunderID Maintainers
+    url: https://github.com/thunder-id/thunderid
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host: { default: "localhost" }
+      port: { default: "8090" }
+tags:
+  - name: users
+    description: CRUD operations for user accounts.
+paths:
+  /users:
+    get:
+      operationId: listUsers
+      summary: List users
+      description: Retrieve a paginated, filterable, sortable list of users.
+      tags: [users]
+      parameters:
+        - { name: limit, in: query, description: Max records to return., schema: { type: integer } }
+        - { name: cursor, in: query, description: Opaque cursor for the next page., schema: { type: string } }
+        - { name: filter, in: query, description: SCIM 2.0 filter expression., schema: { type: string } }
+        - { name: sort, in: query, description: Sort expression., schema: { type: string } }
+      responses:
+        "200":
+          description: A page of users.
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "500": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createUser
+      summary: Create a user
+      description: Create a new user. Accepts an Idempotency-Key so retries do not duplicate the resource.
+      tags: [users]
+      parameters:
+        - { name: Idempotency-Key, in: header, description: Client-supplied idempotency key., schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        "201":
+          description: The created user.
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "500": { $ref: "#/components/responses/Problem" }
+  /users/{id}:
+    get:
+      operationId: getUser
+      summary: Get a user
+      description: Retrieve a single user by id.
+      tags: [users]
+      parameters:
+        - { name: id, in: path, required: true, description: User id., schema: { type: string } }
+      responses:
+        "200":
+          description: The requested user.
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "500": { $ref: "#/components/responses/Problem" }
+components:
+  responses:
+    Problem:
+      description: RFC 9457 problem details.
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            properties:
+              type: { type: string }
+              title: { type: string }
+              status: { type: integer }
+              detail: { type: string }
