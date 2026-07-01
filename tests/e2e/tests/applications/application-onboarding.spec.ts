@@ -200,12 +200,13 @@ test.describe("Application Onboarding", () => {
         await applicationsPage.clickNext();
       });
 
-      await test.step("Step 6: Verify only the redirect-based option is offered", async () => {
+      await test.step("Step 6: Verify the approach selection is replaced by a redirect-only hint", async () => {
         await applicationsPage.waitForStep("application-configure-experience");
-        await expect(applicationsPage.inbuiltExperienceCard.first()).toBeVisible();
+        await expect(applicationsPage.redirectOnlyExperienceHint).toBeVisible();
+        await expect(applicationsPage.inbuiltExperienceCard).toHaveCount(0);
         await expect(applicationsPage.embeddedExperienceCard).toHaveCount(0);
-        console.log("EMBEDDED experience hidden for SPA — correct");
-        await applicationsPage.screenshot("tc004-spa-embedded-hidden");
+        console.log("Approach selection replaced by redirect-only hint for SPA — correct");
+        await applicationsPage.screenshot("tc004-spa-redirect-only-hint");
       });
     });
 
