@@ -65,6 +65,9 @@ type InterceptorContext struct {
 	ForwardedData       map[string]interface{}
 	AdditionalData      map[string]string
 
+	// Properties holds the per-declaration configuration of the interceptor unit being executed.
+	Properties map[string]any
+
 	// SharedData is interceptor-layer state shared across interceptors and preserved across
 	// the requests of a single flow instance. Interceptors may read and write this map directly.
 	// Each interceptor is responsible for reading any information it needs from SharedData and

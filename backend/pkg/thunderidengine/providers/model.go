@@ -1004,3 +1004,9 @@ func getDuration(startTime int64, endTime int64) int64 {
 	}
 	return (endTime - startTime) * 1000
 }
+
+// CaptchaVerificationResult holds the outcome of a captcha token verification.
+type CaptchaVerificationResult struct {
+	// Success reports whether the provider accepted the token as valid.
+	Success bool
+}

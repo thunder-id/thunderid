@@ -547,6 +547,12 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: consentprovidermock
           filename: "{{.InterfaceName}}_mock.go"
+      CaptchaValidationProvider:
+        config:
+          dir: tests/mocks/captchamock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: captchamock
+          filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/authnprovider/provider:
     config:
