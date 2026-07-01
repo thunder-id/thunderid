@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -177,6 +177,7 @@ const (
 	ErrorInvalidScope             string = "invalid_scope"
 	ErrorInvalidTarget            string = "invalid_target"
 	ErrorServerError              string = "server_error"
+	ErrorUnsupportedTokenType     string = "unsupported_token_type" // #nosec G101
 	ErrorUnsupportedResponseType  string = "unsupported_response_type"
 	ErrorAccessDenied             string = "access_denied"
 	ErrorLoginRequired            string = "login_required"
@@ -238,6 +239,7 @@ const (
 	ClaimAud      string = "aud"
 	ClaimExp      string = "exp"
 	ClaimIat      string = "iat"
+	ClaimJTI      string = "jti"
 	ClaimAuthTime string = "auth_time"
 )
 

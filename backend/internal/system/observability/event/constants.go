@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -42,6 +42,9 @@ const (
 
 	// EventTypeTokenIssuanceFailed is triggered when token issuance fails.
 	EventTypeTokenIssuanceFailed providers.EventType = "TOKEN_ISSUANCE_FAILED" //nolint:gosec
+
+	// EventTypeTokenRevoked is triggered when a token is revoked (RFC 7009).
+	EventTypeTokenRevoked providers.EventType = "TOKEN_REVOKED" //nolint:gosec
 
 	// Flow Execution Events
 

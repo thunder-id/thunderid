@@ -49,6 +49,7 @@ var DataKey = struct {
 	// OAuth/Token Keys
 	Scope     string
 	GrantType string
+	JTI       string
 
 	// Event Metadata Keys
 	Message     string
@@ -84,6 +85,7 @@ var DataKey = struct {
 	// OAuth/Token Keys
 	Scope:     "scope",
 	GrantType: "grant_type",
+	JTI:       "jti",
 
 	// Event Metadata Keys
 	Message:     "message",

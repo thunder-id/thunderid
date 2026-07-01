@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -110,8 +110,9 @@ func (ts *DiscoveryTestSuite) TestOAuth2AuthorizationServerMetadata_GET_Success(
 	ts.NotEmpty(metadata.UserInfoEndpoint, "UserInfoEndpoint should be present")
 	ts.Contains(metadata.UserInfoEndpoint, "/oauth2/userinfo", "UserInfoEndpoint should contain correct path")
 
-	// Verify not implemented endpoints are empty
-	ts.Empty(metadata.RevocationEndpoint, "RevocationEndpoint should be empty (not implemented)")
+	// Verify revocation endpoint is present
+	ts.NotEmpty(metadata.RevocationEndpoint, "RevocationEndpoint should be present")
+	ts.Contains(metadata.RevocationEndpoint, "/oauth2/revoke", "RevocationEndpoint should contain correct path")
 
 	// Verify supported grant types
 	ts.NotEmpty(metadata.GrantTypesSupported, "GrantTypesSupported should not be empty")

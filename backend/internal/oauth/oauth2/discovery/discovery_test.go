@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -120,9 +120,7 @@ func (suite *DiscoveryTestSuite) TestOAuth2AuthorizationServerMetadata() {
 	assert.NotEmpty(suite.T(), metadata.RegistrationEndpoint)
 	assert.NotEmpty(suite.T(), metadata.IntrospectionEndpoint)
 	assert.NotEmpty(suite.T(), metadata.UserInfoEndpoint)
-
-	// Verify only implemented endpoints are present
-	assert.Empty(suite.T(), metadata.RevocationEndpoint) // Not implemented
+	assert.NotEmpty(suite.T(), metadata.RevocationEndpoint)
 
 	// Verify only implemented grant types are present
 	assert.Contains(suite.T(), metadata.GrantTypesSupported, "authorization_code")

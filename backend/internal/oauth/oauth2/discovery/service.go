@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, WSO2 LLC. (https://www.wso2.com).
+ * Copyright (c) 2025-2026, WSO2 LLC. (https://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
  * Version 2.0 (the "License"); you may not use this file except
@@ -66,6 +66,7 @@ func (ds *discoveryService) GetOAuth2AuthorizationServerMetadata(
 		JWKSUri:                                    ds.getJWKSUri(),
 		RegistrationEndpoint:                       ds.getRegistrationEndpoint(),
 		IntrospectionEndpoint:                      ds.getIntrospectionEndpoint(),
+		RevocationEndpoint:                         ds.getRevocationEndpoint(),
 		PushedAuthorizationRequestEndpoint:         ds.getPAREndpoint(),
 		RequirePushedAuthorizationRequests:         ds.isGlobalPARRequired(),
 		BackchannelAuthenticationEndpoint:          ds.getBackchannelAuthenticationEndpoint(),
@@ -124,6 +125,10 @@ func (ds *discoveryService) getJWKSUri() string {
 
 func (ds *discoveryService) getIntrospectionEndpoint() string {
 	return ds.cfg.BaseURL + constants.OAuth2IntrospectionEndpoint
+}
+
+func (ds *discoveryService) getRevocationEndpoint() string {
+	return ds.cfg.BaseURL + constants.OAuth2RevokeEndpoint
 }
 
 func (ds *discoveryService) getUserInfoEndpoint() string {
