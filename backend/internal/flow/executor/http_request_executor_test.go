@@ -109,15 +109,15 @@ func (suite *HTTPRequestExecutorTestSuite) TestResolvePlaceholdersInConfig() {
 			"orgId":     "org-456",
 		},
 		NodeProperties: map[string]interface{}{
-			"url":    suite.mockServer.URL + "/api/users/{{ context.username }}",
+			"url":    suite.mockServer.URL + "/api/users/{{ctx(username)}}",
 			"method": "POST",
 			"headers": map[string]interface{}{
-				"X-Session-Id": "{{ context.sessionId }}",
-				"X-Org-Id":     "{{ context.orgId }}",
+				"X-Session-Id": "{{ctx(sessionId)}}",
+				"X-Org-Id":     "{{ctx(orgId)}}",
 			},
 			"body": map[string]interface{}{
-				"user":  "{{ context.username }}",
-				"email": "{{ context.email }}",
+				"user":  "{{ctx(username)}}",
+				"email": "{{ctx(email)}}",
 			},
 		},
 	}
@@ -166,7 +166,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestResolvePlaceholderUserIDSpecialHa
 			"url":    suite.mockServer.URL + "/api/user",
 			"method": "POST",
 			"body": map[string]interface{}{
-				"userId": "{{ context.userId }}",
+				"userId": "{{ctx(userId)}}",
 			},
 		},
 	}
@@ -204,7 +204,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestResolvePlaceholderRuntimeDataPrec
 			"url":    suite.mockServer.URL + "/api/test",
 			"method": "POST",
 			"body": map[string]interface{}{
-				"value": "{{ context.key }}",
+				"value": "{{ctx(key)}}",
 			},
 		},
 	}
@@ -238,7 +238,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestResolvePlaceholderNonExistentKey(
 			"url":    suite.mockServer.URL + "/api/test",
 			"method": "POST",
 			"body": map[string]interface{}{
-				"value": "{{ context.nonexistent }}",
+				"value": "{{ctx(nonexistent)}}",
 			},
 		},
 	}
@@ -249,7 +249,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestResolvePlaceholderNonExistentKey(
 	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
 
 	// Non-existent key should keep placeholder
-	assert.Equal(suite.T(), "{{ context.nonexistent }}", receivedBody["value"])
+	assert.Equal(suite.T(), "{{ctx(nonexistent)}}", receivedBody["value"])
 }
 
 func (suite *HTTPRequestExecutorTestSuite) TestResolveMapPlaceholders() {
@@ -266,18 +266,18 @@ func (suite *HTTPRequestExecutorTestSuite) TestResolveMapPlaceholders() {
 
 	input := map[string]interface{}{
 		"user": map[string]interface{}{
-			"name":  "{{ context.username }}",
-			"email": "{{ context.email }}",
+			"name":  "{{ctx(username)}}",
+			"email": "{{ctx(email)}}",
 			"metadata": map[string]interface{}{
-				"orgId":  "{{ context.orgId }}",
+				"orgId":  "{{ctx(orgId)}}",
 				"static": "value",
 			},
 		},
 		"items": []interface{}{
-			"{{ context.username }}",
+			"{{ctx(username)}}",
 			"static",
 			map[string]interface{}{
-				"nested": "{{ context.email }}",
+				"nested": "{{ctx(email)}}",
 			},
 		},
 	}
@@ -362,8 +362,8 @@ func (suite *HTTPRequestExecutorTestSuite) TestExecute_SuccessfulPOSTRequest() {
 		assert.NoError(suite.T(), err, "Failed to encode mock response")
 	}))
 
-	bodyJSON := `{"username": "{{ context.username }}", "email": "{{ context.email }}"}`
-	headersJSON := `{"Authorization": "Bearer token123", "X-Custom-Header": "{{ context.customValue }}"}`
+	bodyJSON := `{"username": "{{ctx(username)}}", "email": "{{ctx(email)}}"}`
+	headersJSON := `{"Authorization": "Bearer token123", "X-Custom-Header": "{{ctx(customValue)}}"}`
 	responseMappingJSON := `{"status": "response.data.status", "userId": "response.data.userId"}`
 
 	ctx := &core.NodeContext{
@@ -764,9 +764,9 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromEntit
 			"url":    suite.mockServer.URL + "/api/enrich",
 			"method": "POST",
 			"body": map[string]interface{}{
-				"orgHandle":      "{{ context.ouHandle }}",
-				"orgName":        "{{ context.ouName }}",
-				"orgDescription": "{{ context.ouDescription }}",
+				"orgHandle":      "{{ctx(ouHandle)}}",
+				"orgName":        "{{ctx(ouName)}}",
+				"orgDescription": "{{ctx(ouDescription)}}",
 			},
 		},
 	}
@@ -821,9 +821,9 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OUIDFromRunti
 			"url":    suite.mockServer.URL + "/api/enrich",
 			"method": "POST",
 			"body": map[string]interface{}{
-				"handle":      "{{ context.ouHandle }}",
-				"name":        "{{ context.ouName }}",
-				"description": "{{ context.ouDescription }}",
+				"handle":      "{{ctx(ouHandle)}}",
+				"name":        "{{ctx(ouName)}}",
+				"description": "{{ctx(ouDescription)}}",
 			},
 		},
 	}
@@ -878,7 +878,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_RuntimeDataPr
 			"url":    suite.mockServer.URL + "/api/enrich",
 			"method": "POST",
 			"body": map[string]interface{}{
-				"handle": "{{ context.ouHandle }}",
+				"handle": "{{ctx(ouHandle)}}",
 			},
 		},
 	}
@@ -933,7 +933,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OverwritesExi
 			"url":    suite.mockServer.URL + "/api/enrich",
 			"method": "POST",
 			"body": map[string]interface{}{
-				"handle": "{{ context.ouHandle }}",
+				"handle": "{{ctx(ouHandle)}}",
 			},
 		},
 	}
@@ -984,7 +984,7 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 			"url":    suite.mockServer.URL + "/api/enrich",
 			"method": "POST",
 			"body": map[string]interface{}{
-				"orgHandle": "{{ context.ouHandle }}",
+				"orgHandle": "{{ctx(ouHandle)}}",
 			},
 		},
 	}
@@ -993,5 +993,5 @@ func (suite *HTTPRequestExecutorTestSuite) TestEnrichOURuntimeData_OULookupFailu
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), common.ExecComplete, execResp.Status)
-	assert.Equal(suite.T(), "{{ context.ouHandle }}", receivedBody["orgHandle"])
+	assert.Equal(suite.T(), "{{ctx(ouHandle)}}", receivedBody["orgHandle"])
 }

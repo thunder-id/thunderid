@@ -356,7 +356,7 @@ export default function generateFlowGraph(options: FlowGeneratorOptions): Create
       id: 'provisioning',
       type: FlowNodeType.TASK_EXECUTION,
       condition: {
-        key: '{{ context.userEligibleForProvisioning }}',
+        key: '{{ctx(userEligibleForProvisioning)}}',
         value: 'true',
         onSkip: 'auth_assert',
       },

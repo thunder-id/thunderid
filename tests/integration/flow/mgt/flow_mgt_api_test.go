@@ -88,7 +88,7 @@ var (
 					Name: "OUExecutor",
 				},
 				Condition: &ConditionDefinition{
-					Key:    "{{ context.userEligibleForProvisioning }}",
+					Key:    "{{ctx(userEligibleForProvisioning)}}",
 					Value:  "true",
 					OnSkip: "END",
 				},
