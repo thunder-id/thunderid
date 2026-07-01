@@ -58,10 +58,10 @@ var (
 					"url":    "http://localhost:9091/api/notifications",
 					"method": "POST",
 					"headers": "{\"Content-Type\": \"application/json\", " +
-						"\"X-Flow-Id\": \"{{ context.flowID }}\"}",
-					"body": "{\"userId\": \"{{ context.userId }}\", " +
-						"\"username\": \"{{ context.username }}\", \"event\": " +
-						"\"user_authenticated\", \"unknownField\": \"{{ context.unknownPlaceholder }}\"}",
+						"\"X-Flow-Id\": \"{{ctx(flowID)}}\"}",
+					"body": "{\"userId\": \"{{ctx(userId)}}\", " +
+						"\"username\": \"{{ctx(username)}}\", \"event\": " +
+						"\"user_authenticated\", \"unknownField\": \"{{ctx(unknownPlaceholder)}}\"}",
 					"responseMapping": "{\"notificationId\": \"id\", \"status\": \"status\"}",
 					"timeout":         "5",
 				},
@@ -110,7 +110,7 @@ var (
 					"url":           "http://localhost:9091/api/error",
 					"method":        "POST",
 					"headers":       "{\"Content-Type\": \"application/json\"}",
-					"body":          "{\"userId\": \"{{ context.userId }}\"}",
+					"body":          "{\"userId\": \"{{ctx(userId)}}\"}",
 					"errorHandling": "{\"failOnError\": false}",
 					"timeout":       "5",
 				},
@@ -159,7 +159,7 @@ var (
 					"url":           "http://localhost:9091/api/error",
 					"method":        "POST",
 					"headers":       "{\"Content-Type\": \"application/json\"}",
-					"body":          "{\"userId\": \"{{ context.userId }}\"}",
+					"body":          "{\"userId\": \"{{ctx(userId)}}\"}",
 					"errorHandling": "{\"failOnError\": true}",
 					"timeout":       "5",
 				},
@@ -391,7 +391,7 @@ func (ts *HTTPRequestExecutorTestSuite) TestHTTPRequestAuthFlow_Success() {
 	ts.NotEmpty(notificationRequest.Body["userId"], "User ID should be present in payload")
 	ts.Equal(ts.config.CreatedUserIDs[0], notificationRequest.Body["userId"],
 		"User ID should match the authenticated user")
-	ts.Equal("{{ context.unknownPlaceholder }}", notificationRequest.Body["unknownField"],
+	ts.Equal("{{ctx(unknownPlaceholder)}}", notificationRequest.Body["unknownField"],
 		"Unknown field should retain the placeholder value")
 }
 

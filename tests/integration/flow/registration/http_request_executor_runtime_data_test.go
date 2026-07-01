@@ -188,14 +188,14 @@ var (
 					"url":    "http://localhost:9092/api/notifications",
 					"method": "POST",
 					"headers": map[string]interface{}{
-						"X-App-Id":    "{{ context.applicationId }}",
-						"X-IDP-Id":    "{{ context.idpId }}",
-						"X-Sender-Id": "{{ context.senderId }}",
+						"X-App-Id":    "{{ctx(applicationId)}}",
+						"X-IDP-Id":    "{{ctx(idpId)}}",
+						"X-Sender-Id": "{{ctx(senderId)}}",
 					},
 					"body": map[string]interface{}{
-						"application": "{{ context.applicationId }}",
-						"idp":         "{{ context.idpId }}",
-						"sender":      "{{ context.senderId }}",
+						"application": "{{ctx(applicationId)}}",
+						"idp":         "{{ctx(idpId)}}",
+						"sender":      "{{ctx(senderId)}}",
 					},
 				},
 				"executor": map[string]interface{}{

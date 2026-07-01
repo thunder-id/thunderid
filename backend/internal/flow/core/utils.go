@@ -27,11 +27,11 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// placeholderPattern matches {{ context.key }} with optional whitespace.
-// TODO: Extend to support {{ user.key }}, {{ env.key }}, etc.
-var placeholderPattern = regexp.MustCompile(`{{\s*context\.\s*(\w+)\s*}}`)
+// placeholderPattern matches {{ctx(key)}} with optional whitespace.
+// TODO: Extend to support {{user(key)}}, {{env(key)}}, etc.
+var placeholderPattern = regexp.MustCompile(`{{\s*ctx\(\s*(\w+)\s*\)\s*}}`)
 
-// ResolvePlaceholder resolves a single placeholder string using the "{{ context.key }}" syntax.
+// ResolvePlaceholder resolves a single placeholder string using the "{{ctx(key)}}" syntax.
 // If no placeholder is found, the original value is returned.
 // If a placeholder is found but the key doesn't exist in any data source, the placeholder is kept as-is.
 func ResolvePlaceholder(ctx *providers.NodeContext, value string, execResp *providers.ExecutorResponse,

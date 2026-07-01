@@ -65,7 +65,7 @@ var (
 				"id":   "conditional_ou_creation",
 				"type": "TASK_EXECUTION",
 				"condition": map[string]interface{}{
-					"key":    "{{ context.userEligibleForProvisioning }}",
+					"key":    "{{ctx(userEligibleForProvisioning)}}",
 					"value":  "true",
 					"onSkip": "auth_assert",
 				},
@@ -78,7 +78,7 @@ var (
 				"id":   "provisioning",
 				"type": "TASK_EXECUTION",
 				"condition": map[string]interface{}{
-					"key":    "{{ context.userEligibleForProvisioning }}",
+					"key":    "{{ctx(userEligibleForProvisioning)}}",
 					"value":  "true",
 					"onSkip": "auth_assert",
 				},

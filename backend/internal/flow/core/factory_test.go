@@ -232,7 +232,7 @@ func (s *FlowFactoryTestSuite) TestCloneNodeWithCondition() {
 	node, _ := s.factory.CreateNode("node-1", string(common.NodeTypeTaskExecution),
 		map[string]interface{}{}, false, false)
 	node.SetCondition(&NodeCondition{
-		Key:   "{{ context.status }}",
+		Key:   "{{ctx(status)}}",
 		Value: "active",
 	})
 
@@ -246,7 +246,7 @@ func (s *FlowFactoryTestSuite) TestCloneNodeWithCondition() {
 
 	// Verify deep copy - modifying cloned condition doesn't affect source
 	clonedNode.SetCondition(&NodeCondition{
-		Key:   "{{ context.newKey }}",
+		Key:   "{{ctx(newKey)}}",
 		Value: "newValue",
 	})
 	s.NotEqual(node.GetCondition().Key, clonedNode.GetCondition().Key)

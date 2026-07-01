@@ -134,7 +134,7 @@ func (s *RepresentationNodeTestSuite) TestShouldExecuteWithoutCondition() {
 func (s *RepresentationNodeTestSuite) TestShouldExecuteWithConditionMet() {
 	node := newRepresentationNode("test", common.NodeTypeStart, nil, true, false)
 	node.SetCondition(&NodeCondition{
-		Key:    "{{ context.key1 }}",
+		Key:    "{{ctx(key1)}}",
 		Value:  "value1",
 		OnSkip: "skip_node",
 	})
@@ -152,7 +152,7 @@ func (s *RepresentationNodeTestSuite) TestShouldExecuteWithConditionMet() {
 func (s *RepresentationNodeTestSuite) TestShouldExecuteWithConditionNotMet() {
 	node := newRepresentationNode("test", common.NodeTypeStart, nil, true, false)
 	node.SetCondition(&NodeCondition{
-		Key:    "{{ context.key1 }}",
+		Key:    "{{ctx(key1)}}",
 		Value:  "value1",
 		OnSkip: "skip_node",
 	})

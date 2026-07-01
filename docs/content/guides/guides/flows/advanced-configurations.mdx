@@ -1885,13 +1885,13 @@ Executes an HTTP request to an external endpoint, optionally retries on failure,
 - **Policy evaluation:** Check an external policy engine before allowing flow continuation
 - **Custom business logic:** Delegate decision-making to a specialized service
 
-**Prerequisites:** None. Any context data referenced via `{{ context.fieldName }}` placeholders in the URL, headers, or body must be available from prior executors at runtime.
+**Prerequisites:** None. Any context data referenced via `{{ctx(fieldName)}}` placeholders in the URL, headers, or body must be available from prior executors at runtime.
 
 **Input Configuration:** This executor is entirely configuration-driven; all settings are node properties.
 
 **How it works:**
 1. Parses HTTP configuration from node properties (URL, method, headers, body, timeout)
-2. Resolves `{{ context.fieldName }}` placeholders in the URL, headers, and body using runtime data and user inputs from prior executors
+2. Resolves `{{ctx(fieldName)}}` placeholders in the URL, headers, and body using runtime data and user inputs from prior executors
 3. Sends the HTTP request with optional retry logic based on `errorHandling` config
 4. Maps response fields for downstream use based on `responseMapping` configuration
 5. Continues the flow (or fails based on error handling configuration)
@@ -1900,7 +1900,7 @@ Executes an HTTP request to an external endpoint, optionally retries on failure,
 
 | Property | UI Label | Required | Default | Description |
 |---|---|---|---|---|
-| `url` | URL | Yes | — | The endpoint URL (supports placeholders like `{{ context.userId }}`) |
+| `url` | URL | Yes | — | The endpoint URL (supports placeholders like `{{ctx(userId)}}`) |
 | `method` | Method | No | `GET` | HTTP method: GET, POST, PUT, DELETE, or PATCH |
 | `headers` | Headers | No | — | HTTP headers as a map of strings |
 | `body` | Request Body | No | — | Request body (JSON object, only for POST/PUT/PATCH) |
@@ -1911,20 +1911,20 @@ Executes an HTTP request to an external endpoint, optionally retries on failure,
 | `errorHandling.retryDelay` | Retry Delay (ms) | No | 0 | Delay between retries in milliseconds (max 5000ms) |
 
 
-**Placeholder syntax:** Use `{{ context.fieldName }}` to reference data from the flow context. Placeholders are resolved from runtime data first, then user inputs. If a placeholder cannot be resolved, it is kept as-is in the request.
+**Placeholder syntax:** Use `{{ctx(fieldName)}}` to reference data from the flow context. Placeholders are resolved from runtime data first, then user inputs. If a placeholder cannot be resolved, it is kept as-is in the request.
 
 The following fields are always available when the corresponding data exists in the flow context:
 
 | Placeholder | Source | Description |
 |---|---|---|
-| `{{ context.userId }}` | Authenticated user or runtime data | The authenticated user's ID. Available after any authentication or provisioning executor has run. |
-| `{{ context.ouId }}` | Authenticated user or runtime data | The organizational unit ID of the current user. Available after OU resolution or authentication. |
-| `{{ context.ouHandle }}` | OU service lookup | The handle of the resolved OU. Fetched automatically when referenced. |
-| `{{ context.ouName }}` | OU service lookup | The display name of the resolved OU. Fetched automatically when referenced. |
-| `{{ context.ouDescription }}` | OU service lookup | The description of the resolved OU. Fetched automatically when referenced. |
-| `{{ context.clientId }}` | OAuth flow context | The OAuth client ID of the application initiating the flow. Available in OAuth/OIDC authorization flows. |
+| `{{ctx(userId)}}` | Authenticated user or runtime data | The authenticated user's ID. Available after any authentication or provisioning executor has run. |
+| `{{ctx(ouId)}}` | Authenticated user or runtime data | The organizational unit ID of the current user. Available after OU resolution or authentication. |
+| `{{ctx(ouHandle)}}` | OU service lookup | The handle of the resolved OU. Fetched automatically when referenced. |
+| `{{ctx(ouName)}}` | OU service lookup | The display name of the resolved OU. Fetched automatically when referenced. |
+| `{{ctx(ouDescription)}}` | OU service lookup | The description of the resolved OU. Fetched automatically when referenced. |
+| `{{ctx(clientId)}}` | OAuth flow context | The OAuth client ID of the application initiating the flow. Available in OAuth/OIDC authorization flows. |
 
-In addition to these fields, any value present in runtime data (set by prior executors) or user inputs (collected from prior Views) can be referenced using the same `{{ context.fieldName }}` syntax (e.g., `{{ context.email }}`, `{{ context.username }}`).
+In addition to these fields, any value present in runtime data (set by prior executors) or user inputs (collected from prior Views) can be referenced using the same `{{ctx(fieldName)}}` syntax (e.g., `{{ctx(email)}}`, `{{ctx(username)}}`).
 
 **Failure conditions:**
 - URL not configured or invalid
@@ -1948,9 +1948,9 @@ In addition to these fields, any value present in runtime data (set by prior exe
     },
     "body": {
       "event": "OU_CREATED",
-      "ouName": "{{ context.ouName }}",
-      "ouId": "{{ context.ouId }}",
-      "ouHandle": "{{ context.ouHandle }}"
+      "ouName": "{{ctx(ouName)}}",
+      "ouId": "{{ctx(ouId)}}",
+      "ouHandle": "{{ctx(ouHandle)}}"
     },
     "timeout": 5,
     "responseMapping": {

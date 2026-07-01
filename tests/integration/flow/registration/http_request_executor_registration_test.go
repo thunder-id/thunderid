@@ -154,12 +154,12 @@ var (
 						"Authorization": "Bearer test-token",
 					},
 					"body": map[string]interface{}{
-						"externalId":   "{{ context.userId }}",
-						"username":     "{{ context.username }}",
-						"email":        "{{ context.email }}",
-						"given_name":   "{{ context.given_name }}",
-						"family_name":  "{{ context.family_name }}",
-						"unknownField": "{{ context.unknownPlaceholder }}",
+						"externalId":   "{{ctx(userId)}}",
+						"username":     "{{ctx(username)}}",
+						"email":        "{{ctx(email)}}",
+						"given_name":   "{{ctx(given_name)}}",
+						"family_name":  "{{ctx(family_name)}}",
+						"unknownField": "{{ctx(unknownPlaceholder)}}",
 					},
 					"responseMapping": map[string]interface{}{
 						"externalUserId": "data.userId",
@@ -379,6 +379,6 @@ func (ts *HTTPRequestRegistrationFlowTestSuite) TestHTTPRequestRegistrationFlow_
 	ts.Equal("New", userCreationRequest.Body["given_name"], "First name should match")
 	ts.Equal("User", userCreationRequest.Body["family_name"], "Last name should match")
 	ts.NotEmpty(userCreationRequest.Body["externalId"], "External ID should be present in payload")
-	ts.Equal("{{ context.unknownPlaceholder }}", userCreationRequest.Body["unknownField"],
+	ts.Equal("{{ctx(unknownPlaceholder)}}", userCreationRequest.Body["unknownField"],
 		"Unknown field should retain the placeholder value")
 }

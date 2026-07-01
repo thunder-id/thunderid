@@ -299,7 +299,7 @@ func (h *httpRequestExecutor) parseErrorHandling(
 }
 
 // enrichOURuntimeData fetches OU details and populates ouHandle and ouName into RuntimeData
-// so that placeholders like {{ context.ouHandle }} can be resolved for the current request.
+// so that placeholders like {{ctx(ouHandle)}} can be resolved for the current request.
 // It only performs the fetch when an OU placeholder is referenced in the config and the OU ID
 // is available in the context.
 func (h *httpRequestExecutor) enrichOURuntimeData(ctx *providers.NodeContext, config *httpRequestConfig,
@@ -308,7 +308,7 @@ func (h *httpRequestExecutor) enrichOURuntimeData(ctx *providers.NodeContext, co
 		return
 	}
 
-	ouPlaceholderPattern := regexp.MustCompile(`{{\s*context\.\s*(ouHandle|ouName|ouDescription)\s*}}`)
+	ouPlaceholderPattern := regexp.MustCompile(`{{\s*ctx\(\s*(ouHandle|ouName|ouDescription)\s*\)\s*}}`)
 
 	// Build a single searchable string from all resolvable config fields.
 	var sb strings.Builder
