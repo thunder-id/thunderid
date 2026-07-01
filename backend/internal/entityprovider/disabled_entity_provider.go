@@ -21,6 +21,7 @@ package entityprovider
 import (
 	"encoding/json"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -104,11 +105,13 @@ func (p *disabledEntityProvider) GetEntitiesByIDs(
 }
 
 func (p *disabledEntityProvider) GetEntityListCount(
-	_ providers.EntityCategory, _ map[string]interface{}) (int, *EntityProviderError) {
+	_ providers.EntityCategory, _ map[string]interface{},
+	_ *tidcommon.FilterGroup) (int, *EntityProviderError) {
 	return 0, errNotImplemented
 }
 
 func (p *disabledEntityProvider) GetEntityList(
-	_ providers.EntityCategory, _, _ int, _ map[string]interface{}) ([]providers.Entity, *EntityProviderError) {
+	_ providers.EntityCategory, _, _ int, _ map[string]interface{},
+	_ *tidcommon.FilterGroup) ([]providers.Entity, *EntityProviderError) {
 	return nil, errNotImplemented
 }

@@ -31,6 +31,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -55,9 +56,10 @@ type entityStoreInterface interface {
 	IdentifyEntity(ctx context.Context, filters map[string]interface{}) (*string, error)
 	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)
 	GetEntityListCount(ctx context.Context, category string,
-		filters map[string]interface{}) (int, error)
+		filters map[string]interface{}, search *tidcommon.FilterGroup) (int, error)
 	GetEntityList(ctx context.Context, category string,
-		limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
+		limit, offset int, filters map[string]interface{},
+		search *tidcommon.FilterGroup) ([]providers.Entity, error)
 	GetEntityListCountByOUIDs(ctx context.Context, category string,
 		ouIDs []string, filters map[string]interface{}) (int, error)
 	GetEntityListByOUIDs(ctx context.Context, category string,
@@ -544,7 +546,7 @@ func (es *entityDBStore) SearchEntities(ctx context.Context,
 	}
 
 	searchQuery, args, err := buildEntityListQuery(
-		"", filters, serverconst.MaxPageSize, 0, es.deploymentID)
+		"", filters, nil, serverconst.MaxPageSize, 0, es.deploymentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build search query: %w", err)
 	}
@@ -568,13 +570,13 @@ func (es *entityDBStore) GetIndexedAttributes() map[string]bool {
 
 // GetEntityListCount retrieves the total count of entities by category.
 func (es *entityDBStore) GetEntityListCount(ctx context.Context, category string,
-	filters map[string]interface{}) (int, error) {
+	filters map[string]interface{}, search *tidcommon.FilterGroup) (int, error) {
 	dbClient, err := es.dbProvider.GetUserDBClient()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	countQuery, args, err := buildEntityCountQuery(category, filters, es.deploymentID)
+	countQuery, args, err := buildEntityCountQuery(category, filters, search, es.deploymentID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to build count query: %w", err)
 	}
@@ -584,13 +586,14 @@ func (es *entityDBStore) GetEntityListCount(ctx context.Context, category string
 
 // GetEntityList retrieves a list of entities by category.
 func (es *entityDBStore) GetEntityList(ctx context.Context, category string,
-	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
+	limit, offset int, filters map[string]interface{},
+	search *tidcommon.FilterGroup) ([]providers.Entity, error) {
 	dbClient, err := es.dbProvider.GetUserDBClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database client: %w", err)
 	}
 
-	listQuery, args, err := buildEntityListQuery(category, filters, limit, offset, es.deploymentID)
+	listQuery, args, err := buildEntityListQuery(category, filters, search, limit, offset, es.deploymentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build list query: %w", err)
 	}

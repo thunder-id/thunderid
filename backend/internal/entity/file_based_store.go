@@ -22,10 +22,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	entitystore "github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -181,7 +183,7 @@ func (f *entityFileBasedStore) SearchEntities(ctx context.Context,
 
 // GetEntityListCount retrieves the total count of entities from the file store.
 func (f *entityFileBasedStore) GetEntityListCount(ctx context.Context, category string,
-	filters map[string]interface{}) (int, error) {
+	filters map[string]interface{}, search *tidcommon.FilterGroup) (int, error) {
 	resources, err := f.listEntityResources()
 	if err != nil {
 		return 0, err
@@ -193,7 +195,7 @@ func (f *entityFileBasedStore) GetEntityListCount(ctx context.Context, category 
 			continue
 		}
 		combined := mergeJSONObjects(resource.Entity.Attributes, resource.Entity.SystemAttributes)
-		if matchesFilters(combined, filters) {
+		if matchesFilters(combined, filters) && matchesFilterGroup(combined, search) {
 			count++
 		}
 	}
@@ -202,7 +204,8 @@ func (f *entityFileBasedStore) GetEntityListCount(ctx context.Context, category 
 
 // GetEntityList retrieves entities from the file store with pagination and filtering.
 func (f *entityFileBasedStore) GetEntityList(ctx context.Context, category string,
-	limit, offset int, filters map[string]interface{}) ([]providers.Entity, error) {
+	limit, offset int, filters map[string]interface{},
+	search *tidcommon.FilterGroup) ([]providers.Entity, error) {
 	resources, err := f.listEntityResources()
 	if err != nil {
 		return nil, err
@@ -214,7 +217,7 @@ func (f *entityFileBasedStore) GetEntityList(ctx context.Context, category strin
 			continue
 		}
 		combined := mergeJSONObjects(resource.Entity.Attributes, resource.Entity.SystemAttributes)
-		if matchesFilters(combined, filters) {
+		if matchesFilters(combined, filters) && matchesFilterGroup(combined, search) {
 			entities = append(entities, resource.Entity)
 		}
 	}
@@ -472,6 +475,58 @@ func matchesFilters(attributes json.RawMessage, filters map[string]interface{}) 
 	}
 
 	return true
+}
+
+// matchesFilterGroup reports whether the given attributes satisfy the SCIM-style filter group.
+// An empty group matches everything. Clauses are evaluated left to right with AND binding tighter
+// than OR, mirroring the SQL precedence used by the database stores.
+func matchesFilterGroup(attributes json.RawMessage, g *tidcommon.FilterGroup) bool {
+	if !hasFilterGroup(g) {
+		return true
+	}
+
+	var attrsMap map[string]interface{}
+	if len(attributes) > 0 {
+		if err := json.Unmarshal(attributes, &attrsMap); err != nil {
+			return false
+		}
+	}
+
+	andGroupResult := evaluateEntityClause(attrsMap, &g.Clauses[0].Expr)
+	for _, clause := range g.Clauses[1:] {
+		exprResult := evaluateEntityClause(attrsMap, &clause.Expr)
+		switch clause.Connector {
+		case tidcommon.LogicalAnd:
+			andGroupResult = andGroupResult && exprResult
+		case tidcommon.LogicalOr:
+			if andGroupResult {
+				return true
+			}
+			andGroupResult = exprResult
+		}
+	}
+	return andGroupResult
+}
+
+// evaluateEntityClause tests one filter expression against the entity attribute map.
+func evaluateEntityClause(attrsMap map[string]interface{}, expr *tidcommon.FilterExpression) bool {
+	value, ok := getNestedValue(attrsMap, expr.Attribute)
+	if !ok {
+		return false
+	}
+	str, ok := value.(string)
+	if !ok {
+		return false
+	}
+	want := fmt.Sprintf("%v", expr.Value)
+	switch expr.Operator {
+	case tidcommon.OperatorContains:
+		return strings.Contains(strings.ToLower(str), strings.ToLower(want))
+	case tidcommon.OperatorEq:
+		return strings.EqualFold(str, want)
+	default:
+		return false
+	}
 }
 
 func getNestedValue(data map[string]interface{}, key string) (interface{}, bool) {

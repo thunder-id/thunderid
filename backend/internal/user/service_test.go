@@ -1462,8 +1462,9 @@ func TestUserService_GetUserList(t *testing.T) {
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 	storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-	storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).Return(5, nil).Once()
-	storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, limit, offset, filters).
+	storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters, mock.Anything).
+		Return(5, nil).Once()
+	storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, limit, offset, filters, mock.Anything).
 		Return([]providers.Entity{{ID: svcTestUserID1}}, nil).
 		Once()
 
@@ -2061,7 +2062,7 @@ func TestUserService_GetUserList_ErrorCases(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).
+				storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters, mock.Anything).
 					Return(0, storeErr).Once()
 				return &userService{
 					entityService: storeMock,
@@ -2075,9 +2076,10 @@ func TestUserService_GetUserList_ErrorCases(t *testing.T) {
 			setup: func(t *testing.T) *userService {
 				storeMock := entitymock.NewEntityServiceInterfaceMock(t)
 				storeMock.On("IsEntityDeclarative", mock.Anything, mock.Anything).Return(false, nil).Maybe()
-				storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).
+				storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters, mock.Anything).
 					Return(5, nil).Once()
-				storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, limit, offset, filters).
+				storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser,
+					limit, offset, filters, mock.Anything).
 					Return([]providers.Entity(nil), storeErr).Once()
 				return &userService{
 					entityService: storeMock,
@@ -3167,8 +3169,9 @@ func TestUserService_GetUserList_WithIncludeDisplay(t *testing.T) {
 	filters := map[string]interface{}{}
 
 	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
-	storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters).Return(2, nil).Once()
-	storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, limit, offset, filters).
+	storeMock.On("GetEntityListCount", mock.Anything, providers.EntityCategoryUser, filters, mock.Anything).
+		Return(2, nil).Once()
+	storeMock.On("GetEntityList", mock.Anything, providers.EntityCategoryUser, limit, offset, filters, mock.Anything).
 		Return([]providers.Entity{
 			{
 				ID: "user-1", OUID: "ou-1", Type: "employee",

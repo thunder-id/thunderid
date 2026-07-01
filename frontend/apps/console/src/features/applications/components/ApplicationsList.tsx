@@ -30,14 +30,42 @@ import useGetApplications from '../api/useGetApplications';
 import type {BasicApplication} from '../models/application';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
 
-export default function ApplicationsList(): JSX.Element {
+export interface ApplicationsListProps {
+  /**
+   * Search term matched against the application name, client ID and description.
+   */
+  search?: string;
+}
+
+export default function ApplicationsList({search}: ApplicationsListProps = {}): JSX.Element {
   const navigate = useNavigate();
   const {config} = useConfig();
   const {t} = useTranslation();
   const logger = useLogger('ApplicationsList');
   const dataGridLocaleText = useDataGridLocaleText();
-  const {data, isLoading, error} = useGetApplications();
+
+  const [paginationModel, setPaginationModel] = useState<{page: number; pageSize: number}>({
+    page: 0,
+    pageSize: 10,
+  });
+
+  // Reset to the first page whenever the search term changes, adjusting state during render
+  // (React's recommended pattern) rather than in an effect.
+  const [prevSearch, setPrevSearch] = useState<string | undefined>(search);
+  if (search !== prevSearch) {
+    setPrevSearch(search);
+    setPaginationModel((prev) => ({...prev, page: 0}));
+  }
+
+  const {data, isLoading, error} = useGetApplications({
+    limit: paginationModel.pageSize,
+    offset: paginationModel.page * paginationModel.pageSize,
+    search,
+  });
   const systemConsoleClientId = (config?.client?.client_id ?? 'CONSOLE').toUpperCase();
+
+  // keepPreviousData keeps the prior total available between pages, so this stays stable.
+  const rowCount = data?.totalResults ?? 0;
 
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
@@ -197,11 +225,10 @@ export default function ApplicationsList(): JSX.Element {
             onRowClick={(params) => {
               handleEditClick((params.row as BasicApplication).id);
             }}
-            initialState={{
-              pagination: {
-                paginationModel: {pageSize: 10},
-              },
-            }}
+            paginationMode="server"
+            rowCount={rowCount}
+            paginationModel={paginationModel}
+            onPaginationModelChange={setPaginationModel}
             pageSizeOptions={[5, 10, 25, 50]}
             disableRowSelectionOnClick
             localeText={dataGridLocaleText}

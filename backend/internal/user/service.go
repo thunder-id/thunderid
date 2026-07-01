@@ -120,12 +120,12 @@ func (us *userService) listAllUsers(
 	ctx context.Context, limit, offset int, filters map[string]interface{},
 	includeDisplay bool, logger *log.Logger,
 ) (*UserListResponse, *tidcommon.ServiceError) {
-	totalCount, err := us.entityService.GetEntityListCount(ctx, providers.EntityCategoryUser, filters)
+	totalCount, err := us.entityService.GetEntityListCount(ctx, providers.EntityCategoryUser, filters, nil)
 	if err != nil {
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get user list count", err)
 	}
 
-	entities, err := us.entityService.GetEntityList(ctx, providers.EntityCategoryUser, limit, offset, filters)
+	entities, err := us.entityService.GetEntityList(ctx, providers.EntityCategoryUser, limit, offset, filters, nil)
 	if err != nil {
 		return nil, logErrorAndReturnServerError(ctx, logger, "Failed to get user list", err)
 	}

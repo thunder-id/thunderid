@@ -84,9 +84,10 @@ func (suite *AgentServiceTestSuite) setupService() (
 		Maybe().Return(&providers.Entity{}, nil)
 	mockEntity.On("UpdateSystemCredentials", mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(nil)
-	mockEntity.On("GetEntityList", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("GetEntityList", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
 		Maybe().Return([]providers.Entity{}, nil)
-	mockEntity.On("GetEntityListCount", mock.Anything, mock.Anything, mock.Anything).
+	mockEntity.On("GetEntityListCount", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(0, nil)
 	mockEntity.On("GetEntityListByOUIDs", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
@@ -723,10 +724,10 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_Success() {
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "desc", "alice", "")
 	clearMockCalls(mockEntity, "GetEntityList")
-	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent, 30, 0, mock.Anything).
+	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent, 30, 0, mock.Anything, mock.Anything).
 		Return([]providers.Entity{*agentEntity}, nil)
 	clearMockCalls(mockEntity, "GetEntityListCount")
-	mockEntity.On("GetEntityListCount", mock.Anything, providers.EntityCategoryAgent, mock.Anything).
+	mockEntity.On("GetEntityListCount", mock.Anything, providers.EntityCategoryAgent, mock.Anything, mock.Anything).
 		Return(1, nil)
 
 	resp, svcErr := svc.GetAgentList(context.Background(), 0, 0, nil, false)
@@ -1474,7 +1475,7 @@ func (suite *AgentServiceTestSuite) TestGetAgent_IncludeDisplay_LookupError() {
 func (suite *AgentServiceTestSuite) TestGetAgentList_CountError() {
 	svc, mockEntity, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntityListCount")
-	mockEntity.On("GetEntityListCount", mock.Anything, providers.EntityCategoryAgent, mock.Anything).
+	mockEntity.On("GetEntityListCount", mock.Anything, providers.EntityCategoryAgent, mock.Anything, mock.Anything).
 		Return(0, errors.New("db error"))
 
 	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, nil, false)
@@ -1487,7 +1488,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_ListError() {
 	svc, mockEntity, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntityList")
 	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent,
-		mock.Anything, mock.Anything, mock.Anything).
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, errors.New("db error"))
 
 	resp, svcErr := svc.GetAgentList(context.Background(), 10, 0, nil, false)
@@ -1499,7 +1500,7 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_ListError() {
 func (suite *AgentServiceTestSuite) TestGetAgentList_DefaultLimit() {
 	svc, mockEntity, _, _ := suite.setupService()
 	clearMockCalls(mockEntity, "GetEntityList")
-	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent, 30, 0, mock.Anything).
+	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent, 30, 0, mock.Anything, mock.Anything).
 		Return([]providers.Entity{}, nil)
 
 	resp, svcErr := svc.GetAgentList(context.Background(), 0, 0, nil, false)
@@ -1513,10 +1514,10 @@ func (suite *AgentServiceTestSuite) TestGetAgentList_IncludeDisplay() {
 
 	agentEntity := buildAgentEntityFixture(testAgentName, "", "", "")
 	clearMockCalls(mockEntity, "GetEntityList")
-	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent, 10, 0, mock.Anything).
+	mockEntity.On("GetEntityList", mock.Anything, providers.EntityCategoryAgent, 10, 0, mock.Anything, mock.Anything).
 		Return([]providers.Entity{*agentEntity}, nil)
 	clearMockCalls(mockEntity, "GetEntityListCount")
-	mockEntity.On("GetEntityListCount", mock.Anything, providers.EntityCategoryAgent, mock.Anything).
+	mockEntity.On("GetEntityListCount", mock.Anything, providers.EntityCategoryAgent, mock.Anything, mock.Anything).
 		Return(1, nil)
 
 	clearMockCalls(mockOU, "GetOrganizationUnitHandlesByIDs")

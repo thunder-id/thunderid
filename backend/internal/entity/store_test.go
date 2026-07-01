@@ -448,14 +448,14 @@ func (s *DBStoreTestSuite) TestIdentifyEntity_FastPath_Empty_FallbackSearchesBot
 
 func (s *DBStoreTestSuite) TestGetEntityListCount_ProviderError() {
 	s.expectClientError()
-	_, err := s.store.GetEntityListCount(s.ctx, "user", nil)
+	_, err := s.store.GetEntityListCount(s.ctx, "user", nil, nil)
 	s.Error(err)
 }
 
 func (s *DBStoreTestSuite) TestGetEntityListCount_Success() {
 	s.expectClient()
 	s.onQueryAny([]map[string]interface{}{{"total": int64(5)}}, nil)
-	count, err := s.store.GetEntityListCount(s.ctx, "user", nil)
+	count, err := s.store.GetEntityListCount(s.ctx, "user", nil, nil)
 	s.NoError(err)
 	s.Equal(5, count)
 }
@@ -463,20 +463,20 @@ func (s *DBStoreTestSuite) TestGetEntityListCount_Success() {
 func (s *DBStoreTestSuite) TestGetEntityListCount_BadTotalType() {
 	s.expectClient()
 	s.onQueryAny([]map[string]interface{}{{"total": "not-an-int"}}, nil)
-	_, err := s.store.GetEntityListCount(s.ctx, "user", nil)
+	_, err := s.store.GetEntityListCount(s.ctx, "user", nil, nil)
 	s.Error(err)
 }
 
 func (s *DBStoreTestSuite) TestGetEntityList_ProviderError() {
 	s.expectClientError()
-	_, err := s.store.GetEntityList(s.ctx, "user", 10, 0, nil)
+	_, err := s.store.GetEntityList(s.ctx, "user", 10, 0, nil, nil)
 	s.Error(err)
 }
 
 func (s *DBStoreTestSuite) TestGetEntityList_Success() {
 	s.expectClient()
 	s.onQueryAny([]map[string]interface{}{dbEntityRow()}, nil)
-	list, err := s.store.GetEntityList(s.ctx, "user", 10, 0, nil)
+	list, err := s.store.GetEntityList(s.ctx, "user", 10, 0, nil, nil)
 	s.NoError(err)
 	s.Len(list, 1)
 }
